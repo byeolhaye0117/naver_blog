@@ -41,5 +41,6 @@ export async function checkRank(target: RankTarget): Promise<RankSnapshot> {
     rank,
     total: res.total,
     mock: res.mock,
+    source: 'api',
   }
 }

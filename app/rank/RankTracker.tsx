@@ -35,6 +35,9 @@ export default function RankTracker({
   const [publishedAt, setPublishedAt] = useState('')
   const [adding, setAdding] = useState(false)
   const [checking, setChecking] = useState<string | null>(null)
+  const [manual, setManual] = useState<Record<string, { rank: string; date: string; note: string }>>({})
+  const [savingManual, setSavingManual] = useState<string | null>(null)
+  const [manualMsg, setManualMsg] = useState<{ id: string; text: string; ok: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const publishedPosts = posts.filter((p) => p.status === 'published')
@@ -59,7 +62,10 @@ export default function RankTracker({
       setUrl('')
       setPostId('')
       setPublishedAt('')
-      await refreshAndCheck(json.target.id)
+      // 항목은 이미 만들어졌으므로 목록을 먼저 갱신한다.
+      // 자동 조회가 막혀 있어도(검색 API 미발급 등) 직접 입력 자리가 화면에 나와야 한다.
+      await reloadViews()
+      await refreshAndCheck(json.target.id, { silent: true })
     } catch (e) {
       setError(e instanceof Error ? e.message : '등록에 실패했습니다.')
     } finally {
@@ -67,7 +73,23 @@ export default function RankTracker({
     }
   }
 
-  async function refreshAndCheck(targetId?: string) {
+  /**
+   * 저장된 추적 목록을 다시 읽는다.
+   *
+   * API 조회가 실패해도 항목 자체는 만들어져 있으므로 목록을 갱신해야 한다.
+   * 이걸 안 하면 "등록은 됐다"는 안내만 뜨고 정작 순위를 직접 넣을 자리가 화면에 없다.
+   */
+  async function reloadViews() {
+    try {
+      const res = await fetch('/api/rank', { cache: 'no-store' })
+      const json = await res.json()
+      if (res.ok && Array.isArray(json.views)) setViews(json.views)
+    } catch {
+      /* 목록 갱신 실패는 조용히 넘긴다 — 화면을 새로고침하면 복구된다 */
+    }
+  }
+
+  async function refreshAndCheck(targetId?: string, opts?: { silent?: boolean }) {
     setChecking(targetId ?? 'all')
     setError(null)
     try {
@@ -81,9 +103,61 @@ export default function RankTracker({
       setViews(json.views)
       router.refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : '순위 조회에 실패했습니다.')
+      const msg = e instanceof Error ? e.message : '순위 조회에 실패했습니다.'
+      setError(
+        opts?.silent
+          ? `추적 항목은 등록됐습니다. 다만 API 자동 조회가 안 됩니다 — 아래 "네이버에서 직접 본 순위 기록"으로 넣으세요. (${msg})`
+          : msg
+      )
+      await reloadViews()
+      router.refresh()
     } finally {
       setChecking(null)
+    }
+  }
+
+  const today = () => new Date().toISOString().slice(0, 10)
+
+  function manualOf(id: string) {
+    return manual[id] ?? { rank: '', date: today(), note: '' }
+  }
+
+  function setManualField(id: string, patch: Partial<{ rank: string; date: string; note: string }>) {
+    setManual((m) => ({ ...m, [id]: { ...manualOf(id), ...patch } }))
+  }
+
+  /** 네이버에서 직접 본 순위를 기록한다. 비워두면 "순위 밖"으로 저장 */
+  async function saveManual(targetId: string) {
+    const v = manualOf(targetId)
+    const raw = v.rank.trim()
+    const parsed = raw === '' ? null : Number(raw)
+    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 1 || parsed > 300)) {
+      setManualMsg({ id: targetId, text: '순위는 1~300 사이 숫자로 입력하세요. 비워두면 "순위 밖"으로 기록됩니다.', ok: false })
+      return
+    }
+
+    setSavingManual(targetId)
+    setManualMsg(null)
+    try {
+      const res = await fetch('/api/rank/manual', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId, date: v.date, rank: parsed, note: v.note }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setViews(json.views)
+      setManual((m) => ({ ...m, [targetId]: { rank: '', date: today(), note: '' } }))
+      setManualMsg({
+        id: targetId,
+        text: parsed === null ? '"순위 밖"으로 기록했습니다.' : `${parsed}위로 기록했습니다.`,
+        ok: true,
+      })
+      router.refresh()
+    } catch (e) {
+      setManualMsg({ id: targetId, text: e instanceof Error ? e.message : '기록에 실패했습니다.', ok: false })
+    } finally {
+      setSavingManual(null)
     }
   }
 
@@ -98,7 +172,7 @@ export default function RankTracker({
     <div className="space-y-4">
       <Card
         title="추적 항목 추가"
-        subtitle={`검색 결과 상위 ${RANK_DEPTH}위까지 훑어 내 글을 찾습니다. 글 URL이 없으면 블로그 ID만 넣어도 그 블로그의 최상위 글 순위를 잡습니다.`}
+        subtitle={`등록하면 두 가지로 순위를 남길 수 있습니다 — 네이버에서 직접 본 순위를 입력하거나(권장, API 없이도 가능), 검색 API 로 상위 ${RANK_DEPTH}위까지 자동 조회하거나. 글 URL 대신 블로그 ID만 넣어도 됩니다.`}
       >
         <div className="space-y-3.5">
           {publishedPosts.length > 0 && (
@@ -195,8 +269,12 @@ export default function RankTracker({
         <p className="mt-1.5">
           최신순이 아닙니다 — 최신순은 발행만 하면 위에 있으니 의미가 없습니다. 다만 이 값은{' '}
           <strong>실제 통합검색 상단과 같지 않습니다.</strong> 검색 API 는 평면 목록만 주는데, 실제 화면은
-          의도별 <strong>스마트블록</strong>으로 재배치되고 그 자리는 API 로 볼 수 없습니다. 즉 여기 순위는
-          추세를 보는 <strong>대리 지표</strong>이고, 진짜 자리는 아래 링크로 직접 확인하세요.
+          의도별 <strong>스마트블록</strong>으로 재배치되고 그 자리는 API 로 볼 수 없습니다.
+        </p>
+        <p className="mt-2">
+          그래서 각 항목에 <strong>“네이버에서 직접 본 순위 기록”</strong> 을 두었습니다. 검색해서 눈으로 확인한
+          순위를 넣으면 그래프·변동·구간 판정이 똑같이 동작하고, <strong>API 조회보다 정확합니다.</strong>{' '}
+          검색 API 를 발급받지 못한 경우에도 이 방식으로 추적을 그대로 쓸 수 있습니다.
         </p>
       </div>
 
@@ -294,6 +372,78 @@ export default function RankTracker({
                 <Empty>아직 조회 기록이 없습니다.</Empty>
               )}
 
+              {/* 네이버에서 직접 본 순위 기록 — 검색 API 없이도 추적이 굴러가고,
+                  API 가 있어도 스마트블록 자리를 반영하므로 더 정확하다 */}
+              <div className="bd mt-3 rounded-lg border p-3">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <h4 className="text-[12px] font-bold">네이버에서 직접 본 순위 기록</h4>
+                  <a
+                    href={naverSearchUrl(v.target.keyword)}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-brand-600 dark:text-brand-100 text-[11px] font-semibold underline"
+                  >
+                    지금 검색해보기 →
+                  </a>
+                </div>
+                <p className="muted mb-2.5 text-[11px] leading-relaxed">
+                  검색 결과에서 내 글이 몇 번째인지 세어 넣으세요. <strong>안 보이면 비워두고 기록</strong>하면
+                  “순위 밖”으로 남습니다. 이 값이 실제 화면을 그대로 반영하므로 API 조회보다 정확합니다.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="w-[92px]">
+                    <span className="muted mb-1 block text-[10px] font-semibold">순위</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={300}
+                      value={manualOf(v.target.id).rank}
+                      onChange={(e) => setManualField(v.target.id, { rank: e.target.value })}
+                      className={inputClass}
+                      placeholder="예: 7"
+                    />
+                  </label>
+                  <label className="w-[150px]">
+                    <span className="muted mb-1 block text-[10px] font-semibold">날짜</span>
+                    <input
+                      type="date"
+                      value={manualOf(v.target.id).date}
+                      onChange={(e) => setManualField(v.target.id, { date: e.target.value })}
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="min-w-[160px] flex-1">
+                    <span className="muted mb-1 block text-[10px] font-semibold">메모 (선택)</span>
+                    <input
+                      value={manualOf(v.target.id).note}
+                      onChange={(e) => setManualField(v.target.id, { note: e.target.value })}
+                      className={inputClass}
+                      placeholder="예: 인기글 블록 2번째"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => saveManual(v.target.id)}
+                    disabled={savingManual !== null}
+                    className="bg-brand-600 rounded-lg px-3.5 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {savingManual === v.target.id ? '기록 중…' : '기록'}
+                  </button>
+                </div>
+                {manualMsg?.id === v.target.id && (
+                  <p
+                    className={`mt-2 rounded border px-2.5 py-1.5 text-[11px] ${
+                      manualMsg.ok
+                        ? 'border-emerald-500/30 bg-emerald-500/8 text-emerald-800 dark:text-emerald-200'
+                        : 'border-rose-500/30 bg-rose-500/8 text-rose-700 dark:text-rose-300'
+                    }`}
+                  >
+                    {manualMsg.text}
+                  </p>
+                )}
+              </div>
+
               <div className="bd mt-3 flex flex-wrap items-center gap-1.5 border-t pt-3">
                 <button
                   type="button"
@@ -301,7 +451,7 @@ export default function RankTracker({
                   disabled={checking !== null}
                   className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8 disabled:opacity-50"
                 >
-                  {checking === v.target.id ? '조회 중…' : '지금 조회'}
+                  {checking === v.target.id ? '조회 중…' : 'API 로 조회'}
                 </button>
                 <a
                   href={naverSearchUrl(v.target.keyword)}
