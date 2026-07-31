@@ -1,0 +1,184 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import type { DB } from '@/lib/types'
+import { SEED_STORES } from './seed/stores'
+
+/**
+ * 저장소. 환경에 따라 백엔드가 자동으로 바뀐다.
+ *
+ * 1) 클라우드 (Upstash Redis REST) — 환경변수가 있으면 무조건 이걸 쓴다.
+ *    휴대폰과 PC가 같은 기록을 보려면 이 모드여야 한다. HTTP 로만 통신하므로
+ *    서버리스(Vercel)에서 커넥션 풀 문제가 없고, 추가 패키지도 필요 없다.
+ * 2) 파일 (data/db.json) — 내 컴퓨터에서 실행할 때.
+ * 3) 메모리 — 파일 쓰기까지 막힌 환경의 최후 폴백. 재시작하면 사라진다.
+ *
+ * DB 전체가 JSON 한 덩어리라서 키-값 저장소 하나로 충분하다.
+ */
+
+const KEY = process.env.NAVER_BLOG_KV_KEY?.trim() || 'naver-blog-manager:db'
+const DATA_DIR = process.env.NAVER_BLOG_DATA_DIR || path.join(process.cwd(), 'data')
+const DB_PATH = path.join(DATA_DIR, 'db.json')
+
+export type StorageMode = 'cloud' | 'file' | 'memory'
+
+/** Vercel 마켓플레이스 연동(KV_*)과 Upstash 직접 가입(UPSTASH_*) 이름을 모두 받는다 */
+function cloudConfig(): { url: string; token: string } | null {
+  const url = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL)?.trim()
+  const token = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN)?.trim()
+  return url && token ? { url: url.replace(/\/+$/, ''), token } : null
+}
+
+export function isCloudConfigured(): boolean {
+  return cloudConfig() !== null
+}
+
+let memory: DB | null = null
+let fileReadOnly = false
+let lastError: string | null = null
+
+export function storageStatus(): { mode: StorageMode; error: string | null; detail: string } {
+  if (isCloudConfigured()) {
+    return {
+      mode: 'cloud',
+      error: lastError,
+      detail: '클라우드 저장소 — 휴대폰·PC가 같은 기록을 봅니다.',
+    }
+  }
+  if (fileReadOnly) {
+    return {
+      mode: 'memory',
+      error: lastError,
+      detail:
+        '메모리 임시 저장 — 파일 쓰기가 막힌 환경입니다. 서버가 재시작되면 기록이 사라지니 클라우드 저장소를 연결하세요.',
+    }
+  }
+  return { mode: 'file', error: lastError, detail: `이 컴퓨터의 ${DB_PATH} 에 저장됩니다.` }
+}
+
+function emptyDB(): DB {
+  return { stores: SEED_STORES, posts: [], rankTargets: [], rankSnapshots: [] }
+}
+
+function normalize(raw: unknown): DB {
+  const base = emptyDB()
+  if (!raw || typeof raw !== 'object') return base
+  const r = raw as Partial<DB>
+  return {
+    stores: Array.isArray(r.stores) && r.stores.length ? r.stores : base.stores,
+    posts: Array.isArray(r.posts) ? r.posts : [],
+    rankTargets: Array.isArray(r.rankTargets) ? r.rankTargets : [],
+    rankSnapshots: Array.isArray(r.rankSnapshots) ? r.rankSnapshots : [],
+  }
+}
+
+async function redis(cmd: (string | number)[]): Promise<unknown> {
+  const cfg = cloudConfig()
+  if (!cfg) throw new Error('클라우드 저장소 환경변수가 없습니다.')
+
+  const res = await fetch(cfg.url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${cfg.token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(cmd),
+    cache: 'no-store',
+  })
+
+  const text = await res.text()
+  if (!res.ok) {
+    throw new Error(`클라우드 저장소 오류 (${res.status}). ${text.slice(0, 160)}`)
+  }
+  const json = JSON.parse(text) as { result?: unknown; error?: string }
+  if (json.error) throw new Error(`클라우드 저장소 오류: ${json.error}`)
+  return json.result
+}
+
+export async function readDB(): Promise<DB> {
+  if (isCloudConfigured()) {
+    try {
+      const raw = await redis(['GET', KEY])
+      lastError = null
+      if (typeof raw === 'string' && raw.trim()) return normalize(JSON.parse(raw))
+      return emptyDB()
+    } catch (e) {
+      // 읽기 실패는 화면 자체를 못 띄우게 만들지 않는다.
+      // 대신 storageStatus() 로 경고를 노출해서 저장이 안 되고 있음을 알린다.
+      lastError = e instanceof Error ? e.message : String(e)
+      return emptyDB()
+    }
+  }
+
+  if (memory) return memory
+  try {
+    memory = normalize(JSON.parse(fs.readFileSync(DB_PATH, 'utf8')))
+  } catch {
+    memory = emptyDB()
+  }
+  return memory
+}
+
+/** 저장 실패는 조용히 넘기지 않는다 — 호출자가 사용자에게 알려야 한다 */
+export async function writeDB(db: DB): Promise<void> {
+  if (isCloudConfigured()) {
+    await redis(['SET', KEY, JSON.stringify(db)])
+    lastError = null
+    return
+  }
+
+  memory = db
+  if (fileReadOnly) return
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true })
+    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf8')
+  } catch (e) {
+    fileReadOnly = true
+    lastError = e instanceof Error ? e.message : String(e)
+  }
+}
+
+/**
+ * 읽고-수정하고-쓰기.
+ *
+ * 단일 JSON 덩어리를 통째로 덮어쓰므로, 두 기기에서 같은 순간에 저장하면
+ * 나중 저장이 이깁니다. 한 사람이 쓰는 도구라 이 정도로 둡니다.
+ */
+export async function mutate<T>(fn: (db: DB) => T): Promise<{ db: DB; result: T }> {
+  const db = await readDB()
+  const result = fn(db)
+  await writeDB(db)
+  return { db, result }
+}
+
+/** 전체 내보내기 / 가져오기 — 기기 간 이전·백업용 */
+export async function exportDB(): Promise<DB> {
+  return readDB()
+}
+
+/**
+ * 가져오기.
+ *
+ * normalize() 는 읽기용이라 모르는 값이 오면 조용히 빈 DB 로 떨어진다. 그 동작을
+ * 가져오기에 그대로 쓰면 엉뚱한 파일을 골랐을 때 기존 기록이 지워지고도 "성공"으로
+ * 보인다. 그래서 여기서는 우리 백업 파일 형태인지 먼저 확인하고, 아니면 거부한다.
+ */
+export async function importDB(raw: unknown): Promise<DB> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('백업 파일 형식이 아닙니다. 이 앱의 "내보내기" 로 받은 JSON 파일을 고르세요.')
+  }
+
+  const r = raw as Record<string, unknown>
+  const known = ['stores', 'posts', 'rankTargets', 'rankSnapshots'] as const
+  const present = known.filter((k) => Array.isArray(r[k]))
+  if (present.length === 0) {
+    throw new Error(
+      '백업 파일 형식이 아닙니다 (stores·posts·rankTargets·rankSnapshots 가 하나도 없습니다). 이 앱의 "내보내기" 로 받은 JSON 파일을 고르세요.'
+    )
+  }
+
+  const db = normalize(raw)
+  await writeDB(db)
+  return db
+}
+
+export { newId } from './id'

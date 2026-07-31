@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# 로컬 환경변수 (API 키) — 절대 커밋하지 않는다
+.env
+.env.local
+.env*.local
+
+# 로컬 데이터베이스 (작성한 글·순위 이력) — 개인 데이터라 커밋하지 않는다
+data/db.json
+
+.DS_Store
+*.log
