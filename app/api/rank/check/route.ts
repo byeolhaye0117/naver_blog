@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as { targetId?: string }
-    const db = readDB()
+    const db = await readDB()
     const targets = body.targetId
       ? db.rankTargets.filter((t) => t.id === body.targetId)
       : db.rankTargets
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       snapshots.push(await checkRank(t))
     }
 
-    const { db: next } = mutate((d) => {
+    const { db: next } = await mutate((d) => {
       for (const snap of snapshots) {
         const idx = d.rankSnapshots.findIndex(
           (s) => s.targetId === snap.targetId && s.date === snap.date

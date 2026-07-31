@@ -12,7 +12,7 @@ export default async function RankPage({
   searchParams: Promise<{ keyword?: string; url?: string; postId?: string }>
 }) {
   const sp = await searchParams
-  const db = readDB()
+  const db = await readDB()
   const views = buildRankViews(db.rankTargets, db.rankSnapshots)
 
   return (

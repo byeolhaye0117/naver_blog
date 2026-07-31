@@ -4,24 +4,11 @@ import { RISK_TERMS, COMMERCIAL_LIMITS } from '@/lib/writing/banned'
 import { SPECS } from '@/lib/writing/checker'
 import { PageHeader } from '@/components/AppShell'
 import { Badge, Card } from '@/components/ui'
-import CopyButton from '@/components/CopyButton'
 
 export const dynamic = 'force-dynamic'
 
 /** 지식 베이스 기준일 — 3개월 이상 지나면 최신 알고리즘 변화를 다시 확인해야 한다 */
 const KB_DATE = '2026-07-23'
-
-const ENV_TEMPLATE = `# 네이버 개발자센터 — 검색 API · 데이터랩
-# https://developers.naver.com/apps/#/register
-NAVER_CLIENT_ID=
-NAVER_CLIENT_SECRET=
-
-# 네이버 검색광고 — 키워드도구 (월간 검색량)
-# https://manage.searchad.naver.com → 도구 > API 관리
-NAVER_AD_API_KEY=
-NAVER_AD_SECRET=
-NAVER_AD_CUSTOMER_ID=
-`
 
 function monthsSince(d: string): number {
   const then = new Date(d)
@@ -50,97 +37,36 @@ export default function GuidePage() {
           </div>
         )}
 
-        {/* ─── API 키 ─── */}
+        {/* ─── API 키 · 배포 (상세 절차는 /deploy 한 곳에만 둔다) ─── */}
         <Card
-          title="API 키 설정"
-          subtitle="키가 없어도 앱은 전부 동작합니다 — 다만 숫자가 샘플 값입니다. 실제 데이터를 보려면 두 개를 발급받으세요."
+          id="api"
+          title="API 키 · 휴대폰에서 쓰기"
+          subtitle="키가 없어도 앱은 전부 동작합니다 — 다만 숫자가 샘플 값입니다."
         >
-          <div id="api" className="scroll-mt-28 space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <Badge tone={keys.search ? 'good' : 'warn'}>
-                검색 API {keys.search ? '연결됨' : '미설정'}
-              </Badge>
-              <Badge tone={keys.searchAd ? 'good' : 'warn'}>
-                검색광고 API {keys.searchAd ? '연결됨' : '미설정'}
-              </Badge>
-            </div>
-
-            <div className="bd rounded-lg border p-3.5">
-              <h3 className="text-[13px] font-bold">① 검색 API · 데이터랩 (무료)</h3>
-              <p className="muted mt-1 text-[12px] leading-relaxed">
-                상위노출 분석, 순위 추적, 발행량 조회, 검색 추이에 씁니다.
-              </p>
-              <ol className="mt-2.5 space-y-1 text-[12px] leading-relaxed">
-                <li>
-                  1.{' '}
-                  <a
-                    href="https://developers.naver.com/apps/#/register"
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="text-brand-600 dark:text-brand-100 underline"
-                  >
-                    developers.naver.com
-                  </a>{' '}
-                  에서 애플리케이션 등록
-                </li>
-                <li>2. 사용 API에 &quot;검색&quot;과 &quot;데이터랩(검색어 트렌드)&quot; 둘 다 체크</li>
-                <li>3. 환경은 &quot;WEB 설정&quot;, 서비스 URL은 http://localhost:3000</li>
-                <li>4. 발급된 Client ID / Client Secret 을 아래 파일에 붙여넣기</li>
-              </ol>
-            </div>
-
-            <div className="bd rounded-lg border p-3.5">
-              <h3 className="text-[13px] font-bold">② 검색광고 API (무료 · 광고 집행 없어도 발급 가능)</h3>
-              <p className="muted mt-1 text-[12px] leading-relaxed">
-                키워드 월간 검색량과 경쟁정도에 씁니다. 이게 없으면 키워드 등급이 샘플 값으로 계산됩니다.
-              </p>
-              <ol className="mt-2.5 space-y-1 text-[12px] leading-relaxed">
-                <li>
-                  1.{' '}
-                  <a
-                    href="https://manage.searchad.naver.com"
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="text-brand-600 dark:text-brand-100 underline"
-                  >
-                    manage.searchad.naver.com
-                  </a>{' '}
-                  가입 (네이버 아이디로 가능)
-                </li>
-                <li>2. 우측 상단 &quot;도구&quot; → &quot;API 관리&quot;</li>
-                <li>3. 네이버 검색광고 API 라이선스 발급 → 액세스라이선스 / 비밀키 확인</li>
-                <li>4. 같은 화면의 &quot;고객 ID(CUSTOMER_ID)&quot;도 함께 복사</li>
-              </ol>
-            </div>
-
-            <div className="bd rounded-lg border p-3.5">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-[13px] font-bold">
-                    ③ 프로젝트 폴더에 <code>.env.local</code> 파일 만들기
-                  </h3>
-                  <p className="muted mt-1 text-[12px] leading-relaxed">
-                    아래 내용을 복사해 파일로 저장하고 값을 채우세요. 저장 후 서버를 다시 시작하면
-                    적용됩니다. 이 파일은 git에 올라가지 않도록 이미 제외되어 있습니다.
-                  </p>
-                </div>
-                <CopyButton text={ENV_TEMPLATE} label=".env 복사" />
-              </div>
-              <pre className="bd scroll-x mt-2.5 rounded-lg border px-3 py-2.5 text-[11px] leading-relaxed">
-                {ENV_TEMPLATE}
-              </pre>
-            </div>
-
-            <div className="rounded-lg border border-sky-500/30 bg-sky-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
-              <strong className="font-bold">발행(업로드)은 왜 자동이 아닌가요?</strong> 네이버는 블로그
-              글쓰기 공식 API를 제공하지 않습니다. 로그인 자동화로 우회하는 방법이 있지만 캡차·2단계 인증에
-              막히고 계정 제재 위험이 있어, 이 앱은 대신{' '}
-              <Link href="/posts" className="underline">
-                발행 패키지
-              </Link>
-              를 만들어 줍니다 — 제목·본문·태그를 순서대로 복사해 붙이고, 이미지 배치표와 체크리스트대로
-              올리면 됩니다.
-            </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone={keys.search ? 'good' : 'warn'}>
+              검색 API {keys.search ? '연결됨' : '미설정'}
+            </Badge>
+            <Badge tone={keys.searchAd ? 'good' : 'warn'}>
+              검색광고 API {keys.searchAd ? '연결됨' : '미설정'}
+            </Badge>
+          </div>
+          <p className="mt-3 text-[12px] leading-relaxed">
+            네이버 API 키 발급 절차, 휴대폰에서 쓰기 위한 배포, 휴대폰·PC 기록을 합치는 저장소 연결은{' '}
+            <Link href="/deploy" className="text-brand-600 dark:text-brand-100 font-semibold underline">
+              휴대폰에서 쓰기 · 배포
+            </Link>{' '}
+            화면에 한 번만 정리해 두었습니다.
+          </p>
+          <div className="mt-3 rounded-lg border border-sky-500/30 bg-sky-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
+            <strong className="font-bold">발행(업로드)은 왜 자동이 아닌가요?</strong> 네이버는 블로그
+            글쓰기 공식 API를 제공하지 않습니다. 로그인 자동화로 우회하는 방법이 있지만 캡차·2단계 인증에
+            막히고 계정 제재 위험이 있어, 이 앱은 대신{' '}
+            <Link href="/posts" className="underline">
+              발행 패키지
+            </Link>
+            를 만들어 줍니다 — 제목·본문·태그를 순서대로 복사해 붙이고, 이미지 배치표와 체크리스트대로
+            올리면 됩니다.
           </div>
         </Card>
 

@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server'
 import { mutate, newId, readDB } from '@/lib/store'
+import { guard } from '@/lib/api'
 import type { Store } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  return NextResponse.json({ stores: readDB().stores })
-}
+export const GET = guard('지점 정보를 불러오지 못했습니다.', async () => {
+  return NextResponse.json({ stores: (await readDB()).stores })
+})
 
-export async function POST(req: Request) {
+export const POST = guard('지점 저장에 실패했습니다.', async (req: Request) => {
   const input = (await req.json()) as Partial<Store>
   const store: Store = {
     id: input.id?.trim() || newId('store'),
@@ -25,15 +26,15 @@ export async function POST(req: Request) {
     blogUrl: input.blogUrl,
     memo: input.memo,
   }
-  mutate((db) => {
+  await mutate((db) => {
     db.stores.push(store)
   })
   return NextResponse.json({ store })
-}
+})
 
-export async function PUT(req: Request) {
+export const PUT = guard('지점 저장에 실패했습니다.', async (req: Request) => {
   const input = (await req.json()) as Store
-  const { result } = mutate((db) => {
+  const { result } = await mutate((db) => {
     const idx = db.stores.findIndex((s) => s.id === input.id)
     if (idx === -1) return null
     db.stores[idx] = { ...db.stores[idx], ...input }
@@ -41,13 +42,13 @@ export async function PUT(req: Request) {
   })
   if (!result) return NextResponse.json({ error: '지점을 찾을 수 없습니다.' }, { status: 404 })
   return NextResponse.json({ store: result })
-}
+})
 
-export async function DELETE(req: Request) {
+export const DELETE = guard('지점 삭제에 실패했습니다.', async (req: Request) => {
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id 가 필요합니다.' }, { status: 400 })
-  mutate((db) => {
+  await mutate((db) => {
     db.stores = db.stores.filter((s) => s.id !== id)
   })
   return NextResponse.json({ ok: true })
-}
+})

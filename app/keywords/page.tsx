@@ -5,8 +5,8 @@ import KeywordExplorer from './KeywordExplorer'
 
 export const dynamic = 'force-dynamic'
 
-export default function KeywordsPage() {
-  const db = readDB()
+export default async function KeywordsPage() {
+  const db = await readDB()
   return (
     <>
       <PageHeader

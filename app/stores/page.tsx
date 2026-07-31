@@ -4,8 +4,8 @@ import StoreManager from './StoreManager'
 
 export const dynamic = 'force-dynamic'
 
-export default function StoresPage() {
-  const db = readDB()
+export default async function StoresPage() {
+  const db = await readDB()
   return (
     <>
       <PageHeader

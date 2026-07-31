@@ -11,7 +11,7 @@ export default async function WritePage({
   searchParams: Promise<{ id?: string; main?: string; type?: string; store?: string }>
 }) {
   const sp = await searchParams
-  const db = readDB()
+  const db = await readDB()
   const existing = sp.id ? db.posts.find((p) => p.id === sp.id) : undefined
   const type = (['promo', 'info', 'review'] as PostType[]).includes(sp.type as PostType)
     ? (sp.type as PostType)

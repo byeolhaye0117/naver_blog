@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 
 const NAV = [
   { href: '/', label: '대시보드', short: '홈' },
@@ -13,6 +13,7 @@ const NAV = [
   { href: '/rank', label: '순위 추적', short: '순위' },
   { href: '/stores', label: '지점 정보', short: '지점' },
   { href: '/guide', label: '가이드', short: '가이드' },
+  { href: '/deploy', label: '휴대폰에서 쓰기', short: '배포' },
 ]
 
 function isActive(pathname: string, href: string): boolean {
@@ -22,6 +23,13 @@ function isActive(pathname: string, href: string): boolean {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+  const activeTab = useRef<HTMLAnchorElement>(null)
+
+  // 모바일 탭이 가로로 스크롤되므로, 현재 화면 탭이 오른쪽으로 밀려 안 보일 수 있다.
+  // 지금 어느 화면인지 늘 보이도록 활성 탭을 시야로 끌어온다.
+  useEffect(() => {
+    activeTab.current?.scrollIntoView({ block: 'nearest', inline: 'center' })
+  }, [pathname])
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -54,8 +62,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
             ))}
           </ul>
         </nav>
-        <div className="bd muted border-t px-5 py-3 text-[10px] leading-snug">
-          데이터는 이 컴퓨터의 data/db.json 에만 저장됩니다.
+        <div className="bd border-t px-5 py-3">
+          <Link href="/deploy" className="muted text-[10px] leading-snug hover:underline">
+            휴대폰에서도 쓰려면 → 배포 안내
+          </Link>
         </div>
       </aside>
 
@@ -78,20 +88,23 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
           <nav className="scroll-x no-scrollbar px-4 pb-2">
             <ul className="flex gap-1.5">
-              {NAV.map((n) => (
-                <li key={n.href}>
-                  <Link
-                    href={n.href}
-                    className={`block rounded-full px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap transition ${
-                      isActive(pathname, n.href)
-                        ? 'bg-brand-600 text-white'
-                        : 'muted bg-slate-500/10'
-                    }`}
-                  >
-                    {n.short}
-                  </Link>
-                </li>
-              ))}
+              {NAV.map((n) => {
+                const active = isActive(pathname, n.href)
+                return (
+                  <li key={n.href}>
+                    <Link
+                      href={n.href}
+                      ref={active ? activeTab : undefined}
+                      aria-current={active ? 'page' : undefined}
+                      className={`block rounded-full px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap transition ${
+                        active ? 'bg-brand-600 text-white' : 'muted bg-slate-500/10'
+                      }`}
+                    >
+                      {n.short}
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           </nav>
         </header>

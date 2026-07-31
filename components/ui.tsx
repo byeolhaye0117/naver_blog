@@ -2,12 +2,14 @@ import type { ReactNode } from 'react'
 import type { CheckLevel } from '@/lib/types'
 
 export function Card({
+  id,
   title,
   subtitle,
   right,
   children,
   className = '',
 }: {
+  id?: string
   title?: ReactNode
   subtitle?: ReactNode
   right?: ReactNode
@@ -18,7 +20,7 @@ export function Card({
   // (내부에 truncate = white-space:nowrap 텍스트가 있으면 min-content 바닥이 커져서
   //  좁은 화면에서 열이 늘어나고 글자가 잘린다.)
   return (
-    <section className={`panel min-w-0 rounded-xl ${className}`}>
+    <section id={id} className={`panel min-w-0 scroll-mt-28 rounded-xl ${className}`}>
       {(title || right) && (
         <header className="bd flex flex-wrap items-start justify-between gap-2 border-b px-4 py-3 sm:px-5">
           <div className="min-w-0">
@@ -129,7 +131,7 @@ export function MockNotice({ what }: { what: string }) {
       <strong className="font-semibold">샘플 데이터입니다.</strong> {what} API 키가 없어 실제 네이버
       데이터가 아닌 예시 값을 보여주고 있습니다. 화면·계산 로직은 실제와 같으니 키만 넣으면 바로 실데이터로
       바뀝니다.{' '}
-      <a href="/guide#api" className="underline">
+      <a href="/deploy" className="underline">
         키 발급 방법 보기
       </a>
     </div>

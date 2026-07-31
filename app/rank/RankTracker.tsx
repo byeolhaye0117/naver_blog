@@ -158,7 +158,7 @@ export default function RankTracker({
           {!keys.search && (
             <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
               검색 API 키가 없으면 순위가 샘플 값으로 채워집니다. 실제 순위를 보려면{' '}
-              <Link href="/guide#api" className="underline">
+              <Link href="/deploy" className="underline">
                 키를 발급해 넣으세요
               </Link>
               .

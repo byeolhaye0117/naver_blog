@@ -7,11 +7,12 @@ import { checkPost } from '@/lib/writing/checker'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL } from '@/lib/types'
 import { PageHeader } from '@/components/AppShell'
 import { Badge, Card, Empty, Progress, Stat } from '@/components/ui'
+import StorageNotice from '@/components/StorageNotice'
 
 export const dynamic = 'force-dynamic'
 
-export default function Dashboard() {
-  const db = readDB()
+export default async function Dashboard() {
+  const db = await readDB()
   const keys = keyStatus()
   const balance = balanceReport(db.posts)
   const cadence = cadenceReport(db.posts)
@@ -30,15 +31,15 @@ export default function Dashboard() {
   const todo: { text: string; href: string; tone: 'good' | 'warn' | 'bad' }[] = []
   if (!keys.search) {
     todo.push({
-      text: '네이버 검색 API 키를 넣으면 상위노출 분석·순위 추적이 실제 데이터로 동작합니다',
-      href: '/guide#api',
+      text: '네이버 검색 API 키를 넣으면 상위노출 분석·순위 추적이 실제 데이터로 동작합니다 (발급 안내 보기)',
+      href: '/deploy',
       tone: 'warn',
     })
   }
   if (!keys.searchAd) {
     todo.push({
-      text: '검색광고 API 키를 넣으면 키워드 월간 검색량을 실제 값으로 볼 수 있습니다',
-      href: '/guide#api',
+      text: '검색광고 API 키를 넣으면 키워드 월간 검색량을 실제 값으로 볼 수 있습니다 (발급 안내 보기)',
+      href: '/deploy',
       tone: 'warn',
     })
   }
@@ -68,6 +69,8 @@ export default function Dashboard() {
         title="대시보드"
         desc="블로그 단위로 관리해야 상위노출이 유지됩니다. 글 하나가 아니라 발행 균형·주기·순위를 함께 봅니다."
       />
+
+      <StorageNotice />
 
       <div className="mb-5 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
         <Stat label="발행 완료" value={`${published.length}편`} hint={`초안·검수중 ${drafts.length}편`} />

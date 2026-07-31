@@ -6,8 +6,8 @@ import PostList from './PostList'
 
 export const dynamic = 'force-dynamic'
 
-export default function PostsPage() {
-  const db = readDB()
+export default async function PostsPage() {
+  const db = await readDB()
   const balance = balanceReport(db.posts)
   const cadence = cadenceReport(db.posts)
   const published = db.posts.filter((p) => p.status === 'published')
