@@ -172,9 +172,15 @@ export default function DeployPage() {
                     이름은 아무 데도 노출되지 않습니다.
                   </>,
                   <>
-                    <strong>사용 API</strong> 에서 <strong>“검색”</strong> 과{' '}
-                    <strong>“데이터랩(검색어 트렌드)”</strong> 를 <strong>둘 다</strong> 체크합니다. 하나만
-                    체크하면 검색 추이 화면이 동작하지 않습니다.
+                    <strong>사용 API</strong> 목록에는 <strong>“검색”이 없습니다 — 정상입니다.</strong> 검색과
+                    데이터랩은 <strong>비로그인 오픈 API</strong> 라서, 앱만 등록하면 발급된 Client
+                    ID/Secret 으로 바로 호출됩니다. 그 드롭다운은 개별 권한이 필요한 API(로그인·인증서·카페·
+                    캘린더 등) 목록입니다.
+                    <br />
+                    다만 입력이 필수이므로 <strong>아무거나 하나 고르세요.</strong>{' '}
+                    <code className="bd rounded border px-1 py-0.5 text-[11px]">캡차 (이미지)</code> 를
+                    권합니다 — 추가 설정을 묻지 않습니다. “네이버 로그인”·“캘린더”는 콜백 URL 같은 것을 더
+                    요구합니다.
                   </>,
                   <>
                     <strong>비로그인 오픈 API 서비스 환경</strong> 에서 <strong>“WEB 설정”</strong> 을 고르고
