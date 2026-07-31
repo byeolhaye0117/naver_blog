@@ -19,6 +19,24 @@ const KEY = process.env.NAVER_BLOG_KV_KEY?.trim() || 'naver-blog-manager:db'
 const DATA_DIR = process.env.NAVER_BLOG_DATA_DIR || path.join(process.cwd(), 'data')
 const DB_PATH = path.join(DATA_DIR, 'db.json')
 
+/**
+ * 서버리스 환경 감지.
+ *
+ * Vercel 같은 곳은 요청마다 새 인스턴스가 뜰 수 있어서, 파일 쓰기가 막히는 것은 물론
+ * 메모리 폴백조차 다음 요청까지 남지 않는다. 그런데도 저장이 성공한 것처럼 응답하면
+ * 사용자는 글을 다 쓰고 저장했는데 새로고침 한 번에 사라지는 일을 겪는다.
+ * 그래서 이 환경에서 클라우드 저장소가 없으면 저장을 조용히 넘기지 않고 실패시킨다.
+ */
+const EPHEMERAL = Boolean(
+  process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.NETLIFY ||
+    process.env.CF_PAGES
+)
+
+const NO_STORE_MESSAGE =
+  '저장소가 연결되지 않아 저장할 수 없습니다. 이 환경은 요청마다 서버가 새로 뜨기 때문에 저장한 내용이 남지 않습니다. "휴대폰에서 쓰기 · 배포" 화면 3단계에서 저장소를 연결한 뒤 다시 시도하세요.'
+
 export type StorageMode = 'cloud' | 'file' | 'memory'
 
 /** Vercel 마켓플레이스 연동(KV_*)과 Upstash 직접 가입(UPSTASH_*) 이름을 모두 받는다 */
@@ -42,6 +60,15 @@ export function storageStatus(): { mode: StorageMode; error: string | null; deta
       mode: 'cloud',
       error: lastError,
       detail: '클라우드 저장소 — 휴대폰·PC가 같은 기록을 봅니다.',
+    }
+  }
+  // 첫 저장을 시도해보기 전에 미리 알려준다. 저장하고 나서 알게 되면 이미 늦다.
+  if (EPHEMERAL) {
+    return {
+      mode: 'memory',
+      error: null,
+      detail:
+        '저장소가 연결되지 않았습니다. 조사·분석·글 작성·발행 패키지는 그대로 쓸 수 있지만, 글과 순위 기록은 저장되지 않습니다 (저장을 시도하면 오류로 알려줍니다). 아래 3단계에서 저장소를 연결하세요.',
     }
   }
   if (fileReadOnly) {
@@ -124,6 +151,12 @@ export async function writeDB(db: DB): Promise<void> {
     await redis(['SET', KEY, JSON.stringify(db)])
     lastError = null
     return
+  }
+
+  // 서버리스에서는 메모리도 다음 요청까지 남지 않는다.
+  // "저장됨"으로 응답한 뒤 사라지는 것이 오류보다 나쁘므로 여기서 끊는다.
+  if (EPHEMERAL) {
+    throw new Error(NO_STORE_MESSAGE)
   }
 
   memory = db
