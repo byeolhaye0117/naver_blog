@@ -109,7 +109,7 @@ export default function GuidePage() {
         >
           <div className="space-y-3 text-[12px] leading-relaxed">
             <p>
-              순위 추적과 상위노출 분석 모두 네이버 검색 API 의 블로그 검색을{' '}
+              순위 추적과 상위노출 분석은 네이버 검색 API 의 블로그 검색을{' '}
               <strong>관련도순(sort=sim)</strong> 으로 호출합니다. <strong>최신순이 아닙니다</strong> — 최신순은
               발행만 하면 위에 있으니 재는 의미가 없습니다.
             </p>
@@ -132,6 +132,27 @@ export default function GuidePage() {
               <strong>「네이버 통합검색에서 확인」·「블로그 탭」</strong> 링크를 붙여 뒀습니다. 앱 숫자로는
               추세(오르는지 밀리는지)를 보고, 실제 자리는 링크로 눈으로 확인하는 방식으로 쓰세요.
             </p>
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-3 text-emerald-800 dark:text-emerald-200">
+              <strong className="font-bold">그래서 이 앱의 기본 입력은 「직접 본 것을 넣기」입니다.</strong>
+              <ul className="mt-2 list-inside list-disc space-y-1">
+                <li>
+                  <strong>순위 추적</strong> — 검색해서 본 순위를 직접 입력합니다. 스마트블록 자리까지
+                  반영되니 API 값보다 정확합니다.
+                </li>
+                <li>
+                  <strong>상위노출 분석</strong> — 검색 결과 화면을 붙여넣으면 제목·날짜를 뽑아 분석합니다.
+                  실제 화면 순서가 곧 순위입니다.
+                </li>
+                <li>
+                  <strong>발행량·경쟁률</strong> — 블로그 탭의 「○○건」과 검색광고 키워드도구의 월 검색량을
+                  넣으면 같은 기준으로 등급이 나옵니다.
+                </li>
+              </ul>
+              <p className="mt-2">
+                API 키가 없거나 <strong>검색 권한을 못 받는 계정</strong>이어도 세 기능 모두 그대로
+                쓸 수 있습니다. 손이 한 번 더 가는 대신 숫자는 더 정확합니다.
+              </p>
+            </div>
             <p className="muted">
               앱 순위가 좋은데 실제로 안 보이면 → 스마트블록에서 밀린 것입니다. 세부 의도를 좁힌 키워드로
               바꿔보세요. 반대로 앱 순위는 낮은데 실제로 보이면 → 그 키워드의 스마트블록에 잘 맞은 것이니 같은

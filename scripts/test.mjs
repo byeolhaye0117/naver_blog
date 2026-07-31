@@ -23,6 +23,7 @@ const TARGETS = [
   'lib/naver/search.ts',
   'lib/analysis/keyword.ts',
   'lib/analysis/serp.ts',
+  'lib/analysis/paste.ts',
   'lib/analysis/rank.ts',
   'lib/writing/banned.ts',
   'lib/writing/checker.ts',

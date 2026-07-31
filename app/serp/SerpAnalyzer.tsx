@@ -1,89 +1,263 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { SerpAnalysis } from '@/lib/types'
-import { Badge, Card, Empty, MockNotice, Stat, inputClass } from '@/components/ui'
+import { Badge, Card, Empty, Field, MockNotice, Stat, inputClass } from '@/components/ui'
 import { naverBlogTabUrl, naverSearchUrl } from '@/lib/analysis/rank'
+import { parsePastedSerp, toEditableText } from '@/lib/analysis/paste'
+
+type Mode = 'paste' | 'api'
 
 export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: string }) {
+  const [mode, setMode] = useState<Mode>('paste')
   const [keyword, setKeyword] = useState(initialKeyword)
   const [limit, setLimit] = useState(15)
   const [data, setData] = useState<SerpAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const autoRan = useRef(false)
 
-  const run = useCallback(
-    async (kw: string, n: number) => {
-      const q = kw.trim()
-      if (!q) {
-        setError('분석할 키워드를 입력하세요.')
-        return
-      }
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch('/api/serp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keyword: q, limit: n }),
-        })
-        const json = await res.json()
-        if (!res.ok) throw new Error(json.error ?? '분석에 실패했습니다.')
-        setData(json.analysis)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : '분석 중 오류가 발생했습니다.')
-      } finally {
-        setLoading(false)
-      }
-    },
-    []
-  )
+  // 붙여넣기 모드
+  const [pasted, setPasted] = useState('')
+  const [list, setList] = useState('')
+  const [total, setTotal] = useState('')
+  const [extracted, setExtracted] = useState<{ kept: number; dropped: number } | null>(null)
 
-  // 키워드 조사 화면에서 넘어온 경우 자동 실행
-  useEffect(() => {
-    if (initialKeyword && !autoRan.current) {
-      autoRan.current = true
-      run(initialKeyword, 15)
+  async function run(kw: string, n: number) {
+    const q = kw.trim()
+    if (!q) {
+      setError('분석할 키워드를 입력하세요.')
+      return
     }
-  }, [initialKeyword, run])
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/serp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: q, limit: n }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? '분석에 실패했습니다.')
+      setData(json.analysis)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '분석 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /** 붙여넣은 덩어리에서 제목·날짜를 1차로 뽑아 편집칸에 넣는다 */
+  function extract() {
+    // 키워드를 같이 넘기면 블로거명 줄을 제목과 구분해 준다
+    const r = parsePastedSerp(pasted, keyword)
+    if (!r.items.length) {
+      setError('제목으로 보이는 줄을 찾지 못했습니다. 아래 편집칸에 직접 한 줄씩 넣어도 됩니다.')
+      setExtracted(null)
+      return
+    }
+    setError(null)
+    setList(toEditableText(r.items))
+    setExtracted({ kept: r.items.length, dropped: r.dropped })
+  }
+
+  async function runPaste() {
+    const q = keyword.trim()
+    if (!q) {
+      setError('분석할 키워드를 입력하세요.')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/serp/paste', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: q, list, total }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? '분석에 실패했습니다.')
+      setData(json.analysis)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '분석 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 키워드 조사에서 넘어오면 키워드만 채워둔다. 붙여넣기가 기본 모드라
+  // 붙여넣을 내용이 아직 없어서 자동 실행할 것이 없다.
+
+  const searchLinks = keyword.trim() && (
+    <div className="flex flex-wrap gap-1.5">
+      <a
+        href={naverBlogTabUrl(keyword)}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="bg-brand-600 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white"
+      >
+        블로그 탭 열기
+      </a>
+      <a
+        href={naverSearchUrl(keyword)}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="bd rounded-lg border px-3 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+      >
+        통합검색 열기
+      </a>
+    </div>
+  )
 
   return (
     <div className="space-y-4">
       <Card>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="flex-1">
-            <span className="mb-1.5 block text-[13px] font-semibold">분석할 키워드</span>
-            <input
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && run(keyword, limit)}
-              className={inputClass}
-              placeholder="쌍용동 헬스장"
-            />
-          </label>
-          <label className="sm:w-32">
-            <span className="mb-1.5 block text-[13px] font-semibold">분석 개수</span>
-            <select
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-              className={inputClass}
+        <div className="bd mb-4 flex gap-1 rounded-lg border p-1">
+          {(
+            [
+              ['paste', '붙여넣어 분석'],
+              ['api', '검색 API 자동'],
+            ] as [Mode, string][]
+          ).map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`flex-1 rounded-md px-3 py-1.5 text-[12px] font-semibold transition ${
+                mode === m ? 'bg-brand-600 text-white' : 'hover:bg-slate-500/8'
+              }`}
             >
-              <option value={10}>상위 10개</option>
-              <option value={15}>상위 15개</option>
-              <option value={30}>상위 30개</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => run(keyword, limit)}
-            disabled={loading}
-            className="bg-brand-600 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {loading ? '분석 중…' : '분석'}
-          </button>
+              {label}
+            </button>
+          ))}
         </div>
+
+        <Field label="분석할 키워드" hint="상위에 있는 글들을 뜯어볼 검색어">
+          <input
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && mode === 'api' && run(keyword, limit)}
+            className={inputClass}
+            placeholder="쌍용동 헬스장"
+          />
+        </Field>
+
+        {mode === 'api' ? (
+          <>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="sm:w-40">
+                <span className="mb-1.5 block text-[13px] font-semibold">분석 개수</span>
+                <select
+                  value={limit}
+                  onChange={(e) => setLimit(Number(e.target.value))}
+                  className={inputClass}
+                >
+                  <option value={10}>상위 10개</option>
+                  <option value={15}>상위 15개</option>
+                  <option value={30}>상위 30개</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => run(keyword, limit)}
+                disabled={loading}
+                className="bg-brand-600 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {loading ? '분석 중…' : '분석'}
+              </button>
+            </div>
+            <p className="muted mt-3 text-[11px] leading-relaxed">
+              네이버 검색 API 키가 있고 <b>검색</b> 권한이 살아 있어야 동작합니다. 권한이 없으면
+              401(errorCode 024)이 뜨니, 그때는 위 탭에서 <b>붙여넣어 분석</b>을 쓰세요. 붙여넣기는
+              키가 전혀 필요 없고, 스마트블록까지 보이는 실제 화면이라 오히려 정확합니다.
+            </p>
+          </>
+        ) : (
+          <div className="mt-1 space-y-4">
+            <div className="bd rounded-lg border border-dashed p-3">
+              <p className="text-[12px] font-semibold">붙여넣는 방법</p>
+              <ol className="muted mt-1.5 space-y-1 text-[11px] leading-relaxed">
+                <li>1. 아래 <b>블로그 탭 열기</b>를 누릅니다 (관련도순 화면입니다).</li>
+                <li>2. 상위 10~15개가 보일 만큼 스크롤한 뒤 그 영역을 전체 선택·복사합니다.</li>
+                <li>3. 아래 칸에 붙여넣고 <b>제목 뽑기</b>를 누릅니다.</li>
+                <li>4. 뽑힌 목록을 눈으로 확인·수정한 뒤 <b>분석</b>을 누릅니다.</li>
+              </ol>
+              <div className="mt-2.5">{searchLinks}</div>
+            </div>
+
+            <Field
+              label="검색 결과 붙여넣기"
+              hint="화면에서 복사한 그대로 넣으세요. 순서가 곧 순위입니다."
+            >
+              <textarea
+                value={pasted}
+                onChange={(e) => setPasted(e.target.value)}
+                rows={5}
+                className={`${inputClass} font-mono text-[12px]`}
+                placeholder={'천안 운동일기\n쌍용동 헬스장 3개월 다녀본 솔직 후기\n직접 다녀오고 정리한 내용입니다...\n2026. 7. 28.'}
+              />
+            </Field>
+            <button
+              type="button"
+              onClick={extract}
+              disabled={!pasted.trim()}
+              className="bd rounded-lg border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8 disabled:opacity-50"
+            >
+              제목 뽑기
+            </button>
+
+            <Field
+              label="분석할 목록 (한 줄에 하나, 순서 = 순위)"
+              hint='"제목 | 날짜 | 블로거" 형식. 날짜·블로거는 몰라도 됩니다 — 아는 것만 계산에 씁니다.'
+            >
+              <textarea
+                value={list}
+                onChange={(e) => setList(e.target.value)}
+                rows={8}
+                className={`${inputClass} font-mono text-[12px]`}
+                placeholder={'쌍용동 헬스장 3개월 다녀본 솔직 후기 | 2026-07-28 | 천안 운동일기\n쌍용동 헬스장 등록 전에 꼭 확인할 것들 | 2026-07-11'}
+              />
+            </Field>
+
+            {extracted && (
+              <p className="muted text-[11px]">
+                {extracted.kept}개를 뽑았고 {extracted.dropped}줄은 제목이 아니라고 보고 버렸습니다.
+                빠진 게 있으면 위 칸에 직접 추가하세요 — 저장된 목록을 그대로 분석합니다.
+              </p>
+            )}
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="min-w-0 sm:w-56">
+                <span className="mb-1.5 block text-[13px] font-semibold">
+                  누적 발행량 <span className="muted font-normal">(선택)</span>
+                </span>
+                <input
+                  value={total}
+                  onChange={(e) => setTotal(e.target.value)}
+                  className={inputClass}
+                  placeholder="2,345건"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={runPaste}
+                disabled={loading || !list.trim()}
+                className="bg-brand-600 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {loading ? '분석 중…' : '분석'}
+              </button>
+            </div>
+            <p className="muted text-[11px] leading-relaxed">
+              블로그 탭 위쪽에 보이는 <b>○○건</b>을 그대로 넣으면 경쟁 규모까지 함께 봅니다. 같은
+              값을{' '}
+              <Link href="/keywords" className="text-brand-600 dark:text-brand-100 font-semibold underline">
+                키워드 조사
+              </Link>
+              의 직접 입력에 넣으면 경쟁률 등급이 나옵니다.
+            </p>
+          </div>
+        )}
+
         {error && (
           <p className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-700 dark:text-rose-300">
             {error}
@@ -94,11 +268,11 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
       {!data && !loading && (
         <Card>
           <Empty>
-            키워드를 입력하고 분석을 누르세요.{' '}
+            키워드를 넣고 검색 결과를 붙여넣으면 분석합니다.{' '}
             <Link href="/keywords" className="text-brand-600 dark:text-brand-100 font-semibold underline">
               키워드 조사
             </Link>
-            에서 넘어오면 자동으로 실행됩니다.
+            에서 넘어오면 키워드가 자동으로 채워집니다.
           </Empty>
         </Card>
       )}
@@ -110,9 +284,21 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
               <MockNotice what="검색" />
             </div>
           )}
+          {data.source === 'paste' && (
+            <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] leading-relaxed text-emerald-800 dark:text-emerald-200">
+              회원님이 직접 붙여넣은 {data.items.length}개를 분석한 결과입니다 — 샘플이 아니라 실제
+              화면 기준입니다.
+              {data.stats.datedCount < data.items.length &&
+                ` 날짜를 아는 항목은 ${data.stats.datedCount}개라, 최신성은 그 ${data.stats.datedCount}개로만 계산했습니다.`}
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
-            <Stat label="누적 발행량" value={data.total.toLocaleString()} hint="이 키워드로 쌓인 글" />
+            <Stat
+              label="누적 발행량"
+              value={data.total > 0 ? data.total.toLocaleString() : '—'}
+              hint={data.total > 0 ? '이 키워드로 쌓인 글' : '"○○건"을 넣으면 표시됩니다'}
+            />
             <Stat label="상위 글 평균 제목" value={`${data.stats.avgTitleLength}자`} hint="모바일 표시 ~35자" />
             <Stat
               label="제목 앞쪽 키워드"
@@ -122,9 +308,19 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
             />
             <Stat
               label="30일 이내 글"
-              value={`${data.stats.freshWithin30dRate}%`}
-              hint={`평균 ${data.stats.avgAgeDays}일`}
-              tone={data.stats.freshWithin30dRate >= 50 ? 'warn' : 'good'}
+              value={data.stats.datedCount ? `${data.stats.freshWithin30dRate}%` : '—'}
+              hint={
+                data.stats.datedCount
+                  ? `날짜 확인 ${data.stats.datedCount}개 · 평균 ${data.stats.avgAgeDays}일`
+                  : '날짜를 넣으면 계산됩니다'
+              }
+              tone={
+                !data.stats.datedCount
+                  ? 'default'
+                  : data.stats.freshWithin30dRate >= 50
+                    ? 'warn'
+                    : 'good'
+              }
             />
           </div>
 
@@ -173,7 +369,11 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
 
           <Card
             title={`상위 ${data.items.length}개 글`}
-            subtitle="관련도순(sim) 기준. 키워드 위치는 제목에서 메인 키워드가 시작되는 글자 번호입니다"
+            subtitle={
+              data.source === 'paste'
+                ? '붙여넣은 순서를 순위로 봤습니다. 키워드 위치는 제목에서 메인 키워드가 시작되는 글자 번호입니다'
+                : '관련도순(sim) 기준. 키워드 위치는 제목에서 메인 키워드가 시작되는 글자 번호입니다'
+            }
             right={
               <div className="flex gap-1.5">
                 <a
@@ -197,24 +397,34 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
           >
             <ul className="space-y-3">
               {data.items.map((item) => (
-                <li key={`${item.rank}-${item.link}`} className="bd border-b pb-3 last:border-0 last:pb-0">
+                <li key={item.rank} className="bd border-b pb-3 last:border-0 last:pb-0">
                   <div className="flex gap-3">
                     <span className="tnum muted mt-0.5 w-6 shrink-0 text-right text-[13px] font-bold">
                       {item.rank}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <a
-                        href={item.link}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="text-[13px] leading-snug font-semibold hover:underline"
-                      >
-                        {item.title}
-                      </a>
+                      {item.link ? (
+                        <a
+                          href={item.link}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="text-[13px] leading-snug font-semibold hover:underline"
+                        >
+                          {item.title}
+                        </a>
+                      ) : (
+                        <p className="text-[13px] leading-snug font-semibold">{item.title}</p>
+                      )}
                       <div className="muted mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
-                        <span>{item.bloggerName}</span>
-                        <span className="tnum">{item.postdate || '날짜 미상'}</span>
-                        <span className="tnum">{item.ageDays}일 전</span>
+                        {item.bloggerName && <span>{item.bloggerName}</span>}
+                        {item.postdate ? (
+                          <>
+                            <span className="tnum">{item.postdate}</span>
+                            <span className="tnum">{item.ageDays}일 전</span>
+                          </>
+                        ) : (
+                          <span>날짜 미상</span>
+                        )}
                         <span className="tnum">제목 {item.titleLength}자</span>
                         {item.keywordPos >= 0 ? (
                           <Badge tone={item.keywordPos <= 6 ? 'good' : 'default'}>

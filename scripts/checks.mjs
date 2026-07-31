@@ -10,7 +10,11 @@ const { checkPost, parseBody, PUBLISH_THRESHOLD } = require(`${OUT}/writing/chec
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
 const { buildCopyPackage } = require(`${OUT}/writing/export.js`)
-const { analyzeSerp } = require(`${OUT}/analysis/serp.js`)
+const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
+const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText } = require(
+  `${OUT}/analysis/paste.js`
+)
+const { parseManualRows, buildManualMetrics } = require(`${OUT}/analysis/keyword.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
@@ -183,6 +187,8 @@ ok(a.items.length === 15, 'SERP 15개')
 ok(a.items.every(i=>i.keywordPos >= 0), '목업 제목엔 키워드 포함')
 ok(a.prescription.length >= 4, `처방 ${a.prescription.length}줄`)
 ok(a.stats.commonTokens.every(t => !t.token.includes('쌍용동')), '공통 토큰에서 키워드 자체 제외')
+ok(a.stats.datedCount === 15, 'API 결과는 날짜를 다 안다', `${a.stats.datedCount}`)
+ok(a.source === 'api', 'source=api')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[11] 키워드 등급 분포 (목업 캘리브레이션)')
@@ -275,6 +281,112 @@ ok(v4.current === 7 && v4.previous === 12, '현재/직전 순위')
 ok(v4.delta === 5, '변동 = 12 → 7 = 5칸 상승', `${v4.delta}`)
 ok(v4.best === 7, '최고 순위')
 ok(v4.phase?.tone === 'good', '10일차 + 7위 → good')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[16] 검색 결과 붙여넣기 파싱')
+// 실제 화면을 긁으면 블로거명·제목·요약·날짜가 순서대로 섞여 들어온다
+const glued = `블로그
+관련도순
+천안 운동일기
+쌍용동 헬스장 3개월 다녀본 솔직 후기
+직접 다녀오고 정리한 내용입니다. 시설과 운영시간을 순서대로 적어봤어요...
+2026. 7. 28.
+공감 12
+직장인 운동루틴
+쌍용동 헬스장 등록 전에 꼭 확인할 것들
+가격보다 중요한 부분들을 짚어봤습니다...
+2026.07.11.
+https://blog.naver.com/blog12345
+1-10 / 2,345건`
+const pp = parsePastedSerp(glued)
+ok(pp.items.length === 3, `제목 후보 ${pp.items.length}개 추출`)
+ok(pp.items.some((i) => i.title.includes('3개월 다녀본')), '제목 줄을 골라냄')
+ok(!pp.items.some((i) => i.title === '관련도순'), 'UI 텍스트는 버림')
+ok(!pp.items.some((i) => /^https?:/.test(i.title)), 'URL 줄은 버림')
+ok(!pp.items.some((i) => i.title.includes('직접 다녀오고')), '"..." 로 끝나는 본문 발췌는 버림')
+ok(!pp.items.some((i) => i.title.includes('2,345건')), '숫자만 있는 줄(1-10 / 2,345건)은 버림')
+ok(pp.items[0].date === '2026-07-28', `가까운 날짜를 붙임 — ${pp.items[0].date}`)
+ok(pp.dropped > 0, `제목 아닌 줄 ${pp.dropped}개 버림`)
+// 키워드를 주면 제목 위의 짧은 블로거명 줄을 제목과 구분한다
+const pk = parsePastedSerp(glued, '쌍용동 헬스장')
+ok(pk.items.length === 2, `키워드를 주면 제목만 ${pk.items.length}개`, pk.items.map((i) => i.title).join(' / '))
+ok(pk.items[0].blogger === '천안 운동일기', `블로거명을 짝지음 — ${pk.items[0].blogger}`)
+ok(pk.items[1].blogger === '직장인 운동루틴', `두 번째도 짝지음 — ${pk.items[1].blogger}`)
+ok(!pk.items.some((i) => i.title === '직장인 운동루틴'), '블로거명을 제목으로 세지 않음')
+ok(pk.items[1].date === '2026-07-11', `두 번째 날짜 — ${pk.items[1].date}`)
+
+ok(parseTotalCount('1-10 / 2,345건') === 2345, '발행량 "2,345건" → 2345')
+ok(parseTotalCount('건수 없음') === null, '발행량 없으면 null')
+ok(toEditableText(pp.items).split('\n').length === pp.items.length, '편집용 텍스트 한 줄 = 한 항목')
+
+console.log('\n[17] 편집한 목록은 그대로 신뢰한다')
+// 사용자가 눈으로 확인·수정한 목록은 "제목 같지 않다"는 이유로 버리면 안 된다
+const edited = parseEditedList(`짧은글 | 2026-07-28 | 천안 운동일기
+날짜없는 제목입니다
+
+이상한날짜 | 어쩌구`)
+ok(edited.length === 3, `빈 줄만 빼고 3개 유지 — ${edited.length}개`)
+ok(edited[0].date === '2026-07-28' && edited[0].blogger === '천안 운동일기', '날짜·블로거 읽음')
+ok(edited[1].date === null, '날짜 없어도 버리지 않음')
+ok(edited[2].date === null, '못 읽는 날짜는 null')
+
+console.log('\n[18] 붙여넣기 분석 — 모르는 값을 0으로 계산하지 않는다')
+const pasteItems = [
+  { title: '쌍용동 헬스장 3개월 다녀본 솔직 후기', date: '2026-07-28', blogger: '천안 운동일기' },
+  { title: '쌍용동 헬스장 등록 전에 꼭 확인할 것들', date: null, blogger: null },
+  { title: '초보도 편했던 쌍용동 헬스장 시설 정리', date: null, blogger: null },
+  { title: '쌍용동 헬스장 가격보다 중요한 3가지', date: null, blogger: null },
+]
+const pa = analyzePastedSerp('쌍용동 헬스장', pasteItems, 0)
+ok(pa.source === 'paste' && pa.mock === false, '붙여넣기 결과는 mock 이 아니다')
+ok(pa.items.length === 4 && pa.items[0].rank === 1, '붙여넣은 순서 = 순위')
+ok(pa.stats.datedCount === 1, `날짜 아는 항목만 1개 — ${pa.stats.datedCount}`)
+ok(pa.stats.avgAgeDays > 0, '평균 나이를 0일로 만들지 않음', `${pa.stats.avgAgeDays}일`)
+ok(
+  pa.prescription.some((p) => p.includes('최신성은 판단하지 않았습니다')),
+  '근거 부족하면 최신성 처방을 빼고 그 사실을 알림'
+)
+ok(
+  !pa.prescription.some((p) => p.includes('누적 발행량 0건')),
+  '발행량 모르면 0건이라고 말하지 않음'
+)
+ok(pa.stats.repeatBloggers.length === 0, '이름 모르는 항목끼리 같은 블로거로 묶지 않음')
+ok(pa.stats.keywordInTitleRate === 100, '제목 키워드 포함율은 그대로 계산')
+
+const paDated = analyzePastedSerp(
+  '쌍용동 헬스장',
+  pasteItems.map((p, i) => ({ ...p, date: `2026-07-${String(10 + i).padStart(2, '0')}`, blogger: '천안 운동일기' })),
+  2345
+)
+ok(paDated.stats.datedCount === 4, '날짜를 다 넣으면 4개')
+ok(paDated.stats.repeatBloggers[0]?.count === 4, '같은 블로거 선점 탐지')
+ok(
+  paDated.prescription.some((p) => p.includes('2,345건')),
+  '발행량을 넣으면 처방에 반영'
+)
+
+console.log('\n[19] 직접 입력 → 경쟁률 등급')
+const mr = parseManualRows(`쌍용동 헬스장, 1,200, 45,000
+성정동 여성전용 헬스장 | 320회 | 3,100건
+두정동 헬스장\t2500\t30000
+이건 숫자가 없음
+봉명동 헬스장, 1200`)
+ok(mr.rows.length === 3, `읽은 줄 3개 — ${mr.rows.length}개`)
+ok(mr.bad.length === 2, `못 읽은 줄 2개 — ${mr.bad.length}개`)
+ok(mr.rows[0].keyword === '쌍용동 헬스장', '천단위 콤마를 구분자로 착각하지 않음', mr.rows[0].keyword)
+ok(mr.rows[0].monthlySearch === 1200 && mr.rows[0].blogTotal === 45000, '숫자 두 개 파싱')
+ok(mr.rows[1].monthlySearch === 320 && mr.rows[1].blogTotal === 3100, '| 구분 + 회/건 단위 허용')
+ok(mr.rows[2].blogTotal === 30000, '탭 구분 허용')
+
+const mm = buildManualMetrics(mr.rows)
+ok(mm.every((m) => m.mock === false && m.source === 'manual'), '직접 입력은 실측값으로 표시')
+ok(mm[0].competition === 37.5, `경쟁률 45,000÷1,200 = 37.5 — ${mm[0].competition}`)
+ok(mm[0].grade === 'good', `등급 good — ${mm[0].grade}`)
+ok(mm[2].grade === 'gold', `2,500회·경쟁률 12 → gold — ${mm[2].grade}`)
+ok(
+  buildManualMetrics([{ keyword: 'k', monthlySearch: 1000, blogTotal: 200000 }])[0].grade === 'hard',
+  '경쟁률 200 → hard'
+)
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
