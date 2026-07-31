@@ -4,7 +4,15 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { Post } from '@/lib/types'
-import { RANK_DEPTH, isFirstPage, rankLabel, type RankView } from '@/lib/analysis/rank'
+import {
+  RANK_BASIS,
+  RANK_DEPTH,
+  isFirstPage,
+  naverBlogTabUrl,
+  naverSearchUrl,
+  rankLabel,
+  type RankView,
+} from '@/lib/analysis/rank'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
 import LineChart from '@/components/LineChart'
 
@@ -182,6 +190,16 @@ export default function RankTracker({
         </div>
       </Card>
 
+      <div className="rounded-xl border border-sky-500/30 bg-sky-500/8 px-4 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
+        <strong className="font-bold">이 화면이 재는 순위: {RANK_BASIS}</strong>
+        <p className="mt-1.5">
+          최신순이 아닙니다 — 최신순은 발행만 하면 위에 있으니 의미가 없습니다. 다만 이 값은{' '}
+          <strong>실제 통합검색 상단과 같지 않습니다.</strong> 검색 API 는 평면 목록만 주는데, 실제 화면은
+          의도별 <strong>스마트블록</strong>으로 재배치되고 그 자리는 API 로 볼 수 없습니다. 즉 여기 순위는
+          추세를 보는 <strong>대리 지표</strong>이고, 진짜 자리는 아래 링크로 직접 확인하세요.
+        </p>
+      </div>
+
       {anyMock && <MockNotice what="검색" />}
 
       {views.length === 0 ? (
@@ -285,6 +303,22 @@ export default function RankTracker({
                 >
                   {checking === v.target.id ? '조회 중…' : '지금 조회'}
                 </button>
+                <a
+                  href={naverSearchUrl(v.target.keyword)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                >
+                  네이버 통합검색에서 확인
+                </a>
+                <a
+                  href={naverBlogTabUrl(v.target.keyword)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                >
+                  블로그 탭
+                </a>
                 <Link
                   href={`/serp?keyword=${encodeURIComponent(v.target.keyword)}`}
                   className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"

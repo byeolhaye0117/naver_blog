@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SerpAnalysis } from '@/lib/types'
 import { Badge, Card, Empty, MockNotice, Stat, inputClass } from '@/components/ui'
+import { naverBlogTabUrl, naverSearchUrl } from '@/lib/analysis/rank'
 
 export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: string }) {
   const [keyword, setKeyword] = useState(initialKeyword)
@@ -172,7 +173,27 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
 
           <Card
             title={`상위 ${data.items.length}개 글`}
-            subtitle="키워드 위치는 제목에서 메인 키워드가 시작되는 글자 번호입니다"
+            subtitle="관련도순(sim) 기준. 키워드 위치는 제목에서 메인 키워드가 시작되는 글자 번호입니다"
+            right={
+              <div className="flex gap-1.5">
+                <a
+                  href={naverSearchUrl(data.keyword)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                >
+                  통합검색
+                </a>
+                <a
+                  href={naverBlogTabUrl(data.keyword)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                >
+                  블로그 탭
+                </a>
+              </div>
+            }
           >
             <ul className="space-y-3">
               {data.items.map((item) => (

@@ -101,6 +101,45 @@ export default function GuidePage() {
           </div>
         </Card>
 
+        {/* ─── 측정 한계 ─── */}
+        <Card
+          id="measure"
+          title="이 앱이 재는 순위 = 관련도순, 단 실제 상단과 같지는 않습니다"
+          subtitle="숫자를 믿기 전에 이 차이를 알고 계셔야 합니다"
+        >
+          <div className="space-y-3 text-[12px] leading-relaxed">
+            <p>
+              순위 추적과 상위노출 분석 모두 네이버 검색 API 의 블로그 검색을{' '}
+              <strong>관련도순(sort=sim)</strong> 으로 호출합니다. <strong>최신순이 아닙니다</strong> — 최신순은
+              발행만 하면 위에 있으니 재는 의미가 없습니다.
+            </p>
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-amber-800 dark:text-amber-200">
+              <strong className="font-bold">그런데 이 값은 실제 통합검색 상단과 같지 않습니다.</strong>
+              <ul className="mt-2 list-inside list-disc space-y-1">
+                <li>검색 API 는 <strong>평면 목록</strong>만 줍니다.</li>
+                <li>
+                  실제 화면은 검색 의도별 <strong>스마트블록</strong>으로 재배치되고, 라이프스타일 키워드
+                  상당수가 그 블록으로 노출됩니다.
+                </li>
+                <li>
+                  <strong>스마트블록의 자리는 API 로 볼 수 없습니다.</strong> 그러니 앱의 순위는 추세를 보는
+                  대리 지표이고, 진짜 자리는 직접 검색해서 확인해야 합니다.
+                </li>
+              </ul>
+            </div>
+            <p>
+              그래서 순위 추적·상위노출 분석 화면에{' '}
+              <strong>「네이버 통합검색에서 확인」·「블로그 탭」</strong> 링크를 붙여 뒀습니다. 앱 숫자로는
+              추세(오르는지 밀리는지)를 보고, 실제 자리는 링크로 눈으로 확인하는 방식으로 쓰세요.
+            </p>
+            <p className="muted">
+              앱 순위가 좋은데 실제로 안 보이면 → 스마트블록에서 밀린 것입니다. 세부 의도를 좁힌 키워드로
+              바꿔보세요. 반대로 앱 순위는 낮은데 실제로 보이면 → 그 키워드의 스마트블록에 잘 맞은 것이니 같은
+              각도를 더 밀어보세요.
+            </p>
+          </div>
+        </Card>
+
         {/* ─── 발행 후 타임라인 ─── */}
         <Card
           id="timeline"
