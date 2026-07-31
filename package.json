@@ -1,0 +1,27 @@
+{
+  "name": "naver-blog-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "네이버 블로그 상위노출 분석·작성·발행관리 도구 (헬스장/피트니스)",
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs"
+  },
+  "dependencies": {
+    "next": "15.5.22",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "22.13.5",
+    "@types/react": "19.0.10",
+    "@types/react-dom": "19.0.4",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.7.3"
+  }
+}
