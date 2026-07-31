@@ -433,6 +433,11 @@ export default function DeployPage() {
               <Ext href="https://developers.naver.com/apps/#/list">내 애플리케이션</Ext> → 해당 앱 →{' '}
               <strong>API 설정</strong> → <strong>사용 API</strong> 에 <strong>검색</strong> 을 추가하세요.
               추가 후 Vercel Redeploy 는 필요하지 않습니다 — 권한은 네이버 쪽 설정이라 바로 반영됩니다.
+              <br />
+              <strong>“신규로 등록할 수 없는 API가 선택되었습니다”</strong> 가 나오면 그 계정에서는 검색
+              API 를 새로 받을 수 없는 것이니 더 시도하지 마세요. 대신 세 기능 모두 <strong>직접 입력</strong>
+              으로 쓸 수 있게 해 뒀습니다 — 순위 추적은 본 순위를 입력, 상위노출 분석은 검색 결과를
+              붙여넣기, 경쟁률은 검색량·발행량을 입력하면 됩니다. 실제 화면 기준이라 API 보다 정확합니다.
             </li>
             <li>
               <strong>저장한 글이 사라집니다</strong> — 3단계 저장소 연결이 안 된 상태입니다. 이 화면 맨 위

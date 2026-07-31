@@ -133,6 +133,12 @@ export interface KeywordMetric {
   /** 모바일 검색 비중 (%) */
   mobileShare: number
   mock: boolean
+  /**
+   * 어디서 온 값인지.
+   * 'manual' = 사용자가 검색광고 키워드도구·블로그 탭에서 직접 보고 넣은 값.
+   * API 발급이 막혀 있어도 실측 등급을 낼 수 있는 경로다.
+   */
+  source?: 'api' | 'manual'
 }
 
 export type KeywordGrade = 'gold' | 'good' | 'hard' | 'toosmall' | 'toobig'
@@ -166,14 +172,21 @@ export interface SerpItem {
 
 export interface SerpAnalysis {
   keyword: string
+  /** 누적 발행량. 0 = 모름 (붙여넣기 분석에서 "○○건"을 안 넣은 경우) */
   total: number
   items: SerpItem[]
   stats: {
     avgTitleLength: number
     keywordInTitleRate: number
     keywordFrontRate: number
+    /** 날짜를 아는 항목만의 평균 나이 */
     avgAgeDays: number
+    /** 날짜를 아는 항목 중 30일 이내 비율 */
     freshWithin30dRate: number
+    /** 날짜를 알아낸 항목 수 — 최신성 판단의 근거 개수 */
+    datedCount: number
+    /** 블로거명을 알아낸 항목 수 */
+    bloggerKnownCount: number
     /** 상위 노출 제목에서 함께 자주 등장하는 토큰 */
     commonTokens: { token: string; count: number }[]
     /** 같은 블로거가 여러 개 차지하는지 */
@@ -182,6 +195,12 @@ export interface SerpAnalysis {
   /** 이 키워드로 상위 가려면 뭘 맞춰야 하는지 */
   prescription: string[]
   mock: boolean
+  /**
+   * 어디서 온 데이터인지.
+   * 'paste' = 사용자가 네이버 검색 결과를 직접 붙여넣은 것. 검색 API 는 평면 목록만
+   * 주고 스마트블록 자리를 못 보므로, 실제 화면을 붙여넣은 쪽이 더 정확하다.
+   */
+  source: 'api' | 'paste'
 }
 
 // ─── 글 검수 ───────────────────────────────────────────────────

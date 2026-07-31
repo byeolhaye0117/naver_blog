@@ -68,6 +68,7 @@ export function buildMetric(input: {
   blogTotal: number
   compIdx?: string
   mock: boolean
+  source?: 'api' | 'manual'
 }): KeywordMetric {
   const { grade, reason, competition } = gradeKeyword(input.monthlySearch, input.blogTotal)
   return {
@@ -85,6 +86,7 @@ export function buildMetric(input: {
         ? Math.round((input.monthlyMobile / input.monthlySearch) * 100)
         : 0,
     mock: input.mock,
+    source: input.source ?? 'api',
   }
 }
 
@@ -114,6 +116,74 @@ export function combineLocalKeywords(areas: string[], suffixes: string[] = INTEN
     for (const s of suffixes) out.push(`${a} ${s}`)
   }
   return Array.from(new Set(out))
+}
+
+// ─── 직접 입력 ─────────────────────────────────────────────────
+
+export interface ManualRow {
+  keyword: string
+  monthlySearch: number
+  blogTotal: number
+}
+
+export interface ManualParseResult {
+  rows: ManualRow[]
+  /** 형식을 못 알아본 줄 — 화면에 그대로 보여주고 고치게 한다 */
+  bad: string[]
+}
+
+/**
+ * "키워드, 월검색량, 발행량" 한 줄씩 받아 읽는다.
+ *
+ * 검색광고 API·검색 API 없이도 경쟁률 등급을 낼 수 있게 하는 입력 경로다.
+ * 숫자에 천단위 콤마가 들어와도(1,200) 구분자 콤마와 헷갈리지 않게, 숫자 뒤에
+ * 콤마+공백 또는 탭·파이프가 와야 구분자로 본다. "회"·"건" 같은 단위는 무시한다.
+ */
+const MANUAL_LINE =
+  /^(.+?)\s*(?:[|\t]|,\s*)\s*([\d,]+)\s*[회건]?\s*(?:[|\t]|,\s*)\s*([\d,]+)\s*[회건]?$/
+
+export function parseManualRows(raw: string): ManualParseResult {
+  const rows: ManualRow[] = []
+  const bad: string[] = []
+
+  for (const line of raw.split(/\r?\n/)) {
+    const t = line.trim()
+    if (!t) continue
+    const m = MANUAL_LINE.exec(t)
+    if (!m) {
+      bad.push(t)
+      continue
+    }
+    const keyword = m[1].trim().replace(/[,|\t]+$/, '').trim()
+    const monthlySearch = Number(m[2].replace(/,/g, ''))
+    const blogTotal = Number(m[3].replace(/,/g, ''))
+    if (!keyword || !Number.isFinite(monthlySearch) || !Number.isFinite(blogTotal)) {
+      bad.push(t)
+      continue
+    }
+    rows.push({ keyword, monthlySearch, blogTotal })
+  }
+
+  // 같은 키워드를 두 번 적으면 나중 값을 쓴다
+  const dedup = new Map<string, ManualRow>()
+  for (const r of rows) dedup.set(r.keyword, r)
+  return { rows: Array.from(dedup.values()), bad }
+}
+
+/** 직접 입력한 값으로 지표를 만든다 — 실측값이므로 mock 이 아니다 */
+export function buildManualMetrics(rows: ManualRow[]): KeywordMetric[] {
+  return rows.map((r) =>
+    buildMetric({
+      keyword: r.keyword,
+      monthlySearch: r.monthlySearch,
+      // PC/모바일 분리는 직접 입력에서 받지 않는다. 모바일 비중은 표시하지 않는다.
+      monthlyPc: 0,
+      monthlyMobile: 0,
+      blogTotal: r.blogTotal,
+      mock: false,
+      source: 'manual',
+    })
+  )
 }
 
 export function gradeColor(grade: KeywordGrade): string {
