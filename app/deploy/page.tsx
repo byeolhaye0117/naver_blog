@@ -8,6 +8,14 @@ import { StorageStatusCard } from '@/components/StorageNotice'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * 원클릭 배포 링크.
+ * env 목록을 붙이면 Vercel 이 그 값을 필수 입력으로 요구해서, 키가 없는 상태로는
+ * 배포를 시작할 수 없다. 먼저 띄워보는 게 목적이므로 일부러 넣지 않는다.
+ */
+const DEPLOY_URL =
+  'https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbyeolhaye0117%2Fnaver_blog&project-name=naver-blog-manager&repository-name=naver-blog-manager'
+
 const ENV_TEMPLATE = `# ── 네이버 개발자센터 (검색 API · 데이터랩) ──
 NAVER_CLIENT_ID=
 NAVER_CLIENT_SECRET=
@@ -95,6 +103,25 @@ export default function DeployPage() {
       />
 
       <div className="space-y-4">
+        <Card
+          title="가장 빠른 길 — 버튼 한 번"
+          subtitle="아무것도 입력하지 않고 먼저 배포해도 됩니다. 키와 저장소는 배포한 뒤에 붙이면 되고, 그 절차는 아래 1~3단계에 있습니다."
+        >
+          <a
+            href={DEPLOY_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="bg-brand-600 inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+          >
+            Vercel 에 배포하기 →
+          </a>
+          <p className="muted mt-2.5 text-[12px] leading-relaxed">
+            GitHub 로 로그인한 뒤 <strong>Deploy</strong> 를 누르면 1~2분 뒤{' '}
+            <code className="bd rounded border px-1 py-0.5 text-[11px]">…vercel.app</code> 주소가 나옵니다.
+            그 주소를 휴대폰에서 열고 홈 화면에 추가하면 앱처럼 쓸 수 있습니다.
+          </p>
+        </Card>
+
         <Card title="지금 상태">
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
@@ -249,26 +276,13 @@ export default function DeployPage() {
 
             <Step
               n="2"
-              title="배포할 브랜치 지정"
-              desc="Vercel 은 기본적으로 main 브랜치를 배포합니다. 코드가 다른 브랜치에 있으면 한 번 짚어줘야 합니다."
+              title="배포할 브랜치"
+              desc="Vercel 은 기본적으로 main 브랜치를 배포합니다. 코드가 이미 main 에 있으니 손댈 것이 없습니다."
             >
-              <p className="mb-2">둘 중 편한 쪽을 고르세요.</p>
-              <Ol
-                items={[
-                  <>
-                    <strong>브랜치를 main 에 합치기</strong> — GitHub 에서 이 브랜치로 Pull Request 를 만들어
-                    머지하면, 이후 main 이 항상 최신이라 관리가 편합니다. <strong>권장</strong>
-                  </>,
-                  <>
-                    <strong>배포 브랜치를 바꾸기</strong> — Vercel 프로젝트의{' '}
-                    <strong>Settings → Git → Production Branch</strong> 에서 브랜치 이름을{' '}
-                    <code className="bd rounded border px-1 py-0.5 text-[11px] break-all">
-                      claude/naver-blog-ranking-page-5968ws
-                    </code>{' '}
-                    로 바꾸고 다시 배포합니다.
-                  </>,
-                ]}
-              />
+              <p>
+                나중에 다른 브랜치를 배포하고 싶어지면 Vercel 프로젝트의{' '}
+                <strong>Settings → Git → Production Branch</strong> 에서 바꿀 수 있습니다.
+              </p>
             </Step>
 
             <Step

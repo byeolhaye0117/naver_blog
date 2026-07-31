@@ -3,7 +3,17 @@
 헬스장·피트니스 네이버 블로그를 **상위노출 관점에서 조사 → 작성 → 검수 → 발행 → 순위관리**까지
 한곳에서 굴리는 웹앱입니다. PC·태블릿·휴대폰에서 모두 쓸 수 있게 만들었습니다.
 
-## 빠르게 시작
+## 휴대폰에서 바로 쓰기 (버튼 한 번)
+
+[![Vercel 에 배포](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbyeolhaye0117%2Fnaver_blog&project-name=naver-blog-manager&repository-name=naver-blog-manager)
+
+위 버튼 → GitHub 로 로그인 → **Deploy**. 1~2분 뒤 나오는 `…vercel.app` 주소를 휴대폰에서 열면 됩니다.
+API 키와 저장소는 **나중에 붙여도 되므로** 지금은 아무것도 입력하지 않고 배포해도 화면이 다 뜹니다
+(숫자는 샘플 값으로 표시되고, 글 저장은 저장소를 연결한 뒤부터 남습니다).
+
+이어서 할 일은 배포된 앱의 **「휴대폰에서 쓰기 · 배포」** 화면에 단계별로 정리돼 있습니다.
+
+## 내 컴퓨터에서 실행
 
 ```bash
 npm install
