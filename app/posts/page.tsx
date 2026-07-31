@@ -3,6 +3,7 @@ import { balanceReport, cadenceReport } from '@/lib/writing/rotation'
 import { PageHeader } from '@/components/AppShell'
 import { Stat } from '@/components/ui'
 import PostList from './PostList'
+import StorageNotice from '@/components/StorageNotice'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,7 @@ export default async function PostsPage() {
         />
       </div>
 
+      <StorageNotice />
       <PostList posts={db.posts} stores={db.stores} />
     </>
   )

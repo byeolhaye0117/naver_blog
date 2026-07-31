@@ -2,6 +2,7 @@ import { readDB } from '@/lib/store'
 import { PageHeader } from '@/components/AppShell'
 import Editor from './Editor'
 import type { PostType } from '@/lib/types'
+import StorageNotice from '@/components/StorageNotice'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,7 @@ export default async function WritePage({
         title={existing ? '글 수정' : '글 작성'}
         desc="쓰는 동안 키워드 횟수·밀도·금칙어·이미지 배치를 실시간으로 검사합니다. 오른쪽 점수가 85점 이상이면 발행해도 좋은 상태입니다."
       />
+      <StorageNotice />
       <Editor
         stores={db.stores}
         posts={db.posts}
