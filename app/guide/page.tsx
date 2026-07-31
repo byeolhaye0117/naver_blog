@@ -101,6 +101,63 @@ export default function GuidePage() {
           </div>
         </Card>
 
+        {/* ─── 발행 후 타임라인 ─── */}
+        <Card
+          id="timeline"
+          title="발행 후 언제 순위가 잡히나"
+          subtitle="같은 '순위 밖'도 발행 3일차와 3주차는 뜻이 전혀 다릅니다. 순위 추적 화면이 이 구간을 함께 알려줍니다."
+        >
+          <div className="space-y-3">
+            {[
+              {
+                t: '0~3일 · 색인 구간',
+                d: '검색에 등록되는 단계입니다. 자동 색인은 24~72시간, 서치어드바이저에서 수동으로 요청하면 수 시간 내에 등록됩니다. 이 구간에 순위가 없는 것은 정상입니다.',
+                mark: '✓',
+              },
+              {
+                t: '24~48시간 · 초기 반응 수집',
+                d: '조회·체류·공감 같은 초기 반응이 반영되는 구간입니다. 지인 공유 같은 자연 유입은 괜찮지만 품앗이·매크로는 조작 트래픽으로 판정됩니다.',
+                mark: '≈',
+              },
+              {
+                t: '~3주 · 자리 잡는 구간',
+                d: '순위가 오르내리다 안정됩니다. 이 구간에 뒤늦게 올라오는 경우도 있습니다. 다만 며칠 만에 자리가 잡힌다거나 정확히 몇 주가 걸린다는 공개 수치는 없습니다 — 이 3주는 판단 기준선이지 네이버가 밝힌 값이 아닙니다.',
+                mark: '?',
+              },
+              {
+                t: '3주 이후에도 순위 밖',
+                d: '진입 실패로 보는 편이 낫습니다. 세부 의도를 붙여 키워드를 좁히거나(예: "+ 새벽", "+ 초보"), 정보량을 늘려 다시 쓰세요. 글을 계속 붙들고 있는 것보다 다음 글이 낫습니다.',
+                mark: '?',
+              },
+            ].map((x) => (
+              <div key={x.t} className="bd rounded-lg border p-3.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-[13px] font-bold">{x.t}</h3>
+                  <Badge tone={x.mark === '✓' ? 'good' : x.mark === '≈' ? 'info' : 'warn'}>
+                    {x.mark === '✓' ? '공식 확인' : x.mark === '≈' ? '실무 통설' : '근거 불충분'}
+                  </Badge>
+                </div>
+                <p className="muted mt-1.5 text-[12px] leading-relaxed">{x.d}</p>
+              </div>
+            ))}
+
+            <div className="rounded-lg border border-sky-500/30 bg-sky-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
+              <strong className="font-bold">블로그 지수가 낮은데도 새 글이 바로 상위에 뜨는 이유</strong>
+              <p className="mt-1.5">
+                2025년에 C-Rank·D.I.A.+ 평가가 스마트블록에 완전히 통합됐습니다. D.I.A.+는{' '}
+                <strong>문서 하나</strong>의 검색 의도 적합성을 보기 때문에, 특정 스마트블록에서는 블로그
+                지수보다 그 글 자체의 의도 적합성이 더 세게 작동합니다. 지수가 낮은 블로그도 세부 의도가 딱
+                맞는 글 하나로 뚫을 수 있다는 뜻이고, 반대로 지수가 높아도 의도가 어긋난 글은 밀립니다.
+              </p>
+              <p className="mt-2">
+                → 실무적 결론: <strong>큰 키워드로 지수 싸움을 하기보다, 세부 의도를 좁힌 키워드로 문서 단위
+                승부를 보는 편이 빠릅니다.</strong> 키워드 조사 화면의 지역 키워드 조합 생성기가 이걸 위한
+                기능입니다.
+              </p>
+            </div>
+          </div>
+        </Card>
+
         {/* ─── 가산 요소 ─── */}
         <Card title="지수 향상 조건 (가산 요소)">
           <div className="scroll-x -mx-4 px-4 sm:mx-0 sm:px-0">

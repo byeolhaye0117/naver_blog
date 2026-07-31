@@ -14,7 +14,7 @@ export default async function RankPage({
 }) {
   const sp = await searchParams
   const db = await readDB()
-  const views = buildRankViews(db.rankTargets, db.rankSnapshots)
+  const views = buildRankViews(db.rankTargets, db.rankSnapshots, db.posts)
 
   return (
     <>
