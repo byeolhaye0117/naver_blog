@@ -172,15 +172,19 @@ export default function DeployPage() {
                     이름은 아무 데도 노출되지 않습니다.
                   </>,
                   <>
-                    <strong>사용 API</strong> 목록에는 <strong>“검색”이 없습니다 — 정상입니다.</strong> 검색과
-                    데이터랩은 <strong>비로그인 오픈 API</strong> 라서, 앱만 등록하면 발급된 Client
-                    ID/Secret 으로 바로 호출됩니다. 그 드롭다운은 개별 권한이 필요한 API(로그인·인증서·카페·
-                    캘린더 등) 목록입니다.
-                    <br />
-                    다만 입력이 필수이므로 <strong>아무거나 하나 고르세요.</strong>{' '}
-                    <code className="bd rounded border px-1 py-0.5 text-[11px]">캡차 (이미지)</code> 를
-                    권합니다 — 추가 설정을 묻지 않습니다. “네이버 로그인”·“캘린더”는 콜백 URL 같은 것을 더
-                    요구합니다.
+                    <strong>사용 API</strong> 에서 <strong>“검색”</strong> 을 반드시 추가해야 합니다. 권한이
+                    없으면 키가 맞아도 호출이 거부됩니다 (실제 응답:{' '}
+                    <code className="bd rounded border px-1 py-0.5 text-[11px]">
+                      401 Scope Status Invalid, errorCode 024
+                    </code>
+                    ). 검색 추이 화면까지 쓰려면 <strong>“데이터랩”</strong> 도 함께 추가하세요.
+                  </>,
+                  <>
+                    <strong>등록 화면 드롭다운에 “검색”이 안 보이는 경우가 있습니다.</strong> 그러면 일단 아무
+                    항목이나 골라 등록을 마치고, 그다음{' '}
+                    <Ext href="https://developers.naver.com/apps/#/list">내 애플리케이션</Ext> → 해당 앱 →{' '}
+                    <strong>API 설정</strong> → <strong>사용 API</strong> 에서 <strong>검색</strong> 을
+                    추가하세요. 등록 후에 추가하는 이 경로가 더 확실합니다.
                   </>,
                   <>
                     <strong>비로그인 오픈 API 서비스 환경</strong> 에서 <strong>“WEB 설정”</strong> 을 고르고
@@ -420,6 +424,15 @@ export default function DeployPage() {
             <li>
               <strong>검색량만 샘플입니다</strong> — 검색광고 API 쪽 세 값 중 하나가 빠졌거나 고객 ID 가
               다릅니다. 검색 API 와 검색광고 API 는 완전히 다른 자격증명입니다.
+            </li>
+            <li>
+              <strong>
+                “401 Scope Status Invalid” 또는 “errorCode 024” 가 보입니다
+              </strong>{' '}
+              — 키는 맞지만 애플리케이션에 <strong>검색 권한이 없는</strong> 상태입니다.{' '}
+              <Ext href="https://developers.naver.com/apps/#/list">내 애플리케이션</Ext> → 해당 앱 →{' '}
+              <strong>API 설정</strong> → <strong>사용 API</strong> 에 <strong>검색</strong> 을 추가하세요.
+              추가 후 Vercel Redeploy 는 필요하지 않습니다 — 권한은 네이버 쪽 설정이라 바로 반영됩니다.
             </li>
             <li>
               <strong>저장한 글이 사라집니다</strong> — 3단계 저장소 연결이 안 된 상태입니다. 이 화면 맨 위
