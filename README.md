@@ -3,15 +3,24 @@
 헬스장·피트니스 네이버 블로그를 **상위노출 관점에서 조사 → 작성 → 검수 → 발행 → 순위관리**까지
 한곳에서 굴리는 웹앱입니다. PC·태블릿·휴대폰에서 모두 쓸 수 있게 만들었습니다.
 
-## 휴대폰에서 바로 쓰기 (버튼 한 번)
+## 휴대폰에서 바로 쓰기
 
-[![Vercel 에 배포](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbyeolhaye0117%2Fnaver_blog&project-name=naver-blog-manager&repository-name=naver-blog-manager)
+1. **https://vercel.com/new** 접속 → **Continue with GitHub** 로 로그인
+2. 저장소 목록에서 **`naver_blog`** 를 찾아 **Import**
+   - 목록에 없으면 **Adjust GitHub App Permissions** 로 이 저장소 접근 권한을 주세요
+3. Framework 는 **Next.js** 로 자동 인식됩니다 — 빌드 설정은 손대지 않습니다
+4. Environment Variables 는 **비워둔 채** → **Deploy**
+5. 1~2분 뒤 나오는 `…vercel.app` 주소를 휴대폰에서 열고 홈 화면에 추가
 
-위 버튼 → GitHub 로 로그인 → **Deploy**. 1~2분 뒤 나오는 `…vercel.app` 주소를 휴대폰에서 열면 됩니다.
-API 키와 저장소는 **나중에 붙여도 되므로** 지금은 아무것도 입력하지 않고 배포해도 화면이 다 뜹니다
+API 키와 저장소는 **나중에 붙여도 되므로** 지금 아무것도 입력하지 않고 배포해도 화면이 다 뜹니다
 (숫자는 샘플 값으로 표시되고, 글 저장은 저장소를 연결한 뒤부터 남습니다).
-
 이어서 할 일은 배포된 앱의 **「휴대폰에서 쓰기 · 배포」** 화면에 단계별로 정리돼 있습니다.
+
+> **Vercel 의 "Deploy 버튼"(`/new/clone` 링크)은 쓰지 마세요.** 그 흐름은 이 저장소를
+> **복제해 새 저장소를 만듭니다.** 그러면 이후 이 저장소에 올라가는 수정이 배포에 따라오지
+> 않습니다. "Create a Git repository / Private Repository Name" 화면이 보이면 복제 흐름이니,
+> 아래 **"Import a different Git Repository"** 로 빠져나와 기존 `naver_blog` 를 고르세요.
+> 위 순서대로 Import 하면 push 마다 자동 배포됩니다.
 
 ## 내 컴퓨터에서 실행
 
