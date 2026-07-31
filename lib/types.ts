@@ -92,11 +92,19 @@ export interface RankSnapshot {
   targetId: string
   /** YYYY-MM-DD */
   date: string
-  /** null = 상위 검색 범위(기본 30위) 안에서 못 찾음 */
+  /** null = 순위 범위 안에서 못 찾음 */
   rank: number | null
-  /** 해당 키워드 전체 블로그 발행량 */
+  /** 해당 키워드 전체 블로그 발행량 (API 조회 시에만) */
   total?: number
   mock?: boolean
+  /**
+   * 어디서 온 값인지.
+   * 'manual' = 사용자가 네이버에서 직접 보고 입력한 값. 검색 API 는 평면 목록만 주고
+   * 스마트블록 자리를 못 보기 때문에, 직접 본 순위가 오히려 실제에 더 가깝다.
+   */
+  source?: 'api' | 'manual'
+  /** 직접 입력할 때 남기는 메모 (예: "스마트블록 인기글 2번째") */
+  note?: string
 }
 
 export interface DB {
