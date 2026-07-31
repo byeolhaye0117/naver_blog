@@ -9,12 +9,14 @@ import { StorageStatusCard } from '@/components/StorageNotice'
 export const dynamic = 'force-dynamic'
 
 /**
- * 원클릭 배포 링크.
- * env 목록을 붙이면 Vercel 이 그 값을 필수 입력으로 요구해서, 키가 없는 상태로는
- * 배포를 시작할 수 없다. 먼저 띄워보는 게 목적이므로 일부러 넣지 않는다.
+ * 배포 시작 링크.
+ *
+ * /new/clone (이른바 "Deploy 버튼") 은 쓰지 않는다. 그 링크는 저장소를 **복제해서**
+ * 새 저장소를 만들기 때문에, 이후 이 저장소에 올리는 수정이 배포에 따라오지 않는다.
+ * 대신 /new 로 보내 기존 저장소를 그대로 Import 하게 한다 — 그러면 push 마다 자동 배포된다.
  */
-const DEPLOY_URL =
-  'https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fbyeolhaye0117%2Fnaver_blog&project-name=naver-blog-manager&repository-name=naver-blog-manager'
+const DEPLOY_URL = 'https://vercel.com/new'
+const REPO_NAME = 'naver_blog'
 
 const ENV_TEMPLATE = `# ── 네이버 개발자센터 (검색 API · 데이터랩) ──
 NAVER_CLIENT_ID=
@@ -104,7 +106,7 @@ export default function DeployPage() {
 
       <div className="space-y-4">
         <Card
-          title="가장 빠른 길 — 버튼 한 번"
+          title="가장 빠른 길"
           subtitle="아무것도 입력하지 않고 먼저 배포해도 됩니다. 키와 저장소는 배포한 뒤에 붙이면 되고, 그 절차는 아래 1~3단계에 있습니다."
         >
           <a
@@ -113,13 +115,22 @@ export default function DeployPage() {
             rel="noreferrer noopener"
             className="bg-brand-600 inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
           >
-            Vercel 에 배포하기 →
+            Vercel 에서 배포 시작 →
           </a>
           <p className="muted mt-2.5 text-[12px] leading-relaxed">
-            GitHub 로 로그인한 뒤 <strong>Deploy</strong> 를 누르면 1~2분 뒤{' '}
+            GitHub 로 로그인하고 저장소 목록에서{' '}
+            <code className="bd rounded border px-1 py-0.5 text-[11px]">{REPO_NAME}</code> 를{' '}
+            <strong>Import</strong> → 환경변수는 비워둔 채 <strong>Deploy</strong>. 1~2분 뒤{' '}
             <code className="bd rounded border px-1 py-0.5 text-[11px]">…vercel.app</code> 주소가 나옵니다.
             그 주소를 휴대폰에서 열고 홈 화면에 추가하면 앱처럼 쓸 수 있습니다.
           </p>
+          <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+            <strong className="font-bold">“Create a Git repository” 화면이 나오면 멈추세요.</strong> 그건 이
+            저장소를 <strong>복제해서 새 저장소를 만드는</strong> 흐름(Deploy 버튼 / clone 링크)입니다. 그대로
+            만들면 이후 이 저장소에 올라가는 수정이 배포에 따라오지 않습니다. 화면 아래{' '}
+            <strong>“Import a different Git Repository”</strong> 를 눌러 기존{' '}
+            <code className="bd rounded border px-1 py-0.5 text-[11px]">{REPO_NAME}</code> 를 고르세요.
+          </div>
         </Card>
 
         <Card title="지금 상태">
@@ -251,7 +262,7 @@ export default function DeployPage() {
           subtitle="무료입니다. GitHub 저장소를 연결하면 알아서 빌드해서 주소를 하나 줍니다. 그 주소를 휴대폰에서 열면 끝입니다."
         >
           <div className="space-y-3">
-            <Step n="1" title="Vercel 가입 후 프로젝트 만들기">
+            <Step n="1" title="Vercel 가입 후 기존 저장소 Import">
               <Ol
                 items={[
                   <>
@@ -263,9 +274,14 @@ export default function DeployPage() {
                     대시보드에서 <strong>Add New…</strong> → <strong>Project</strong> 를 누릅니다.
                   </>,
                   <>
-                    저장소 목록에서 <strong>naver_blog</strong> 를 찾아 <strong>Import</strong> 합니다. 목록에
-                    안 보이면 <strong>Adjust GitHub App Permissions</strong> 로 이 저장소에 접근 권한을
-                    주세요.
+                    저장소 목록에서 <code className="bd rounded border px-1 py-0.5 text-[11px]">{REPO_NAME}</code>{' '}
+                    를 찾아 <strong>Import</strong> 합니다. 목록에 안 보이면{' '}
+                    <strong>Adjust GitHub App Permissions</strong> 로 이 저장소에 접근 권한을 주세요.
+                  </>,
+                  <>
+                    <strong>복제(clone)가 아니라 Import 여야 합니다.</strong> “Private Repository Name” 을
+                    입력하라는 화면이 나오면 복제 흐름이니, 아래{' '}
+                    <strong>“Import a different Git Repository”</strong> 로 빠져나오세요.
                   </>,
                   <>
                     Framework 는 <strong>Next.js</strong> 로 자동 인식됩니다. 빌드 설정은 손대지 않습니다.
