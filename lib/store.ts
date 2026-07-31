@@ -39,11 +39,45 @@ const NO_STORE_MESSAGE =
 
 export type StorageMode = 'cloud' | 'file' | 'memory'
 
-/** Vercel 마켓플레이스 연동(KV_*)과 Upstash 직접 가입(UPSTASH_*) 이름을 모두 받는다 */
-function cloudConfig(): { url: string; token: string } | null {
-  const url = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL)?.trim()
-  const token = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN)?.trim()
-  return url && token ? { url: url.replace(/\/+$/, ''), token } : null
+/**
+ * 클라우드 저장소 자격증명 찾기.
+ *
+ * 이름이 환경마다 다르다. Vercel 마켓플레이스는 KV_*, Upstash 직접 가입은 UPSTASH_*,
+ * 연동할 때 Custom Prefix 를 넣으면 또 다른 이름이 된다. 그래서 아는 이름을 먼저 보고,
+ * 없으면 **값을 보고** 찾는다 — REST 엔드포인트는 https://…upstash.io 형태이므로
+ * 그 값을 가진 변수를 찾아 같은 접두사의 토큰과 짝지운다.
+ */
+function cloudConfig(): { url: string; token: string; source: string } | null {
+  const known: [string, string][] = [
+    ['KV_REST_API_URL', 'KV_REST_API_TOKEN'],
+    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'],
+  ]
+  for (const [uKey, tKey] of known) {
+    const url = process.env[uKey]?.trim()
+    const token = process.env[tKey]?.trim()
+    if (url && token) return { url: url.replace(/\/+$/, ''), token, source: uKey }
+  }
+
+  for (const [key, raw] of Object.entries(process.env)) {
+    const url = raw?.trim()
+    // rediss:// 커넥션 문자열(REDIS_URL 등)은 REST 엔드포인트가 아니므로 걸러진다
+    if (!url || !/^https:\/\/[^/]*upstash\.io/i.test(url)) continue
+
+    const base = key.replace(/_?(REST_API_)?URL$/i, '')
+    const candidates = [
+      key.replace(/URL$/i, 'TOKEN'),
+      `${base}_REST_API_TOKEN`,
+      `${base}_TOKEN`,
+      `${base}REST_API_TOKEN`,
+      `${base}TOKEN`,
+    ]
+    for (const c of candidates) {
+      const token = process.env[c]?.trim()
+      if (token) return { url: url.replace(/\/+$/, ''), token, source: key }
+    }
+  }
+
+  return null
 }
 
 export function isCloudConfigured(): boolean {
@@ -55,11 +89,13 @@ let fileReadOnly = false
 let lastError: string | null = null
 
 export function storageStatus(): { mode: StorageMode; error: string | null; detail: string } {
-  if (isCloudConfigured()) {
+  const cfg = cloudConfig()
+  if (cfg) {
     return {
       mode: 'cloud',
       error: lastError,
-      detail: '클라우드 저장소 — 휴대폰·PC가 같은 기록을 봅니다.',
+      // 어떤 환경변수를 집었는지 같이 보여준다 — 연결이 꼬였을 때 원인을 바로 알 수 있다
+      detail: `클라우드 저장소 — 휴대폰·PC가 같은 기록을 봅니다. (${cfg.source} 사용)`,
     }
   }
   // 첫 저장을 시도해보기 전에 미리 알려준다. 저장하고 나서 알게 되면 이미 늦다.
