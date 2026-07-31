@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     })
 
     return NextResponse.json({
-      views: buildRankViews(next.rankTargets, next.rankSnapshots),
+      views: buildRankViews(next.rankTargets, next.rankSnapshots, next.posts),
       checked: snapshots.length,
       keyStatus: keyStatus(),
     })

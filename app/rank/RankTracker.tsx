@@ -24,6 +24,7 @@ export default function RankTracker({
   const [keyword, setKeyword] = useState(prefill.keyword)
   const [url, setUrl] = useState(prefill.url)
   const [postId, setPostId] = useState(prefill.postId ?? '')
+  const [publishedAt, setPublishedAt] = useState('')
   const [adding, setAdding] = useState(false)
   const [checking, setChecking] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -42,13 +43,14 @@ export default function RankTracker({
       const res = await fetch('/api/rank', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword, url, postId: postId || undefined }),
+        body: JSON.stringify({ keyword, url, postId: postId || undefined, publishedAt: publishedAt || undefined }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
       setKeyword('')
       setUrl('')
       setPostId('')
+      setPublishedAt('')
       await refreshAndCheck(json.target.id)
     } catch (e) {
       setError(e instanceof Error ? e.message : '등록에 실패했습니다.')
@@ -101,6 +103,7 @@ export default function RankTracker({
                   if (p) {
                     setKeyword(p.mainKeyword)
                     setUrl(p.publishedUrl ?? '')
+                    setPublishedAt((p.publishedAt ?? '').slice(0, 10))
                   }
                 }}
                 className={inputClass}
@@ -128,6 +131,18 @@ export default function RankTracker({
               />
             </Field>
           </div>
+
+          <Field
+            label="발행일"
+            hint="같은 '순위 밖'도 발행 3일차와 3주차는 뜻이 다릅니다. 발행일을 넣으면 지금이 색인 구간인지, 진입 실패로 볼 시점인지 함께 알려줍니다."
+          >
+            <input
+              type="date"
+              value={publishedAt}
+              onChange={(e) => setPublishedAt(e.target.value)}
+              className={inputClass}
+            />
+          </Field>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -199,6 +214,30 @@ export default function RankTracker({
                 </div>
               }
             >
+              {/* 발행 후 며칠인지에 따라 같은 순위도 뜻이 달라진다 */}
+              {v.phase ? (
+                <div
+                  className={`mb-3 rounded-lg border px-3 py-2.5 text-[12px] leading-relaxed ${
+                    v.phase.tone === 'good'
+                      ? 'border-emerald-500/30 bg-emerald-500/8 text-emerald-800 dark:text-emerald-200'
+                      : v.phase.tone === 'warn'
+                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200'
+                        : v.phase.tone === 'bad'
+                          ? 'border-rose-500/30 bg-rose-500/8 text-rose-800 dark:text-rose-200'
+                          : 'border-sky-500/30 bg-sky-500/8 text-sky-900 dark:text-sky-200'
+                  }`}
+                >
+                  <strong className="font-bold">{v.phase.label}</strong>
+                  <span className="mx-1.5 opacity-50">·</span>
+                  {v.phase.note}
+                </div>
+              ) : (
+                <div className="muted bd mb-3 rounded-lg border px-3 py-2.5 text-[11px] leading-relaxed">
+                  발행일을 넣으면 지금이 색인 구간인지, 진입 실패로 볼 시점인지 함께 알려줍니다. 이 항목을 지우고
+                  발행일과 함께 다시 등록하거나, 연결된 글에 발행일을 채우세요.
+                </div>
+              )}
+
               <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
                 <span className="muted">
                   최고 <span className="tnum font-bold">{v.best !== null ? `${v.best}위` : '기록 없음'}</span>
@@ -206,6 +245,11 @@ export default function RankTracker({
                 <span className="muted">
                   조회 <span className="tnum font-bold">{v.history.length}회</span>
                 </span>
+                {v.publishedAt && (
+                  <span className="muted">
+                    발행 <span className="tnum font-bold">{v.publishedAt.slice(0, 10)}</span>
+                  </span>
+                )}
                 {v.history.length > 0 && (
                   <span className="muted">
                     발행량{' '}

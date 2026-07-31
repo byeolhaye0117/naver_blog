@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 export const GET = guard('순위 목록을 불러오지 못했습니다.', async () => {
   const db = await readDB()
-  return NextResponse.json({ views: buildRankViews(db.rankTargets, db.rankSnapshots) })
+  return NextResponse.json({ views: buildRankViews(db.rankTargets, db.rankSnapshots, db.posts) })
 })
 
 export const POST = guard('추적 항목 등록에 실패했습니다.', async (req: Request) => {
@@ -28,6 +28,7 @@ export const POST = guard('추적 항목 등록에 실패했습니다.', async (
     url,
     postId: input.postId,
     label: input.label,
+    publishedAt: input.publishedAt?.slice(0, 10) || undefined,
     createdAt: new Date().toISOString(),
   }
 

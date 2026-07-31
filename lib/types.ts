@@ -79,6 +79,11 @@ export interface RankTarget {
   url: string
   postId?: string
   label?: string
+  /**
+   * YYYY-MM-DD 발행일. 발행 후 경과일에 따라 "순위 밖"의 의미가 달라지므로
+   * (색인 구간인지, 진입 실패인지) 순위 해석에 쓴다. 연결된 글이 있으면 그쪽 값을 쓴다.
+   */
+  publishedAt?: string
   createdAt: string
 }
 

@@ -16,7 +16,7 @@ export default async function Dashboard() {
   const keys = keyStatus()
   const balance = balanceReport(db.posts)
   const cadence = cadenceReport(db.posts)
-  const views = buildRankViews(db.rankTargets, db.rankSnapshots)
+  const views = buildRankViews(db.rankTargets, db.rankSnapshots, db.posts)
 
   const published = db.posts.filter((p) => p.status === 'published')
   const drafts = db.posts.filter((p) => p.status !== 'published')

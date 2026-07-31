@@ -14,6 +14,7 @@ const { analyzeSerp } = require(`${OUT}/analysis/serp.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
+const { phaseOf, buildRankViews } = require(`${OUT}/analysis/rank.js`)
 let fails = 0
 const ok = (cond, label, extra = '') => {
   if (!cond) fails++
@@ -212,6 +213,68 @@ ok(gradeKeyword(1500, 15000).grade === 'gold', '검색량 1500 / 경쟁률 10 �
 ok(gradeKeyword(1500, 150000).grade === 'hard', '검색량 1500 / 경쟁률 100 → 과열')
 ok(gradeKeyword(120, 1000).grade === 'toosmall', '검색량 120 → 검색량 부족')
 ok(gradeKeyword(50000, 500000).grade === 'toobig', '검색량 5만 → 대형 키워드')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[12] 순위 구간 판정 (발행 후 경과일)')
+const cases = [
+  [0, null, 'indexing', 'info'],
+  [3, null, 'indexing', 'info'],
+  [4, null, 'earlyResponse', 'info'],
+  [7, null, 'earlyResponse', 'info'],
+  [8, null, 'settling', 'warn'],
+  [21, null, 'settling', 'warn'],
+  [22, null, 'settled', 'bad'],
+  [60, null, 'settled', 'bad'],
+  [1, 5, 'indexing', 'info'],
+  [10, 5, 'settling', 'good'],
+  [30, 5, 'settled', 'good'],
+]
+for (const [age, rank, expPhase, expTone] of cases) {
+  const p = phaseOf(age, rank)
+  ok(
+    p.phase === expPhase && p.tone === expTone,
+    `${age}일차 / ${rank === null ? '순위밖' : rank + '위'} → ${expPhase}(${expTone})`,
+    `실제 ${p.phase}(${p.tone}) "${p.label}"`
+  )
+}
+ok(phaseOf(null, null) === null, '발행일 없으면 구간 판정 안 함')
+
+console.log('\n[13] 같은 순위밖도 시점에 따라 해석이 달라야 함')
+const early = phaseOf(2, null)
+const late = phaseOf(30, null)
+ok(early.tone === 'info' && late.tone === 'bad', '3일차는 정상 안내 / 30일차는 실패 경고')
+ok(/정상/.test(early.note), '3일차 안내에 "정상" 포함', early.note.slice(0, 40))
+ok(/실패/.test(late.note), '30일차 안내에 "실패" 포함', late.note.slice(0, 40))
+
+console.log('\n[14] 발행일 출처 우선순위')
+const today = new Date()
+const iso = (d) => new Date(today.getTime() - d * 86400000).toISOString().slice(0, 10)
+
+const posts = [{ id: 'p1', publishedAt: iso(30) }]
+const v1 = buildRankViews([{ id: 't1', keyword: 'k', url: 'u', postId: 'p1', createdAt: '' }], [], posts)[0]
+ok(v1.ageDays === 30, '연결된 글의 발행일에서 경과일 계산', `${v1.ageDays}일`)
+ok(v1.phase?.phase === 'settled', '30일 → settled')
+
+const v2 = buildRankViews(
+  [{ id: 't2', keyword: 'k', url: 'u', postId: 'p1', publishedAt: iso(1), createdAt: '' }],
+  [],
+  posts
+)[0]
+ok(v2.ageDays === 1, '추적 항목에 적은 발행일이 우선', `${v2.ageDays}일`)
+
+const v3 = buildRankViews([{ id: 't3', keyword: 'k', url: 'u', createdAt: '' }], [], posts)[0]
+ok(v3.ageDays === null && v3.phase === null, '발행일 없으면 null')
+
+console.log('\n[15] 순위 변동 계산 (기존 동작 유지)')
+const snaps = [
+  { id: 's1', targetId: 't4', date: iso(2), rank: 12 },
+  { id: 's2', targetId: 't4', date: iso(1), rank: 7 },
+]
+const v4 = buildRankViews([{ id: 't4', keyword: 'k', url: 'u', publishedAt: iso(10), createdAt: '' }], snaps)[0]
+ok(v4.current === 7 && v4.previous === 12, '현재/직전 순위')
+ok(v4.delta === 5, '변동 = 12 → 7 = 5칸 상승', `${v4.delta}`)
+ok(v4.best === 7, '최고 순위')
+ok(v4.phase?.tone === 'good', '10일차 + 7위 → good')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
