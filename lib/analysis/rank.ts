@@ -8,6 +8,29 @@ import type { Post, RankSnapshot, RankTarget } from '@/lib/types'
 /** 순위 조회 범위 — 네이버 검색 API 는 한 번에 최대 100개까지 준다 */
 export const RANK_DEPTH = 50
 
+/**
+ * 이 앱이 재는 순위가 정확히 무엇인지.
+ *
+ * 검색 API 의 블로그 검색을 sort=sim(관련도순)으로 호출해 몇 번째인지 센다.
+ * 최신순이 아니다 — 최신순은 발행만 하면 위에 있으니 의미가 없다.
+ *
+ * 다만 이것은 실제 화면의 "상단 노출"과 같지 않다:
+ * - 검색 API 는 평면 목록을 준다. 반면 실제 통합검색은 의도별 스마트블록으로
+ *   재배치되고, 라이프스타일 키워드 상당수가 그 블록으로 노출된다.
+ * - 스마트블록의 자리는 API 로 볼 수 없다. 즉 앱의 순위는 근사치(대리 지표)다.
+ * 그래서 화면에 이 사실을 밝히고, 네이버에서 직접 확인하는 링크를 함께 둔다.
+ */
+export const RANK_BASIS = '검색 API 블로그 검색 · 관련도순(sim) 기준'
+
+/** 그 키워드를 네이버에서 실제로 검색해보는 주소 — 앱 순위와 대조용 */
+export function naverSearchUrl(keyword: string): string {
+  return `https://search.naver.com/search.naver?query=${encodeURIComponent(keyword)}`
+}
+
+export function naverBlogTabUrl(keyword: string): string {
+  return `https://search.naver.com/search.naver?ssc=tab.blog.all&sm=tab_jum&query=${encodeURIComponent(keyword)}`
+}
+
 export function normalizeUrl(u: string): string {
   return u
     .trim()
