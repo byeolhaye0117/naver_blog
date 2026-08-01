@@ -73,6 +73,14 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     { label: '이 앱의 순위 추적에 (키워드 + 발행 URL) 등록', detail: '순위 변동을 매일 기록해둘 수 있습니다' },
   ]
 
+  // 이벤트는 끝난다. 지난 조건이 발행된 글에 남아 있으면 신뢰를 잃으니 발행 전에 짚어준다.
+  if (post.eventText) {
+    checklist.unshift({
+      label: '이벤트 조건·마감일이 지금도 맞는지 확인',
+      detail: post.eventText.replace(/\s+/g, ' ').slice(0, 90),
+    })
+  }
+
   if (post.type === 'review' && post.sponsorship === 'sponsored') {
     checklist.unshift({
       label: '대가성(협찬) 표기 확인 — 법적 의무',
