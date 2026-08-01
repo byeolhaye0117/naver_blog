@@ -434,7 +434,11 @@ export default function GuidePage() {
               {[
                 ['gym-blog-writer', '홍보글', '"쌍용점 홍보글 써줘, 메인 키워드는 쌍용동 24시헬스장, 이벤트는 …"'],
                 ['gym-info-writer', '정보글', '"다이어트 정체기 극복 정보글 써줘, 지역 키워드는 성정동 헬스장"'],
-                ['gym-review-writer', '후기글', '"용곡점 방문후기 써줘, 내돈내산, 메인 키워드는 용곡동 여성전용"'],
+                [
+                  'gym-review-writer',
+                  '후기글',
+                  '"용곡점 방문후기 써줘, 내돈내산, 메인 키워드는 용곡동 여성전용, 이벤트는 3개월 등록 시 1개월 추가"',
+                ],
               ].map(([skill, kind, example]) => (
                 <li key={skill} className="bd rounded-lg border p-3">
                   <div className="flex flex-wrap items-center gap-2">

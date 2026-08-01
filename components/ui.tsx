@@ -102,18 +102,26 @@ export function Field({
   hint,
   children,
   className = '',
+  group = false,
 }: {
   label: string
   hint?: ReactNode
   children: ReactNode
   className?: string
+  /**
+   * 안에 든 것이 입력창 하나가 아니라 버튼 묶음일 때 켠다.
+   * <label> 을 탭하면 안의 첫 번째 버튼이 눌리기 때문에, 설명 문구를 잘못 눌러
+   * 글 유형·대가성 같은 값이 조용히 바뀌는 일이 생긴다. 그럴 땐 <div> 로 감싼다.
+   */
+  group?: boolean
 }) {
+  const Wrap = group ? 'div' : 'label'
   return (
-    <label className={`block ${className}`}>
+    <Wrap className={`block ${className}`}>
       <span className="mb-1.5 block text-[13px] font-semibold">{label}</span>
       {children}
       {hint && <span className="muted mt-1 block text-[11px] leading-snug">{hint}</span>}
-    </label>
+    </Wrap>
   )
 }
 

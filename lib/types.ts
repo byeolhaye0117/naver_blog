@@ -66,6 +66,11 @@ export interface Post {
   format?: string
   topicGroup?: string
   sponsorship?: Sponsorship
+  /**
+   * 진행 중인 이벤트·혜택 (홍보글·후기글). 골격 생성 때 이벤트 구간에 반영된다.
+   * 다시 열어 골격을 새로 뽑을 때도 남아 있어야 하므로 글과 함께 저장한다.
+   */
+  eventText?: string
   publishedAt?: string
   publishedUrl?: string
   createdAt: string

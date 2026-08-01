@@ -55,7 +55,7 @@ export default function Editor({
   const [sponsorship, setSponsorship] = useState<Sponsorship>(existing?.sponsorship ?? 'unset')
   const [publishedUrl, setPublishedUrl] = useState(existing?.publishedUrl ?? '')
   const [publishedAt, setPublishedAt] = useState(existing?.publishedAt ?? '')
-  const [eventText, setEventText] = useState('')
+  const [eventText, setEventText] = useState(existing?.eventText ?? '')
 
   const [view, setView] = useState<View>('write')
   const [saving, setSaving] = useState(false)
@@ -108,6 +108,8 @@ export default function Editor({
     format: format || undefined,
     topicGroup: topicGroup || undefined,
     sponsorship: type === 'review' ? sponsorship : undefined,
+    // 유형을 바꿔도 적어둔 이벤트 정보는 잃지 않게 그대로 저장한다 (정보글에서는 쓰이지 않음)
+    eventText: eventText.trim() || undefined,
     publishedUrl: publishedUrl || undefined,
     publishedAt: publishedAt || undefined,
     createdAt: existing?.createdAt ?? new Date().toISOString(),
@@ -124,6 +126,7 @@ export default function Editor({
     localKeyword,
     mainKeyword,
     sponsorship,
+    eventText,
   ])
 
   async function save() {
@@ -247,7 +250,7 @@ export default function Editor({
             <>
               <Card title="글 정보">
                 <div className="space-y-3.5">
-                  <Field label="글 유형" hint={TYPE_HINT[type]}>
+                  <Field label="글 유형" hint={TYPE_HINT[type]} group>
                     <div className="grid grid-cols-3 gap-1.5">
                       {(['promo', 'info', 'review'] as PostType[]).map((t) => (
                         <button
@@ -345,7 +348,7 @@ export default function Editor({
                   )}
 
                   {type === 'review' && (
-                    <Field label="대가성(협찬) 여부" hint="협찬이면 본문·태그 표기가 법적 의무입니다">
+                    <Field label="대가성(협찬) 여부" hint="협찬이면 본문·태그 표기가 법적 의무입니다" group>
                       <div className="grid grid-cols-3 gap-1.5">
                         {(['own', 'sponsored', 'unset'] as Sponsorship[]).map((s) => (
                           <button
@@ -363,18 +366,38 @@ export default function Editor({
                     </Field>
                   )}
 
-                  {type === 'promo' && (
+                  {/* 정보글은 홍보로 넘어가면 목적(C-Rank 축적)이 깨지므로 이벤트 칸을 두지 않는다 */}
+                  {type !== 'info' && (
                     <Field
-                      label="이벤트 정보 (골격 생성에 반영)"
-                      hint="없는 마감일·인원을 만들어내지 않습니다. 실제 조건만 적으세요."
+                      label={
+                        type === 'review'
+                          ? '이벤트 정보 (혜택 구간에 반영)'
+                          : '이벤트 정보 (골격 생성에 반영)'
+                      }
+                      hint={
+                        type === 'review'
+                          ? '후기글에서는 방문객 시점 — "제가 등록할 때 이런 혜택이 있었어요" 로 들어갑니다. 실제 조건만 적으세요.'
+                          : '없는 마감일·인원을 만들어내지 않습니다. 실제 조건만 적으세요.'
+                      }
                     >
                       <textarea
                         value={eventText}
                         onChange={(e) => setEventText(e.target.value)}
                         rows={2}
                         className={inputClass}
-                        placeholder="3개월 등록 이벤트, 선착순 50분, 이번 달까지"
+                        placeholder={
+                          type === 'review'
+                            ? '3개월 등록 시 1개월 추가, 제가 갔을 때 이번 달까지였어요'
+                            : '3개월 등록 이벤트, 선착순 50분, 이번 달까지'
+                        }
                       />
+                      {type === 'review' && eventText.trim() && sponsorship === 'unset' && (
+                        <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+                          이벤트를 안내하는 후기는 업체와의 관계가 드러납니다. 위에서{' '}
+                          <strong>대가성 여부</strong>를 먼저 지정하세요 — 협찬이면 표기가 법적
+                          의무입니다.
+                        </p>
+                      )}
                     </Field>
                   )}
                 </div>

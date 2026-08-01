@@ -173,6 +173,49 @@ ok(c6.items.find(i=>i.id==='sponsorship')?.level === 'warn', '미지정이면 wa
 ok(checkPost({...rev, title:'쌍용동 헬스장 3개월 다녀본 기록'}).items.find(i=>i.id==='reviewWord')?.level === 'warn', '제목에 "후기" 없으면 warn')
 
 // ─────────────────────────────────────────────────────────────
+console.log('\n[20] 후기글 이벤트 정보')
+const EV = '3개월 등록 시 1개월 추가, 이번 달까지'
+const revTpl = buildTemplate('review', { mainKeyword: '쌍용동 헬스장', subKeywords: ['A', 'B'], eventText: EV })
+ok(revTpl.includes(EV), '후기글 골격에 이벤트 정보 반영')
+ok(/혜택 소제목/.test(revTpl), '혜택 구간 유지')
+ok(revTpl.includes('제가 등록할 때'), '방문객 시점으로 쓰라는 지시 포함')
+ok(stripGuides(revTpl).indexOf(EV) === -1, '이벤트 안내는 복사 본문에 남지 않음')
+
+const revNoEv = buildTemplate('review', { mainKeyword: '쌍용동 헬스장', subKeywords: ['A', 'B'] })
+ok(revNoEv.includes('이벤트 정보'), '안 넣으면 어디에 적으라고 안내')
+
+// 홍보글 동작은 그대로
+ok(
+  buildTemplate('promo', { mainKeyword: 'k', subKeywords: ['A', 'B'], eventText: EV }).includes(EV),
+  '홍보글 이벤트 반영 유지'
+)
+// 정보글에는 이벤트가 끼어들지 않는다 (홍보로 넘어가면 목적이 깨진다)
+ok(
+  !buildTemplate('info', { mainKeyword: 'k', subKeywords: ['A'], eventText: EV }).includes(EV),
+  '정보글 골격에는 이벤트를 넣지 않음'
+)
+
+// 발행 전 체크리스트 — 지난 이벤트가 살아 있는 글에 남으면 안 된다
+const evPkg = buildCopyPackage({
+  ...rev, id: 'x', status: 'draft', storeId: 's', body: '쌍용동 헬스장 다녀왔습니다.',
+  tags: rev.tags, eventText: EV, createdAt: '', updatedAt: '',
+})
+// 협찬 표기는 법적 의무라 맨 위를 유지하고, 이벤트 확인이 그 바로 다음에 온다
+ok(evPkg.checklist[0].label.includes('대가성'), '협찬 표기가 여전히 맨 위', evPkg.checklist[0].label)
+ok(evPkg.checklist[1].label.includes('이벤트 조건'), '이벤트 확인이 그 다음', evPkg.checklist[1].label)
+ok(evPkg.checklist[1].detail.includes('1개월 추가'), '입력한 조건을 그대로 보여줌')
+const evOwn = buildCopyPackage({
+  ...rev, id: 'x', status: 'draft', storeId: 's', sponsorship: 'own',
+  tags: rev.tags, eventText: EV, createdAt: '', updatedAt: '',
+})
+ok(evOwn.checklist[0].label.includes('이벤트 조건'), '협찬이 아니면 이벤트 확인이 맨 위')
+ok(
+  !buildCopyPackage({ ...rev, id: 'x', status: 'draft', storeId: 's', tags: rev.tags, createdAt: '', updatedAt: '' })
+    .checklist.some((c) => c.label.includes('이벤트 조건')),
+  '이벤트가 없으면 항목을 넣지 않음'
+)
+
+// ─────────────────────────────────────────────────────────────
 console.log('\n[9] 등간격 패턴 탐지')
 const seg = 'ㄱ'.repeat(120)
 const even = Array.from({length:6},()=>`쌍용동 헬스장${seg}`).join('')
