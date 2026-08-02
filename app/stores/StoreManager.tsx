@@ -77,6 +77,8 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
       location: editing.location.trim() || [p.commonAddress, p.roadAddress].filter(Boolean).join(' '),
       phone: editing.phone.trim() || p.phone || '',
       reserveUrl: editing.reserveUrl?.trim() || p.bookingUrl || undefined,
+      // 플레이스 노출 순위에서 내 지점을 정확히 찾기 위해 id 를 남긴다
+      placeId: p.id,
       localKeywords: merged,
     })
     setPlaces(null)

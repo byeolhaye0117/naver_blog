@@ -18,7 +18,7 @@ const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffix
 const { parseSectionTotal, monthlyFromWeek, resolveRecent, SECTION_CAP } = require(
   `${OUT}/naver/blogsection.js`
 )
-const { parsePlaceRecords, areasFromPlace } = require(`${OUT}/naver/place.js`)
+const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/naver/place.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
@@ -489,6 +489,46 @@ const placeAreas1 = areasFromPlace(pr[0])
 ok(placeAreas1.includes('쌍용동'), `플레이스 주소에서 동네 — ${placeAreas1.join(',')}`)
 ok(!placeAreas1.some((a) => a.includes('시') || a.includes('구')), '시·구는 동네로 안 셈', placeAreas1.join(','))
 ok(areasFromPlace(pr[1]).includes('두정동'), '두정동 추출')
+
+// 플레이스 노출 목록에서 내 지점 찾기 — 등록 이름에 키워드가 덧붙어 있어 단순 비교로는 안 된다
+console.log('\n[26] 플레이스 목록에서 내 지점 찾기')
+const LIST = [
+  { id: '1', name: '미녀와야수짐 봉명점 헬스&PT' },
+  { id: '2', name: '청년헬스 천안1호점' },
+  { id: '3', name: '천안 쌍용동 헬스&PT 24시 짐그로우' },
+  { id: '11716617', name: '쌍용동헬스장 MTO피트니스 쌍용점 PT' },
+]
+const MY = [
+  { name: '쌍용점', legalName: 'MTO 피트니스 쌍용점' },
+  { name: '용곡점', legalName: '여성전용 착한헬스 용곡점' },
+]
+const f1 = findMyPlaceIndex(LIST, MY)
+ok(f1.index === 3, `이름으로 4번째에서 찾음 — ${f1.index + 1}번째`)
+ok(f1.storeName === '쌍용점', `어느 지점인지 알려줌 — ${f1.storeName}`)
+
+// placeId 가 있으면 이름이 달라도 정확히 맞춘다 (성정점처럼 등록 이름이 다른 경우)
+const f2 = findMyPlaceIndex(
+  [{ id: '1860572727', name: '성정동 착한 헬스장' }],
+  [{ name: '성정점', legalName: '여성전용 착한헬스 성정점', placeId: '1860572727' }]
+)
+ok(f2.index === 0 && f2.storeName === '성정점', 'placeId 로 정확히 맞춤')
+ok(
+  findMyPlaceIndex([{ id: 'x', name: '성정동 착한 헬스장' }], [{ name: '성정점', legalName: '여성전용 착한헬스 성정점' }]).index === -1,
+  'placeId 없고 이름이 다르면 못 찾는다고 말한다'
+)
+
+// 어절이 &·공백으로 갈라져 있어도 맞춘다
+ok(
+  findMyPlaceIndex([{ id: 'y', name: '여성전용착한헬스&PT 용곡점' }], MY).index === 0,
+  '"여성전용착한헬스&PT 용곡점" 도 맞춤'
+)
+// 한 어절만 겹치는 다른 업체를 내 지점으로 착각하면 안 된다
+ok(
+  findMyPlaceIndex([{ id: 'z', name: '다른브랜드 용곡점' }], MY).index === -1,
+  '어절 하나만 겹치면 내 지점이 아니다'
+)
+ok(findMyPlaceIndex([], MY).index === -1, '빈 목록은 -1')
+ok(findMyPlaceIndex(LIST, []).index === -1, '지점이 없으면 -1')
 
 console.log('\n[24] 지점 정보에서 동네 뽑기')
 // 스마트플레이스는 로그인이 필요하고 지도 검색은 서버 IP 에 캡차가 걸려 자동 수집이 안 된다.

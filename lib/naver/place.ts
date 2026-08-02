@@ -154,6 +154,38 @@ export async function lookupPlaces(query: string): Promise<PlaceInfo[]> {
 }
 
 /**
+ * 이 목록에서 내 지점을 찾는다.
+ *
+ * 지점 화면에서 플레이스를 가져왔으면 placeId 로 정확히 맞춘다. 그게 없으면 이름으로
+ * 느슨하게 맞추는데, 등록된 플레이스 이름에는 키워드가 덧붙어 있어서
+ * ("여성전용착한헬스&PT 용곡점") 단순 포함 비교로는 안 걸린다. 그래서 정식 상호명을
+ * 어절로 쪼개 **전부 들어 있는지**로 판단한다.
+ */
+export function findMyPlaceIndex(
+  places: { id: string; name: string }[],
+  stores: { placeId?: string; legalName?: string; name?: string }[]
+): { index: number; storeName?: string } {
+  const flat = (s: string) => s.replace(/[\s&·]/g, '').toLowerCase()
+
+  for (let i = 0; i < places.length; i++) {
+    const byId = stores.find((s) => s.placeId && s.placeId === places[i].id)
+    if (byId) return { index: i, storeName: byId.name ?? byId.legalName }
+  }
+
+  for (let i = 0; i < places.length; i++) {
+    const target = flat(places[i].name)
+    const hit = stores.find((s) => {
+      const tokens = (s.legalName ?? '').trim().split(/\s+/).filter(Boolean)
+      // 어절이 하나뿐이면 우연히 겹칠 위험이 커서 쓰지 않는다
+      return tokens.length >= 2 && tokens.every((t) => target.includes(flat(t)))
+    })
+    if (hit) return { index: i, storeName: hit.name ?? hit.legalName }
+  }
+
+  return { index: -1 }
+}
+
+/**
  * 플레이스 주소에서 동네 이름을 뽑는다.
  * commonAddress("충남 천안시 서북구 쌍용동")와 지번 주소("쌍용동 1149") 둘 다 본다.
  */

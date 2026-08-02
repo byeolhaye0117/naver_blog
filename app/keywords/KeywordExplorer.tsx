@@ -15,7 +15,7 @@ import {
   suffixesForStore,
 } from '@/lib/analysis/keyword'
 import { parseTotalCount } from '@/lib/analysis/paste'
-import { areasFromPlace } from '@/lib/naver/place'
+import { findMyPlaceIndex, type PlaceInfo } from '@/lib/naver/place'
 import { naverBlogSectionUrl } from '@/lib/analysis/rank'
 import type { TrendSeries } from '@/lib/naver/datalab'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
@@ -59,8 +59,10 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const [totalInput, setTotalInput] = useState<Record<string, string>>({})
   /** 표시 순서 (키워드 목록) — 입력 중에 줄이 튀지 않게 고정해 둔다 */
   const [order, setOrder] = useState<string[]>([])
-  /** 플레이스 조회 진행·결과 안내 */
-  const [placeMsg, setPlaceMsg] = useState<string | null>(null)
+  /** 플레이스 노출 확인 (키워드별) */
+  const [placeKeyword, setPlaceKeyword] = useState<string | null>(null)
+  const [places, setPlaces] = useState<PlaceInfo[] | null>(null)
+  const [placeLoading, setPlaceLoading] = useState(false)
 
   const [trendKeyword, setTrendKeyword] = useState<string | null>(null)
   const [trend, setTrend] = useState<TrendSeries | null>(null)
@@ -122,62 +124,43 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
    * 지점 정보에서 동네를 뽑아 조합까지 만들어 준다.
    * 인자가 없으면 전 지점을 합친다. 지점 성격(24시·여성전용)에 맞는 의도를 곱한다.
    */
-  async function fillFromStore(store?: Store) {
+  function fillFromStore(store?: Store) {
     const list = store ? [store] : stores
     if (!list.length) return
-    const local = Array.from(new Set(list.flatMap(areasFromStore)))
-    // 여러 지점을 합칠 때는 어느 한 지점 성격에만 맞추면 안 되니 공통 의도를 쓴다
-    const suffixes = store ? suffixesForStore(store) : INTENT_SUFFIXES
-
-    // 1) 적어둔 정보로 즉시 채운다 — 조회가 느리거나 실패해도 버튼이 먹통이 되지 않게
-    if (local.length) {
-      setError(null)
-      setAreas(local.join(', '))
-      setCombos(combineLocalKeywords(local, suffixes))
-      setPicked([])
-    }
-
-    // 2) 네이버 플레이스에서 실제 등록 주소를 확인해 빠진 동네를 더한다
-    setPlaceMsg('네이버 플레이스에서 등록 주소 확인 중…')
-    const found = new Set(local)
-    for (const s of list) {
-      const areas = await placeAreas(s.legalName || s.name)
-      areas.forEach((a) => found.add(a))
-    }
-    const allAreas = Array.from(found)
-
-    if (!allAreas.length) {
-      setPlaceMsg(null)
-      setError('지점 주소와 플레이스 모두에서 동네를 찾지 못했습니다. 지역명을 직접 넣어주세요.')
+    const found = Array.from(new Set(list.flatMap(areasFromStore)))
+    if (!found.length) {
+      setError('지점 주소에서 동네를 찾지 못했습니다. 지역명을 직접 넣어주세요.')
       return
     }
     setError(null)
-    setAreas(allAreas.join(', '))
-    setCombos(combineLocalKeywords(allAreas, suffixes))
+    setAreas(found.join(', '))
+    // 여러 지점을 합칠 때는 어느 한 지점 성격에만 맞추면 안 되니 공통 의도를 쓴다
+    setCombos(combineLocalKeywords(found, store ? suffixesForStore(store) : INTENT_SUFFIXES))
     setPicked([])
-    const added = allAreas.length - local.length
-    setPlaceMsg(
-      added > 0
-        ? `플레이스 등록 주소에서 ${added}개 동네를 더 찾아 넣었습니다.`
-        : '플레이스 등록 주소도 같은 동네였습니다.'
-    )
   }
 
-  /** 상호명으로 플레이스를 찾아 동네만 돌려준다. 실패하면 빈 배열 */
-  async function placeAreas(name: string): Promise<string[]> {
-    if (!name.trim()) return []
+  /**
+   * 그 키워드로 네이버 플레이스에 노출되는 업체와 내 지점 순위.
+   *
+   * 블로그 순위와 완전히 다른 자리다 — 지역 키워드에서는 플레이스 블록이 블로그보다
+   * 위에 붙는 경우가 많아서, 블로그만 보면 실제 유입 경쟁을 절반만 보는 셈이다.
+   */
+  async function loadPlaces(keyword: string) {
+    setPlaceKeyword(keyword)
+    setPlaceLoading(true)
+    setPlaces(null)
     try {
       const res = await fetch('/api/place', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: name }),
+        body: JSON.stringify({ query: keyword }),
       })
       const json = await res.json()
-      const places: { commonAddress: string; address: string }[] = json.places ?? []
-      // 여러 후보가 나오면 첫 번째(가장 관련도 높은 것)만 쓴다
-      return places.length ? areasFromPlace(places[0]) : []
+      setPlaces(json.places ?? [])
     } catch {
-      return []
+      setPlaces([])
+    } finally {
+      setPlaceLoading(false)
     }
   }
 
@@ -257,6 +240,12 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   }
 
   const dirty = Object.values(totalInput).some((v) => v.trim())
+
+  /** 플레이스 목록에서 내 지점이 몇 번째인지 — 목록을 그릴 때마다 다시 찾지 않게 한 번만 */
+  const myPlace = useMemo(
+    () => (places?.length ? findMyPlaceIndex(places, stores) : { index: -1, storeName: undefined }),
+    [places, stores]
+  )
 
   const maxVolume = useMemo(() => Math.max(1, ...(rows?.map((r) => r.monthlySearch) ?? [1])), [rows])
   const isMock = Boolean(rows?.some((r) => r.mock))
@@ -374,9 +363,8 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           <div className="bd mb-3 rounded-lg border border-dashed p-3">
             <p className="text-[12px] font-semibold">내 지점에서 자동으로 채우기</p>
             <p className="muted mt-1 text-[11px] leading-relaxed">
-              지점 버튼을 누르면 <b>네이버 플레이스에 등록된 주소</b>와 지점 정보에서 동네를 뽑고,
-              지점 성격에 맞는 의도까지 곱해 후보를 만듭니다 (24시간 운영이면 새벽·주말, 여성전용이면
-              여성전용 계열).
+              지점 버튼을 누르면 그 지점 <b>주소·지역 키워드에서 동네를 뽑고</b>, 지점 성격에 맞는
+              의도까지 곱해 후보를 만듭니다 (24시간 운영이면 새벽·주말, 여성전용이면 여성전용 계열).
             </p>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               {stores.map((s) => (
@@ -400,7 +388,6 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 </button>
               )}
             </div>
-            {placeMsg && <p className="muted mt-2 text-[11px] leading-relaxed">{placeMsg}</p>}
           </div>
         ) : (
           <p className="muted mb-3 text-[11px] leading-relaxed">
@@ -712,6 +699,13 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                         </Link>
                         <button
                           type="button"
+                          onClick={() => loadPlaces(r.keyword)}
+                          className="text-brand-600 dark:text-brand-100 text-left text-[11px] font-semibold hover:underline"
+                        >
+                          플레이스 노출 →
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => loadTrend(r.keyword)}
                           className="muted text-left text-[11px] font-semibold hover:underline"
                         >
@@ -724,6 +718,98 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
               </tbody>
             </table>
           </div>
+        </Card>
+      )}
+
+      {placeKeyword && (
+        <Card
+          title={`"${placeKeyword}" 플레이스 노출`}
+          subtitle="지역 키워드는 블로그보다 플레이스 블록이 위에 붙는 경우가 많습니다. 블로그 순위만 보면 경쟁을 절반만 보는 셈입니다."
+        >
+          {placeLoading ? (
+            <Empty>불러오는 중…</Empty>
+          ) : !places?.length ? (
+            <Empty>
+              이 키워드로는 플레이스 업체가 잡히지 않았습니다. 네이버가 응답 구조를 바꿨거나, 그
+              키워드에 플레이스 블록이 안 붙는 경우입니다.
+            </Empty>
+          ) : (
+            <>
+              {(() => {
+                const { index, storeName } = myPlace
+                return (
+                  <p
+                    className={`mb-3 rounded-lg border px-3 py-2 text-[12px] leading-relaxed ${
+                      index === 0
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
+                        : index > 0
+                          ? 'border-sky-500/30 bg-sky-500/10 text-sky-900 dark:text-sky-200'
+                          : 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200'
+                    }`}
+                  >
+                    {index >= 0 ? (
+                      <>
+                        <strong>
+                          내 지점({storeName}) {index + 1}번째
+                        </strong>{' '}
+                        — 이 키워드로 플레이스에 노출되고 있습니다.
+                        {index > 0 && ' 위에 있는 업체들이 무엇으로 앞서는지 보세요.'}
+                      </>
+                    ) : (
+                      <>
+                        <strong>내 지점이 이 목록에 없습니다.</strong> 플레이스에서는 이 키워드로 안
+                        잡히는 상태입니다 — 블로그로 파고들 여지가 그만큼 큽니다. 지점 화면에서 플레이스를
+                        한 번 가져와 두면 다음부터 정확히 짚어냅니다.
+                      </>
+                    )}
+                  </p>
+                )
+              })()}
+
+              <ul className="space-y-2">
+                {places.map((p, i) => {
+                  const mine = myPlace.index === i
+                  return (
+                    <li
+                      key={p.id}
+                      className={`bd flex gap-3 rounded-lg border p-2.5 ${
+                        mine ? 'border-brand-500/50 bg-brand-500/8' : ''
+                      }`}
+                    >
+                      <span className="tnum muted mt-0.5 w-5 shrink-0 text-right text-[13px] font-bold">
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <a
+                          href={p.placeUrl}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="text-[13px] leading-snug font-semibold hover:underline"
+                        >
+                          {p.name}
+                        </a>
+                        {mine && (
+                          <span className="ml-1.5">
+                            <Badge tone="good">내 지점</Badge>
+                          </span>
+                        )}
+                        <div className="muted mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
+                          {p.category && <span>{p.category}</span>}
+                          <span>{p.commonAddress.split(' ').slice(-1)[0]}</span>
+                          {p.phone && <span className="tnum">{p.phone}</span>}
+                          {p.bookingUrl && <Badge tone="info">예약 연결</Badge>}
+                        </div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="muted mt-3 text-[11px] leading-relaxed">
+                네이버 통합검색에 노출되는 순서를 그대로 읽은 것입니다. 검색 위치·기기에 따라 달라질 수
+                있으니 절대 순위가 아니라 경쟁 구도를 보는 데 쓰세요.
+              </p>
+            </>
+          )}
         </Card>
       )}
 

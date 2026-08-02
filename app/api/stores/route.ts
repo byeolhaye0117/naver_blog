@@ -24,6 +24,7 @@ export const POST = guard('지점 저장에 실패했습니다.', async (req: Re
     phone: input.phone ?? '',
     reserveUrl: input.reserveUrl,
     blogUrl: input.blogUrl,
+    placeId: input.placeId,
     memo: input.memo,
   }
   await mutate((db) => {
