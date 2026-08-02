@@ -14,7 +14,7 @@ const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText } = require(
   `${OUT}/analysis/paste.js`
 )
-const { parseManualRows, buildManualMetrics, buildMetric } = require(`${OUT}/analysis/keyword.js`)
+const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffixesForStore, combineLocalKeywords } = require(`${OUT}/analysis/keyword.js`)
 const { parseSectionTotal, monthlyFromWeek, resolveRecent, SECTION_CAP } = require(
   `${OUT}/naver/blogsection.js`
 )
@@ -460,6 +460,44 @@ ok(
   buildMetric({ ...apiRow, blogRecent: 3000 }).grade === 'hard',
   '발행량을 크게 넣으면 과열로 바뀜'
 )
+
+console.log('\n[24] 지점 정보에서 동네 뽑기')
+// 스마트플레이스는 로그인이 필요하고 지도 검색은 서버 IP 에 캡차가 걸려 자동 수집이 안 된다.
+// 대신 이미 적어둔 주소·지역 키워드에서 뽑는다 — 네트워크를 안 타니 항상 성공한다.
+const S1 = {
+  location: '쌍용동 먹자골목 인근 도보 5분, 신협 바로 뒷건물 4층 (맛나감자탕 앞건물 4층)',
+  localKeywords: ['쌍용동 헬스장', '쌍용동PT', '봉명동 헬스장', '봉명동 PT', '쌍용동 24시헬스장'],
+  open24: true, womenOnly: false,
+}
+const a1 = areasFromStore(S1)
+ok(a1.includes('쌍용동') && a1.includes('봉명동'), `주소·키워드에서 동네 추출 — ${a1.join(',')}`)
+ok(!a1.some((a) => a.includes('골목') || a.includes('건물')), '주소의 다른 말은 안 걸림', a1.join(','))
+ok(a1.length === new Set(a1).size, '중복 없음')
+
+// "두정동성당" 처럼 동으로 끝나지 않는 말을 동네로 착각하면 안 된다
+const S2 = {
+  location: '천주교 두정동성당 바로 아래 도보 1분 / 두정로지오3차 도보 2~3분 / 두정역 1번 출구',
+  localKeywords: ['두정동 헬스장', '천안 두정동 헬스장'],
+  open24: true, womenOnly: true,
+}
+const a2 = areasFromStore(S2)
+ok(a2.includes('두정동'), `지역 키워드에서 두정동 — ${a2.join(',')}`)
+ok(!a2.includes('두정동성당'), '"두정동성당"을 동네로 보지 않음')
+ok(!a2.some((a) => a.includes('역')), '"두정역"도 동네로 보지 않음', a2.join(','))
+ok(areasFromStore({}).length === 0, '정보가 없으면 빈 배열')
+
+// 지점 성격에 맞는 의도가 앞에 온다
+const sf2 = suffixesForStore(S2)
+ok(sf2[0].includes('여성전용'), `여성전용 지점은 여성전용이 먼저 — ${sf2[0]}`)
+ok(sf2.some((x) => x.includes('24시')), '24시간 운영이면 24시 포함')
+ok(!sf2.includes('헬스 초보'), '여성전용에는 초보 접미사를 안 넣음')
+const sf1 = suffixesForStore(S1)
+ok(!sf1.some((x) => x.includes('여성전용')), '남녀공용 지점에는 여성전용을 안 넣음')
+ok(sf1.length <= 12, `접미사 12개 이하 — ${sf1.length}개`)
+
+const combos = combineLocalKeywords(a1, sf1)
+ok(combos.length === a1.length * sf1.length, `조합 ${combos.length}개 = ${a1.length}동네 × ${sf1.length}의도`)
+ok(combos.includes('쌍용동 24시 헬스장'), '지점 강점이 조합에 반영')
 
 console.log('\n[23] 발행량 자동 조회 — 1,000 캡 처리')
 // 이 엔드포인트의 totalCount 는 1,000 에서 잘린다. 잘린 값을 실제 값처럼 쓰면
