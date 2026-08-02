@@ -21,6 +21,7 @@ const TARGETS = [
   'lib/id.ts',
   'lib/naver/client.ts',
   'lib/naver/search.ts',
+  'lib/naver/blogsection.ts',
   'lib/analysis/keyword.ts',
   'lib/analysis/serp.ts',
   'lib/analysis/paste.ts',

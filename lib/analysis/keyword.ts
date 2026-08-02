@@ -5,35 +5,38 @@ import type { KeywordGrade, KeywordMetric } from '@/lib/types'
  *
  * 기준 근거 (naver-seo.md §4): 월 검색량 500~5,000 구간이 진입 적정.
  *
- * 경쟁률 = 네이버 블로그 누적 발행량 ÷ 월간 검색량.
- *   검색 API 의 total 은 "이 키워드가 들어간 글의 누적 개수"이므로 월 검색량보다 훨씬 크다.
- *   따라서 임계값도 그 스케일에 맞춰 잡아야 한다 (10 이하가 아니라 25 이하가 '좋음'):
- *     ~25   비어 있는 시장
- *     25~60 품질로 이길 수 있는 구간
- *     60~   이미 포화 — 세부 의도로 좁혀야 한다
+ * 경쟁률 = 최근 30일 블로그 발행량 ÷ 월간 검색량.
+ *   두 값의 기간 단위가 같아서 "검색 1회당 새 글 몇 개" 로 그대로 읽힌다.
+ *   누적 발행량을 쓰던 옛 지표(임계 25/60)와는 스케일이 완전히 다르다.
+ *
+ *   실측 분포로 잡은 임계값 (천안·아산권 헬스장 키워드 16개, 2026-08 기준):
+ *     0.12 0.16 0.20 0.22 0.23 0.27 0.31 0.33 | 0.45 0.74 0.86 0.95 | 1.14 1.31 1.66 2.93
+ *     ~0.35    비어 있는 시장 (검색 3회당 새 글 1개 미만)
+ *     0.35~1.0 품질로 이길 수 있는 구간
+ *     1.0~     포화 — 검색보다 새 글이 더 많이 쏟아진다. 세부 의도로 좁혀야 한다
  */
-export const COMPETITION_GOOD = 25
-export const COMPETITION_HARD = 60
+export const COMPETITION_GOOD = 0.35
+export const COMPETITION_HARD = 1.0
 
 /** 경쟁률을 계산할 수 없을 때 쓰는 값 — 화면에서 '—' 로 표시된다 */
 export const COMPETITION_UNKNOWN = 999
 
 export function gradeKeyword(
   monthlySearch: number,
-  blogTotal: number | null
+  blogRecent: number | null
 ): { grade: KeywordGrade; reason: string; competition: number } {
   // 못 읽은 값을 0 으로 대신 쓰면 경쟁률이 0 이 되어 "황금 키워드" 로 잘못 판정된다.
   // 모르는 것은 모른다고 말하고, 어디서 채워 넣으면 되는지 알려준다.
   const searchKnown = monthlySearch > 0
-  const totalKnown = typeof blogTotal === 'number' && blogTotal > 0
+  const totalKnown = typeof blogRecent === 'number' && blogRecent > 0
   const competition =
     searchKnown && totalKnown
-      ? Math.round((blogTotal / monthlySearch) * 10) / 10
+      ? Math.round((blogRecent / monthlySearch) * 100) / 100
       : COMPETITION_UNKNOWN
 
   const unknown = (missing: string) => ({
     grade: 'unknown' as KeywordGrade,
-    reason: `${missing}을 읽지 못해 경쟁률을 계산할 수 없습니다. 네이버에서 본 숫자를 아래 "직접 입력으로 경쟁률 계산" 에 넣으면 같은 기준으로 등급이 나옵니다.`,
+    reason: `${missing}을 읽지 못해 경쟁률을 계산할 수 없습니다. 네이버에서 본 숫자를 직접 넣으면 같은 기준으로 등급이 나옵니다.`,
     competition,
   })
 
@@ -57,12 +60,15 @@ export function gradeKeyword(
   }
 
   // 여기서부터는 경쟁률이 있어야 판정할 수 있다
-  if (!totalKnown) return unknown('발행량')
+  if (!totalKnown) return unknown('30일 발행량')
+
+  // "검색 N회당 새 글 1개" 로 바꿔 말해준다 — 0.31 보다 훨씬 잘 읽힌다
+  const perPost = Math.round(1 / competition)
 
   if (monthlySearch >= 500 && monthlySearch <= 5000 && competition <= COMPETITION_GOOD) {
     return {
       grade: 'gold',
-      reason: `적정 검색량(500~5,000) + 경쟁률 ${competition} — 지금 바로 노려야 하는 구간입니다.`,
+      reason: `적정 검색량(${monthlySearch.toLocaleString()}회) + 최근 30일 새 글 ${blogRecent.toLocaleString()}개 — 검색 ${perPost}회당 새 글 1개꼴로 시장이 비어 있습니다. 지금 바로 노려야 하는 구간입니다.`,
       competition,
     }
   }
@@ -70,14 +76,14 @@ export function gradeKeyword(
   if (competition > COMPETITION_HARD) {
     return {
       grade: 'hard',
-      reason: `경쟁률 ${competition} — 검색 1회당 기존 글이 ${competition}개꼴로 이미 포화입니다. 세부 의도를 붙여 좁히거나(예: "+ 새벽", "+ 초보") 다른 키워드를 고르세요.`,
+      reason: `최근 30일에만 새 글 ${blogRecent.toLocaleString()}개 — 월 검색량 ${monthlySearch.toLocaleString()}회보다 새 글이 더 많이 쏟아지는 포화 상태입니다. 세부 의도를 붙여 좁히거나(예: "+ 새벽", "+ 초보") 다른 키워드를 고르세요.`,
       competition,
     }
   }
 
   return {
     grade: 'good',
-    reason: `검색량 ${monthlySearch.toLocaleString()}회 / 경쟁률 ${competition} — 글 품질이 받쳐주면 진입 가능합니다.`,
+    reason: `검색량 ${monthlySearch.toLocaleString()}회 / 최근 30일 새 글 ${blogRecent.toLocaleString()}개 (검색 ${perPost}회당 1개) — 글 품질이 받쳐주면 진입 가능합니다.`,
     competition,
   }
 }
@@ -87,18 +93,20 @@ export function buildMetric(input: {
   monthlySearch: number
   monthlyPc: number
   monthlyMobile: number
-  blogTotal: number | null
+  blogRecent: number | null
+  blogRecentNote?: 'estimated' | 'atLeast'
   compIdx?: string
   mock: boolean
   source?: 'api' | 'manual'
 }): KeywordMetric {
-  const { grade, reason, competition } = gradeKeyword(input.monthlySearch, input.blogTotal)
+  const { grade, reason, competition } = gradeKeyword(input.monthlySearch, input.blogRecent)
   return {
     keyword: input.keyword,
     monthlySearch: input.monthlySearch,
     monthlyPc: input.monthlyPc,
     monthlyMobile: input.monthlyMobile,
-    blogTotal: input.blogTotal,
+    blogRecent: input.blogRecent,
+    blogRecentNote: input.blogRecentNote,
     competition,
     compIdx: input.compIdx,
     grade,
@@ -145,7 +153,8 @@ export function combineLocalKeywords(areas: string[], suffixes: string[] = INTEN
 export interface ManualRow {
   keyword: string
   monthlySearch: number
-  blogTotal: number
+  /** 최근 30일 발행량 */
+  blogRecent: number
 }
 
 export interface ManualParseResult {
@@ -155,9 +164,9 @@ export interface ManualParseResult {
 }
 
 /**
- * "키워드, 월검색량, 발행량" 한 줄씩 받아 읽는다.
+ * "키워드, 월검색량, 30일 발행량" 한 줄씩 받아 읽는다.
  *
- * 검색광고 API·검색 API 없이도 경쟁률 등급을 낼 수 있게 하는 입력 경로다.
+ * 자동 조회가 막혔을 때도 경쟁률 등급을 낼 수 있게 하는 입력 경로다.
  * 숫자에 천단위 콤마가 들어와도(1,200) 구분자 콤마와 헷갈리지 않게, 숫자 뒤에
  * 콤마+공백 또는 탭·파이프가 와야 구분자로 본다. "회"·"건" 같은 단위는 무시한다.
  */
@@ -178,12 +187,12 @@ export function parseManualRows(raw: string): ManualParseResult {
     }
     const keyword = m[1].trim().replace(/[,|\t]+$/, '').trim()
     const monthlySearch = Number(m[2].replace(/,/g, ''))
-    const blogTotal = Number(m[3].replace(/,/g, ''))
-    if (!keyword || !Number.isFinite(monthlySearch) || !Number.isFinite(blogTotal)) {
+    const blogRecent = Number(m[3].replace(/,/g, ''))
+    if (!keyword || !Number.isFinite(monthlySearch) || !Number.isFinite(blogRecent)) {
       bad.push(t)
       continue
     }
-    rows.push({ keyword, monthlySearch, blogTotal })
+    rows.push({ keyword, monthlySearch, blogRecent })
   }
 
   // 같은 키워드를 두 번 적으면 나중 값을 쓴다
@@ -201,7 +210,7 @@ export function buildManualMetrics(rows: ManualRow[]): KeywordMetric[] {
       // PC/모바일 분리는 직접 입력에서 받지 않는다. 모바일 비중은 표시하지 않는다.
       monthlyPc: 0,
       monthlyMobile: 0,
-      blogTotal: r.blogTotal,
+      blogRecent: r.blogRecent,
       mock: false,
       source: 'manual',
     })

@@ -13,7 +13,7 @@ import {
   parseManualRows,
 } from '@/lib/analysis/keyword'
 import { parseTotalCount } from '@/lib/analysis/paste'
-import { naverBlogTabUrl } from '@/lib/analysis/rank'
+import { naverBlogSectionUrl } from '@/lib/analysis/rank'
 import type { TrendSeries } from '@/lib/naver/datalab'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
 import LineChart, { MiniBar } from '@/components/LineChart'
@@ -106,7 +106,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     const { rows: parsed, bad } = parseManualRows(manual)
     setBadLines(bad)
     if (!parsed.length) {
-      setError('"키워드, 월검색량, 발행량" 형식으로 한 줄씩 넣어주세요.')
+      setError('"키워드, 월검색량, 30일 발행량" 형식으로 한 줄씩 넣어주세요.')
       return
     }
     setError(null)
@@ -139,7 +139,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
 
   /** 조회 결과에 발행량이 빠진 행 — 입력칸을 계속 보여줘야 하므로 원본 기준으로 기억한다 */
   const needsTotal = useMemo(
-    () => new Set((rows ?? []).filter((r) => r.blogTotal === null).map((r) => r.keyword)),
+    () => new Set((rows ?? []).filter((r) => r.blogRecent === null).map((r) => r.keyword)),
     [rows]
   )
 
@@ -150,7 +150,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const merged = useMemo(() => {
     if (!rows) return null
     return rows.map((r) => {
-      if (r.blogTotal !== null) return r
+      if (r.blogRecent !== null) return r
       const raw = totalInput[r.keyword]?.trim()
       if (!raw) return r
       const n = parseTotalCount(raw) ?? Number(raw.replace(/[^\d]/g, ''))
@@ -160,7 +160,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
         monthlySearch: r.monthlySearch,
         monthlyPc: r.monthlyPc,
         monthlyMobile: r.monthlyMobile,
-        blogTotal: n,
+        blogRecent: n,
         compIdx: r.compIdx,
         mock: r.mock,
         source: r.source,
@@ -261,9 +261,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           {keywords.length > 0 && <span className="muted text-xs">{keywords.length}개 입력됨</span>}
         </div>
         <p className="muted mt-2 text-[11px] leading-relaxed">
-          이 조회는 네이버 <b>검색광고 API</b>(월 검색량)와 <b>검색 API</b>(발행량)를 씁니다. 키가
-          없거나 권한이 없으면 샘플 숫자가 나오니, 그때는 아래 <b>직접 입력</b>을 쓰세요 — 등급 기준은
-          똑같습니다.
+          월 검색량은 네이버 <b>검색광고 API</b>, 최근 30일 발행량은 <b>블로그 섹션 검색</b>에서
+          자동으로 가져옵니다. 발행량 쪽은 공식 API 가 아니라 네이버 화면이 쓰는 경로라, 막히거나
+          응답이 바뀌면 <b>판정 불가</b>로 표시되고 그 줄만 직접 넣으면 됩니다.
         </p>
 
         {error && (
@@ -275,7 +275,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
 
       <Card
         title="직접 입력으로 경쟁률 계산"
-        subtitle="검색량·발행량을 둘 다 손에 들고 있을 때 쓰는 경로입니다. 위에서 조회가 됐다면 표의 발행량 칸에 「○○건」만 넣는 쪽이 빠릅니다 — 검색량을 다시 적지 않아도 되니까요."
+        subtitle="자동 조회가 막혔을 때 쓰는 경로입니다. 위 조회가 됐다면 표에서 부족한 칸만 채우는 쪽이 빠릅니다 — 검색량을 다시 적지 않아도 되니까요."
       >
         <div className="bd rounded-lg border border-dashed p-3">
           <p className="text-[12px] font-semibold">숫자 두 개를 어디서 보나요</p>
@@ -293,15 +293,16 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
               로그인 → 도구 → 키워드 도구 → 키워드 입력 → PC·모바일 검색량을 더한 값
             </li>
             <li>
-              2. <b>발행량</b> — 블로그 탭 검색 결과 위쪽의 <b>○○건</b> 숫자 (아래 링크로 바로 열
-              수 있습니다)
+              2. <b>최근 30일 발행량</b> — 아래 링크로 <b>블로그 섹션 검색</b>을 열고 기간을{' '}
+              <b>1개월</b>로 맞추면 총 건수가 나옵니다. (통합검색 블로그 탭에는 총 건수가 이제
+              표시되지 않습니다)
             </li>
           </ol>
         </div>
 
         <div className="mt-3">
           <Field
-            label="키워드, 월검색량, 발행량 (한 줄에 하나)"
+            label="키워드, 월검색량, 30일 발행량 (한 줄에 하나)"
             hint="콤마·탭·| 로 구분합니다. 1,200 처럼 천단위 콤마를 써도 되고 '회'·'건' 을 붙여도 됩니다."
           >
             <textarea
@@ -309,7 +310,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
               onChange={(e) => setManual(e.target.value)}
               rows={4}
               className={`${inputClass} font-mono text-[12px]`}
-              placeholder={'쌍용동 헬스장, 1,200, 45,000\n성정동 여성전용 헬스장, 320, 3,100'}
+              placeholder={'쌍용동 헬스장, 1,430, 437\n성정동 여성전용 헬스장, 320, 96'}
             />
           </Field>
         </div>
@@ -317,13 +318,13 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
         {manualKeywords.length > 0 && (
           <div className="mt-2.5">
             <p className="muted mb-1.5 text-[11px] font-semibold">
-              발행량 보러 가기 (블로그 탭 열기)
+              30일 발행량 보러 가기 (기간을 1개월로 맞추세요)
             </p>
             <div className="flex flex-wrap gap-1.5">
               {manualKeywords.map((k) => (
                 <a
                   key={k}
-                  href={naverBlogTabUrl(k)}
+                  href={naverBlogSectionUrl(k)}
                   target="_blank"
                   rel="noreferrer noopener"
                   className="bd rounded-full border px-2.5 py-1 text-[11px] font-semibold hover:bg-slate-500/8"
@@ -436,7 +437,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
       {sorted && (
         <Card
           title={`조회 결과 ${sorted.length}개`}
-          subtitle="경쟁률 = 블로그 누적 발행량 ÷ 월간 검색량. 찾는 사람 대비 이미 쓰인 글이 몇 배인지를 뜻합니다."
+          subtitle="경쟁률 = 최근 30일 발행량 ÷ 월간 검색량. 0.3이면 검색 3회당 새 글 1개꼴로 시장이 비어 있다는 뜻입니다. 1을 넘으면 검색보다 새 글이 더 많이 쏟아지는 포화 상태입니다."
           right={
             <div className="flex flex-wrap items-center gap-1.5">
               {dirty && (
@@ -466,11 +467,11 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           {isMock && <MockNotice what="검색광고·검색" />}
           {unknownCount > 0 && (
             <p className="mb-3 rounded-lg border border-slate-500/30 bg-slate-500/10 px-3 py-2 text-[12px] leading-relaxed">
-              {unknownCount}개가 <strong>판정 불가</strong>입니다 — 발행량을 읽지 못했습니다(검색 API
-              권한). 없는 값을 0으로 넣고 계산하면 경쟁률이 0이 되어 실제로는 과열된 키워드가
+              {unknownCount}개가 <strong>판정 불가</strong>입니다 — 그 줄만 발행량 자동 조회가
+              실패했습니다. 없는 값을 0으로 넣고 계산하면 경쟁률이 0이 되어 실제로는 과열된 키워드가
               &quot;황금 키워드&quot;로 보이기 때문에 판정을 내리지 않았습니다.{' '}
-              <strong>발행량 칸의 「건수 보기」로 네이버를 열고 「○○건」을 그대로 넣으면</strong> 그
-              줄의 등급이 바로 나옵니다 — 검색량은 이미 실측값이라 다시 적지 않아도 됩니다.
+              <strong>「건수 보기」로 네이버를 열어 최근 30일 글 수를 넣으면</strong> 그 줄의 등급이
+              바로 나옵니다 — 검색량은 이미 실측값이라 다시 적지 않아도 됩니다.
             </p>
           )}
           {isManual && (
@@ -486,7 +487,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 <tr className="muted bd border-b text-left">
                   <th className="py-2 pr-3 font-semibold">키워드</th>
                   <th className="py-2 pr-3 font-semibold">월 검색량</th>
-                  <th className="py-2 pr-3 font-semibold">발행량</th>
+                  <th className="py-2 pr-3 font-semibold">30일 발행량</th>
                   <th className="py-2 pr-3 font-semibold">경쟁률</th>
                   <th className="py-2 pr-3 font-semibold">등급</th>
                   <th className="py-2 font-semibold">할 일</th>
@@ -515,21 +516,32 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                             onChange={(e) =>
                               setTotalInput((prev) => ({ ...prev, [r.keyword]: e.target.value }))
                             }
-                            placeholder="2,345건"
-                            aria-label={`${r.keyword} 발행량`}
+                            placeholder="437"
+                            aria-label={`${r.keyword} 30일 발행량`}
                             className="panel w-24 rounded-lg border px-2 py-1.5 text-[12px] outline-none focus:border-brand-500"
                           />
                           <a
-                            href={naverBlogTabUrl(r.keyword)}
+                            href={naverBlogSectionUrl(r.keyword)}
                             target="_blank"
                             rel="noreferrer noopener"
                             className="text-brand-600 dark:text-brand-100 text-[11px] font-semibold hover:underline"
                           >
-                            건수 보기 →
+                            30일 건수 →
                           </a>
                         </div>
                       ) : (
-                        <div className="tnum">{NUM(r.blogTotal)}</div>
+                        <>
+                          <div className="tnum">
+                            {r.blogRecentNote === 'estimated' ? '~' : ''}
+                            {NUM(r.blogRecent)}
+                            {r.blogRecentNote === 'atLeast' ? '+' : ''}
+                          </div>
+                          {r.blogRecentNote && (
+                            <div className="muted text-[11px]">
+                              {r.blogRecentNote === 'estimated' ? '7일 실측 환산' : '1,000건 초과'}
+                            </div>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className="tnum py-2.5 pr-3 whitespace-nowrap font-semibold">
