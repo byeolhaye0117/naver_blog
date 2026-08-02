@@ -408,6 +408,23 @@ ok(
   '발행량을 넣으면 처방에 반영'
 )
 
+console.log('\n[21] 못 읽은 값으로 등급을 만들지 않는다')
+// 검색 권한이 없는 계정에서 발행량 조회가 실패하면 total 이 비어 온다.
+// 이걸 0 으로 대신 쓰면 경쟁률 0 → "황금 키워드" 라는 거짓 판정이 나왔다.
+const gNoTotal = gradeKeyword(1870, null)
+ok(gNoTotal.grade === 'unknown', `발행량 없음 → unknown (0으로 계산 안 함) — ${gNoTotal.grade}`)
+ok(gNoTotal.competition === 999, `경쟁률은 계산 불가 표시 — ${gNoTotal.competition}`)
+ok(gNoTotal.reason.includes('발행량'), '무엇이 없어서 못 했는지 알림')
+ok(gNoTotal.reason.includes('직접 입력'), '어디서 채우면 되는지 알림')
+ok(gradeKeyword(1870, 0).grade === 'unknown', '발행량 0 도 unknown 취급')
+ok(gradeKeyword(0, 45000).grade === 'unknown', '검색량 없음 → unknown')
+ok(gradeKeyword(0, null).reason.includes('검색량과 발행량'), '둘 다 없으면 둘 다 언급')
+// 검색량만으로 판정되는 것은 발행량 없이도 그대로 판정한다
+ok(gradeKeyword(120, null).grade === 'toosmall', '검색량 부족은 발행량 없이도 판정')
+ok(gradeKeyword(50000, null).grade === 'toobig', '대형 키워드도 발행량 없이 판정')
+// 정상 경로는 그대로
+ok(gradeKeyword(1500, 15000).grade === 'gold', '정상 입력은 기존과 동일')
+
 console.log('\n[19] 직접 입력 → 경쟁률 등급')
 const mr = parseManualRows(`쌍용동 헬스장, 1,200, 45,000
 성정동 여성전용 헬스장 | 320회 | 3,100건

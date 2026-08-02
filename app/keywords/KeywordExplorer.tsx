@@ -22,6 +22,8 @@ function gradeTone(g: KeywordMetric['grade']) {
   return g === 'gold' ? 'good' : g === 'good' ? 'info' : g === 'hard' ? 'bad' : g === 'toobig' ? 'warn' : 'default'
 }
 
+const NUM = (n: number | null) => (n === null ? '—' : n.toLocaleString())
+
 export default function KeywordExplorer({ stores, keys }: { stores: Store[]; keys: { search: boolean; searchAd: boolean } }) {
   const [raw, setRaw] = useState('')
   const [rows, setRows] = useState<KeywordMetric[] | null>(null)
@@ -114,7 +116,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     const copy = [...rows]
     if (sort === 'competition') {
       // 진입 가능한 것부터: 등급 좋은 순 → 경쟁률 낮은 순
-      const order: Record<string, number> = { gold: 0, good: 1, toobig: 2, hard: 3, toosmall: 4 }
+      const order: Record<string, number> = { gold: 0, good: 1, toobig: 2, hard: 3, toosmall: 4, unknown: 5 }
       copy.sort((a, b) => order[a.grade] - order[b.grade] || a.competition - b.competition)
     } else {
       copy.sort((a, b) => b.monthlySearch - a.monthlySearch)
@@ -125,6 +127,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const maxVolume = useMemo(() => Math.max(1, ...(rows?.map((r) => r.monthlySearch) ?? [1])), [rows])
   const isMock = Boolean(rows?.some((r) => r.mock))
   const isManual = Boolean(rows?.length && rows.every((r) => r.source === 'manual'))
+  const unknownCount = rows?.filter((r) => r.grade === 'unknown').length ?? 0
 
   const manualKeywords = useMemo(
     () =>
@@ -380,6 +383,14 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           }
         >
           {isMock && <MockNotice what="검색광고·검색" />}
+          {unknownCount > 0 && (
+            <p className="mb-3 rounded-lg border border-slate-500/30 bg-slate-500/10 px-3 py-2 text-[12px] leading-relaxed">
+              {unknownCount}개는 <strong>판정 불가</strong>입니다 — 발행량(또는 검색량)을 읽지
+              못했습니다. 없는 값을 0으로 넣고 계산하면 경쟁률이 0이 되어 실제로는 과열된 키워드가
+              &quot;황금 키워드&quot;로 보이기 때문에, 판정을 내리지 않았습니다. 아래{' '}
+              <strong>직접 입력</strong>에 네이버에서 본 숫자를 넣으면 등급이 나옵니다.
+            </p>
+          )}
           {isManual && (
             <p className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] leading-relaxed text-emerald-800 dark:text-emerald-200">
               회원님이 직접 넣은 숫자로 계산한 결과입니다 — 샘플이 아닙니다. 등급 기준은 API 조회와
@@ -414,7 +425,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                       <div>{r.monthlySearch.toLocaleString()}</div>
                       <MiniBar ratio={r.monthlySearch / maxVolume} />
                     </td>
-                    <td className="tnum py-2.5 pr-3 whitespace-nowrap">{r.blogTotal.toLocaleString()}</td>
+                    <td className="tnum py-2.5 pr-3 whitespace-nowrap">{NUM(r.blogTotal)}</td>
                     <td className="tnum py-2.5 pr-3 whitespace-nowrap font-semibold">
                       {r.competition >= 999 ? '—' : r.competition}
                       {r.compIdx && <div className="muted text-[11px] font-normal">{r.compIdx}</div>}

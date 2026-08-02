@@ -17,19 +17,25 @@ async function withBlogTotals(
   const out: KeywordMetric[] = []
   for (let i = 0; i < rows.length; i += BATCH) {
     const slice = rows.slice(i, i + BATCH)
+    // 조회 실패는 total: null 로 남긴다. 0 으로 바꾸면 경쟁률이 0 이 되어
+    // "황금 키워드" 로 잘못 판정된다 — 검색 권한이 없는 계정에서 늘 그렇게 보였다.
     const totals = await Promise.all(
-      slice.map((r) => blogTotalCount(r.keyword).catch(() => ({ total: 0, mock: true })))
+      slice.map((r) =>
+        blogTotalCount(r.keyword).catch(() => ({ total: null as number | null, mock: false }))
+      )
     )
     slice.forEach((r, j) => {
+      const t = totals[j]
       out.push(
         buildMetric({
           keyword: r.keyword,
           monthlySearch: r.monthlySearch,
           monthlyPc: r.monthlyPc,
           monthlyMobile: r.monthlyMobile,
-          blogTotal: totals[j].total,
+          blogTotal: t.total,
           compIdx: r.compIdx,
-          mock: r.mock || totals[j].mock,
+          // 지어낸 값을 보여줄 때만 샘플 표시. 못 읽은 값은 '—' 로 나가므로 샘플이 아니다.
+          mock: r.mock || (t.total !== null && t.mock),
         })
       )
     })
