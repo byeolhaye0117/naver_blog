@@ -43,6 +43,8 @@ export interface Store {
   phone: string
   reserveUrl?: string
   blogUrl?: string
+  /** 네이버 플레이스 id — 플레이스 노출 순위에서 내 지점을 정확히 찾는 데 쓴다 */
+  placeId?: string
   memo?: string
 }
 
