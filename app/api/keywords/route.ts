@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { keywordTool } from '@/lib/naver/searchad'
-import { blogTotalCount } from '@/lib/naver/search'
+import { recentBlogCount } from '@/lib/naver/blogsection'
 import { buildMetric } from '@/lib/analysis/keyword'
 import { keyStatus, NaverApiError } from '@/lib/naver/client'
 import type { KeywordMetric } from '@/lib/types'
@@ -10,32 +10,31 @@ export const dynamic = 'force-dynamic'
 const MAX_GRADED = 24
 const BATCH = 6
 
-/** 발행량 조회는 키워드당 1콜이라 배치로 나눠 돌린다 */
+/** 발행량 조회는 키워드당 1~2콜이라 배치로 나눠 돌린다 */
 async function withBlogTotals(
   rows: { keyword: string; monthlySearch: number; monthlyPc: number; monthlyMobile: number; compIdx?: string; mock: boolean }[]
 ): Promise<KeywordMetric[]> {
   const out: KeywordMetric[] = []
   for (let i = 0; i < rows.length; i += BATCH) {
     const slice = rows.slice(i, i + BATCH)
-    // 조회 실패는 total: null 로 남긴다. 0 으로 바꾸면 경쟁률이 0 이 되어
-    // "황금 키워드" 로 잘못 판정된다 — 검색 권한이 없는 계정에서 늘 그렇게 보였다.
-    const totals = await Promise.all(
-      slice.map((r) =>
-        blogTotalCount(r.keyword).catch(() => ({ total: null as number | null, mock: false }))
-      )
+    // 조회 실패는 count: null 로 남긴다. 0 으로 바꾸면 경쟁률이 0 이 되어
+    // "황금 키워드" 로 잘못 판정된다 — 예전에 실제로 그렇게 보였다.
+    const counts = await Promise.all(
+      slice.map((r) => recentBlogCount(r.keyword).catch(() => ({ count: null, note: 'exact' as const })))
     )
     slice.forEach((r, j) => {
-      const t = totals[j]
+      const c = counts[j]
       out.push(
         buildMetric({
           keyword: r.keyword,
           monthlySearch: r.monthlySearch,
           monthlyPc: r.monthlyPc,
           monthlyMobile: r.monthlyMobile,
-          blogTotal: t.total,
+          blogRecent: c.count,
+          blogRecentNote: c.note === 'exact' ? undefined : c.note,
           compIdx: r.compIdx,
-          // 지어낸 값을 보여줄 때만 샘플 표시. 못 읽은 값은 '—' 로 나가므로 샘플이 아니다.
-          mock: r.mock || (t.total !== null && t.mock),
+          // 발행량은 키가 필요 없는 경로라 샘플이 아니다. 검색량 쪽만 샘플일 수 있다.
+          mock: r.mock,
         })
       )
     })

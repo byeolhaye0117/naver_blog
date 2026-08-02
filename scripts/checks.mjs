@@ -15,6 +15,9 @@ const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText } = re
   `${OUT}/analysis/paste.js`
 )
 const { parseManualRows, buildManualMetrics, buildMetric } = require(`${OUT}/analysis/keyword.js`)
+const { parseSectionTotal, monthlyFromWeek, resolveRecent, SECTION_CAP } = require(
+  `${OUT}/naver/blogsection.js`
+)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
@@ -235,33 +238,43 @@ ok(a.source === 'api', 'source=api')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[11] 키워드 등급 분포 (목업 캘리브레이션)')
-// 목업 값이 한쪽 등급으로 몰리면 도구가 쓸모없어진다. 분포가 살아 있는지 지킨다.
-const AREAS = ['쌍용동','봉명동','성정동','두정동','용곡동','신방동','불당동','청당동']
-const BASES = ['헬스장','PT','피트니스','24시 헬스장','여성전용 헬스장']
-const INFO = ['다이어트 정체기 극복','헬스 초보 운동 순서','직장인 다이어트 식단','공복 유산소 효과',
-  '교대근무 운동 시간','하체 운동 순서','운동 후 근육통','힙업 운동','거북목 운동','새해 운동 계획']
-const hints = [...AREAS.flatMap(a => BASES.map(b => `${a} ${b}`)), ...INFO]
+// 임계값이 한쪽으로 쏠리면 도구가 쓸모없어진다.
+// 목업이 아니라 **실측 데이터**로 지킨다 — 검색광고 API 월 검색량 +
+// 블로그 섹션 검색 최근 30일 발행량 (천안·아산·동탄권 16개, 2026-08-02 측정).
+const REAL = [
+  ['불당동헬스장', 1900, 504], ['천안헬스장', 3010, 2871], ['두정동헬스장', 1740, 575],
+  ['성정동헬스장', 800, 362], ['쌍용동헬스장', 1430, 437], ['동탄헬스장', 3620, 2678],
+  ['다리찢기', 2580, 4285], ['천안피부관리', 1460, 4285], ['관저동헬스장', 1410, 229],
+  ['천안필라테스', 1240, 1410], ['청당동헬스장', 1190, 145], ['용암동헬스장', 1130, 262],
+  ['아산헬스장', 1120, 1465], ['동탄역헬스장', 1040, 895], ['송탄필라테스', 1000, 220],
+  ['배방헬스장', 960, 192],
+]
 const dist = {}
-let n = 0
-for (const h of hints) {
-  for (const row of mockKeywordTool([h])) {
-    const g = gradeKeyword(row.monthlySearch, mockBlogTotal(row.keyword)).grade
-    dist[g] = (dist[g] ?? 0) + 1
-    n++
-  }
+for (const [, vol, recent] of REAL) {
+  const g = gradeKeyword(vol, recent).grade
+  dist[g] = (dist[g] ?? 0) + 1
 }
+const n = REAL.length
 const pctOf = (g) => ((dist[g] ?? 0) / n) * 100
 console.log(`  n=${n} ` + Object.entries(dist).map(([g, c]) => `${g}=${((c/n)*100).toFixed(0)}%`).join(' '))
-ok(pctOf('gold') >= 15 && pctOf('gold') <= 45, '황금 키워드 15~45%', `${pctOf('gold').toFixed(0)}%`)
+ok(pctOf('gold') >= 20 && pctOf('gold') <= 60, '황금 키워드 20~60%', `${pctOf('gold').toFixed(0)}%`)
 ok(pctOf('good') >= 10, '노려볼 만함 10% 이상', `${pctOf('good').toFixed(0)}%`)
 ok(pctOf('hard') >= 10, '경쟁 과열 10% 이상 (전부 쉬워 보이면 안 됨)', `${pctOf('hard').toFixed(0)}%`)
-ok(Math.max(...Object.values(dist)) / n < 0.5, '한 등급이 절반을 넘지 않음')
+ok(!dist.unknown, '실측값이 다 있으면 판정 불가가 없어야 함')
 
-// 등급 경계 자체도 확인
-ok(gradeKeyword(1500, 15000).grade === 'gold', '검색량 1500 / 경쟁률 10 → 황금')
-ok(gradeKeyword(1500, 150000).grade === 'hard', '검색량 1500 / 경쟁률 100 → 과열')
-ok(gradeKeyword(120, 1000).grade === 'toosmall', '검색량 120 → 검색량 부족')
-ok(gradeKeyword(50000, 500000).grade === 'toobig', '검색량 5만 → 대형 키워드')
+// 등급 경계 (경쟁률 = 30일 발행량 ÷ 월 검색량, 임계 0.35 / 1.0)
+ok(gradeKeyword(1430, 437).grade === 'gold', '1,430회 / 30일 437개 = 0.31 → 황금')
+ok(gradeKeyword(1430, 500).grade === 'gold', '0.35 는 황금 경계 포함')
+ok(gradeKeyword(1430, 520).grade === 'good', '0.36 → 노려볼 만함')
+ok(gradeKeyword(1430, 1430).grade === 'good', '1.0 는 아직 과열 아님')
+ok(gradeKeyword(1430, 1500).grade === 'hard', '1.05 → 과열')
+ok(gradeKeyword(120, 30).grade === 'toosmall', '검색량 120 → 검색량 부족')
+ok(gradeKeyword(50000, 1000).grade === 'toobig', '검색량 5만 → 대형 키워드')
+// 검색량이 적정 구간 밖이면 경쟁률이 낮아도 황금은 아니다
+ok(gradeKeyword(400, 50).grade === 'good', '검색량 400 + 경쟁률 0.13 → 황금 아님(적정 구간 밖)')
+// 사람이 읽는 문장으로 번역되는지
+ok(gradeKeyword(1430, 437).reason.includes('검색 3회당 새 글 1개'), '경쟁률을 말로 풀어줌',
+  gradeKeyword(1430, 437).reason.slice(0, 60))
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[12] 순위 구간 판정 (발행 후 경과일)')
@@ -414,61 +427,90 @@ console.log('\n[21] 못 읽은 값으로 등급을 만들지 않는다')
 const gNoTotal = gradeKeyword(1870, null)
 ok(gNoTotal.grade === 'unknown', `발행량 없음 → unknown (0으로 계산 안 함) — ${gNoTotal.grade}`)
 ok(gNoTotal.competition === 999, `경쟁률은 계산 불가 표시 — ${gNoTotal.competition}`)
-ok(gNoTotal.reason.includes('발행량'), '무엇이 없어서 못 했는지 알림')
-ok(gNoTotal.reason.includes('직접 입력'), '어디서 채우면 되는지 알림')
+ok(gNoTotal.reason.includes('30일 발행량'), '무엇이 없어서 못 했는지 알림')
+ok(gNoTotal.reason.includes('직접 넣으면'), '어디서 채우면 되는지 알림')
 ok(gradeKeyword(1870, 0).grade === 'unknown', '발행량 0 도 unknown 취급')
-ok(gradeKeyword(0, 45000).grade === 'unknown', '검색량 없음 → unknown')
+ok(gradeKeyword(0, 437).grade === 'unknown', '검색량 없음 → unknown')
 ok(gradeKeyword(0, null).reason.includes('검색량과 발행량'), '둘 다 없으면 둘 다 언급')
 // 검색량만으로 판정되는 것은 발행량 없이도 그대로 판정한다
 ok(gradeKeyword(120, null).grade === 'toosmall', '검색량 부족은 발행량 없이도 판정')
 ok(gradeKeyword(50000, null).grade === 'toobig', '대형 키워드도 발행량 없이 판정')
 // 정상 경로는 그대로
-ok(gradeKeyword(1500, 15000).grade === 'gold', '정상 입력은 기존과 동일')
+ok(gradeKeyword(1500, 400).grade === 'gold', '정상 입력은 그대로 판정')
 
 // 검색광고 API 실측 검색량 + 눈으로 본 발행량을 합치는 경로 (표에서 발행량만 채우기)
 console.log('\n[22] 실측 검색량 + 직접 넣은 발행량')
 const apiRow = buildMetric({
   keyword: '쌍용동 헬스장', monthlySearch: 1430, monthlyPc: 460, monthlyMobile: 970,
-  blogTotal: null, compIdx: '높음', mock: false,
+  blogRecent: null, compIdx: '높음', mock: false,
 })
 ok(apiRow.grade === 'unknown', '발행량 전에는 판정 불가')
 ok(apiRow.mobileShare === 68, `모바일 비중은 실측으로 계산 — ${apiRow.mobileShare}%`)
 
 const filled = buildMetric({
   keyword: apiRow.keyword, monthlySearch: apiRow.monthlySearch, monthlyPc: apiRow.monthlyPc,
-  monthlyMobile: apiRow.monthlyMobile, blogTotal: 30000, compIdx: apiRow.compIdx,
+  monthlyMobile: apiRow.monthlyMobile, blogRecent: 437, compIdx: apiRow.compIdx,
   mock: apiRow.mock, source: apiRow.source,
 })
-ok(filled.competition === 21, `경쟁률 30,000÷1,430 = 21 — ${filled.competition}`)
+ok(filled.competition === 0.31, `경쟁률 437÷1,430 = 0.31 — ${filled.competition}`)
 ok(filled.grade === 'gold', `등급이 바로 나옴 — ${filled.grade}`)
 ok(filled.mock === false, '실측 검색량이므로 샘플 아님')
 ok(filled.monthlySearch === 1430, '검색량은 다시 적지 않아도 유지')
 ok(
-  buildMetric({ ...apiRow, blogTotal: 900000 }).grade === 'hard',
+  buildMetric({ ...apiRow, blogRecent: 3000 }).grade === 'hard',
   '발행량을 크게 넣으면 과열로 바뀜'
 )
 
+console.log('\n[23] 발행량 자동 조회 — 1,000 캡 처리')
+// 이 엔드포인트의 totalCount 는 1,000 에서 잘린다. 잘린 값을 실제 값처럼 쓰면
+// "헬스장"과 "쌍용동 헬스장"이 똑같이 1,000 으로 보여 경쟁률이 거짓이 된다.
+ok(parseSectionTotal(`)]}',\n{"result":{"totalCount":437,"searchList":[]}}`) === 437, '건수 파싱')
+ok(parseSectionTotal('{"totalCount": 1000 }') === 1000, '공백 있어도 파싱')
+ok(parseSectionTotal('건수가 없는 응답') === null, '못 읽으면 null')
+ok(parseSectionTotal('') === null, '빈 응답도 null')
+ok(SECTION_CAP === 1000, '캡은 1,000')
+ok(monthlyFromWeek(103) === 441, '7일 103개 → 30일 441개 환산', `${monthlyFromWeek(103)}`)
+
+const rExact = resolveRecent(437, null)
+ok(rExact.count === 437 && rExact.note === 'exact', '30일이 캡 아래면 그대로 씀')
+const rEst = resolveRecent(1000, 670)
+ok(rEst.count === monthlyFromWeek(670) && rEst.note === 'estimated', '30일이 잘리면 7일 환산', `${rEst.count}`)
+const rAtLeast = resolveRecent(1000, 1000)
+ok(rAtLeast.note === 'atLeast', '7일도 잘리면 하한으로만 말함')
+ok(rAtLeast.count === monthlyFromWeek(1000), `하한값 ${rAtLeast.count}`)
+ok(resolveRecent(null, null).count === null, '조회 실패는 null (0 으로 바꾸지 않음)')
+ok(resolveRecent(1000, null).note === 'atLeast', '7일 조회까지 실패하면 하한 처리')
+// 실측 사례: 천안헬스장 검색량 3,010 / 30일 캡 → 7일 670 → 환산 2,871 → 0.95 = good.
+// 잘린 1,000 을 그대로 썼다면 0.33 으로 "황금 키워드" 라는 거짓 판정이 나왔다.
+const gEst = gradeKeyword(3010, resolveRecent(1000, 670).count)
+ok(gEst.competition === 0.95 && gEst.grade === 'good', '환산값으로 등급이 나온다', `${gEst.competition} / ${gEst.grade}`)
+ok(gradeKeyword(3010, 1000).grade === 'gold', '캡 값을 그대로 썼다면 거짓 황금이 됐을 상황', '이래서 환산이 필요하다')
+
 console.log('\n[19] 직접 입력 → 경쟁률 등급')
-const mr = parseManualRows(`쌍용동 헬스장, 1,200, 45,000
-성정동 여성전용 헬스장 | 320회 | 3,100건
-두정동 헬스장\t2500\t30000
+const mr = parseManualRows(`쌍용동 헬스장, 1,430, 437
+성정동 여성전용 헬스장 | 800회 | 362건
+두정동 헬스장\t1740\t575
+다리찢기, 2,580, 4,285
 이건 숫자가 없음
 봉명동 헬스장, 1200`)
-ok(mr.rows.length === 3, `읽은 줄 3개 — ${mr.rows.length}개`)
+ok(mr.rows.length === 4, `읽은 줄 4개 — ${mr.rows.length}개`)
 ok(mr.bad.length === 2, `못 읽은 줄 2개 — ${mr.bad.length}개`)
 ok(mr.rows[0].keyword === '쌍용동 헬스장', '천단위 콤마를 구분자로 착각하지 않음', mr.rows[0].keyword)
-ok(mr.rows[0].monthlySearch === 1200 && mr.rows[0].blogTotal === 45000, '숫자 두 개 파싱')
-ok(mr.rows[1].monthlySearch === 320 && mr.rows[1].blogTotal === 3100, '| 구분 + 회/건 단위 허용')
-ok(mr.rows[2].blogTotal === 30000, '탭 구분 허용')
+ok(mr.rows[0].monthlySearch === 1430 && mr.rows[0].blogRecent === 437, '숫자 두 개 파싱')
+ok(mr.rows[1].monthlySearch === 800 && mr.rows[1].blogRecent === 362, '| 구분 + 회/건 단위 허용')
+ok(mr.rows[2].blogRecent === 575, '탭 구분 허용')
+ok(mr.rows[3].blogRecent === 4285, '발행량 쪽 천단위 콤마도 파싱', `${mr.rows[3].blogRecent}`)
 
 const mm = buildManualMetrics(mr.rows)
 ok(mm.every((m) => m.mock === false && m.source === 'manual'), '직접 입력은 실측값으로 표시')
-ok(mm[0].competition === 37.5, `경쟁률 45,000÷1,200 = 37.5 — ${mm[0].competition}`)
-ok(mm[0].grade === 'good', `등급 good — ${mm[0].grade}`)
-ok(mm[2].grade === 'gold', `2,500회·경쟁률 12 → gold — ${mm[2].grade}`)
+ok(mm[0].competition === 0.31, `경쟁률 437÷1,430 = 0.31 — ${mm[0].competition}`)
+ok(mm[0].grade === 'gold', `등급 gold — ${mm[0].grade}`)
+ok(mm[1].grade === 'good', `800회·경쟁률 0.45 → good — ${mm[1].grade}`)
+ok(mm[2].grade === 'gold', `1,740회·경쟁률 0.33 → gold — ${mm[2].grade}`)
+ok(mm[3].grade === 'hard', `2,580회·경쟁률 1.66 → hard — ${mm[3].grade}`)
 ok(
-  buildManualMetrics([{ keyword: 'k', monthlySearch: 1000, blogTotal: 200000 }])[0].grade === 'hard',
-  '경쟁률 200 → hard'
+  buildManualMetrics([{ keyword: 'k', monthlySearch: 1000, blogRecent: 2000 }])[0].grade === 'hard',
+  '경쟁률 2.0 → hard'
 )
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)

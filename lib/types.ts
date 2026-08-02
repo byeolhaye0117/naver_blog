@@ -127,9 +127,16 @@ export interface KeywordMetric {
   monthlySearch: number
   monthlyPc: number
   monthlyMobile: number
-  /** 네이버 블로그 누적 발행량. null = 조회 못 함 (0 으로 대신 쓰면 경쟁률이 거짓이 된다) */
-  blogTotal: number | null
-  /** 경쟁률 = 발행량 / 월검색량. 낮을수록 좋다. 999 = 계산 불가 */
+  /**
+   * 최근 30일 블로그 발행량. null = 조회 못 함 (0 으로 대신 쓰면 경쟁률이 거짓이 된다).
+   *
+   * 누적이 아니라 30일인 이유는 lib/naver/blogsection.ts 주석에 있다 — 월 검색량과
+   * 기간 단위가 같아 "검색 1회당 새 글 몇 개" 로 바로 읽히고, 이미 밀려난 옛 글을 세지 않는다.
+   */
+  blogRecent: number | null
+  /** 값의 성격 — 'estimated'(7일 환산) / 'atLeast'(하한) 일 때 화면에 표시한다 */
+  blogRecentNote?: 'estimated' | 'atLeast'
+  /** 경쟁률 = 최근 30일 발행량 ÷ 월간 검색량. 낮을수록 좋다. 999 = 계산 불가 */
   competition: number
   /** 검색광고 API가 주는 경쟁정도 (낮음/중간/높음) */
   compIdx?: string

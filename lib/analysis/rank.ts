@@ -31,6 +31,15 @@ export function naverBlogTabUrl(keyword: string): string {
   return `https://search.naver.com/search.naver?ssc=tab.blog.all&sm=tab_jum&query=${encodeURIComponent(keyword)}`
 }
 
+/**
+ * 블로그 섹션 검색 — 통합검색 블로그 탭과 달리 **총 건수를 보여준다.**
+ * 기간 필터를 걸 수 있어서 "최근 30일 발행량" 을 눈으로 확인할 수 있는 유일한 화면이다.
+ * (통합검색 블로그 탭에서는 네이버가 총 건수 표시를 없앴다.)
+ */
+export function naverBlogSectionUrl(keyword: string): string {
+  return `https://section.blog.naver.com/Search/Post.naver?keyword=${encodeURIComponent(keyword)}&orderBy=sim`
+}
+
 export function normalizeUrl(u: string): string {
   return u
     .trim()
