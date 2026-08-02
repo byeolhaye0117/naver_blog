@@ -6,9 +6,12 @@ import { keyStatus, NaverApiError } from '@/lib/naver/client'
 import type { KeywordMetric } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
+// 키워드 24개 × (발행량 조회 1~2콜 + 재시도) 이라 기본 10초로는 뒤쪽이 잘린다
+export const maxDuration = 60
 
 const MAX_GRADED = 24
-const BATCH = 6
+// 동시 요청을 낮추면 속도 제한에 덜 걸린다. 재시도가 있으니 4가 24개를 다 채운다.
+const BATCH = 4
 
 /** 발행량 조회는 키워드당 1~2콜이라 배치로 나눠 돌린다 */
 async function withBlogTotals(
