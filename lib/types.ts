@@ -127,9 +127,9 @@ export interface KeywordMetric {
   monthlySearch: number
   monthlyPc: number
   monthlyMobile: number
-  /** 네이버 블로그 누적 발행량 */
-  blogTotal: number
-  /** 경쟁률 = 발행량 / 월검색량. 낮을수록 좋다 */
+  /** 네이버 블로그 누적 발행량. null = 조회 못 함 (0 으로 대신 쓰면 경쟁률이 거짓이 된다) */
+  blogTotal: number | null
+  /** 경쟁률 = 발행량 / 월검색량. 낮을수록 좋다. 999 = 계산 불가 */
   competition: number
   /** 검색광고 API가 주는 경쟁정도 (낮음/중간/높음) */
   compIdx?: string
@@ -146,7 +146,7 @@ export interface KeywordMetric {
   source?: 'api' | 'manual'
 }
 
-export type KeywordGrade = 'gold' | 'good' | 'hard' | 'toosmall' | 'toobig'
+export type KeywordGrade = 'gold' | 'good' | 'hard' | 'toosmall' | 'toobig' | 'unknown'
 
 export const GRADE_LABEL: Record<KeywordGrade, string> = {
   gold: '황금 키워드',
@@ -154,6 +154,7 @@ export const GRADE_LABEL: Record<KeywordGrade, string> = {
   hard: '경쟁 과열',
   toosmall: '검색량 부족',
   toobig: '대형 키워드',
+  unknown: '판정 불가',
 }
 
 // ─── 상위노출(SERP) 분석 ───────────────────────────────────────

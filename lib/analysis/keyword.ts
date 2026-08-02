@@ -15,12 +15,31 @@ import type { KeywordGrade, KeywordMetric } from '@/lib/types'
 export const COMPETITION_GOOD = 25
 export const COMPETITION_HARD = 60
 
+/** 경쟁률을 계산할 수 없을 때 쓰는 값 — 화면에서 '—' 로 표시된다 */
+export const COMPETITION_UNKNOWN = 999
+
 export function gradeKeyword(
   monthlySearch: number,
-  blogTotal: number
+  blogTotal: number | null
 ): { grade: KeywordGrade; reason: string; competition: number } {
-  const competition = monthlySearch > 0 ? Math.round((blogTotal / monthlySearch) * 10) / 10 : 999
+  // 못 읽은 값을 0 으로 대신 쓰면 경쟁률이 0 이 되어 "황금 키워드" 로 잘못 판정된다.
+  // 모르는 것은 모른다고 말하고, 어디서 채워 넣으면 되는지 알려준다.
+  const searchKnown = monthlySearch > 0
+  const totalKnown = typeof blogTotal === 'number' && blogTotal > 0
+  const competition =
+    searchKnown && totalKnown
+      ? Math.round((blogTotal / monthlySearch) * 10) / 10
+      : COMPETITION_UNKNOWN
 
+  const unknown = (missing: string) => ({
+    grade: 'unknown' as KeywordGrade,
+    reason: `${missing}을 읽지 못해 경쟁률을 계산할 수 없습니다. 네이버에서 본 숫자를 아래 "직접 입력으로 경쟁률 계산" 에 넣으면 같은 기준으로 등급이 나옵니다.`,
+    competition,
+  })
+
+  if (!searchKnown) return unknown(totalKnown ? '월 검색량' : '검색량과 발행량')
+
+  // 검색량만으로 결론이 나는 두 등급은 발행량 없이도 판정한다
   if (monthlySearch < 300) {
     return {
       grade: 'toosmall',
@@ -36,6 +55,9 @@ export function gradeKeyword(
       competition,
     }
   }
+
+  // 여기서부터는 경쟁률이 있어야 판정할 수 있다
+  if (!totalKnown) return unknown('발행량')
 
   if (monthlySearch >= 500 && monthlySearch <= 5000 && competition <= COMPETITION_GOOD) {
     return {
@@ -65,7 +87,7 @@ export function buildMetric(input: {
   monthlySearch: number
   monthlyPc: number
   monthlyMobile: number
-  blogTotal: number
+  blogTotal: number | null
   compIdx?: string
   mock: boolean
   source?: 'api' | 'manual'
@@ -196,6 +218,8 @@ export function gradeColor(grade: KeywordGrade): string {
       return 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
     case 'toobig':
       return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30'
+    case 'unknown':
+      return 'bg-slate-500/15 text-slate-600 dark:text-slate-300 border-slate-500/30 border-dashed'
     default:
       return 'bg-slate-500/15 text-slate-600 dark:text-slate-300 border-slate-500/30'
   }
