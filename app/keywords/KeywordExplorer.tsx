@@ -8,9 +8,11 @@ import {
   COMPETITION_GOOD,
   INTENT_SUFFIXES,
   buildManualMetrics,
+  buildMetric,
   combineLocalKeywords,
   parseManualRows,
 } from '@/lib/analysis/keyword'
+import { parseTotalCount } from '@/lib/analysis/paste'
 import { naverBlogTabUrl } from '@/lib/analysis/rank'
 import type { TrendSeries } from '@/lib/naver/datalab'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
@@ -23,6 +25,18 @@ function gradeTone(g: KeywordMetric['grade']) {
 }
 
 const NUM = (n: number | null) => (n === null ? '—' : n.toLocaleString())
+
+function sortMetrics(list: KeywordMetric[], mode: Sort): KeywordMetric[] {
+  const copy = [...list]
+  if (mode === 'competition') {
+    // 진입 가능한 것부터: 등급 좋은 순 → 경쟁률 낮은 순
+    const order: Record<string, number> = { gold: 0, good: 1, toobig: 2, hard: 3, toosmall: 4, unknown: 5 }
+    copy.sort((a, b) => order[a.grade] - order[b.grade] || a.competition - b.competition)
+  } else {
+    copy.sort((a, b) => b.monthlySearch - a.monthlySearch)
+  }
+  return copy
+}
 
 export default function KeywordExplorer({ stores, keys }: { stores: Store[]; keys: { search: boolean; searchAd: boolean } }) {
   const [raw, setRaw] = useState('')
@@ -38,6 +52,11 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const [manual, setManual] = useState('')
   const [badLines, setBadLines] = useState<string[]>([])
 
+  /** 조회로 못 읽은 발행량을 표에서 바로 채워 넣는 값 (키워드 → 입력한 문자열) */
+  const [totalInput, setTotalInput] = useState<Record<string, string>>({})
+  /** 표시 순서 (키워드 목록) — 입력 중에 줄이 튀지 않게 고정해 둔다 */
+  const [order, setOrder] = useState<string[]>([])
+
   const [trendKeyword, setTrendKeyword] = useState<string | null>(null)
   const [trend, setTrend] = useState<TrendSeries | null>(null)
   const [trendLoading, setTrendLoading] = useState(false)
@@ -51,6 +70,13 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
         .slice(0, 5),
     [raw]
   )
+
+  /** 새 결과를 받을 때 — 표시 순서를 새로 잡고 이전에 넣은 발행량은 비운다 */
+  function applyRows(list: KeywordMetric[]) {
+    setRows(list)
+    setTotalInput({})
+    setOrder(sortMetrics(list, sort).map((r) => r.keyword))
+  }
 
   async function run(list = keywords) {
     if (!list.length) {
@@ -67,7 +93,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? '조회에 실패했습니다.')
-      setRows(json.rows)
+      applyRows(json.rows)
     } catch (e) {
       setError(e instanceof Error ? e.message : '조회 중 오류가 발생했습니다.')
     } finally {
@@ -84,7 +110,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
       return
     }
     setError(null)
-    setRows(buildManualMetrics(parsed))
+    applyRows(buildManualMetrics(parsed))
   }
 
   /** 입력한 키워드·고른 조합으로 빈 표를 만들어 준다 (숫자만 채우면 됨) */
@@ -111,23 +137,63 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     }
   }
 
-  const sorted = useMemo(() => {
+  /** 조회 결과에 발행량이 빠진 행 — 입력칸을 계속 보여줘야 하므로 원본 기준으로 기억한다 */
+  const needsTotal = useMemo(
+    () => new Set((rows ?? []).filter((r) => r.blogTotal === null).map((r) => r.keyword)),
+    [rows]
+  )
+
+  /**
+   * 검색량은 검색광고 API 실측, 발행량은 회원이 눈으로 본 값 — 둘을 합쳐 등급을 다시 낸다.
+   * 등급 기준은 조회와 완전히 동일한 buildMetric 을 그대로 쓴다.
+   */
+  const merged = useMemo(() => {
     if (!rows) return null
-    const copy = [...rows]
-    if (sort === 'competition') {
-      // 진입 가능한 것부터: 등급 좋은 순 → 경쟁률 낮은 순
-      const order: Record<string, number> = { gold: 0, good: 1, toobig: 2, hard: 3, toosmall: 4, unknown: 5 }
-      copy.sort((a, b) => order[a.grade] - order[b.grade] || a.competition - b.competition)
-    } else {
-      copy.sort((a, b) => b.monthlySearch - a.monthlySearch)
-    }
-    return copy
-  }, [rows, sort])
+    return rows.map((r) => {
+      if (r.blogTotal !== null) return r
+      const raw = totalInput[r.keyword]?.trim()
+      if (!raw) return r
+      const n = parseTotalCount(raw) ?? Number(raw.replace(/[^\d]/g, ''))
+      if (!Number.isFinite(n) || n <= 0) return r
+      return buildMetric({
+        keyword: r.keyword,
+        monthlySearch: r.monthlySearch,
+        monthlyPc: r.monthlyPc,
+        monthlyMobile: r.monthlyMobile,
+        blogTotal: n,
+        compIdx: r.compIdx,
+        mock: r.mock,
+        source: r.source,
+      })
+    })
+  }, [rows, totalInput])
+
+  /**
+   * 화면에 그릴 순서.
+   *
+   * 발행량을 타이핑하면 등급이 바뀌는데, 그때마다 다시 정렬하면 편집 중인 줄이 위아래로
+   * 튀어서 못 쓴다. 그래서 순서는 키워드 목록으로 고정해 두고, 다시 정렬은 명시적으로만 한다.
+   */
+  const sorted = useMemo(() => {
+    if (!merged) return null
+    if (!order.length) return merged
+    const byKeyword = new Map(merged.map((r) => [r.keyword, r]))
+    const out = order.map((k) => byKeyword.get(k)).filter((r): r is KeywordMetric => Boolean(r))
+    const seen = new Set(order)
+    for (const r of merged) if (!seen.has(r.keyword)) out.push(r)
+    return out
+  }, [merged, order])
+
+  function resort(mode: Sort = sort) {
+    setOrder(sortMetrics(merged ?? [], mode).map((r) => r.keyword))
+  }
+
+  const dirty = Object.values(totalInput).some((v) => v.trim())
 
   const maxVolume = useMemo(() => Math.max(1, ...(rows?.map((r) => r.monthlySearch) ?? [1])), [rows])
   const isMock = Boolean(rows?.some((r) => r.mock))
   const isManual = Boolean(rows?.length && rows.every((r) => r.source === 'manual'))
-  const unknownCount = rows?.filter((r) => r.grade === 'unknown').length ?? 0
+  const unknownCount = merged?.filter((r) => r.grade === 'unknown').length ?? 0
 
   const manualKeywords = useMemo(
     () =>
@@ -209,7 +275,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
 
       <Card
         title="직접 입력으로 경쟁률 계산"
-        subtitle="검색 API·검색광고 API 없이 쓰는 경로입니다. 네이버에서 눈으로 본 숫자를 그대로 넣으면 같은 기준으로 등급을 매깁니다 — 실측값이라 오히려 정확합니다."
+        subtitle="검색량·발행량을 둘 다 손에 들고 있을 때 쓰는 경로입니다. 위에서 조회가 됐다면 표의 발행량 칸에 「○○건」만 넣는 쪽이 빠릅니다 — 검색량을 다시 적지 않아도 되니까요."
       >
         <div className="bd rounded-lg border border-dashed p-3">
           <p className="text-[12px] font-semibold">숫자 두 개를 어디서 보나요</p>
@@ -372,23 +438,39 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           title={`조회 결과 ${sorted.length}개`}
           subtitle="경쟁률 = 블로그 누적 발행량 ÷ 월간 검색량. 찾는 사람 대비 이미 쓰인 글이 몇 배인지를 뜻합니다."
           right={
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as Sort)}
-              className="bd panel rounded-lg border px-2 py-1.5 text-xs"
-            >
-              <option value="competition">진입 쉬운 순</option>
-              <option value="volume">검색량 많은 순</option>
-            </select>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {dirty && (
+                <button
+                  type="button"
+                  onClick={() => resort()}
+                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                >
+                  다시 정렬
+                </button>
+              )}
+              <select
+                value={sort}
+                onChange={(e) => {
+                  const mode = e.target.value as Sort
+                  setSort(mode)
+                  resort(mode)
+                }}
+                className="bd panel rounded-lg border px-2 py-1.5 text-xs"
+              >
+                <option value="competition">진입 쉬운 순</option>
+                <option value="volume">검색량 많은 순</option>
+              </select>
+            </div>
           }
         >
           {isMock && <MockNotice what="검색광고·검색" />}
           {unknownCount > 0 && (
             <p className="mb-3 rounded-lg border border-slate-500/30 bg-slate-500/10 px-3 py-2 text-[12px] leading-relaxed">
-              {unknownCount}개는 <strong>판정 불가</strong>입니다 — 발행량(또는 검색량)을 읽지
-              못했습니다. 없는 값을 0으로 넣고 계산하면 경쟁률이 0이 되어 실제로는 과열된 키워드가
-              &quot;황금 키워드&quot;로 보이기 때문에, 판정을 내리지 않았습니다. 아래{' '}
-              <strong>직접 입력</strong>에 네이버에서 본 숫자를 넣으면 등급이 나옵니다.
+              {unknownCount}개가 <strong>판정 불가</strong>입니다 — 발행량을 읽지 못했습니다(검색 API
+              권한). 없는 값을 0으로 넣고 계산하면 경쟁률이 0이 되어 실제로는 과열된 키워드가
+              &quot;황금 키워드&quot;로 보이기 때문에 판정을 내리지 않았습니다.{' '}
+              <strong>발행량 칸의 「건수 보기」로 네이버를 열고 「○○건」을 그대로 넣으면</strong> 그
+              줄의 등급이 바로 나옵니다 — 검색량은 이미 실측값이라 다시 적지 않아도 됩니다.
             </p>
           )}
           {isManual && (
@@ -425,7 +507,31 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                       <div>{r.monthlySearch.toLocaleString()}</div>
                       <MiniBar ratio={r.monthlySearch / maxVolume} />
                     </td>
-                    <td className="tnum py-2.5 pr-3 whitespace-nowrap">{NUM(r.blogTotal)}</td>
+                    <td className="py-2.5 pr-3 whitespace-nowrap">
+                      {needsTotal.has(r.keyword) ? (
+                        <div className="flex flex-col gap-1">
+                          <input
+                            value={totalInput[r.keyword] ?? ''}
+                            onChange={(e) =>
+                              setTotalInput((prev) => ({ ...prev, [r.keyword]: e.target.value }))
+                            }
+                            placeholder="2,345건"
+                            aria-label={`${r.keyword} 발행량`}
+                            className="panel w-24 rounded-lg border px-2 py-1.5 text-[12px] outline-none focus:border-brand-500"
+                          />
+                          <a
+                            href={naverBlogTabUrl(r.keyword)}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="text-brand-600 dark:text-brand-100 text-[11px] font-semibold hover:underline"
+                          >
+                            건수 보기 →
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="tnum">{NUM(r.blogTotal)}</div>
+                      )}
+                    </td>
                     <td className="tnum py-2.5 pr-3 whitespace-nowrap font-semibold">
                       {r.competition >= 999 ? '—' : r.competition}
                       {r.compIdx && <div className="muted text-[11px] font-normal">{r.compIdx}</div>}

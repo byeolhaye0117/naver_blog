@@ -14,7 +14,7 @@ const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText } = require(
   `${OUT}/analysis/paste.js`
 )
-const { parseManualRows, buildManualMetrics } = require(`${OUT}/analysis/keyword.js`)
+const { parseManualRows, buildManualMetrics, buildMetric } = require(`${OUT}/analysis/keyword.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
@@ -424,6 +424,29 @@ ok(gradeKeyword(120, null).grade === 'toosmall', '검색량 부족은 발행량 
 ok(gradeKeyword(50000, null).grade === 'toobig', '대형 키워드도 발행량 없이 판정')
 // 정상 경로는 그대로
 ok(gradeKeyword(1500, 15000).grade === 'gold', '정상 입력은 기존과 동일')
+
+// 검색광고 API 실측 검색량 + 눈으로 본 발행량을 합치는 경로 (표에서 발행량만 채우기)
+console.log('\n[22] 실측 검색량 + 직접 넣은 발행량')
+const apiRow = buildMetric({
+  keyword: '쌍용동 헬스장', monthlySearch: 1430, monthlyPc: 460, monthlyMobile: 970,
+  blogTotal: null, compIdx: '높음', mock: false,
+})
+ok(apiRow.grade === 'unknown', '발행량 전에는 판정 불가')
+ok(apiRow.mobileShare === 68, `모바일 비중은 실측으로 계산 — ${apiRow.mobileShare}%`)
+
+const filled = buildMetric({
+  keyword: apiRow.keyword, monthlySearch: apiRow.monthlySearch, monthlyPc: apiRow.monthlyPc,
+  monthlyMobile: apiRow.monthlyMobile, blogTotal: 30000, compIdx: apiRow.compIdx,
+  mock: apiRow.mock, source: apiRow.source,
+})
+ok(filled.competition === 21, `경쟁률 30,000÷1,430 = 21 — ${filled.competition}`)
+ok(filled.grade === 'gold', `등급이 바로 나옴 — ${filled.grade}`)
+ok(filled.mock === false, '실측 검색량이므로 샘플 아님')
+ok(filled.monthlySearch === 1430, '검색량은 다시 적지 않아도 유지')
+ok(
+  buildMetric({ ...apiRow, blogTotal: 900000 }).grade === 'hard',
+  '발행량을 크게 넣으면 과열로 바뀜'
+)
 
 console.log('\n[19] 직접 입력 → 경쟁률 등급')
 const mr = parseManualRows(`쌍용동 헬스장, 1,200, 45,000
