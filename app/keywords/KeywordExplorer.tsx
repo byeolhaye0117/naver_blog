@@ -15,6 +15,7 @@ import {
   suffixesForStore,
 } from '@/lib/analysis/keyword'
 import { parseTotalCount } from '@/lib/analysis/paste'
+import { areasFromPlace } from '@/lib/naver/place'
 import { naverBlogSectionUrl } from '@/lib/analysis/rank'
 import type { TrendSeries } from '@/lib/naver/datalab'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
@@ -58,6 +59,8 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const [totalInput, setTotalInput] = useState<Record<string, string>>({})
   /** 표시 순서 (키워드 목록) — 입력 중에 줄이 튀지 않게 고정해 둔다 */
   const [order, setOrder] = useState<string[]>([])
+  /** 플레이스 조회 진행·결과 안내 */
+  const [placeMsg, setPlaceMsg] = useState<string | null>(null)
 
   const [trendKeyword, setTrendKeyword] = useState<string | null>(null)
   const [trend, setTrend] = useState<TrendSeries | null>(null)
@@ -119,20 +122,63 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
    * 지점 정보에서 동네를 뽑아 조합까지 만들어 준다.
    * 인자가 없으면 전 지점을 합친다. 지점 성격(24시·여성전용)에 맞는 의도를 곱한다.
    */
-  function fillFromStore(store?: Store) {
+  async function fillFromStore(store?: Store) {
     const list = store ? [store] : stores
     if (!list.length) return
-    const found = Array.from(new Set(list.flatMap(areasFromStore)))
-    if (!found.length) {
-      setError('지점 주소에서 동네를 찾지 못했습니다. 지역명을 직접 넣어주세요.')
+    const local = Array.from(new Set(list.flatMap(areasFromStore)))
+    // 여러 지점을 합칠 때는 어느 한 지점 성격에만 맞추면 안 되니 공통 의도를 쓴다
+    const suffixes = store ? suffixesForStore(store) : INTENT_SUFFIXES
+
+    // 1) 적어둔 정보로 즉시 채운다 — 조회가 느리거나 실패해도 버튼이 먹통이 되지 않게
+    if (local.length) {
+      setError(null)
+      setAreas(local.join(', '))
+      setCombos(combineLocalKeywords(local, suffixes))
+      setPicked([])
+    }
+
+    // 2) 네이버 플레이스에서 실제 등록 주소를 확인해 빠진 동네를 더한다
+    setPlaceMsg('네이버 플레이스에서 등록 주소 확인 중…')
+    const found = new Set(local)
+    for (const s of list) {
+      const areas = await placeAreas(s.legalName || s.name)
+      areas.forEach((a) => found.add(a))
+    }
+    const allAreas = Array.from(found)
+
+    if (!allAreas.length) {
+      setPlaceMsg(null)
+      setError('지점 주소와 플레이스 모두에서 동네를 찾지 못했습니다. 지역명을 직접 넣어주세요.')
       return
     }
     setError(null)
-    setAreas(found.join(', '))
-    // 여러 지점을 합칠 때는 어느 한 지점 성격에만 맞추면 안 되니 공통 의도를 쓴다
-    const suffixes = store ? suffixesForStore(store) : INTENT_SUFFIXES
-    setCombos(combineLocalKeywords(found, suffixes))
+    setAreas(allAreas.join(', '))
+    setCombos(combineLocalKeywords(allAreas, suffixes))
     setPicked([])
+    const added = allAreas.length - local.length
+    setPlaceMsg(
+      added > 0
+        ? `플레이스 등록 주소에서 ${added}개 동네를 더 찾아 넣었습니다.`
+        : '플레이스 등록 주소도 같은 동네였습니다.'
+    )
+  }
+
+  /** 상호명으로 플레이스를 찾아 동네만 돌려준다. 실패하면 빈 배열 */
+  async function placeAreas(name: string): Promise<string[]> {
+    if (!name.trim()) return []
+    try {
+      const res = await fetch('/api/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: name }),
+      })
+      const json = await res.json()
+      const places: { commonAddress: string; address: string }[] = json.places ?? []
+      // 여러 후보가 나오면 첫 번째(가장 관련도 높은 것)만 쓴다
+      return places.length ? areasFromPlace(places[0]) : []
+    } catch {
+      return []
+    }
   }
 
   /** 입력한 키워드·고른 조합으로 빈 표를 만들어 준다 (숫자만 채우면 됨) */
@@ -328,8 +374,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           <div className="bd mb-3 rounded-lg border border-dashed p-3">
             <p className="text-[12px] font-semibold">내 지점에서 자동으로 채우기</p>
             <p className="muted mt-1 text-[11px] leading-relaxed">
-              지점 버튼을 누르면 그 지점 <b>주소·지역 키워드에서 동네를 뽑고</b>, 지점 성격에 맞는
-              의도까지 곱해 후보를 만듭니다 (24시간 운영이면 새벽·주말, 여성전용이면 여성전용 계열).
+              지점 버튼을 누르면 <b>네이버 플레이스에 등록된 주소</b>와 지점 정보에서 동네를 뽑고,
+              지점 성격에 맞는 의도까지 곱해 후보를 만듭니다 (24시간 운영이면 새벽·주말, 여성전용이면
+              여성전용 계열).
             </p>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               {stores.map((s) => (
@@ -353,6 +400,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 </button>
               )}
             </div>
+            {placeMsg && <p className="muted mt-2 text-[11px] leading-relaxed">{placeMsg}</p>}
           </div>
         ) : (
           <p className="muted mb-3 text-[11px] leading-relaxed">
