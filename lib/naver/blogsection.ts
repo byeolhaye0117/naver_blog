@@ -25,6 +25,7 @@ const UA =
 /** totalCount 가 이 값이면 잘린 것 (실제로는 이상) */
 export const SECTION_CAP = 1000
 const TIMEOUT_MS = 5000
+const RETRY_DELAY_MS = 400
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000
 
 /** 값의 성격 — 화면에 그대로 표시한다 */
@@ -79,7 +80,7 @@ export function resolveRecent(d30: number | null, d7: number | null): RecentCoun
   return { count: monthlyFromWeek(SECTION_CAP), note: 'atLeast' }
 }
 
-async function countBetween(keyword: string, start: Date, end: Date): Promise<number | null> {
+async function fetchOnce(keyword: string, start: Date, end: Date): Promise<number | null> {
   const url =
     `${ENDPOINT}?countPerPage=7&currentPage=1&orderBy=sim&type=post` +
     `&keyword=${encodeURIComponent(keyword)}&startDate=${ymd(start)}&endDate=${ymd(end)}`
@@ -96,6 +97,18 @@ async function countBetween(keyword: string, start: Date, end: Date): Promise<nu
     // 타임아웃·차단·응답 형식 변경 — 어느 쪽이든 "모른다" 로 처리한다
     return null
   }
+}
+
+/**
+ * 한 번 실패하면 잠깐 쉬고 한 번만 더 시도한다.
+ * 24개를 한꺼번에 조회하면 뒤쪽 키워드가 속도 제한에 걸려 통째로 "판정 불가" 가 됐다 —
+ * 재시도 한 번으로 대부분 살아난다. 두 번 이상은 응답이 느려져 오히려 손해다.
+ */
+async function countBetween(keyword: string, start: Date, end: Date): Promise<number | null> {
+  const first = await fetchOnce(keyword, start, end)
+  if (first !== null) return first
+  await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
+  return fetchOnce(keyword, start, end)
 }
 
 /** 최근 30일 발행량. 실패하면 count: null */
