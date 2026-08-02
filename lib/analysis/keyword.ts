@@ -140,6 +140,41 @@ export const INTENT_SUFFIXES = [
   '다이어트',
 ]
 
+/**
+ * 지점 정보에서 동네 이름을 뽑는다.
+ *
+ * 스마트플레이스는 사업주 로그인이 필요해서 앱이 읽을 수 없고, 네이버 지도 검색은
+ * 서버 IP 에 캡차를 걸어 막는다(실측 확인). 그래서 자동 수집 대신 **이미 지점 정보에
+ * 적어둔 주소와 지역 키워드**에서 뽑는다 — 네트워크를 타지 않으니 항상 성공한다.
+ *
+ * 주소에는 "두정동성당" 처럼 동으로 끝나지 않는 말이 섞이므로, 동/읍/면 뒤에
+ * 경계(공백·쉼표·괄호·끝)가 오는 경우만 동네로 본다.
+ */
+const AREA_RE = /([가-힣]{2,10}?(?:동|읍|면))(?=[\s,·/()[\]]|$)/g
+
+export function areasFromStore(store: {
+  location?: string
+  localKeywords?: string[]
+}): string[] {
+  const pool = [store.location ?? '', ...(store.localKeywords ?? [])].join(' ')
+  const found = Array.from(pool.matchAll(AREA_RE)).map((m) => m[1])
+  return Array.from(new Set(found))
+}
+
+/**
+ * 그 지점 성격에 맞는 의도 접미사.
+ * 24시간 운영이면 새벽·주말, 여성전용이면 여성전용 계열을 앞에 둔다 —
+ * 지점이 실제로 가진 강점이 검색 의도와 맞아야 상위 노출 확률이 올라간다.
+ */
+export function suffixesForStore(store: { open24?: boolean; womenOnly?: boolean }): string[] {
+  const out: string[] = []
+  if (store.womenOnly) out.push('여성전용 헬스장', '여성전용 PT')
+  if (store.open24) out.push('24시 헬스장', '헬스장 새벽', '헬스장 주말')
+  out.push('헬스장', 'PT', '헬스장 가격', '헬스장 추천', '헬스장 후기', '피트니스', '다이어트')
+  if (!store.womenOnly) out.push('헬스 초보')
+  return Array.from(new Set(out)).slice(0, 12)
+}
+
 export function combineLocalKeywords(areas: string[], suffixes: string[] = INTENT_SUFFIXES): string[] {
   const out: string[] = []
   for (const a of areas.map((s) => s.trim()).filter(Boolean)) {

@@ -7,10 +7,12 @@ import { GRADE_LABEL } from '@/lib/types'
 import {
   COMPETITION_GOOD,
   INTENT_SUFFIXES,
+  areasFromStore,
   buildManualMetrics,
   buildMetric,
   combineLocalKeywords,
   parseManualRows,
+  suffixesForStore,
 } from '@/lib/analysis/keyword'
 import { parseTotalCount } from '@/lib/analysis/paste'
 import { naverBlogSectionUrl } from '@/lib/analysis/rank'
@@ -111,6 +113,26 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     }
     setError(null)
     applyRows(buildManualMetrics(parsed))
+  }
+
+  /**
+   * 지점 정보에서 동네를 뽑아 조합까지 만들어 준다.
+   * 인자가 없으면 전 지점을 합친다. 지점 성격(24시·여성전용)에 맞는 의도를 곱한다.
+   */
+  function fillFromStore(store?: Store) {
+    const list = store ? [store] : stores
+    if (!list.length) return
+    const found = Array.from(new Set(list.flatMap(areasFromStore)))
+    if (!found.length) {
+      setError('지점 주소에서 동네를 찾지 못했습니다. 지역명을 직접 넣어주세요.')
+      return
+    }
+    setError(null)
+    setAreas(found.join(', '))
+    // 여러 지점을 합칠 때는 어느 한 지점 성격에만 맞추면 안 되니 공통 의도를 쓴다
+    const suffixes = store ? suffixesForStore(store) : INTENT_SUFFIXES
+    setCombos(combineLocalKeywords(found, suffixes))
+    setPicked([])
   }
 
   /** 입력한 키워드·고른 조합으로 빈 표를 만들어 준다 (숫자만 채우면 됨) */
@@ -214,9 +236,33 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
 
   return (
     <div className="space-y-4">
+      {/* 카드가 여러 개라 무엇부터 해야 하는지 안 보인다. 순서를 먼저 적어둔다. */}
+      <div className="bd panel rounded-xl border px-4 py-3">
+        <p className="text-[13px] font-bold">쓰는 순서</p>
+        <ol className="mt-2 grid gap-1.5 text-[12px] leading-relaxed sm:grid-cols-2">
+          {[
+            ['지점 버튼 한 번', '아래 「지역 키워드 조합」에서 지점을 누르면 주소에서 동네를 뽑아 후보를 만듭니다'],
+            ['조회', '고른 키워드 + 연관 키워드까지 검색량·발행량·등급이 자동으로 나옵니다'],
+            ['「황금 키워드」 줄 고르기', '검색은 되는데 새 글이 적은 자리입니다'],
+            ['상위노출 분석 → 글쓰기', '그 줄의 링크로 바로 이어집니다'],
+          ].map(([t, d], i) => (
+            <li key={t} className="flex gap-2">
+              <span className="bg-brand-500/15 text-brand-700 dark:text-brand-100 tnum mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold">
+                {i + 1}
+              </span>
+              <span className="min-w-0">
+                <b>{t}</b>
+                <br />
+                <span className="muted text-[11px]">{d}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
+
       <Card
         title="키워드 조회"
-        subtitle="한 번에 5개까지. 입력한 키워드의 연관 키워드도 함께 등급을 매깁니다."
+        subtitle="한 번에 5개까지. 입력한 키워드의 연관 키워드도 함께 등급을 매깁니다. 무엇을 넣을지 모르겠으면 아래 「지역 키워드 조합」부터 쓰세요."
       >
         <Field
           label="키워드 (쉼표 또는 줄바꿈으로 구분)"
@@ -240,6 +286,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                   key={s.id}
                   type="button"
                   onClick={() => setRaw(s.localKeywords.slice(0, 5).join(', '))}
+                  aria-label={`${s.name} 지역 키워드를 조회칸에 채우기`}
                   className="bd rounded-full border px-2.5 py-1 text-[11px] font-semibold hover:bg-slate-500/8"
                 >
                   {s.name}
@@ -274,105 +321,48 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
       </Card>
 
       <Card
-        title="직접 입력으로 경쟁률 계산"
-        subtitle="자동 조회가 막혔을 때 쓰는 경로입니다. 위 조회가 됐다면 표에서 부족한 칸만 채우는 쪽이 빠릅니다 — 검색량을 다시 적지 않아도 되니까요."
-      >
-        <div className="bd rounded-lg border border-dashed p-3">
-          <p className="text-[12px] font-semibold">숫자 두 개를 어디서 보나요</p>
-          <ol className="muted mt-1.5 space-y-1 text-[11px] leading-relaxed">
-            <li>
-              1. <b>월간 검색량</b> —{' '}
-              <a
-                href="https://searchad.naver.com"
-                target="_blank"
-                rel="noreferrer noopener"
-                className="text-brand-600 dark:text-brand-100 font-semibold underline"
-              >
-                네이버 검색광고
-              </a>{' '}
-              로그인 → 도구 → 키워드 도구 → 키워드 입력 → PC·모바일 검색량을 더한 값
-            </li>
-            <li>
-              2. <b>최근 30일 발행량</b> — 아래 링크로 <b>블로그 섹션 검색</b>을 열고 기간을{' '}
-              <b>1개월</b>로 맞추면 총 건수가 나옵니다. (통합검색 블로그 탭에는 총 건수가 이제
-              표시되지 않습니다)
-            </li>
-          </ol>
-        </div>
-
-        <div className="mt-3">
-          <Field
-            label="키워드, 월검색량, 30일 발행량 (한 줄에 하나)"
-            hint="콤마·탭·| 로 구분합니다. 1,200 처럼 천단위 콤마를 써도 되고 '회'·'건' 을 붙여도 됩니다."
-          >
-            <textarea
-              value={manual}
-              onChange={(e) => setManual(e.target.value)}
-              rows={4}
-              className={`${inputClass} font-mono text-[12px]`}
-              placeholder={'쌍용동 헬스장, 1,430, 437\n성정동 여성전용 헬스장, 320, 96'}
-            />
-          </Field>
-        </div>
-
-        {manualKeywords.length > 0 && (
-          <div className="mt-2.5">
-            <p className="muted mb-1.5 text-[11px] font-semibold">
-              30일 발행량 보러 가기 (기간을 1개월로 맞추세요)
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {manualKeywords.map((k) => (
-                <a
-                  key={k}
-                  href={naverBlogSectionUrl(k)}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="bd rounded-full border px-2.5 py-1 text-[11px] font-semibold hover:bg-slate-500/8"
-                >
-                  {k} →
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={runManual}
-            className="bg-brand-600 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-          >
-            등급 매기기
-          </button>
-          {(keywords.length > 0 || picked.length > 0) && (
-            <button
-              type="button"
-              onClick={prefillManual}
-              className="bd rounded-lg border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8"
-            >
-              위에 적은 키워드로 빈 줄 만들기
-            </button>
-          )}
-        </div>
-
-        {badLines.length > 0 && (
-          <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-200">
-            <p className="font-semibold">형식을 못 읽은 줄 {badLines.length}개 — 숫자 두 개가 다 있어야 합니다</p>
-            <ul className="mt-1 space-y-0.5 font-mono text-[11px]">
-              {badLines.slice(0, 5).map((l, i) => (
-                <li key={i} className="truncate">
-                  {l}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </Card>
-
-      <Card
         title="지역 키워드 조합 만들기"
         subtitle="스마트블록은 세부 의도를 가진 키워드에 걸릴 기회가 큽니다. 지역명에 의도를 곱해 후보를 만드세요."
       >
+        {stores.length > 0 ? (
+          <div className="bd mb-3 rounded-lg border border-dashed p-3">
+            <p className="text-[12px] font-semibold">내 지점에서 자동으로 채우기</p>
+            <p className="muted mt-1 text-[11px] leading-relaxed">
+              지점 버튼을 누르면 그 지점 <b>주소·지역 키워드에서 동네를 뽑고</b>, 지점 성격에 맞는
+              의도까지 곱해 후보를 만듭니다 (24시간 운영이면 새벽·주말, 여성전용이면 여성전용 계열).
+            </p>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {stores.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => fillFromStore(s)}
+                  aria-label={`${s.name} 동네로 조합 만들기`}
+                  className="bg-brand-600 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white"
+                >
+                  {s.name}
+                </button>
+              ))}
+              {stores.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => fillFromStore()}
+                  className="bd rounded-full border px-3 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                >
+                  전 지점 합쳐서
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="muted mb-3 text-[11px] leading-relaxed">
+            <Link href="/stores" className="text-brand-600 dark:text-brand-100 font-semibold underline">
+              지점
+            </Link>
+            을 먼저 등록하면 주소에서 동네를 자동으로 뽑아 채워드립니다.
+          </p>
+        )}
+
         <Field label="지역명 (쉼표로 구분)" hint="예: 쌍용동, 봉명동, 성정동, 두정동">
           <input
             value={areas}
@@ -433,6 +423,112 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           </>
         )}
       </Card>
+
+      {/* 자동 조회가 되는 동안에는 쓸 일이 없어서 접어 둔다 — 비상용 경로 */}
+      <details className="bd panel rounded-xl border px-4 py-3">
+        <summary className="cursor-pointer text-[13px] font-bold select-none">
+          직접 입력으로 경쟁률 계산
+          <span className="muted ml-2 text-[11px] font-normal">
+            자동 조회가 막혔을 때만 — 평소에는 열지 않아도 됩니다
+          </span>
+        </summary>
+        <div className="mt-3">
+          <p className="muted mb-3 text-[12px] leading-relaxed">
+            위 조회에서 <b>판정 불가</b>로 나온 줄은 표 안의 입력칸에 발행량만 넣는 쪽이 빠릅니다
+            (검색량을 다시 적지 않아도 되니까요). 이 칸은 검색량까지 손으로 넣어야 할 때 씁니다.
+          </p>
+          <div className="bd rounded-lg border border-dashed p-3">
+            <p className="text-[12px] font-semibold">숫자 두 개를 어디서 보나요</p>
+            <ol className="muted mt-1.5 space-y-1 text-[11px] leading-relaxed">
+              <li>
+                1. <b>월간 검색량</b> —{' '}
+                <a
+                  href="https://searchad.naver.com"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-brand-600 dark:text-brand-100 font-semibold underline"
+                >
+                  네이버 검색광고
+                </a>{' '}
+                로그인 → 도구 → 키워드 도구 → 키워드 입력 → PC·모바일 검색량을 더한 값
+              </li>
+              <li>
+                2. <b>최근 30일 발행량</b> — 아래 링크로 <b>블로그 섹션 검색</b>을 열고 기간을{' '}
+                <b>1개월</b>로 맞추면 총 건수가 나옵니다. (통합검색 블로그 탭에는 총 건수가 이제
+                표시되지 않습니다)
+              </li>
+            </ol>
+          </div>
+
+          <div className="mt-3">
+            <Field
+              label="키워드, 월검색량, 30일 발행량 (한 줄에 하나)"
+              hint="콤마·탭·| 로 구분합니다. 1,200 처럼 천단위 콤마를 써도 되고 '회'·'건' 을 붙여도 됩니다."
+            >
+              <textarea
+                value={manual}
+                onChange={(e) => setManual(e.target.value)}
+                rows={4}
+                className={`${inputClass} font-mono text-[12px]`}
+                placeholder={'쌍용동 헬스장, 1,430, 437\n성정동 여성전용 헬스장, 320, 96'}
+              />
+            </Field>
+          </div>
+
+          {manualKeywords.length > 0 && (
+            <div className="mt-2.5">
+              <p className="muted mb-1.5 text-[11px] font-semibold">
+                30일 발행량 보러 가기 (기간을 1개월로 맞추세요)
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {manualKeywords.map((k) => (
+                  <a
+                    key={k}
+                    href={naverBlogSectionUrl(k)}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="bd rounded-full border px-2.5 py-1 text-[11px] font-semibold hover:bg-slate-500/8"
+                  >
+                    {k} →
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={runManual}
+              className="bg-brand-600 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+            >
+              등급 매기기
+            </button>
+            {(keywords.length > 0 || picked.length > 0) && (
+              <button
+                type="button"
+                onClick={prefillManual}
+                className="bd rounded-lg border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8"
+              >
+                위에 적은 키워드로 빈 줄 만들기
+              </button>
+            )}
+          </div>
+
+          {badLines.length > 0 && (
+            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-200">
+              <p className="font-semibold">형식을 못 읽은 줄 {badLines.length}개 — 숫자 두 개가 다 있어야 합니다</p>
+              <ul className="mt-1 space-y-0.5 font-mono text-[11px]">
+                {badLines.slice(0, 5).map((l, i) => (
+                  <li key={i} className="truncate">
+                    {l}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </details>
 
       {sorted && (
         <Card
