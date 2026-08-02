@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { Store } from '@/lib/types'
+import { areasFromPlace, type PlaceInfo } from '@/lib/naver/place'
 import { Badge, Card, Field, inputClass } from '@/components/ui'
 
 function emptyStore(): Store {
@@ -26,6 +27,63 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
   const [editing, setEditing] = useState<Store | null>(null)
   const [isNew, setIsNew] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  // 네이버 플레이스에서 가져오기
+  const [placeQuery, setPlaceQuery] = useState('')
+  const [places, setPlaces] = useState<PlaceInfo[] | null>(null)
+  const [placeLoading, setPlaceLoading] = useState(false)
+  const [placeMsg, setPlaceMsg] = useState<string | null>(null)
+
+  async function findPlaces(q: string) {
+    const query = q.trim()
+    if (!query) {
+      setPlaceMsg('찾을 상호명을 넣어주세요.')
+      return
+    }
+    setPlaceLoading(true)
+    setPlaceMsg(null)
+    setPlaces(null)
+    try {
+      const res = await fetch('/api/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      })
+      const json = await res.json()
+      const found: PlaceInfo[] = json.places ?? []
+      setPlaces(found)
+      if (!found.length) {
+        setPlaceMsg(
+          '못 찾았습니다. 네이버에서 실제로 검색되는 이름으로 바꿔보세요 — 등록된 플레이스 이름이 정식 상호명과 다른 경우가 많습니다.'
+        )
+      }
+    } catch {
+      setPlaceMsg('조회에 실패했습니다. 잠시 뒤 다시 시도하거나 아래에 직접 입력하세요.')
+    } finally {
+      setPlaceLoading(false)
+    }
+  }
+
+  /** 고른 플레이스 정보를 편집 중인 지점에 채운다 — 비어 있는 칸만 채우고 기존 값은 지키지 않는다 */
+  function applyPlace(p: PlaceInfo) {
+    if (!editing) return
+    const areas = areasFromPlace(p)
+    const merged = Array.from(
+      new Set([...editing.localKeywords, ...areas.map((a) => `${a} ${p.category || '헬스장'}`)])
+    )
+    setEditing({
+      ...editing,
+      legalName: editing.legalName.trim() || p.name,
+      location: editing.location.trim() || [p.commonAddress, p.roadAddress].filter(Boolean).join(' '),
+      phone: editing.phone.trim() || p.phone || '',
+      reserveUrl: editing.reserveUrl?.trim() || p.bookingUrl || undefined,
+      localKeywords: merged,
+    })
+    setPlaces(null)
+    setPlaceMsg(
+      `"${p.name}" 정보를 채웠습니다. 비어 있던 칸만 채웠으니, 이미 적어둔 값은 그대로입니다 — 아래에서 확인하고 저장하세요.`
+    )
+  }
 
   async function save() {
     if (!editing) return
@@ -59,6 +117,60 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
     return (
       <Card title={isNew ? '지점 추가' : `${editing.name} 수정`}>
         <div className="space-y-3.5">
+          {/* 손으로 다 적지 않아도 되게 — 통합검색에 들어 있는 플레이스 정보를 읽어온다 */}
+          <div className="bd rounded-lg border border-dashed p-3">
+            <p className="text-[12px] font-semibold">네이버 플레이스에서 가져오기</p>
+            <p className="muted mt-1 text-[11px] leading-relaxed">
+              상호명으로 검색해 <b>주소·전화·예약링크·지역 키워드</b>를 채웁니다. 이미 적어둔 칸은
+              건드리지 않고 <b>비어 있는 칸만</b> 채웁니다.
+            </p>
+            <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
+              <input
+                value={placeQuery}
+                onChange={(e) => setPlaceQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && findPlaces(placeQuery)}
+                className={inputClass}
+                placeholder={editing.legalName || editing.name || 'MTO 피트니스 쌍용점'}
+                aria-label="플레이스에서 찾을 상호명"
+              />
+              <button
+                type="button"
+                onClick={() => findPlaces(placeQuery || editing.legalName || editing.name)}
+                disabled={placeLoading}
+                className="bg-brand-600 shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {placeLoading ? '찾는 중…' : '찾기'}
+              </button>
+            </div>
+
+            {places && places.length > 0 && (
+              <div className="mt-2.5 space-y-1.5">
+                <p className="muted text-[11px] font-semibold">
+                  {places.length}곳 찾았습니다 — 내 지점을 고르세요
+                </p>
+                {places.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => applyPlace(p)}
+                    className="bd panel block w-full rounded-lg border p-2.5 text-left hover:bg-slate-500/8"
+                  >
+                    <span className="text-[12px] font-semibold">{p.name}</span>
+                    {p.category && (
+                      <span className="muted ml-1.5 text-[11px]">{p.category}</span>
+                    )}
+                    <span className="muted mt-0.5 block text-[11px]">
+                      {p.commonAddress} {p.roadAddress}
+                    </span>
+                    {p.phone && <span className="muted block text-[11px]">{p.phone}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {placeMsg && <p className="muted mt-2 text-[11px] leading-relaxed">{placeMsg}</p>}
+          </div>
+
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             <Field label="지점 이름 (표시용)" hint="예: 쌍용점">
               <input value={editing.name} onChange={(e) => set('name', e.target.value)} className={inputClass} />

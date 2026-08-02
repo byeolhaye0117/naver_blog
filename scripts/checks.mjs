@@ -18,6 +18,7 @@ const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffix
 const { parseSectionTotal, monthlyFromWeek, resolveRecent, SECTION_CAP } = require(
   `${OUT}/naver/blogsection.js`
 )
+const { parsePlaceRecords, areasFromPlace } = require(`${OUT}/naver/place.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
@@ -460,6 +461,34 @@ ok(
   buildMetric({ ...apiRow, blogRecent: 3000 }).grade === 'hard',
   '발행량을 크게 넣으면 과열로 바뀜'
 )
+
+console.log('\n[25] 네이버 플레이스 정보 읽기')
+// 스마트플레이스(사업주 콘솔)는 로그인이 필요하지만, 누구나 보는 통합검색 결과에
+// 플레이스 정보가 JSON 으로 들어 있다. 실제 응답에서 가져온 형태를 그대로 픽스처로 쓴다.
+const PLACE_HTML = `<script>window.x = {"a":[{"id":"11716617","name":"쌍용동헬스장 \u003Cmark\u003EMTO피트니스 쌍용점\u003C/mark\u003E PT","normalizedName":"쌍용동헬스장 MTO피트니스 쌍용점 PT","category":"헬스장","dbType":"drt","roadAddress":"미라7길 26 쌍봉빌딩 4층","address":"쌍용동 1149","fullAddress":"충청남도 천안시 서북구 미라7길 26 쌍봉빌딩 4층","commonAddress":"충남 천안시 서북구 쌍용동","bookingUrl":"https:\u002F\u002Fm.booking.naver.com\u002Fbooking\u002F13\u002Fbizes\u002F752510","phone":null,"virtualPhone":"0507-1360-4284","businessHours":null},{"id":"2010888683","name":"\u003Cmark\u003E여성전용착한헬스\u003C/mark\u003E&amp;PT 두정점","normalizedName":"여성전용착한헬스&PT 두정점","category":"헬스장","roadAddress":"두정중11길 62 101, 201호","address":"두정동 1561","commonAddress":"충남 천안시 서북구 두정동","bookingUrl":null,"phone":null,"virtualPhone":null}]};</script>`
+
+const pr = parsePlaceRecords(PLACE_HTML)
+ok(pr.length === 2, `업체 ${pr.length}곳 추출`)
+ok(pr[0].id === '11716617', 'place id 추출')
+ok(pr[0].name === '쌍용동헬스장 MTO피트니스 쌍용점 PT', `강조 태그 제거 — ${pr[0].name}`)
+ok(pr[1].name === '여성전용착한헬스&PT 두정점', `HTML 엔티티 복원 — ${pr[1].name}`)
+ok(pr[0].commonAddress === '충남 천안시 서북구 쌍용동', '시·구·동 주소')
+ok(pr[0].roadAddress === '미라7길 26 쌍봉빌딩 4층', '도로명 상세')
+ok(pr[0].phone === '0507-1360-4284', '전화가 비어 있으면 안심번호를 쓴다')
+ok(pr[1].phone === null, '둘 다 없으면 null')
+ok(pr[0].bookingUrl?.includes('m.booking.naver.com'), `예약 링크 — ${pr[0].bookingUrl}`)
+ok(pr[1].bookingUrl === null, '예약 링크 없으면 null')
+ok(pr[0].placeUrl === 'https://m.place.naver.com/place/11716617/home', '플레이스 주소 생성')
+ok(parsePlaceRecords('플레이스가 없는 페이지').length === 0, '없으면 빈 배열')
+ok(parsePlaceRecords('{"commonAddress":"깨진 JSON').length === 0, '깨진 JSON 은 건너뜀')
+
+// 같은 업체가 페이지에 여러 번 나와도 한 번만
+ok(parsePlaceRecords(PLACE_HTML + PLACE_HTML).length === 2, '중복 업체 제거')
+
+const placeAreas1 = areasFromPlace(pr[0])
+ok(placeAreas1.includes('쌍용동'), `플레이스 주소에서 동네 — ${placeAreas1.join(',')}`)
+ok(!placeAreas1.some((a) => a.includes('시') || a.includes('구')), '시·구는 동네로 안 셈', placeAreas1.join(','))
+ok(areasFromPlace(pr[1]).includes('두정동'), '두정동 추출')
 
 console.log('\n[24] 지점 정보에서 동네 뽑기')
 // 스마트플레이스는 로그인이 필요하고 지도 검색은 서버 IP 에 캡차가 걸려 자동 수집이 안 된다.
