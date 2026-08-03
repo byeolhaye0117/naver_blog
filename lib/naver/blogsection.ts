@@ -205,18 +205,27 @@ export async function topBlogPosts(
     `${ENDPOINT}?countPerPage=${Math.min(display, 30)}&currentPage=1&orderBy=sim&type=post` +
     `&keyword=${encodeURIComponent(q)}`
 
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': UA, Referer: REFERER, Accept: 'application/json, text/plain, */*' },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    })
-    if (!res.ok) return { items: [], total: null }
-    const body = await res.text()
-    return { items: parseSectionPosts(body), total: parseSectionTotal(body) }
-  } catch {
-    return { items: [], total: null }
+  const once = async (): Promise<{ items: SectionPost[]; total: number | null }> => {
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': UA, Referer: REFERER, Accept: 'application/json, text/plain, */*' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      if (!res.ok) return { items: [], total: null }
+      const body = await res.text()
+      return { items: parseSectionPosts(body), total: parseSectionTotal(body) }
+    } catch {
+      return { items: [], total: null }
+    }
   }
+
+  // 속도 제한에 걸리면 건수(totalCount)만 오고 목록이 null 로 오는 경우가 실제로 있다.
+  // 발행량 조회와 같은 이유로 한 번만 다시 시도한다 — 대부분 두 번째에 온다.
+  const first = await once()
+  if (first.items.length) return first
+  await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
+  return once()
 }
 
 /** 사용자가 같은 숫자를 눈으로 확인할 수 있는 화면 주소 */
