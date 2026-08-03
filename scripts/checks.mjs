@@ -817,7 +817,7 @@ ok(
 )
 
 console.log('\n[31] AI 글쓰기 — 응답 파싱과 지시문')
-const { extractJson } = require(`${OUT}/ai/claude.js`)
+const { extractJson, extractText, pickModel } = require(`${OUT}/ai/llm.js`)
 const { buildSystemPrompt, buildUserPrompt, buildFixPrompt } = require(`${OUT}/ai/prompt.js`)
 
 // 모델이 코드펜스·설명을 붙여 보내도 JSON 만 뽑아야 한다
@@ -828,6 +828,24 @@ ok(extractJson('{"a":{"b":1},"title":"ㄱ"}').title === 'ㄱ', '중첩 객체도
 ok(extractJson('{"body":"중괄호 } 가 문자열 안에 있음","title":"ㄱ"}').title === 'ㄱ', '문자열 속 중괄호에 속지 않음')
 ok(extractJson('JSON 이 없는 응답') === null, 'JSON 이 없으면 null')
 ok(extractJson('{"깨진 JSON"') === null, '깨진 JSON 은 null')
+
+// 회사마다 응답 모양이 달라도 본문을 뽑아야 한다
+ok(extractText(JSON.stringify({ content: [{ type: 'text', text: 'ㄱ' }] })) === 'ㄱ', 'Anthropic 응답 파싱')
+ok(extractText(JSON.stringify({ choices: [{ message: { content: 'ㄱ' } }] })) === 'ㄱ', 'OpenAI 호환 응답 파싱')
+ok(
+  extractText(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ㄱ' }, { text: 'ㄴ' }] } }] })) === 'ㄱㄴ',
+  'Gemini 응답 파싱 (조각 이어붙이기)'
+)
+ok(extractText(JSON.stringify({ result: { message: { content: 'ㄱ' } } })) === 'ㄱ', 'CLOVA 응답 파싱')
+ok(extractText('JSON 이 아님') === '', '못 읽으면 빈 문자열')
+
+// 모델 이름은 회사마다 바뀌므로 목록에서 선호 순서대로 고른다
+ok(pickModel('openai', ['gpt-3.5-turbo', 'gpt-4o', 'text-embedding-3']) === 'gpt-4o', '더 좋은 모델을 고른다')
+ok(pickModel('openai', ['gpt-4o', 'gpt-5.1']) === 'gpt-5.1', '더 새 세대를 먼저 고른다')
+ok(pickModel('openai', ['text-embedding-3', 'whisper-1', 'my-chat']) === 'my-chat', '임베딩·음성 모델은 피한다')
+ok(pickModel('gemini', ['gemini-2.0-flash', 'gemini-2.5-pro']) === 'gemini-2.5-pro', 'Gemini 선호 순서')
+ok(pickModel('anthropic', ['claude-3-5-haiku', 'claude-sonnet-5']) === 'claude-sonnet-5', 'Claude 선호 순서')
+ok(pickModel('openai', []) === null, '목록이 비면 null (기본값으로 넘어간다)')
 
 // 지시문에 검수 기준이 그대로 들어가야 한다 (기준이 바뀌면 지시도 바뀐다)
 const sysReview = buildSystemPrompt('review')

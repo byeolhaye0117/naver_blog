@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { readDB } from '@/lib/store'
-import { AiError, askClaude, extractJson, hasAiKey } from '@/lib/ai/claude'
+import { AiError, aiStatus, askLlm, extractJson } from '@/lib/ai/llm'
 import { buildFixPrompt, buildSystemPrompt, buildUserPrompt } from '@/lib/ai/prompt'
 import { PUBLISH_THRESHOLD, SPECS, checkPost, summarize } from '@/lib/writing/checker'
 import type { PostType } from '@/lib/types'
@@ -31,11 +31,12 @@ function asDraft(v: unknown): Draft | null {
  * 그대로 내려주되 무엇이 남았는지 함께 보낸다 (사용자가 손으로 마무리할 수 있게).
  */
 export async function POST(req: Request) {
-  if (!hasAiKey()) {
+  const ai = aiStatus()
+  if (!ai.ready) {
     return NextResponse.json(
       {
         error:
-          'AI 글쓰기를 쓰려면 ANTHROPIC_API_KEY 를 설정해야 합니다. 「휴대폰에서 쓰기 · 배포」 화면의 안내를 보세요.',
+          'AI 글쓰기를 쓰려면 AI 키를 환경변수에 넣어야 합니다. Anthropic·OpenAI·Gemini·CLOVA 중 가지고 계신 것 하나면 됩니다 — 「휴대폰에서 쓰기 · 배포」 화면의 안내를 보세요.',
         needKey: true,
       },
       { status: 400 }
@@ -110,7 +111,7 @@ export async function POST(req: Request) {
         sponsorship: body.sponsorship ?? 'unset',
       })
 
-    let draft = asDraft(extractJson(await askClaude(system, messages)))
+    let draft = asDraft(extractJson(await askLlm(system, messages)))
     if (!draft) {
       return NextResponse.json({ error: '글 형식을 읽지 못했습니다. 다시 시도해 주세요.' }, { status: 502 })
     }
@@ -128,7 +129,7 @@ export async function POST(req: Request) {
         role: 'user',
         content: buildFixPrompt(issues, result.stats.charCount, SPECS[type]),
       })
-      const second = asDraft(extractJson(await askClaude(system, messages)))
+      const second = asDraft(extractJson(await askLlm(system, messages)))
       if (second) {
         const secondResult = check(second)
         // 나빠졌으면 첫 글을 유지한다
@@ -143,6 +144,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       draft,
       revised,
+      provider: ai.label,
       check: {
         score: result.score,
         ...summarize(result),
