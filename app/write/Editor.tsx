@@ -198,7 +198,8 @@ export default function Editor({
   return (
     <div>
       {/* 툴바 — 점수와 저장은 어느 화면에서든 보인다 */}
-      <div className="panel bd sticky top-[92px] z-10 mb-4 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2.5 lg:top-2">
+      {/* 상단 헤더(휴대폰 약 61px) 바로 아래에 붙어 따라온다 */}
+      <div className="panel bd sticky top-[61px] z-10 mb-4 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2.5 lg:top-2">
         <Badge tone={tone}>
           <span className="tnum">{result.score}점</span>
         </Badge>
