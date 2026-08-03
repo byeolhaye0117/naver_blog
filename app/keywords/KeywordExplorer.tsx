@@ -1329,8 +1329,17 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 <Badge tone={trend.momentum > 10 ? 'good' : trend.momentum < -10 ? 'bad' : 'default'}>
                   최근 3개월 {trend.momentum > 0 ? `+${trend.momentum}` : trend.momentum}%
                 </Badge>
-                <span className="muted text-[11px]">직전 3개월 평균 대비</span>
+                <span className="muted text-[11px]">
+                  직전 3개월 평균 대비{trend.partialLast && ' (진행 중인 이번 달은 제외)'}
+                </span>
               </div>
+              {/* 이번 달은 며칠치만 집계돼 그래프 끝이 급락처럼 보인다 — 하락으로 읽으면 안 된다 */}
+              {trend.partialLast && (
+                <p className="muted mb-2.5 text-[11px] leading-relaxed">
+                  그래프 <b>맨 오른쪽 달은 아직 진행 중</b>이라 며칠치만 집계됐습니다. 낮게 보이는 것은
+                  검색량 감소가 아닙니다.
+                </p>
+              )}
               <LineChart
                 points={trend.data.map((d) => ({ label: d.period.slice(2, 7), value: d.ratio }))}
                 yMin={0}

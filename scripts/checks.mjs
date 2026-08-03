@@ -23,6 +23,7 @@ const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool, dedupeAdRows } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
 const { phaseOf, buildRankViews } = require(`${OUT}/analysis/rank.js`)
+const { isPartialMonth, completedMonths, momentumOf } = require(`${OUT}/naver/datalab.js`)
 let fails = 0
 const ok = (cond, label, extra = '') => {
   if (!cond) fails++
@@ -966,6 +967,26 @@ ok(s0.local === '쌍용동', '정보글 조연으로 쓸 지역 키워드')
 ok(plan.splits.some((x) => x.keyword === '쌍용동 헬스장 후기' && x.postType === 'review'), '후기는 따로 쓰라고 알려준다')
 ok(plan.sets.some((s) => s.main.keyword === '봉명동 헬스장'), '다른 지역은 별도 세트')
 ok(plan.sets.every((s) => !(s.area === '쌍용동' && s.subs.some((x) => x.metric.keyword.includes('봉명동')))), '지역이 섞이지 않는다')
+
+// 진행 중인 이번 달은 모멘텀에서 빼야 한다 (실측: 8월 3일 조회에 8월이 5.7 로 찍혀 -23%)
+const NOW = new Date('2026-08-03T00:00:00Z')
+ok(isPartialMonth('2026-08-01', NOW), '이번 달은 진행 중')
+ok(!isPartialMonth('2026-07-01', NOW), '지난 달은 끝났다')
+const SERIES = [
+  { period: '2026-02-01', ratio: 70 },
+  { period: '2026-03-01', ratio: 50 },
+  { period: '2026-04-01', ratio: 60 },
+  { period: '2026-05-01', ratio: 55 },
+  { period: '2026-06-01', ratio: 60 },
+  { period: '2026-07-01', ratio: 61 },
+  { period: '2026-08-01', ratio: 5.7 },
+]
+ok(completedMonths(SERIES, NOW).length === 6, '진행 중인 달을 뺀다', String(completedMonths(SERIES, NOW).length))
+ok(completedMonths(SERIES.slice(0, 6), NOW).length === 6, '끝난 달만 있으면 그대로 둔다')
+const mWith = momentumOf(SERIES, NOW)
+ok(mWith > -10, '진행 중인 달이 모멘텀을 끌어내리지 않는다', `${mWith}%`)
+ok(mWith === momentumOf(SERIES.slice(0, 6), NOW), '진행 중인 달을 지운 것과 같은 값', `${mWith}%`)
+ok(momentumOf([], NOW) === 0, '데이터가 없으면 0')
 
 // 순위를 세려면 같은 글의 세 가지 주소 표기를 하나로 봐야 한다
 ok(normalizeBlogUrl('https://blog.naver.com/hyoni2_/224361842417') === 'blog.naver.com/hyoni2_/224361842417', '기본 주소')
