@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { Store } from '@/lib/types'
+import { areasFromStore } from '@/lib/analysis/keyword'
 import { areasFromPlace, type PlaceInfo } from '@/lib/naver/place'
 import { Badge, Card, Field, inputClass } from '@/components/ui'
 
@@ -33,7 +34,27 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
   const [places, setPlaces] = useState<PlaceInfo[] | null>(null)
   const [placeLoading, setPlaceLoading] = useState(false)
   const [placeMsg, setPlaceMsg] = useState<string | null>(null)
+  /** 플레이스 정보를 채웠는데 아직 저장하지 않은 상태 — 저장 없이 나가면 사라진다 */
+  const [placeApplied, setPlaceApplied] = useState(false)
 
+  async function search(query: string): Promise<PlaceInfo[]> {
+    const res = await fetch('/api/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    })
+    const json = await res.json()
+    return json.places ?? []
+  }
+
+  /**
+   * 상호명으로 찾고, 못 찾으면 동네+업종으로 한 번 더 찾는다.
+   *
+   * 플레이스에 등록된 이름이 정식 상호명과 다른 경우가 흔하다
+   * (예: "여성전용 착한헬스 성정점" → 실제 등록명 "성정동 착한 헬스장").
+   * 그때 "못 찾았습니다" 로 끝내면 회원이 직접 이름을 알아내야 하니,
+   * 그 동네 업체 목록을 대신 보여주고 고르게 한다.
+   */
   async function findPlaces(q: string) {
     const query = q.trim()
     if (!query) {
@@ -44,19 +65,26 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
     setPlaceMsg(null)
     setPlaces(null)
     try {
-      const res = await fetch('/api/place', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-      })
-      const json = await res.json()
-      const found: PlaceInfo[] = json.places ?? []
-      setPlaces(found)
-      if (!found.length) {
-        setPlaceMsg(
-          '못 찾았습니다. 네이버에서 실제로 검색되는 이름으로 바꿔보세요 — 등록된 플레이스 이름이 정식 상호명과 다른 경우가 많습니다.'
-        )
+      let found = await search(query)
+      let note: string | null = null
+
+      if (!found.length && editing) {
+        const area = areasFromStore(editing)[0]
+        if (area) {
+          const wide = `${area} 헬스장`
+          found = await search(wide)
+          if (found.length) {
+            note = `"${query}" 로는 안 나와서 "${wide}" 로 다시 찾았습니다 — 플레이스 등록명이 정식 상호명과 다른 경우가 많습니다. 아래에서 내 지점을 고르세요.`
+          }
+        }
       }
+
+      setPlaces(found)
+      setPlaceMsg(
+        found.length
+          ? note
+          : '못 찾았습니다. 네이버에서 내 업체가 실제로 검색되는 이름을 그대로 넣어보세요.'
+      )
     } catch {
       setPlaceMsg('조회에 실패했습니다. 잠시 뒤 다시 시도하거나 아래에 직접 입력하세요.')
     } finally {
@@ -82,9 +110,20 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
       localKeywords: merged,
     })
     setPlaces(null)
+    setPlaceApplied(true)
     setPlaceMsg(
-      `"${p.name}" 정보를 채웠습니다. 비어 있던 칸만 채웠으니, 이미 적어둔 값은 그대로입니다 — 아래에서 확인하고 저장하세요.`
+      `"${p.name}" 정보를 채웠습니다. 비어 있던 칸만 채웠으니 이미 적어둔 값은 그대로입니다.`
     )
+  }
+
+  /** 편집 시작 — 플레이스 조회 상태를 초기화하고 상호명을 미리 채워 둔다 */
+  function startEdit(store: Store, brandNew: boolean) {
+    setEditing(store)
+    setIsNew(brandNew)
+    setPlaceQuery(store.legalName || store.name || '')
+    setPlaces(null)
+    setPlaceMsg(null)
+    setPlaceApplied(false)
   }
 
   async function save() {
@@ -102,6 +141,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
     setSaving(false)
     setEditing(null)
     setIsNew(false)
+    setPlaceApplied(false)
     router.refresh()
   }
 
@@ -132,7 +172,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
                 onChange={(e) => setPlaceQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && findPlaces(placeQuery)}
                 className={inputClass}
-                placeholder={editing.legalName || editing.name || 'MTO 피트니스 쌍용점'}
+                placeholder="네이버에서 검색되는 업체 이름"
                 aria-label="플레이스에서 찾을 상호명"
               />
               <button
@@ -171,6 +211,22 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
             )}
 
             {placeMsg && <p className="muted mt-2 text-[11px] leading-relaxed">{placeMsg}</p>}
+
+            {placeApplied && (
+              <div className="mt-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+                <p className="text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+                  <strong>아직 저장되지 않았습니다.</strong> 이대로 나가면 사라집니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving}
+                  className="bg-brand-600 mt-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {saving ? '저장 중…' : '지금 저장'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
@@ -297,10 +353,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
     <div className="space-y-4">
       <button
         type="button"
-        onClick={() => {
-          setEditing(emptyStore())
-          setIsNew(true)
-        }}
+        onClick={() => startEdit(emptyStore(), true)}
         className="bg-brand-600 rounded-lg px-4 py-2 text-sm font-semibold text-white"
       >
         지점 추가
@@ -321,10 +374,8 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
             <div className="flex gap-1.5">
               <button
                 type="button"
-                onClick={() => {
-                  setEditing(s)
-                  setIsNew(false)
-                }}
+                onClick={() => startEdit(s, false)}
+                aria-label={`${s.name} 수정`}
                 className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
               >
                 수정
@@ -332,6 +383,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
               <button
                 type="button"
                 onClick={() => remove(s)}
+                aria-label={`${s.name} 삭제`}
                 className="muted rounded-lg px-2.5 py-1.5 text-[11px] font-semibold hover:text-rose-600"
               >
                 삭제
