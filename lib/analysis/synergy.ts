@@ -266,6 +266,16 @@ export interface SetPlan {
 const SETTABLE = new Set(['gold', 'good'])
 
 /**
+ * 서브 키워드의 값 = 월 검색량 × 궁합.
+ *
+ * 순수 함수로 빼둔 이유는 테스트로 고정하기 위해서다 — 이 저울이 뒤집히면
+ * 검색량 10회짜리가 285회짜리를 밀어낸다 (실제로 그랬다).
+ */
+export function subValue(metric: KeywordMetric, synergy: Synergy): number {
+  return metric.monthlySearch * (synergy.score / 100)
+}
+
+/**
  * 채점된 키워드에서 "한 글에 묶을 세트" 를 만든다.
  *
  * 메인은 진입 가능한 등급(황금·노려볼 만함) 중 검색량이 가장 큰 것으로 고른다.
@@ -364,7 +374,11 @@ export function buildKeywordSets(
         .filter(({ s }) => s.strength === 'strong' || s.strength === 'ok')
         // 서브가 메인보다 크면 순서가 뒤바뀐 것이다 — 그 키워드는 다음 세트의 메인이 된다
         .filter(({ r }) => r.m.monthlySearch <= head.m.monthlySearch)
-        .sort((x, y) => y.s.score - x.s.score || y.r.m.monthlySearch - x.r.m.monthlySearch)
+        // 궁합만 보고 고르면 안 된다. 실측으로 확인한 예: "쌍용동 헬스장" 세트에서
+        // "쌍용동 헬스장 가격"(월 15회, 확장 키워드라 궁합 88)이 "쌍용동 24시 헬스장"
+        // (월 285회, 궁합 55)을 밀어냈다. 궁합이 좋아도 아무도 안 찾는 말을 얹으면
+        // 얻는 게 없다 — 검색량 × 궁합으로 값을 매긴다.
+        .sort((x, y) => subValue(y.r.m, y.s) - subValue(x.r.m, x.s))
         .slice(0, 2)
         .map(({ r, s }) => {
           used.add(r.m.keyword)
