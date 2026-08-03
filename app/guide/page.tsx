@@ -58,7 +58,7 @@ export default function GuidePage() {
             </Link>{' '}
             화면에 한 번만 정리해 두었습니다.
           </p>
-          <div className="mt-3 rounded-lg border border-sky-500/30 bg-sky-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
+          <div className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
             <strong className="font-bold">발행(업로드)은 왜 자동이 아닌가요?</strong> 네이버는 블로그
             글쓰기 공식 API를 제공하지 않습니다. 로그인 자동화로 우회하는 방법이 있지만 캡차·2단계 인증에
             막히고 계정 제재 위험이 있어, 이 앱은 대신{' '}
@@ -90,7 +90,7 @@ export default function GuidePage() {
                 m: '제목에 메인 키워드 + 세부 의도(새벽 운동·여성전용 등)를 함께 담으면 진입에 유리.',
               },
             ].map((x) => (
-              <div key={x.t} className="bd rounded-lg border p-3.5">
+              <div key={x.t} className="surface bd rounded-xl border p-3.5">
                 <h3 className="text-[13px] font-bold">{x.t}</h3>
                 <p className="mt-1.5 text-[12px] leading-relaxed">{x.d}</p>
                 <p className="text-brand-700 dark:text-brand-100 mt-2 text-[12px] leading-relaxed font-semibold">
@@ -113,7 +113,7 @@ export default function GuidePage() {
               읽습니다. <strong>최신순이 아닙니다</strong> — 최신순은 발행만 하면 위에 있으니 재는
               의미가 없습니다.
             </p>
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-amber-800 dark:text-amber-200">
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-amber-800 dark:text-amber-200">
               <strong className="font-bold">그런데 이 값은 실제 통합검색 상단과 같지 않습니다.</strong>
               <ul className="mt-2 list-inside list-disc space-y-1">
                 <li>블로그 검색은 <strong>평면 목록</strong>만 줍니다.</li>
@@ -132,7 +132,7 @@ export default function GuidePage() {
               <strong>「네이버 통합검색에서 확인」·「블로그 탭」</strong> 링크를 붙여 뒀습니다. 앱 숫자로는
               추세(오르는지 밀리는지)를 보고, 실제 자리는 링크로 눈으로 확인하는 방식으로 쓰세요.
             </p>
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-3 text-emerald-800 dark:text-emerald-200">
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-3 text-emerald-800 dark:text-emerald-200">
               <strong className="font-bold">그래서 이 앱의 기본 입력은 「직접 본 것을 넣기」입니다.</strong>
               <ul className="mt-2 list-inside list-disc space-y-1">
                 <li>
@@ -192,7 +192,7 @@ export default function GuidePage() {
                 mark: '?',
               },
             ].map((x) => (
-              <div key={x.t} className="bd rounded-lg border p-3.5">
+              <div key={x.t} className="surface bd rounded-xl border p-3.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-[13px] font-bold">{x.t}</h3>
                   <Badge tone={x.mark === '✓' ? 'good' : x.mark === '≈' ? 'info' : 'warn'}>
@@ -203,7 +203,7 @@ export default function GuidePage() {
               </div>
             ))}
 
-            <div className="rounded-lg border border-sky-500/30 bg-sky-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
+            <div className="rounded-xl border border-sky-500/30 bg-sky-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
               <strong className="font-bold">블로그 지수가 낮은데도 새 글이 바로 상위에 뜨는 이유</strong>
               <p className="mt-1.5">
                 2025년에 C-Rank·D.I.A.+ 평가가 스마트블록에 완전히 통합됐습니다. D.I.A.+는{' '}
@@ -284,7 +284,7 @@ export default function GuidePage() {
             </table>
           </div>
 
-          <div className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/8 px-3.5 py-3 text-[12px] leading-relaxed">
+          <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/8 px-3.5 py-3 text-[12px] leading-relaxed">
             <strong className="font-bold">미노출 자가진단</strong> — 발행한 글 제목을 그대로 검색해서 안
             나오면 검색누락입니다. 여러 글이 동시에 안 나오거나 순위가 일제히 밀리면 블로그 단위 감점을
             의심하세요. 그때는 발행을 늦추고 정보성 글 위주로 회복 운영합니다.
@@ -383,7 +383,7 @@ export default function GuidePage() {
               const terms = RISK_TERMS.filter((t) => t.category === cat)
               if (!terms.length) return null
               return (
-                <div key={cat} className="bd rounded-lg border p-3.5">
+                <div key={cat} className="surface bd rounded-xl border p-3.5">
                   <h3 className="text-[13px] font-bold">{cat}</h3>
                   <ul className="mt-2 space-y-2">
                     {terms.map((t, i) => (
@@ -399,7 +399,7 @@ export default function GuidePage() {
               )
             })}
 
-            <div className="bd rounded-lg border p-3.5">
+            <div className="surface bd rounded-xl border p-3.5">
               <h3 className="text-[13px] font-bold">D. 상업 단어 빈도 (도배 방지)</h3>
               <p className="muted mt-1 text-[12px] leading-relaxed">
                 단어 하나하나는 문제가 없지만 반복되면 광고성 문서 신호가 됩니다.
@@ -442,7 +442,7 @@ export default function GuidePage() {
                   '"용곡점 방문후기 써줘, 내돈내산, 메인 키워드는 용곡동 여성전용, 이벤트는 3개월 등록 시 1개월 추가"',
                 ],
               ].map(([skill, kind, example]) => (
-                <li key={skill} className="bd rounded-lg border p-3">
+                <li key={skill} className="surface bd rounded-xl border p-3.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <code className="text-[11px] font-bold">{skill}</code>
                     <Badge tone="info">{kind}</Badge>

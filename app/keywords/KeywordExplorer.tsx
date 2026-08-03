@@ -426,7 +426,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
             type="button"
             onClick={() => run()}
             disabled={loading}
-            className="bg-brand-600 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="bg-brand-600 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
             {loading ? '조회 중…' : '검색량 · 경쟁률 조회'}
           </button>
@@ -441,20 +441,29 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
             연관 키워드도 함께
           </label>
         </div>
-        <p className="muted mt-2 text-[11px] leading-relaxed">
-          월 검색량은 네이버 <b>검색광고 API</b>, 최근 30일 발행량은 <b>블로그 섹션 검색</b>에서
-          자동으로 가져옵니다. 발행량 쪽은 공식 API 가 아니라 네이버 화면이 쓰는 경로라, 막히거나
-          응답이 바뀌면 <b>판정 불가</b>로 표시되고 그 줄만 직접 넣으면 됩니다.
-          <br />
-          <b>연관 키워드</b>도 함께 등급을 매깁니다 — 안 떠올린 키워드를 찾는 게 이 화면의 값이라
-          기본으로 켜 둡니다. 다만 검색광고 API 는 전국·전업종을 섞어 주므로{' '}
-          <b>내 지점이 있는 지역 + 헬스·운동 업종만</b> 남깁니다 (다른 지역, 필라테스·요가·피부관리
-          같은 다른 업종, 남의 상호는 제외). 내가 직접 넣은 키워드는 이 걸러내기를 거치지 않고 어떤
-          정렬에서도 맨 위에 둡니다.
-        </p>
+        {/* 설명은 접어 둔다 — 매번 읽을 내용이 아니라 한 번 읽고 마는 내용이다 */}
+        <details className="muted mt-2.5 text-[11px] leading-relaxed">
+          <summary className="cursor-pointer font-semibold select-none">
+            숫자는 어디서 오나 · 연관 키워드는 어떻게 걸러지나
+          </summary>
+          <div className="mt-2 space-y-2">
+            <p>
+              월 검색량은 네이버 <b>검색광고 API</b>, 최근 30일 발행량은 <b>블로그 섹션 검색</b>에서
+              자동으로 가져옵니다. 발행량 쪽은 공식 API 가 아니라 네이버 화면이 쓰는 경로라, 막히거나
+              응답이 바뀌면 <b>판정 불가</b>로 표시되고 그 줄만 직접 넣으면 됩니다.
+            </p>
+            <p>
+              <b>연관 키워드</b>도 함께 등급을 매깁니다 — 안 떠올린 키워드를 찾는 게 이 화면의 값이라
+              기본으로 켜 둡니다. 다만 검색광고 API 는 전국·전업종을 섞어 주므로{' '}
+              <b>내 지점이 있는 지역 + 헬스·운동 업종만</b> 남깁니다 (다른 지역, 필라테스·요가·피부관리
+              같은 다른 업종, 남의 상호는 제외). 내가 직접 넣은 키워드는 이 걸러내기를 거치지 않고 어떤
+              정렬에서도 맨 위에 둡니다.
+            </p>
+          </div>
+        </details>
 
         {error && (
-          <p className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-700 dark:text-rose-300">
+          <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-700 dark:text-rose-300">
             {error}
           </p>
         )}
@@ -465,7 +474,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
         subtitle="스마트블록은 세부 의도를 가진 키워드에 걸릴 기회가 큽니다. 지역명에 의도를 곱해 후보를 만드세요."
       >
         {stores.length > 0 ? (
-          <div className="bd mb-3 rounded-lg border border-dashed p-3">
+          <div className="surface mb-3 rounded-xl p-3.5">
             <p className="text-[12px] font-semibold">내 지점에서 자동으로 채우기</p>
             <p className="muted mt-1 text-[11px] leading-relaxed">
               지점 버튼을 누르면 그 지점 <b>주소·지역 키워드에서 동네를 뽑고</b>, 지점 성격에 맞는
@@ -478,7 +487,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                   type="button"
                   onClick={() => fillFromStore(s)}
                   aria-label={`${s.name} 동네로 조합 만들기`}
-                  className="bg-brand-600 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white"
+                  className="bg-brand-500/14 text-brand-700 dark:text-brand-100 rounded-full px-3 py-1.5 text-[11px] font-semibold transition hover:bg-brand-500/25"
                 >
                   {s.name}
                 </button>
@@ -521,7 +530,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
               )
             )
           }
-          className="bd mt-3 rounded-lg border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8"
+          className="bd mt-3 rounded-xl border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8"
         >
           조합 생성
         </button>
@@ -555,7 +564,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                   run(picked)
                 }}
                 disabled={loading}
-                className="bg-brand-600 mt-3 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="bg-brand-600 mt-3 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 고른 {picked.length}개 조회
               </button>
@@ -577,7 +586,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
             위 조회에서 <b>판정 불가</b>로 나온 줄은 표 안의 입력칸에 발행량만 넣는 쪽이 빠릅니다
             (검색량을 다시 적지 않아도 되니까요). 이 칸은 검색량까지 손으로 넣어야 할 때 씁니다.
           </p>
-          <div className="bd rounded-lg border border-dashed p-3">
+          <div className="surface rounded-xl p-3.5">
             <p className="text-[12px] font-semibold">숫자 두 개를 어디서 보나요</p>
             <ol className="muted mt-1.5 space-y-1 text-[11px] leading-relaxed">
               <li>
@@ -640,7 +649,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
             <button
               type="button"
               onClick={runManual}
-              className="bg-brand-600 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+              className="bg-brand-600 rounded-xl px-4 py-2 text-sm font-semibold text-white"
             >
               등급 매기기
             </button>
@@ -648,7 +657,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
               <button
                 type="button"
                 onClick={prefillManual}
-                className="bd rounded-lg border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8"
+                className="bd rounded-xl border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8"
               >
                 위에 적은 키워드로 빈 줄 만들기
               </button>
@@ -656,7 +665,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           </div>
 
           {badLines.length > 0 && (
-            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-200">
+            <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-200">
               <p className="font-semibold">형식을 못 읽은 줄 {badLines.length}개 — 숫자 두 개가 다 있어야 합니다</p>
               <ul className="mt-1 space-y-0.5 font-mono text-[11px]">
                 {badLines.slice(0, 5).map((l, i) => (
@@ -680,7 +689,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 <button
                   type="button"
                   onClick={() => resort()}
-                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                  className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
                 >
                   다시 정렬
                 </button>
@@ -692,7 +701,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                   setSort(mode)
                   resort(mode)
                 }}
-                className="bd panel rounded-lg border px-2 py-1.5 text-xs"
+                className="bd panel rounded-xl border px-2 py-1.5 text-xs"
               >
                 <option value="competition">진입 쉬운 순</option>
                 <option value="volume">검색량 많은 순</option>
@@ -702,7 +711,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
         >
           {isMock && <MockNotice what="검색광고·검색" />}
           {unknownCount > 0 && (
-            <p className="mb-3 rounded-lg border border-slate-500/30 bg-slate-500/10 px-3 py-2 text-[12px] leading-relaxed">
+            <p className="mb-3 rounded-xl border border-slate-500/30 bg-slate-500/10 px-3 py-2 text-[12px] leading-relaxed">
               {unknownCount}개가 <strong>판정 불가</strong>입니다 — 그 줄만 발행량 자동 조회가
               실패했습니다. 없는 값을 0으로 넣고 계산하면 경쟁률이 0이 되어 실제로는 과열된 키워드가
               &quot;황금 키워드&quot;로 보이기 때문에 판정을 내리지 않았습니다.{' '}
@@ -711,7 +720,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
             </p>
           )}
           {isManual && (
-            <p className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] leading-relaxed text-emerald-800 dark:text-emerald-200">
+            <p className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] leading-relaxed text-emerald-800 dark:text-emerald-200">
               회원님이 직접 넣은 숫자로 계산한 결과입니다 — 샘플이 아닙니다. 등급 기준은 API 조회와
               똑같습니다 (월 검색량 500~5,000 + 경쟁률 {COMPETITION_GOOD} 이하 = 황금 키워드).
             </p>
@@ -720,19 +729,20 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           <div className="scroll-x -mx-4 px-4 sm:mx-0 sm:px-0">
             <table className="w-full min-w-[620px] text-[12px]">
               <thead>
-                <tr className="muted bd border-b text-left">
-                  <th className="py-2 pr-3 font-semibold">키워드</th>
-                  <th className="py-2 pr-3 font-semibold">월 검색량</th>
-                  <th className="py-2 pr-3 font-semibold">30일 발행량</th>
-                  <th className="py-2 pr-3 font-semibold">경쟁률</th>
-                  <th className="py-2 pr-3 font-semibold">등급</th>
-                  <th className="py-2 font-semibold">할 일</th>
+                {/* 머리줄은 선 대신 옅은 면으로 구분한다 */}
+                <tr className="muted surface text-left text-[11px]">
+                  <th className="rounded-l-xl py-2.5 pr-3 pl-2.5 font-semibold">키워드</th>
+                  <th className="py-2.5 pr-3 font-semibold">월 검색량</th>
+                  <th className="py-2.5 pr-3 font-semibold">30일 발행량</th>
+                  <th className="py-2.5 pr-3 font-semibold">경쟁률</th>
+                  <th className="py-2.5 pr-3 font-semibold">등급</th>
+                  <th className="rounded-r-xl py-2.5 pr-2.5 font-semibold">할 일</th>
                 </tr>
               </thead>
               <tbody>
                 {sorted.map((r) => (
                   <tr key={r.keyword} className="bd border-b last:border-0 align-top">
-                    <td className="py-2.5 pr-3">
+                    <td className="py-3 pr-3 pl-2.5">
                       <div className="font-semibold">{r.keyword}</div>
                       {isMine(r.keyword) && (
                         <div className="mt-1">
@@ -759,7 +769,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                             }
                             placeholder="437"
                             aria-label={`${r.keyword} 30일 발행량`}
-                            className="panel w-24 rounded-lg border px-2 py-1.5 text-[12px] outline-none focus:border-brand-500"
+                            className="panel w-24 rounded-xl border px-2 py-1.5 text-[12px] outline-none focus:border-brand-500"
                           />
                           <a
                             href={naverBlogSectionUrl(r.keyword)}
@@ -793,31 +803,32 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                       <Badge tone={gradeTone(r.grade)}>{GRADE_LABEL[r.grade]}</Badge>
                       <p className="muted mt-1 max-w-[240px] text-[11px] leading-snug">{r.gradeReason}</p>
                     </td>
-                    <td className="py-2.5 whitespace-nowrap">
-                      <div className="flex flex-col gap-1">
+                    <td className="py-3 pr-2.5 whitespace-nowrap">
+                      {/* 다음에 눌러야 하는 것 하나만 색을 준다 — 넷 다 초록이면 뭘 먼저 볼지 알 수 없다 */}
+                      <div className="flex flex-col items-start gap-1">
                         <Link
                           href={`/serp?keyword=${encodeURIComponent(r.keyword)}`}
-                          className="text-brand-600 dark:text-brand-100 text-[11px] font-semibold hover:underline"
+                          className="bg-brand-500/12 text-brand-700 dark:text-brand-100 hover:bg-brand-500/22 rounded-full px-2.5 py-1 text-[11px] font-semibold transition"
                         >
                           상위노출 분석 →
                         </Link>
                         <Link
                           href={`/write?main=${encodeURIComponent(r.keyword)}`}
-                          className="text-brand-600 dark:text-brand-100 text-[11px] font-semibold hover:underline"
+                          className="muted px-1 text-[11px] font-semibold hover:underline"
                         >
                           이 키워드로 글쓰기 →
                         </Link>
                         <button
                           type="button"
                           onClick={() => loadPlaces(r.keyword)}
-                          className="text-brand-600 dark:text-brand-100 text-left text-[11px] font-semibold hover:underline"
+                          className="muted px-1 text-left text-[11px] font-semibold hover:underline"
                         >
                           플레이스 노출 →
                         </button>
                         <button
                           type="button"
                           onClick={() => loadTrend(r.keyword)}
-                          className="muted text-left text-[11px] font-semibold hover:underline"
+                          className="muted px-1 text-left text-[11px] font-semibold hover:underline"
                         >
                           검색 추이 보기
                         </button>
@@ -849,7 +860,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 const { index, storeName } = myPlace
                 return (
                   <p
-                    className={`mb-3 rounded-lg border px-3 py-2 text-[12px] leading-relaxed ${
+                    className={`mb-3 rounded-xl border px-3 py-2 text-[12px] leading-relaxed ${
                       index === 0
                         ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
                         : index > 0
@@ -882,7 +893,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                   return (
                     <li
                       key={p.id}
-                      className={`bd flex gap-3 rounded-lg border p-2.5 ${
+                      className={`bd flex gap-3 rounded-xl border p-2.5 ${
                         mine ? 'border-brand-500/50 bg-brand-500/8' : ''
                       }`}
                     >
@@ -922,7 +933,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
               </p>
 
               {/* 7곳 아래는 사람이 봐야 안다 — 블로그 순위 추적과 같은 방식으로 기록해 둔다 */}
-              <div className="bd mt-3 rounded-lg border border-dashed p-3">
+              <div className="surface mt-3 rounded-xl p-3.5">
                 <p className="text-[12px] font-semibold">직접 본 순위 적어두기</p>
                 <p className="muted mt-1 text-[11px] leading-relaxed">
                   네이버에서 플레이스 목록을 끝까지 넘겨 내 지점이 몇 번째인지 확인해 넣으세요. 한 번
@@ -932,7 +943,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                   href={naverPlaceSearchUrl(placeKeyword)}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="bg-brand-600 mt-2 inline-block rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white"
+                  className="bg-brand-600 mt-2 inline-block rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white"
                 >
                   플레이스 목록 열기 →
                 </a>
@@ -1004,7 +1015,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                     type="button"
                     onClick={savePlaceRank}
                     disabled={prSaving}
-                    className="bg-brand-600 shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                    className="bg-brand-600 shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                   >
                     {prSaving ? '저장 중…' : '기록'}
                   </button>

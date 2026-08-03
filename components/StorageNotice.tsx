@@ -38,7 +38,7 @@ export default function StorageNotice() {
 export function StorageStatusCard() {
   const s = storageStatus()
   return (
-    <div className="bd rounded-lg border p-3.5">
+    <div className="surface bd rounded-xl border p-3.5">
       <div className="mb-1.5 flex flex-wrap items-center gap-2">
         <h3 className="text-[13px] font-bold">현재 저장 위치</h3>
         <Badge tone={s.mode === 'cloud' ? 'good' : s.mode === 'file' ? 'info' : 'bad'}>

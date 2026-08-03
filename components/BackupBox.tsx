@@ -49,7 +49,7 @@ export default function BackupBox() {
   }
 
   return (
-    <div className="bd rounded-lg border p-3.5">
+    <div className="surface bd rounded-xl border p-3.5">
       <h3 className="text-[13px] font-bold">백업 · 기기 간 이전</h3>
       <p className="muted mt-1 text-[12px] leading-relaxed">
         내 컴퓨터에서 쓰던 기록을 배포한 앱으로 옮기려면, 컴퓨터에서 <strong>내보내기</strong> 한 파일을
@@ -58,7 +58,7 @@ export default function BackupBox() {
       <div className="mt-3 flex flex-wrap gap-2">
         <a
           href="/api/data"
-          className="bd rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-slate-500/8"
+          className="bd rounded-xl border px-3 py-1.5 text-xs font-semibold hover:bg-slate-500/8"
         >
           내보내기 (JSON 다운로드)
         </a>
@@ -66,7 +66,7 @@ export default function BackupBox() {
           type="button"
           disabled={busy}
           onClick={() => fileRef.current?.click()}
-          className="bd rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-slate-500/8 disabled:opacity-50"
+          className="bd rounded-xl border px-3 py-1.5 text-xs font-semibold hover:bg-slate-500/8 disabled:opacity-50"
         >
           {busy ? '가져오는 중…' : '가져오기 (덮어씀)'}
         </button>

@@ -231,7 +231,7 @@ export default function RankTracker({
               type="button"
               onClick={add}
               disabled={adding}
-              className="bg-brand-600 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="bg-brand-600 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               {adding ? '등록 중…' : '추가하고 바로 조회'}
             </button>
@@ -240,7 +240,7 @@ export default function RankTracker({
                 type="button"
                 onClick={() => refreshAndCheck()}
                 disabled={checking !== null}
-                className="bd rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-slate-500/8 disabled:opacity-50"
+                className="bd rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-slate-500/8 disabled:opacity-50"
               >
                 {checking === 'all' ? '조회 중…' : `전체 ${views.length}개 순위 조회`}
               </button>
@@ -248,12 +248,12 @@ export default function RankTracker({
           </div>
 
           {error && (
-            <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-700 dark:text-rose-300">
+            <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-700 dark:text-rose-300">
               {error}
             </p>
           )}
           {!keys.search && (
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+            <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
               검색 API 키가 없으면 순위가 샘플 값으로 채워집니다. 실제 순위를 보려면{' '}
               <Link href="/deploy" className="underline">
                 키를 발급해 넣으세요
@@ -313,7 +313,7 @@ export default function RankTracker({
               {/* 발행 후 며칠인지에 따라 같은 순위도 뜻이 달라진다 */}
               {v.phase ? (
                 <div
-                  className={`mb-3 rounded-lg border px-3 py-2.5 text-[12px] leading-relaxed ${
+                  className={`mb-3 rounded-xl border px-3 py-2.5 text-[12px] leading-relaxed ${
                     v.phase.tone === 'good'
                       ? 'border-emerald-500/30 bg-emerald-500/8 text-emerald-800 dark:text-emerald-200'
                       : v.phase.tone === 'warn'
@@ -328,7 +328,7 @@ export default function RankTracker({
                   {v.phase.note}
                 </div>
               ) : (
-                <div className="muted bd mb-3 rounded-lg border px-3 py-2.5 text-[11px] leading-relaxed">
+                <div className="muted bd mb-3 rounded-xl border px-3 py-2.5 text-[11px] leading-relaxed">
                   발행일을 넣으면 지금이 색인 구간인지, 진입 실패로 볼 시점인지 함께 알려줍니다. 이 항목을 지우고
                   발행일과 함께 다시 등록하거나, 연결된 글에 발행일을 채우세요.
                 </div>
@@ -374,7 +374,7 @@ export default function RankTracker({
 
               {/* 네이버에서 직접 본 순위 기록 — 검색 API 없이도 추적이 굴러가고,
                   API 가 있어도 스마트블록 자리를 반영하므로 더 정확하다 */}
-              <div className="bd mt-3 rounded-lg border p-3">
+              <div className="bd mt-3 rounded-xl border p-3">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <h4 className="text-[12px] font-bold">네이버에서 직접 본 순위 기록</h4>
                   <a
@@ -426,7 +426,7 @@ export default function RankTracker({
                     type="button"
                     onClick={() => saveManual(v.target.id)}
                     disabled={savingManual !== null}
-                    className="bg-brand-600 rounded-lg px-3.5 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                    className="bg-brand-600 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
                   >
                     {savingManual === v.target.id ? '기록 중…' : '기록'}
                   </button>
@@ -449,7 +449,7 @@ export default function RankTracker({
                   type="button"
                   onClick={() => refreshAndCheck(v.target.id)}
                   disabled={checking !== null}
-                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8 disabled:opacity-50"
+                  className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8 disabled:opacity-50"
                 >
                   {checking === v.target.id ? '조회 중…' : 'API 로 조회'}
                 </button>
@@ -457,7 +457,7 @@ export default function RankTracker({
                   href={naverSearchUrl(v.target.keyword)}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                  className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
                 >
                   네이버 통합검색에서 확인
                 </a>
@@ -465,20 +465,20 @@ export default function RankTracker({
                   href={naverBlogTabUrl(v.target.keyword)}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                  className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
                 >
                   블로그 탭
                 </a>
                 <Link
                   href={`/serp?keyword=${encodeURIComponent(v.target.keyword)}`}
-                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                  className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
                 >
                   상위노출 분석
                 </Link>
                 {v.target.postId && (
                   <Link
                     href={`/write?id=${v.target.postId}`}
-                    className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                    className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
                   >
                     이 글 열기
                   </Link>
@@ -486,7 +486,7 @@ export default function RankTracker({
                 <button
                   type="button"
                   onClick={() => remove(v.target.id)}
-                  className="muted ml-auto rounded-lg px-2.5 py-1.5 text-[11px] font-semibold hover:text-rose-600"
+                  className="muted ml-auto rounded-xl px-2.5 py-1.5 text-[11px] font-semibold hover:text-rose-600"
                 >
                   삭제
                 </button>
