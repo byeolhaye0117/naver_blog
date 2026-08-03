@@ -37,6 +37,7 @@ const TARGETS = [
   'lib/ai/prompt.ts',
   'lib/writing/export.ts',
   'lib/naver/searchad.ts',
+  'lib/naver/datalab.ts',
 ]
 
 const tsconfig = join(out, 'tsconfig.json')
