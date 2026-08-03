@@ -205,7 +205,8 @@ export default function Editor({
       const left = (json.check?.issues ?? []).length
       setAiMsg(
         `${json.check?.score ?? 0}점으로 나왔습니다${json.revised ? ' (한 번 고쳐 쓴 결과)' : ''}. ` +
-          (left ? `아직 ${left}개 항목이 남았으니 오른쪽 검수를 보고 손보세요.` : '검수 항목을 모두 통과했습니다.')
+          (left ? `아직 ${left}개 항목이 남았으니 오른쪽 검수를 보고 손보세요.` : '검수 항목을 모두 통과했습니다.') +
+          (json.provider ? ` · ${json.provider}` : '')
       )
     } catch (e) {
       setAiMsg(e instanceof Error ? e.message : '글 생성 중 오류가 발생했습니다.')

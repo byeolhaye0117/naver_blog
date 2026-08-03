@@ -328,19 +328,17 @@ export default function DeployPage() {
                     <Env name="NAVER_AD_CUSTOMER_ID" />
                   </>,
                   <>
-                    <strong>AI 글쓰기를 쓰려면</strong> <Env name="ANTHROPIC_API_KEY" /> 도 함께 넣습니다.{' '}
-                    <a
-                      href="https://console.anthropic.com/settings/keys"
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="text-brand-600 dark:text-brand-100 font-semibold underline"
-                    >
-                      console.anthropic.com
-                    </a>{' '}
-                    → API Keys → Create Key 로 발급합니다. 결제 수단을 등록해야 발급되고, 글 한 편당 대략
-                    30~80원 정도가 청구됩니다. 키가 없어도 앱의 다른 기능은 그대로 동작하고, 글 작성 화면의
-                    「AI로 본문 쓰기」만 안내 문구를 띄웁니다. 모델을 바꾸려면{' '}
-                    <Env name="ANTHROPIC_MODEL" /> 에 모델 이름을 넣으세요 (기본값 claude-sonnet-5).
+                    <strong>AI 글쓰기(본문 자동 작성)를 쓰려면</strong> 이미 가지고 계신 AI 키 하나를
+                    넣으면 됩니다. 넷 중 아무거나 되고, 이름만 맞춰 넣으면 앱이 알아서 그 회사 방식으로
+                    부릅니다 — <Env name="ANTHROPIC_API_KEY" /> (Claude, 키가 sk-ant- 로 시작) ·{' '}
+                    <Env name="OPENAI_API_KEY" /> (ChatGPT, sk- 또는 sk-proj-) ·{' '}
+                    <Env name="GEMINI_API_KEY" /> (Google, AIza-) · <Env name="CLOVA_API_KEY" /> (네이버
+                    클라우드 CLOVA Studio). 모델은 목록을 조회해 알아서 고르고, 특정 모델을 쓰려면{' '}
+                    <Env name="AI_MODEL" /> 에 이름을 넣으세요. 키가 여러 개면{' '}
+                    <Env name="AI_PROVIDER" /> 에 anthropic·openai·gemini·clova 중 하나를 적어 고를 수
+                    있습니다. Groq·Together 같은 OpenAI 호환 서비스는{' '}
+                    <Env name="OPENAI_BASE_URL" /> 까지 함께 넣으면 됩니다. 키가 없어도 앱의 다른 기능은
+                    그대로 동작하고, 글 작성 화면의 「AI로 본문 쓰기」만 안내 문구를 띄웁니다.
                   </>,
                   <>
                     <strong>Deploy</strong> 를 누르고 1~2분 기다리면{' '}

@@ -32,7 +32,7 @@ const TARGETS = [
   'lib/writing/templates.ts',
   'lib/writing/rotation.ts',
   'lib/writing/next-action.ts',
-  'lib/ai/claude.ts',
+  'lib/ai/llm.ts',
   'lib/ai/prompt.ts',
   'lib/writing/export.ts',
   'lib/naver/searchad.ts',
