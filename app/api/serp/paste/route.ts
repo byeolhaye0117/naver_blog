@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { analyzePastedSerp } from '@/lib/analysis/serp'
 import { parseEditedList, parseTotalCount } from '@/lib/analysis/paste'
+import { recentBlogCount } from '@/lib/naver/blogsection'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 30
 
 /**
  * 네이버 검색 결과를 직접 붙여넣어 상위노출 분석.
@@ -24,10 +26,17 @@ export async function POST(req: Request) {
       )
     }
 
-    // "2,345건" 처럼 붙여넣어도 되고 숫자만 적어도 된다. 없으면 0 = 모름.
-    const raw = (body.total ?? '').trim()
-    const digits = Number(raw.replace(/[^\d]/g, ''))
-    const total = raw ? (parseTotalCount(raw) ?? (Number.isFinite(digits) ? digits : 0)) : 0
+    // 발행량은 자동으로 가져온다 (최근 30일 기준 — 키워드 조사와 같은 경로).
+    // 통합검색 블로그 탭에는 총 건수 표시가 없어졌으므로 사람에게 물어볼 수 없다.
+    const auto = await recentBlogCount(keyword).catch(() => ({ count: null }))
+    let total = auto.count ?? 0
+
+    // 자동 조회가 막혔을 때만 넘어온 값을 쓴다
+    if (!total) {
+      const raw = (body.total ?? '').trim()
+      const digits = Number(raw.replace(/[^\d]/g, ''))
+      if (raw) total = parseTotalCount(raw) ?? (Number.isFinite(digits) ? digits : 0)
+    }
 
     return NextResponse.json({ analysis: analyzePastedSerp(keyword, items, total) })
   } catch (e) {

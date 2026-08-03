@@ -269,8 +269,8 @@ function prescribe(
     '본문은 2,000자 이상(정보가 알차면 2,500자)으로, 직접 촬영 이미지 5장 이상, 30초~3분 영상 1개를 넣으세요.'
   out.push(
     total > 0
-      ? `누적 발행량 ${total.toLocaleString()}건. ${body}`
-      : `${body} 검색 결과에 표시된 발행량("○○건")을 함께 넣으면 경쟁 규모까지 함께 봅니다.`
+      ? `이 키워드로 최근 30일에 새 글 ${total.toLocaleString()}개가 올라왔습니다. ${body}`
+      : `${body} (발행량 자동 조회가 막혀 경쟁 규모는 함께 보지 못했습니다.)`
   )
 
   return out
