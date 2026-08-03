@@ -418,8 +418,9 @@ const paDated = analyzePastedSerp(
 ok(paDated.stats.datedCount === 4, '날짜를 다 넣으면 4개')
 ok(paDated.stats.repeatBloggers[0]?.count === 4, '같은 블로거 선점 탐지')
 ok(
-  paDated.prescription.some((p) => p.includes('2,345건')),
-  '발행량을 넣으면 처방에 반영'
+  paDated.prescription.some((p) => p.includes('최근 30일에 새 글 2,345개')),
+  '발행량이 처방에 반영 (30일 기준)',
+  paDated.prescription.find((p) => p.includes('2,345'))?.slice(0, 50)
 )
 
 console.log('\n[21] 못 읽은 값으로 등급을 만들지 않는다')

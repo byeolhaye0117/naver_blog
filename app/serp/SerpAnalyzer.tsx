@@ -20,7 +20,6 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
   // 붙여넣기 모드
   const [pasted, setPasted] = useState('')
   const [list, setList] = useState('')
-  const [total, setTotal] = useState('')
   const [extracted, setExtracted] = useState<{ kept: number; dropped: number } | null>(null)
 
   async function run(kw: string, n: number) {
@@ -73,7 +72,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
       const res = await fetch('/api/serp/paste', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: q, list, total }),
+        body: JSON.stringify({ keyword: q, list }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? '분석에 실패했습니다.')
@@ -180,7 +179,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
                 <li>1. 아래 <b>블로그 탭 열기</b>를 누릅니다 (관련도순 화면입니다).</li>
                 <li>2. 상위 10~15개가 보일 만큼 스크롤한 뒤 그 영역을 전체 선택·복사합니다.</li>
                 <li>3. 아래 칸에 붙여넣고 <b>제목 뽑기</b>를 누릅니다.</li>
-                <li>4. 뽑힌 목록을 눈으로 확인·수정한 뒤 <b>분석</b>을 누릅니다.</li>
+                <li>4. 뽑힌 목록을 눈으로 확인·수정한 뒤 <b>분석</b>을 누릅니다. (발행량은 자동으로 가져옵니다)</li>
               </ol>
               <div className="mt-2.5">{searchLinks}</div>
             </div>
@@ -226,34 +225,20 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
               </p>
             )}
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <label className="min-w-0 sm:w-56">
-                <span className="mb-1.5 block text-[13px] font-semibold">
-                  누적 발행량 <span className="muted font-normal">(선택)</span>
-                </span>
-                <input
-                  value={total}
-                  onChange={(e) => setTotal(e.target.value)}
-                  className={inputClass}
-                  placeholder="2,345건"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={runPaste}
-                disabled={loading || !list.trim()}
-                className="bg-brand-600 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {loading ? '분석 중…' : '분석'}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={runPaste}
+              disabled={loading || !list.trim()}
+              className="bg-brand-600 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {loading ? '분석 중…' : '분석'}
+            </button>
             <p className="muted text-[11px] leading-relaxed">
-              블로그 탭 위쪽에 보이는 <b>○○건</b>을 그대로 넣으면 경쟁 규모까지 함께 봅니다. 같은
-              값을{' '}
+              발행량은 앱이 자동으로 가져옵니다 (최근 30일 기준). 경쟁률 등급까지 보려면{' '}
               <Link href="/keywords" className="text-brand-600 dark:text-brand-100 font-semibold underline">
                 키워드 조사
               </Link>
-              의 직접 입력에 넣으면 경쟁률 등급이 나옵니다.
+              에서 같은 키워드를 조회하세요.
             </p>
           </div>
         )}
@@ -295,9 +280,9 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
 
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
             <Stat
-              label="누적 발행량"
+              label="최근 30일 발행량"
               value={data.total > 0 ? data.total.toLocaleString() : '—'}
-              hint={data.total > 0 ? '이 키워드로 쌓인 글' : '"○○건"을 넣으면 표시됩니다'}
+              hint={data.total > 0 ? '이 키워드로 한 달 새 올라온 글' : '자동 조회가 막혔습니다'}
             />
             <Stat label="상위 글 평균 제목" value={`${data.stats.avgTitleLength}자`} hint="모바일 표시 ~35자" />
             <Stat
