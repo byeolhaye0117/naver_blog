@@ -17,7 +17,13 @@ const SEARCH = process.env.NAVER_SEARCH_ENDPOINT?.trim() || 'https://search.nave
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
 const TIMEOUT_MS = 9000
-const MAX_RESULTS = 6
+/**
+ * 통합검색 플레이스 블록에 실제로 들어오는 업체 수는 5~7곳이다 (PC 7 / 모바일 5).
+ * 그보다 아래 순위는 자동으로 볼 수 없다 — 플레이스 도메인(pcmap-api·m.place·map v5)이
+ * 서버 IP 를 429 로 막아서 목록 API 를 못 쓴다. 실측으로 확인했다.
+ * 그래서 여기서 자르지 않고 읽히는 대로 다 넘기고, "몇 곳까지 봤는지" 를 화면에서 밝힌다.
+ */
+const MAX_RESULTS = 20
 
 export interface PlaceInfo {
   id: string

@@ -40,6 +40,14 @@ export function naverBlogSectionUrl(keyword: string): string {
   return `https://section.blog.naver.com/Search/Post.naver?keyword=${encodeURIComponent(keyword)}&orderBy=sim`
 }
 
+/**
+ * 플레이스 목록을 끝까지 넘겨볼 수 있는 화면.
+ * 통합검색 블록은 5~7곳만 보여주고, 그 아래는 이 화면에서 직접 넘겨야 한다.
+ */
+export function naverPlaceSearchUrl(keyword: string): string {
+  return `https://m.place.naver.com/place/list?query=${encodeURIComponent(keyword)}`
+}
+
 export function normalizeUrl(u: string): string {
   return u
     .trim()

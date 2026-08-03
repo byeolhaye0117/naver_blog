@@ -114,11 +114,30 @@ export interface RankSnapshot {
   note?: string
 }
 
+/**
+ * 플레이스 노출 순위 관찰 기록.
+ *
+ * 자동 조회는 통합검색 플레이스 블록의 7곳까지만 읽힌다 (플레이스 도메인은 서버 IP 를
+ * 429 로 막는다 — pcmap-api·m.place·map v5 전부 확인). 그 아래는 사람이 눈으로 봐야
+ * 알 수 있으므로, 블로그 순위와 같은 방식으로 직접 입력을 받는다.
+ */
+export interface PlaceRank {
+  id: string
+  keyword: string
+  storeId: string
+  /** 눈으로 확인한 순위 */
+  rank: number
+  /** YYYY-MM-DD */
+  date: string
+  note?: string
+}
+
 export interface DB {
   stores: Store[]
   posts: Post[]
   rankTargets: RankTarget[]
   rankSnapshots: RankSnapshot[]
+  placeRanks: PlaceRank[]
 }
 
 // ─── 키워드 조사 ───────────────────────────────────────────────
