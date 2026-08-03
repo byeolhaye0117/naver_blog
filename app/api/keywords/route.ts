@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { keywordTool } from '@/lib/naver/searchad'
+import { dedupeAdRows, keywordTool } from '@/lib/naver/searchad'
 import { recentBlogCount } from '@/lib/naver/blogsection'
 import { buildMetric, isRelevantKeyword, myRegionTokens } from '@/lib/analysis/keyword'
 import { keyStatus, NaverApiError } from '@/lib/naver/client'
@@ -71,7 +71,8 @@ export async function POST(req: Request) {
     const many = keywords.length > 5
     const wantRelated = body.includeRelated ?? !many
 
-    const adRows = await keywordToolMany(keywords)
+    // 묶음마다 연관 키워드가 겹쳐 오므로 반드시 합친다 — 안 하면 같은 줄이 두 번 나온다
+    const adRows = dedupeAdRows(await keywordToolMany(keywords))
 
     // 요청한 키워드는 무조건 포함하고, 연관 키워드는 검색량 순으로 채운다
     const requested = new Set(keywords.map((k) => k.replace(/\s+/g, '')))

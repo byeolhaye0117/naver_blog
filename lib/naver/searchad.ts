@@ -90,6 +90,27 @@ export async function keywordTool(hints: string[]): Promise<AdKeywordRow[]> {
   })
 }
 
+/**
+ * 같은 키워드 행을 하나로 합친다.
+ *
+ * 힌트를 5개씩 나눠 여러 번 부르면(조합 24개 채점) **요청한 키워드가 다른 묶음의
+ * 연관 키워드 목록에도 들어 있는** 경우가 생긴다. 그러면 같은 줄이 두 번 담긴다 —
+ * 실측: 쌍용동·봉명동 22개를 채점했더니 봉명동헬스장·봉명동PT·봉명동24시헬스장이
+ * 두 번씩 나와 24행이 됐다. 화면에서도 그대로 두 줄로 보였다.
+ *
+ * 띄어쓰기만 다른 것도 같은 키워드다 ("봉명동 헬스장" = "봉명동헬스장").
+ */
+export function dedupeAdRows(rows: AdKeywordRow[]): AdKeywordRow[] {
+  const seen = new Map<string, AdKeywordRow>()
+  for (const r of rows) {
+    const key = r.keyword.replace(/\s+/g, '')
+    const prev = seen.get(key)
+    // 검색량을 읽은 행을 우선한다 (같은 키워드가 목업·실측으로 섞여 올 때)
+    if (!prev || (prev.monthlySearch === 0 && r.monthlySearch > 0)) seen.set(key, r)
+  }
+  return Array.from(seen.values())
+}
+
 /** 특정 키워드 하나의 검색량. 목록에서 정확히 일치하는 행을 찾고, 없으면 첫 행을 쓴다. */
 export async function keywordVolume(keyword: string): Promise<AdKeywordRow> {
   const rows = await keywordTool([keyword])
