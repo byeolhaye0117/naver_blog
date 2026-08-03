@@ -1,0 +1,171 @@
+/**
+ * "지금 무엇을 해야 하는가" 를 하나로 정한다.
+ *
+ * 대시보드가 할 일 5~6개를 같은 무게로 늘어놓으면, 볼 때마다 무엇을 먼저 할지
+ * 사용자가 다시 판단해야 한다. 이 앱은 순서가 정해진 도구다 —
+ * 지점 등록 → 키워드 고르기 → 글쓰기 → 검수 → 발행 → 순위 추적.
+ * 그래서 순서에서 막힌 첫 지점을 찾아 그것만 크게 보여주고, 나머지는 접어 둔다.
+ */
+import type { Post, RankTarget, Store } from '@/lib/types'
+
+export type ActionTone = 'good' | 'warn' | 'bad'
+
+export interface NextAction {
+  id: string
+  /** 명령형 한 줄 — 무엇을 하는지 */
+  title: string
+  /** 왜 지금 이것인지 한 줄 */
+  why: string
+  href: string
+  /** 버튼 글자 */
+  cta: string
+  tone: ActionTone
+}
+
+export interface ActionInput {
+  stores: Store[]
+  posts: Post[]
+  rankTargets: RankTarget[]
+  /** 순위가 직전 조회보다 떨어진 키워드 수 */
+  fallenCount: number
+  /** 발행 균형 (정보 : 홍보) 판정 */
+  balance: { level: ActionTone; ratio: string; info: number; promo: number; review: number }
+  /** 발행 주기 판정 */
+  cadence: { level: ActionTone; last14: number }
+  keys: { search: boolean; searchAd: boolean }
+}
+
+/** 부족한 글 유형 하나 — 무엇을 쓸지까지 정해 준다 */
+function missingType(b: ActionInput['balance']): { type: string; label: string } {
+  // 정보글이 홍보글의 2배가 되어야 한다. 모자란 쪽을 고른다.
+  if (b.info < b.promo * 2) return { type: 'info', label: '정보글' }
+  if (b.review === 0) return { type: 'review', label: '후기글' }
+  return { type: 'promo', label: '홍보글' }
+}
+
+/**
+ * 우선순위대로 할 일을 만든다. 첫 번째가 "지금 할 일" 이고 나머지는 접어서 보여준다.
+ * 항목이 없을 수는 없다 — 다 잘 돌아가고 있으면 다음 글감을 고르는 것이 할 일이다.
+ */
+export function nextActions(input: ActionInput): NextAction[] {
+  const { stores, posts, rankTargets, fallenCount, balance, cadence, keys } = input
+  const out: NextAction[] = []
+
+  const drafts = posts.filter((p) => p.status === 'draft')
+  const reviewed = posts.filter((p) => p.status === 'reviewed')
+  const published = posts.filter((p) => p.status === 'published')
+
+  if (!stores.length) {
+    out.push({
+      id: 'store',
+      title: '지점 정보를 먼저 등록하세요',
+      why: '상호명·동네·강점이 있어야 글에 지어내지 않고 쓸 수 있습니다.',
+      href: '/stores',
+      cta: '지점 등록',
+      tone: 'bad',
+    })
+  }
+
+  if (stores.length && !posts.length) {
+    out.push({
+      id: 'first-keyword',
+      title: '노려볼 키워드를 고르세요',
+      why: '검색량은 있고 새 글은 적은 자리(황금 키워드)부터 써야 1페이지에 갑니다. 지점 버튼 한 번이면 후보가 나옵니다.',
+      href: '/keywords',
+      cta: '키워드 조사 열기',
+      tone: 'warn',
+    })
+  }
+
+  if (drafts.length) {
+    out.push({
+      id: 'draft',
+      title: `초안 ${drafts.length}편을 검수해 마무리하세요`,
+      why: '검수 점수 85점을 넘기면 발행해도 좋은 상태입니다. 저품질 위험 표현도 이때 걸러집니다.',
+      href: '/posts',
+      cta: '초안 열기',
+      tone: 'warn',
+    })
+  }
+
+  if (reviewed.length) {
+    out.push({
+      id: 'reviewed',
+      title: `검수 끝난 ${reviewed.length}편을 발행하세요`,
+      why: '발행 패키지를 열면 제목·본문·태그를 순서대로 복사해 그대로 올릴 수 있습니다.',
+      href: '/posts',
+      cta: '발행 패키지 만들기',
+      tone: 'warn',
+    })
+  }
+
+  if (published.length && !rankTargets.length) {
+    out.push({
+      id: 'rank',
+      title: '발행한 글을 순위 추적에 등록하세요',
+      why: '등록해두면 그 키워드에서 오르는지 밀리는지가 날짜별로 쌓입니다.',
+      href: '/rank',
+      cta: '순위 추적 등록',
+      tone: 'warn',
+    })
+  }
+
+  if (fallenCount > 0) {
+    out.push({
+      id: 'fallen',
+      title: `밀린 키워드 ${fallenCount}개의 원인을 확인하세요`,
+      why: '지금 그 자리를 차지한 글들의 제목·최신성·소재를 보면 무엇이 부족했는지 나옵니다.',
+      href: '/serp',
+      cta: '상위노출 분석',
+      tone: 'bad',
+    })
+  }
+
+  if (posts.length && balance.level !== 'good') {
+    const m = missingType(balance)
+    out.push({
+      id: 'balance',
+      title: `${m.label}을 한 편 쓰세요`,
+      why: `지금 정보 : 홍보 = ${balance.ratio} 입니다. 홍보글만 쌓이면 상업성 과다로 블로그 전체가 눌립니다 (권장 2 : 1).`,
+      href: `/write?type=${m.type}`,
+      cta: `${m.label} 쓰기`,
+      tone: balance.level,
+    })
+  }
+
+  if (posts.length && cadence.level !== 'good') {
+    out.push({
+      id: 'cadence',
+      title: '다음 글 주제를 고르세요',
+      why: `최근 2주 ${cadence.last14}편입니다. 주 2~3회 페이스가 유지돼야 블로그 지수가 올라갑니다.`,
+      href: '/keywords',
+      cta: '키워드 조사 열기',
+      tone: cadence.level,
+    })
+  }
+
+  if (!keys.searchAd) {
+    out.push({
+      id: 'ad-key',
+      title: '검색광고 API 키를 넣으세요',
+      why: '월간 검색량이 실제 값으로 바뀝니다. 지금은 샘플 값이라 키워드 등급을 믿을 수 없습니다.',
+      href: '/deploy',
+      cta: '발급 안내 보기',
+      tone: 'warn',
+    })
+  }
+
+  // 막힌 곳이 없으면 — 다음 글감을 고르는 것이 할 일이다
+  if (!out.length) {
+    out.push({
+      id: 'next',
+      title: '다음 키워드를 고르세요',
+      why: '지금 막힌 것은 없습니다. 같은 페이스로 다음 글을 준비하면 됩니다.',
+      href: '/keywords',
+      cta: '키워드 조사 열기',
+      tone: 'good',
+    })
+  }
+
+  return out
+}

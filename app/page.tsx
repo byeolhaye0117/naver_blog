@@ -6,8 +6,9 @@ import { buildRankViews, isFirstPage, rankLabel } from '@/lib/analysis/rank'
 import { checkPost } from '@/lib/writing/checker'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL } from '@/lib/types'
 import { PageHeader } from '@/components/AppShell'
-import { Badge, Card, Empty, Progress, Stat } from '@/components/ui'
-import { IconBalance, IconDoc, IconTarget, IconTrend } from '@/components/icons'
+import { Badge, Card, Empty, Progress, Stat, btnPrimary } from '@/components/ui'
+import { IconBalance, IconCheck, IconDoc, IconTarget, IconTrend } from '@/components/icons'
+import { nextActions } from '@/lib/writing/next-action'
 import StorageNotice from '@/components/StorageNotice'
 
 export const dynamic = 'force-dynamic'
@@ -29,49 +30,151 @@ export default async function Dashboard() {
     .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
     .slice(0, 5)
 
-  const todo: { text: string; href: string; tone: 'good' | 'warn' | 'bad' }[] = []
-  if (!keys.search) {
-    todo.push({
-      text: '순위 추적을 자동으로 돌리려면 네이버 검색 API 키가 필요합니다. 키가 없어도 순위는 직접 입력할 수 있고, 상위노출 분석·키워드 조사는 키 없이 그대로 됩니다 (안내 보기)',
-      href: '/deploy',
-      tone: 'warn',
-    })
-  }
-  if (!keys.searchAd) {
-    todo.push({
-      text: '검색광고 API 키를 넣으면 키워드 월간 검색량을 실제 값으로 볼 수 있습니다 (발급 안내 보기)',
-      href: '/deploy',
-      tone: 'warn',
-    })
-  }
-  todo.push({ text: balance.message, href: '/write', tone: balance.level })
-  todo.push({ text: cadence.message, href: '/posts', tone: cadence.level })
-  if (drafts.length) {
-    todo.push({
-      text: `검수 대기 중인 초안 ${drafts.length}편이 있습니다`,
-      href: '/posts',
-      tone: 'warn',
-    })
-  }
-  if (fallen.length) {
-    todo.push({
-      text: `순위가 떨어진 키워드 ${fallen.length}개 — 밀린 이유를 상위노출 분석으로 확인하세요`,
-      href: '/rank',
-      tone: 'bad',
-    })
-  }
-  if (!db.rankTargets.length && published.length) {
-    todo.push({ text: '발행한 글을 순위 추적에 등록해두면 변동을 매일 기록할 수 있습니다', href: '/rank', tone: 'warn' })
-  }
+  const actions = nextActions({
+    stores: db.stores,
+    posts: db.posts,
+    rankTargets: db.rankTargets,
+    fallenCount: fallen.length,
+    balance,
+    cadence,
+    keys,
+  })
+  const [now, ...later] = actions
+
+  /** 이 앱의 진행 순서 — 지금 어디까지 왔는지 보여준다 */
+  const steps = [
+    { label: '지점', href: '/stores', done: db.stores.length > 0 },
+    { label: '키워드', href: '/keywords', done: db.posts.some((p) => p.mainKeyword) },
+    { label: '작성', href: '/write', done: db.posts.length > 0 },
+    { label: '발행', href: '/posts', done: published.length > 0 },
+    { label: '순위', href: '/rank', done: db.rankTargets.length > 0 },
+  ]
+  const stepNow = steps.findIndex((s) => !s.done)
 
   return (
     <>
-      <PageHeader
-        title="대시보드"
-        desc="블로그 단위로 관리해야 상위노출이 유지됩니다. 글 하나가 아니라 발행 균형·주기·순위를 함께 봅니다."
-      />
+      <PageHeader title="대시보드" desc="글 하나가 아니라 블로그 단위로 봅니다 — 발행 균형·주기·순위." />
 
       <StorageNotice />
+
+      {/* ─── 지금 할 일 하나 ─── */}
+      <section className="card relative mb-4 overflow-hidden rounded-2xl px-4 py-4 sm:px-5">
+        {/* 왼쪽 색 띠 — .card 의 border 단축 속성이 border-l-* 를 덮어써서 요소로 그린다 */}
+        <span
+          aria-hidden
+          className={`absolute inset-y-0 left-0 w-1.5 ${
+            now.tone === 'bad'
+              ? 'bg-rose-500'
+              : now.tone === 'warn'
+                ? 'bg-amber-500'
+                : 'bg-brand-500'
+          }`}
+        />
+        <div className="flex items-start gap-3">
+          <span
+            className={`hidden size-9 shrink-0 items-center justify-center rounded-xl sm:flex ${
+              now.tone === 'bad'
+                ? 'bg-rose-500/12 text-rose-600 dark:text-rose-300'
+                : now.tone === 'warn'
+                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300'
+                  : 'bg-brand-500/12 text-brand-700 dark:text-brand-100'
+            }`}
+          >
+            <span className="block size-[19px]">
+              <IconCheck />
+            </span>
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="muted text-[11px] font-bold tracking-[0.06em]">지금 할 일</p>
+            <h2 className="mt-0.5 text-[17px] leading-snug font-bold sm:text-[19px]">{now.title}</h2>
+            <p className="muted mt-1.5 text-[12.5px] leading-relaxed">{now.why}</p>
+            <div className="mt-3">
+              <Link href={now.href} className={btnPrimary}>
+                {now.cta}
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {later.length > 0 && (
+          <details className="mt-3.5">
+            <summary className="muted cursor-pointer text-[12px] font-semibold select-none">
+              나머지 할 일 {later.length}개 보기
+            </summary>
+            <ul className="mt-2.5 space-y-2">
+              {later.map((a) => (
+                <li key={a.id}>
+                  <Link href={a.href} className="group flex items-start gap-2.5">
+                    <Badge tone={a.tone === 'good' ? 'good' : a.tone === 'warn' ? 'warn' : 'bad'}>
+                      {a.tone === 'bad' ? '조치' : a.tone === 'warn' ? '확인' : '양호'}
+                    </Badge>
+                    <span className="min-w-0 text-[12.5px] leading-relaxed">
+                      <b className="font-semibold group-hover:underline">{a.title}</b>
+                      <span className="muted"> — {a.why}</span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
+
+      {/* ─── 어디까지 왔는지 ─── */}
+      <nav aria-label="진행 단계" className="card mb-4 rounded-2xl px-2 py-3 sm:px-4">
+        <ol className="flex items-start">
+          {steps.map((s, i) => {
+            const current = i === stepNow
+            const line = (side: 'l' | 'r') => {
+              const filled = side === 'l' ? i <= stepNow || steps[i - 1]?.done : i < stepNow
+              return (
+                <span
+                  aria-hidden
+                  className={`h-[2px] flex-1 ${
+                    (side === 'l' && i === 0) || (side === 'r' && i === steps.length - 1)
+                      ? 'opacity-0'
+                      : filled
+                        ? 'bg-brand-500/40'
+                        : 'bg-slate-500/15'
+                  }`}
+                />
+              )
+            }
+            return (
+              <li key={s.label} className="min-w-0 flex-1">
+                <Link
+                  href={s.href}
+                  aria-current={current ? 'step' : undefined}
+                  className="group flex flex-col items-center gap-1"
+                >
+                  <span className="flex w-full items-center">
+                    {line('l')}
+                    <span
+                      className={`tnum flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition ${
+                        current
+                          ? 'bg-brand-600 text-white shadow-sm'
+                          : s.done
+                            ? 'bg-brand-500/15 text-brand-700 dark:text-brand-100'
+                            : 'surface muted bd border'
+                      }`}
+                    >
+                      {s.done ? '✓' : i + 1}
+                    </span>
+                    {line('r')}
+                  </span>
+                  <span
+                    className={`truncate text-[10.5px] font-bold sm:text-[11.5px] ${
+                      current ? 'text-brand-700 dark:text-brand-100' : s.done ? '' : 'muted'
+                    }`}
+                  >
+                    {s.label}
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+        </ol>
+      </nav>
 
       <div className="mb-5 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
         <Stat
@@ -108,21 +211,6 @@ export default async function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title="지금 할 일" subtitle="블로그 지수를 지키는 데 가장 먼저 필요한 순서입니다">
-          <ul className="space-y-2.5">
-            {todo.map((t, i) => (
-              <li key={i}>
-                <Link href={t.href} className="flex items-start gap-2.5 group">
-                  <Badge tone={t.tone === 'good' ? 'good' : t.tone === 'warn' ? 'warn' : 'bad'}>
-                    {t.tone === 'good' ? '양호' : t.tone === 'warn' ? '확인' : '조치'}
-                  </Badge>
-                  <span className="text-[13px] leading-relaxed group-hover:underline">{t.text}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Card>
-
         <Card
           title="발행 균형 · 주기"
           subtitle="정보글이 키운 신뢰도를 홍보글이 수확하는 구조입니다. 홍보글만 연속 발행하면 상업성 과다 신호가 쌓입니다."

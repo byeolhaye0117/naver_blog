@@ -2,6 +2,7 @@ import { readDB } from '@/lib/store'
 import { balanceReport, cadenceReport } from '@/lib/writing/rotation'
 import { PageHeader } from '@/components/AppShell'
 import { Stat } from '@/components/ui'
+import { IconBalance, IconCheck, IconDoc, IconTrend } from '@/components/icons'
 import PostList from './PostList'
 import StorageNotice from '@/components/StorageNotice'
 
@@ -15,25 +16,39 @@ export default async function PostsPage() {
 
   return (
     <>
-      <PageHeader
-        title="발행 관리"
-        desc="글 하나가 아니라 블로그 단위로 봅니다. 발행 균형과 주기가 무너지면 잘 쓴 글도 밀립니다."
-      />
+      <PageHeader title="발행 관리" desc="발행 균형과 주기가 무너지면 잘 쓴 글도 밀립니다." />
 
       <div className="mb-5 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
-        <Stat label="전체" value={`${db.posts.length}편`} />
-        <Stat label="발행 완료" value={`${published.length}편`} />
+        <Stat
+          label="발행 완료"
+          value={`${published.length}편`}
+          hint={`전체 ${db.posts.length}편`}
+          icon={<IconCheck />}
+          iconTone="brand"
+        />
+        <Stat
+          label="검수 대기"
+          value={`${db.posts.length - published.length}편`}
+          hint="초안 · 검수완료"
+          icon={<IconDoc />}
+          iconTone="blue"
+          tone={db.posts.length - published.length > 0 ? 'warn' : 'default'}
+        />
         <Stat
           label="정보 : 홍보"
           value={balance.ratio}
           hint="권장 2 : 1"
           tone={balance.level === 'good' ? 'good' : balance.level === 'warn' ? 'warn' : 'bad'}
+          icon={<IconBalance />}
+          iconTone="violet"
         />
         <Stat
           label="최근 2주"
           value={`${cadence.last14}편`}
           hint="권장 4~6편"
           tone={cadence.level === 'good' ? 'good' : cadence.level === 'warn' ? 'warn' : 'bad'}
+          icon={<IconTrend />}
+          iconTone="amber"
         />
       </div>
 

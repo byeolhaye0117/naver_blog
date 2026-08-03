@@ -29,6 +29,9 @@ export default function PostList({ posts, stores }: { posts: Post[]; stores: Sto
     [posts, typeFilter, statusFilter, storeFilter]
   )
 
+  /** 지금 몇 개의 조건이 걸려 있는지 — 접힌 상태에서도 알 수 있어야 한다 */
+  const activeFilters = [typeFilter, statusFilter, storeFilter].filter((v) => v !== 'all').length
+
   async function setStatus(post: Post, status: PostStatus) {
     setBusy(post.id)
     await fetch(`/api/posts/${post.id}`, {
@@ -50,8 +53,15 @@ export default function PostList({ posts, stores }: { posts: Post[]; stores: Sto
 
   return (
     <div className="space-y-4">
-      <Card>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {/* 걸러보기는 접어 둔다 — 글이 몇 편일 때 필터 3개가 화면 절반을 먹으면 안 된다 */}
+      <details className="card rounded-2xl px-4 py-3 sm:px-5">
+        <summary className="flex cursor-pointer items-center gap-2 text-[13px] font-bold select-none">
+          걸러보기
+          <span className="muted font-semibold">
+            {activeFilters ? `${activeFilters}개 적용 중 · ${filtered.length}편` : `전체 ${posts.length}편`}
+          </span>
+        </summary>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label>
             <span className="muted mb-1.5 block text-[11px] font-semibold">유형</span>
             <select
@@ -94,7 +104,7 @@ export default function PostList({ posts, stores }: { posts: Post[]; stores: Sto
             </select>
           </label>
         </div>
-      </Card>
+      </details>
 
       {filtered.length === 0 ? (
         <Card>

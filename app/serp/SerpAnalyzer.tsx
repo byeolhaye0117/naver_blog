@@ -303,6 +303,30 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
             </p>
           )}
 
+          <Card
+            title="이 키워드로 상위 가려면"
+            subtitle="위 수치를 실제 작성 지시로 번역한 것입니다"
+            right={
+              <Link
+                href={`/write?main=${encodeURIComponent(data.keyword)}`}
+                className="bg-brand-600 rounded-xl px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                이 키워드로 글쓰기
+              </Link>
+            }
+          >
+            <ol className="space-y-2.5">
+              {data.prescription.map((p, i) => (
+                <li key={i} className="flex gap-2.5">
+                  <span className="bg-brand-500/15 text-brand-700 dark:text-brand-100 tnum mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold">
+                    {i + 1}
+                  </span>
+                  <span className="text-[13px] leading-relaxed">{p}</span>
+                </li>
+              ))}
+            </ol>
+          </Card>
+
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
             <Stat
               label="최근 30일 발행량"
@@ -345,30 +369,6 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
               iconTone="amber"
             />
           </div>
-
-          <Card
-            title="이 키워드로 상위 가려면"
-            subtitle="위 수치를 실제 작성 지시로 번역한 것입니다"
-            right={
-              <Link
-                href={`/write?main=${encodeURIComponent(data.keyword)}`}
-                className="bg-brand-600 rounded-xl px-3 py-1.5 text-xs font-semibold text-white"
-              >
-                이 키워드로 글쓰기
-              </Link>
-            }
-          >
-            <ol className="space-y-2.5">
-              {data.prescription.map((p, i) => (
-                <li key={i} className="flex gap-2.5">
-                  <span className="bg-brand-500/15 text-brand-700 dark:text-brand-100 tnum mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold">
-                    {i + 1}
-                  </span>
-                  <span className="text-[13px] leading-relaxed">{p}</span>
-                </li>
-              ))}
-            </ol>
-          </Card>
 
           {data.stats.commonTokens.length > 0 && (
             <Card
