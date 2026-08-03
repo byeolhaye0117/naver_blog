@@ -898,7 +898,7 @@ ok(fix.includes('JSON'), '고쳐 쓸 때도 JSON 으로 받는다')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[32] 키워드 시너지 세트')
-const { splitKeyword, pairSynergy, buildKeywordSets, writeHrefForSet, INTENT_META } = require(
+const { splitKeyword, pairSynergy, buildKeywordSets, writeHrefForSet, subValue, INTENT_META } = require(
   `${OUT}/analysis/synergy.js`
 )
 
@@ -966,6 +966,21 @@ ok(s0.local === '쌍용동', '정보글 조연으로 쓸 지역 키워드')
 ok(plan.splits.some((x) => x.keyword === '쌍용동 헬스장 후기' && x.postType === 'review'), '후기는 따로 쓰라고 알려준다')
 ok(plan.sets.some((s) => s.main.keyword === '봉명동 헬스장'), '다른 지역은 별도 세트')
 ok(plan.sets.every((s) => !(s.area === '쌍용동' && s.subs.some((x) => x.metric.keyword.includes('봉명동')))), '지역이 섞이지 않는다')
+
+// 궁합만 보고 고르면 안 된다 — 검색량 × 궁합으로 값을 매긴다 (실측에서 뒤집혔던 저울)
+const big = mk('쌍용동 24시 헬스장', 285, 95)   // 궁합 보통 + 검색량 큼
+const tiny = mk('쌍용동 헬스장 가격', 15, 175)   // 궁합 강함 + 검색량 없음
+const pick = buildKeywordSets([mk('쌍용동 헬스장', 1470, 437), big, tiny], {
+  areas: ['쌍용동'],
+  store: { open24: true, womenOnly: false },
+})
+ok(pick.sets[0].subs[0].metric.keyword === '쌍용동 24시 헬스장',
+  '궁합이 조금 낮아도 검색량이 큰 쪽을 먼저 얹는다', pick.sets[0].subs[0].metric.keyword)
+ok(
+  subValue(big, pairSynergy('쌍용동 헬스장', big.keyword, ['쌍용동'])) >
+    subValue(tiny, pairSynergy('쌍용동 헬스장', tiny.keyword, ['쌍용동'])),
+  '검색량 × 궁합 저울'
+)
 
 // 지점 성격과 어긋나는 키워드는 빼낸다 (사실과 달라지면 안 된다)
 const plan2 = buildKeywordSets(METRICS, { areas: ['쌍용동', '봉명동'], store: { open24: false, womenOnly: false } })
