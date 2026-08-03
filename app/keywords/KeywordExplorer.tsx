@@ -14,7 +14,7 @@ import {
   parseManualRows,
   suffixesForStore,
 } from '@/lib/analysis/keyword'
-import { parseTotalCount } from '@/lib/analysis/paste'
+import { parsePlaceList, parseTotalCount } from '@/lib/analysis/paste'
 import { findMyPlaceIndex, type PlaceInfo } from '@/lib/naver/place'
 import { naverBlogSectionUrl, naverPlaceSearchUrl } from '@/lib/analysis/rank'
 import type { TrendSeries } from '@/lib/naver/datalab'
@@ -69,6 +69,8 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const [prRank, setPrRank] = useState('')
   const [prSaving, setPrSaving] = useState(false)
   const [prMsg, setPrMsg] = useState<string | null>(null)
+  /** 플레이스 목록을 붙여넣어 번호를 세는 경로 */
+  const [prPaste, setPrPaste] = useState('')
 
   const [trendKeyword, setTrendKeyword] = useState<string | null>(null)
   const [trend, setTrend] = useState<TrendSeries | null>(null)
@@ -157,6 +159,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     setPlaces(null)
     setPrMsg(null)
     setPrRank('')
+    setPrPaste('')
     // 키워드에 든 동네로 지점을 미리 골라둔다 (예: "두정동 헬스장" → 두정점)
     const guess = stores.find((s) => areasFromStore(s).some((a) => keyword.includes(a)))
     setPrStore(guess?.id ?? '')
@@ -289,6 +292,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   }
 
   const dirty = Object.values(totalInput).some((v) => v.trim())
+
+  /** 붙여넣은 플레이스 목록에서 뽑은 업체명 (순서 = 순위) */
+  const pastedPlaces = useMemo(() => parsePlaceList(prPaste), [prPaste])
 
   /** 지금 보고 있는 키워드에 대한 순위 기록 (최근 것부터 3개) */
   const savedRanks = useMemo(
@@ -885,6 +891,47 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 >
                   플레이스 목록 열기 →
                 </a>
+
+                {/* 세지 않아도 되게 — 목록을 붙여넣으면 번호를 붙여 보여준다 */}
+                <details className="mt-2.5">
+                  <summary className="text-brand-600 dark:text-brand-100 cursor-pointer text-[11px] font-semibold select-none">
+                    세기 귀찮으면 목록을 붙여넣기 →
+                  </summary>
+                  <div className="mt-2">
+                    <textarea
+                      value={prPaste}
+                      onChange={(e) => setPrPaste(e.target.value)}
+                      rows={4}
+                      aria-label="플레이스 목록 붙여넣기"
+                      className={`${inputClass} font-mono text-[12px]`}
+                      placeholder={'플레이스 목록 화면을 전체 선택·복사해서 그대로 붙여넣으세요'}
+                    />
+                    {pastedPlaces.length > 0 && (
+                      <>
+                        <p className="muted mt-2 text-[11px]">
+                          {pastedPlaces.length}곳을 읽었습니다 — 내 지점을 누르면 그 번호가 순위로
+                          들어갑니다. 잘못 읽혔으면 위 칸에 숫자를 직접 넣으세요.
+                        </p>
+                        <ol className="mt-1.5 max-h-52 space-y-0.5 overflow-y-auto">
+                          {pastedPlaces.map((name, i) => (
+                            <li key={`${i}-${name}`}>
+                              <button
+                                type="button"
+                                onClick={() => setPrRank(String(i + 1))}
+                                className={`bd w-full rounded border px-2 py-1 text-left text-[11px] hover:bg-slate-500/8 ${
+                                  prRank === String(i + 1) ? 'border-brand-500/60 bg-brand-500/10' : ''
+                                }`}
+                              >
+                                <span className="tnum muted mr-1.5 font-bold">{i + 1}</span>
+                                {name}
+                              </button>
+                            </li>
+                          ))}
+                        </ol>
+                      </>
+                    )}
+                  </div>
+                </details>
 
                 <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
                   <select
