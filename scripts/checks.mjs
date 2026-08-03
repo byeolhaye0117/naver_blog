@@ -745,5 +745,76 @@ ok(
   '출처를 안 넘기면 기존 붙여넣기 경로 그대로'
 )
 
+console.log('\n[30] 지금 할 일 — 순서에서 막힌 첫 곳 하나')
+const { nextActions } = require(`${OUT}/writing/next-action.js`)
+const OKB = { level: 'good', ratio: '2 : 1', info: 2, promo: 1, review: 1 }
+const OKC = { level: 'good', last14: 5 }
+const KEYS = { search: true, searchAd: true }
+const base = { stores: [{ id: 's' }], posts: [], rankTargets: [], fallenCount: 0, balance: OKB, cadence: OKC, keys: KEYS }
+
+// 순서: 지점 → 첫 키워드 → 초안 → 검수완료 → 순위 등록
+const noStore = nextActions({ ...base, stores: [] })
+ok(noStore[0].id === 'store', `지점이 없으면 지점 등록부터 — ${noStore[0].id}`)
+ok(noStore[0].tone === 'bad', '지점 없음은 조치 수준')
+
+const empty = nextActions(base)
+ok(empty[0].id === 'first-keyword', `지점만 있으면 키워드부터 — ${empty[0].id}`)
+ok(empty[0].href === '/keywords', '키워드 화면으로 보낸다')
+
+const draft = nextActions({ ...base, posts: [{ status: 'draft' }] })
+ok(draft[0].id === 'draft', `초안이 있으면 검수 마무리 — ${draft[0].id}`)
+ok(draft[0].title.includes('1편'), '몇 편인지 제목에 넣는다')
+
+const reviewed = nextActions({ ...base, posts: [{ status: 'reviewed' }] })
+ok(reviewed[0].id === 'reviewed', `검수 끝났으면 발행 — ${reviewed[0].id}`)
+
+const pub = nextActions({ ...base, posts: [{ status: 'published' }] })
+ok(pub[0].id === 'rank', `발행했으면 순위 등록 — ${pub[0].id}`)
+
+// 초안과 발행이 함께 있으면 초안 마무리가 먼저다 (쓰던 것을 끝내는 게 우선)
+const both = nextActions({ ...base, posts: [{ status: 'draft' }, { status: 'published' }] })
+ok(both[0].id === 'draft', `쓰던 것부터 끝낸다 — ${both[0].id}`)
+ok(both.some((a) => a.id === 'rank'), '순위 등록은 뒤에 남는다')
+
+// 순위 하락은 균형·주기보다 급하다
+const fallen = nextActions({
+  ...base,
+  posts: [{ status: 'published' }],
+  rankTargets: [{ id: 't' }],
+  fallenCount: 2,
+  balance: { level: 'warn', ratio: '0 : 1', info: 0, promo: 1, review: 0 },
+})
+ok(fallen[0].id === 'fallen', `밀린 키워드가 먼저 — ${fallen[0].id}`)
+ok(fallen[0].title.includes('2개'), '몇 개가 밀렸는지 밝힌다')
+
+// 균형이 깨졌으면 무엇을 쓸지까지 정해 준다
+const unbal = nextActions({
+  ...base,
+  posts: [{ status: 'published' }],
+  rankTargets: [{ id: 't' }],
+  balance: { level: 'warn', ratio: '0 : 1', info: 0, promo: 1, review: 0 },
+})
+ok(unbal[0].id === 'balance', `균형이 깨지면 그 유형을 쓰게 — ${unbal[0].id}`)
+ok(unbal[0].title.includes('정보글'), `정보글이 모자라면 정보글 — ${unbal[0].title}`)
+ok(unbal[0].href === '/write?type=info', '유형까지 링크에 담는다')
+
+// 키가 없으면 알려주되, 글 흐름보다 뒤에 둔다
+const noKey = nextActions({ ...base, keys: { search: false, searchAd: false } })
+ok(noKey[0].id === 'first-keyword', '키 안내가 글 흐름을 앞지르지 않는다')
+ok(noKey.some((a) => a.id === 'ad-key'), '검색광고 키 안내는 목록에 있다')
+
+// 다 잘 되고 있으면 빈손으로 두지 않는다
+const fine = nextActions({
+  ...base,
+  posts: [{ status: 'published' }],
+  rankTargets: [{ id: 't' }],
+})
+ok(fine.length === 1 && fine[0].id === 'next', `막힌 곳이 없으면 다음 키워드 — ${fine[0].id}`)
+ok(fine[0].tone === 'good', '이때는 양호 표시')
+ok(
+  nextActions(base).every((a) => a.title && a.why && a.href && a.cta),
+  '모든 항목에 무엇을·왜·어디로·버튼글자가 있다'
+)
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

@@ -726,8 +726,105 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
             </p>
           )}
 
-          <div className="scroll-x -mx-4 px-4 sm:mx-0 sm:px-0">
-            <table className="w-full min-w-[620px] text-[12px]">
+          {/* ─── 휴대폰: 줄마다 카드 (표를 옆으로 밀지 않게) ─── */}
+          <ul data-rows="cards" className="space-y-2.5 lg:hidden">
+            {sorted.map((r) => (
+              <li key={r.keyword} className="surface bd rounded-xl border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[13.5px] leading-snug font-bold">{r.keyword}</p>
+                    <p className="muted mt-0.5 text-[11px]">
+                      {r.source === 'manual' ? '직접 입력' : `모바일 ${r.mobileShare}%`}
+                      {isMine(r.keyword) && ' · 내가 넣은 키워드'}
+                    </p>
+                  </div>
+                  <Badge tone={gradeTone(r.grade)}>{GRADE_LABEL[r.grade]}</Badge>
+                </div>
+
+                <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
+                  <div className="panel bd rounded-xl border px-1 py-1.5">
+                    <div className="muted text-[10.5px] font-semibold">월 검색량</div>
+                    <div className="tnum text-[14px] font-bold">{r.monthlySearch.toLocaleString()}</div>
+                  </div>
+                  <div className="panel bd rounded-xl border px-1 py-1.5">
+                    <div className="muted text-[10.5px] font-semibold">30일 발행량</div>
+                    <div className="tnum text-[14px] font-bold">
+                      {r.blogRecentNote === 'estimated' ? '~' : ''}
+                      {NUM(r.blogRecent)}
+                      {r.blogRecentNote === 'atLeast' ? '+' : ''}
+                    </div>
+                    {/* 값의 성격을 휴대폰에서도 밝힌다 — 환산값을 실측처럼 읽으면 안 된다 */}
+                    {r.blogRecentNote && (
+                      <div className="muted text-[9.5px] leading-tight">
+                        {r.blogRecentNote === 'estimated' ? '7일 실측 환산' : '1,000건 초과'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="panel bd rounded-xl border px-1 py-1.5">
+                    <div className="muted text-[10.5px] font-semibold">경쟁률</div>
+                    <div className="tnum text-[14px] font-bold">
+                      {r.competition >= 999 ? '—' : r.competition}
+                    </div>
+                  </div>
+                </div>
+
+                {needsTotal.has(r.keyword) && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      value={totalInput[r.keyword] ?? ''}
+                      onChange={(e) => setTotalInput((prev) => ({ ...prev, [r.keyword]: e.target.value }))}
+                      placeholder="437"
+                      aria-label={`${r.keyword} 30일 발행량`}
+                      className="panel bd w-24 rounded-xl border px-2.5 py-2 text-[13px] outline-none focus:border-brand-500"
+                    />
+                    <a
+                      href={naverBlogSectionUrl(r.keyword)}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="text-brand-600 dark:text-brand-100 text-[11.5px] font-semibold hover:underline"
+                    >
+                      30일 건수 →
+                    </a>
+                  </div>
+                )}
+
+                <p className="muted mt-2 text-[11.5px] leading-relaxed">{r.gradeReason}</p>
+
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <Link
+                    href={`/serp?keyword=${encodeURIComponent(r.keyword)}`}
+                    className="bg-brand-600 rounded-xl px-3 py-2 text-[12px] font-bold text-white shadow-sm"
+                  >
+                    상위노출 분석
+                  </Link>
+                  <Link
+                    href={`/write?main=${encodeURIComponent(r.keyword)}`}
+                    className="panel bd rounded-xl border px-3 py-2 text-[12px] font-semibold"
+                  >
+                    글쓰기
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => loadPlaces(r.keyword)}
+                    className="panel bd rounded-xl border px-3 py-2 text-[12px] font-semibold"
+                  >
+                    플레이스
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadTrend(r.keyword)}
+                    className="panel bd rounded-xl border px-3 py-2 text-[12px] font-semibold"
+                  >
+                    검색 추이
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {/* ─── PC: 표 ─── */}
+          <div className="scroll-x hidden lg:block">
+            <table data-rows="table" className="w-full min-w-[620px] text-[12px]">
               <thead>
                 {/* 머리줄은 선 대신 옅은 면으로 구분한다 */}
                 <tr className="muted surface text-left text-[11px]">
