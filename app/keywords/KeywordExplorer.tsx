@@ -64,8 +64,8 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const [combos, setCombos] = useState<string[]>([])
   const [picked, setPicked] = useState<string[]>([])
 
-  /** 연관 키워드도 함께 볼지 — 기본은 끔. 켜면 내 동네 것만 붙는다 */
-  const [withRelated, setWithRelated] = useState(false)
+  /** 연관 키워드도 함께 볼지 — 기본은 켬. 내 지역이 아닌 것은 서버에서 걸러진다 */
+  const [withRelated, setWithRelated] = useState(true)
   /** 내가 넣은 키워드 (표에서 구분 표시) */
   const [requested, setRequested] = useState<string[]>([])
 
@@ -446,9 +446,10 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           자동으로 가져옵니다. 발행량 쪽은 공식 API 가 아니라 네이버 화면이 쓰는 경로라, 막히거나
           응답이 바뀌면 <b>판정 불가</b>로 표시되고 그 줄만 직접 넣으면 됩니다.
           <br />
-          <b>연관 키워드</b>를 켜면 검색광고 API 가 제안하는 키워드도 함께 등급을 매깁니다 — 다만
-          전국 동네가 섞여 오므로 <b>내 지점이 있는 동네가 아닌 것은 빼고</b> 보여줍니다. 내가 넣은
-          키워드는 어떤 정렬에서도 맨 위에 둡니다.
+          <b>연관 키워드</b>도 함께 등급을 매깁니다 — 안 떠올린 키워드를 찾는 게 이 화면의 값이라
+          기본으로 켜 둡니다. 다만 검색광고 API 가 전국 지역과 남의 상호를 섞어 주므로{' '}
+          <b>내 지점이 있는 지역이 아닌 것은 빼고</b> 보여줍니다(대전·세종·창원 같은 다른 지역, 남의
+          브랜드). 내가 넣은 키워드는 어떤 정렬에서도 맨 위에 둡니다.
         </p>
 
         {error && (

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { keywordTool } from '@/lib/naver/searchad'
 import { recentBlogCount } from '@/lib/naver/blogsection'
-import { areasFromStore, buildMetric, isOtherArea } from '@/lib/analysis/keyword'
+import { buildMetric, isRelevantKeyword, myRegionTokens } from '@/lib/analysis/keyword'
 import { keyStatus, NaverApiError } from '@/lib/naver/client'
 import { readDB } from '@/lib/store'
 import type { KeywordMetric } from '@/lib/types'
@@ -60,24 +60,25 @@ export async function POST(req: Request) {
     const requested = new Set(keywords.map((k) => k.replace(/\s+/g, '')))
     const primary = adRows.filter((r) => requested.has(r.keyword.replace(/\s+/g, '')))
 
-    // 검색광고 API 의 연관 키워드에는 전국 동네가 섞여 온다 (천안 지점을 조회했는데
-    // 월평동·관저동(대전), 송탄(평택) 같은 게 들어온다). 내 지점이 없는 동네 글은
-    // 쓸 수가 없으니, 다른 동네 이름이 든 것은 걸러낸다.
-    const myAreas = new Set((await readDB()).stores.flatMap(areasFromStore))
+    // 검색광고 API 의 연관 키워드에는 전국 지역과 남의 상호가 섞여 온다 (천안 지점을
+    // 조회했는데 대전헬스장·창원필라테스·바디앤솔필라테스가 들어온다). 쓸 수 없는 것이
+    // 화면을 차지하면 안 되니 걸러낸다 — isRelevantKeyword 주석에 규칙이 있다.
+    const myTokens = myRegionTokens((await readDB()).stores)
 
     const related = adRows
       .filter((r) => !requested.has(r.keyword.replace(/\s+/g, '')))
-      .filter((r) => !isOtherArea(r.keyword, myAreas))
+      .filter((r) => isRelevantKeyword(r.keyword, myTokens))
       .sort((a, b) => b.monthlySearch - a.monthlySearch)
 
     const missing = keywords
       .filter((k) => !primary.some((p) => p.keyword.replace(/\s+/g, '') === k.replace(/\s+/g, '')))
       .map((k) => ({ keyword: k, monthlyPc: 0, monthlyMobile: 0, monthlySearch: 0, mock: true }))
 
-    // 연관 키워드는 명시적으로 요청할 때만 붙인다 — 넣은 키워드가 묻히면 안 된다
-    const target = body.includeRelated
-      ? [...primary, ...missing, ...related].slice(0, MAX_GRADED)
-      : [...primary, ...missing]
+    // 연관 키워드는 기본으로 붙인다 (안 떠올린 키워드를 발견하는 게 이 화면의 값이다).
+    // 넣은 키워드가 묻히지 않게 화면에서 맨 위로 고정하고 배지로 구분한다.
+    const target = body.includeRelated === false
+      ? [...primary, ...missing]
+      : [...primary, ...missing, ...related].slice(0, MAX_GRADED)
 
     const metrics = await withBlogTotals(target)
 
