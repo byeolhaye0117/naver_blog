@@ -366,7 +366,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
                     : 'good'
               }
               icon={<IconTrend />}
-              iconTone="amber"
+              iconTone="gold"
             />
           </div>
 
