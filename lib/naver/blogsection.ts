@@ -228,6 +228,101 @@ export async function topBlogPosts(
   return once()
 }
 
+/** 한 페이지에 담기는 최대 개수 (실측 확인) */
+export const SECTION_PAGE_SIZE = 30
+
+/**
+ * 이 키워드로 내 글이 몇 위인지 — 페이지를 넘겨가며 센다.
+ *
+ * **왜 공식 검색 API 를 안 쓰나.** section.blog.naver.com 은 실제 블로그 검색 결과
+ * 화면 그 자체라서, 여기 나오는 순서가 회원님이 눈으로 보는 순위와 같다. 공식 검색
+ * API 의 sort=sim 은 정확도 계산이 달라 화면 순위와 일치하지 않는다. 순위를 재는
+ * 목적에는 이쪽이 더 정확하다.
+ *
+ * 실측: countPerPage=30 에 currentPage 를 1·2·4 로 바꾸면 각각 다른 30개가 순서대로 온다.
+ * 그래서 depth 120 이면 호출 4번이다.
+ *
+ * 못 찾으면 rank: null (순위 밖). 조회 자체가 실패하면 ok: false 로 구분해 돌려준다 —
+ * "순위 밖" 과 "못 읽었음" 을 같은 값으로 쓰면 추이 그래프가 거짓이 된다.
+ */
+export async function findBlogRank(
+  keyword: string,
+  urlOrBlog: string,
+  depth = 60
+): Promise<{ ok: boolean; rank: number | null; total: number | null; checked: number }> {
+  const q = keyword.trim()
+  const needle = normalizeBlogUrl(urlOrBlog)
+  if (!q || !needle) return { ok: false, rank: null, total: null, checked: 0 }
+
+  const pages = Math.max(1, Math.ceil(depth / SECTION_PAGE_SIZE))
+  let total: number | null = null
+  let checked = 0
+  let any = false
+
+  for (let page = 1; page <= pages; page++) {
+    const url =
+      `${ENDPOINT}?countPerPage=${SECTION_PAGE_SIZE}&currentPage=${page}&orderBy=sim&type=post` +
+      `&keyword=${encodeURIComponent(q)}`
+
+    let body: string
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': UA, Referer: REFERER, Accept: 'application/json, text/plain, */*' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      if (!res.ok) break
+      body = await res.text()
+    } catch {
+      break
+    }
+
+    if (total === null) total = parseSectionTotal(body)
+    const items = parseSectionPosts(body)
+    if (!items.length) break
+    any = true
+
+    for (let i = 0; i < items.length; i++) {
+      const link = normalizeBlogUrl(items[i].url)
+      if (!link) continue
+      if (link === needle || link.startsWith(`${needle}/`) || needle.startsWith(`${link}/`)) {
+        return { ok: true, rank: (page - 1) * SECTION_PAGE_SIZE + i + 1, total, checked: checked + i + 1 }
+      }
+    }
+    checked += items.length
+    // 마지막 페이지까지 못 채우고 왔으면 더 없다
+    if (items.length < SECTION_PAGE_SIZE) break
+  }
+
+  return { ok: any, rank: null, total, checked }
+}
+
+/**
+ * 블로그 글 주소를 비교할 수 있는 꼴로.
+ *
+ * 같은 글이 `blog.naver.com/id/223…`, `m.blog.naver.com/id/223…`,
+ * `blog.naver.com/PostView.naver?blogId=id&logNo=223…` 세 가지로 나타난다.
+ * 마지막 형태는 쿼리에서 아이디와 글 번호를 꺼내야 같은 글로 알아볼 수 있다.
+ */
+export function normalizeBlogUrl(u: string): string {
+  const s = (u ?? '').trim()
+  if (!s) return ''
+
+  const qs = s.match(/[?&]blogId=([^&#]+)/i)
+  if (qs) {
+    const log = s.match(/[?&]logNo=(\d+)/i)
+    return `blog.naver.com/${qs[1].toLowerCase()}${log ? `/${log[1]}` : ''}`
+  }
+
+  return s
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^m\./, '')
+    .replace(/^www\./, '')
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
+}
+
 /** 사용자가 같은 숫자를 눈으로 확인할 수 있는 화면 주소 */
 export function blogSectionUrl(keyword: string): string {
   return `${REFERER}?keyword=${encodeURIComponent(keyword)}&orderBy=sim`

@@ -253,12 +253,13 @@ export default function RankTracker({
             </p>
           )}
           {!keys.search && (
-            <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
-              검색 API 키가 없으면 순위가 샘플 값으로 채워집니다. 실제 순위를 보려면{' '}
+            <p className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
+              순위 조회는 <b>키 없이도 됩니다</b> — 블로그 검색 결과 화면을 직접 읽습니다. 그 경로가
+              막힌 경우에만 검색 API 로 넘어가고, 그것도 없으면 샘플 값이 채워집니다(샘플일 때는
+              따로 표시됩니다).{' '}
               <Link href="/deploy" className="underline">
-                키를 발급해 넣으세요
+                키를 넣는 방법
               </Link>
-              .
             </p>
           )}
         </div>
@@ -267,14 +268,15 @@ export default function RankTracker({
       <div className="rounded-xl border border-sky-500/30 bg-sky-500/8 px-4 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
         <strong className="font-bold">이 화면이 재는 순위: {RANK_BASIS}</strong>
         <p className="mt-1.5">
-          최신순이 아닙니다 — 최신순은 발행만 하면 위에 있으니 의미가 없습니다. 다만 이 값은{' '}
-          <strong>실제 통합검색 상단과 같지 않습니다.</strong> 검색 API 는 평면 목록만 주는데, 실제 화면은
-          의도별 <strong>스마트블록</strong>으로 재배치되고 그 자리는 API 로 볼 수 없습니다.
+          최신순이 아닙니다 — 최신순은 발행만 하면 위에 있으니 의미가 없습니다. <strong>블로그 검색
+          결과 화면을 그대로 읽으므로 블로그 탭 순위와 일치합니다.</strong> 다만 이 값은{' '}
+          <strong>실제 통합검색 상단과 같지 않습니다.</strong> 실제 화면은
+          의도별 <strong>스마트블록</strong>으로 재배치되고 그 자리는 어떤 경로로도 볼 수 없습니다.
         </p>
         <p className="mt-2">
           그래서 각 항목에 <strong>“네이버에서 직접 본 순위 기록”</strong> 을 두었습니다. 검색해서 눈으로 확인한
-          순위를 넣으면 그래프·변동·구간 판정이 똑같이 동작하고, <strong>API 조회보다 정확합니다.</strong>{' '}
-          검색 API 를 발급받지 못한 경우에도 이 방식으로 추적을 그대로 쓸 수 있습니다.
+          순위를 넣으면 그래프·변동·구간 판정이 똑같이 동작합니다. 스마트블록 자리까지 확인하려면 이 방법이
+          가장 정확합니다.
         </p>
       </div>
 

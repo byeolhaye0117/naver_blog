@@ -1,4 +1,4 @@
-import { getKeys, hasSearchKeys, seededRandom, NaverApiError } from './client'
+import { HUB_BASE, searchChannel, seededRandom, NaverApiError } from './client'
 
 export interface RawBlogItem {
   title: string
@@ -16,7 +16,11 @@ export interface BlogSearchResult {
   mock: boolean
 }
 
-const ENDPOINT = 'https://openapi.naver.com/v1/search/blog.json'
+/** 개발자센터 / API 허브 — 응답 모양은 같고 주소와 헤더만 다르다 */
+const DEV_ENDPOINT = 'https://openapi.naver.com/v1/search/blog.json'
+const HUB_ENDPOINT = `${HUB_BASE}/search/v1/blog`
+/** 테스트용 주소 갈아끼우기 (프록시가 막힌 환경에서 흐름 검증용) */
+const OVERRIDE = process.env.NAVER_SEARCH_API_ENDPOINT?.trim() || undefined
 
 /** 네이버 태그(<b>) 와 HTML 엔티티를 제거해 평문으로 */
 export function stripTags(s: string): string {
@@ -43,23 +47,18 @@ export async function searchBlog(
   const start = opts.start ?? 1
   const sort = opts.sort ?? 'sim'
 
-  if (!hasSearchKeys()) return mockBlogSearch(query, display)
+  const ch = searchChannel()
+  if (!ch) return mockBlogSearch(query, display)
 
-  const { clientId, clientSecret } = getKeys()
-  const url = `${ENDPOINT}?query=${encodeURIComponent(query)}&display=${display}&start=${start}&sort=${sort}`
+  const base = OVERRIDE ?? (ch.channel === 'hub' ? HUB_ENDPOINT : DEV_ENDPOINT)
+  const url = `${base}?query=${encodeURIComponent(query)}&display=${display}&start=${start}&sort=${sort}`
 
-  const res = await fetch(url, {
-    headers: {
-      'X-Naver-Client-Id': clientId!,
-      'X-Naver-Client-Secret': clientSecret!,
-    },
-    cache: 'no-store',
-  })
+  const res = await fetch(url, { headers: ch.headers, cache: 'no-store' })
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new NaverApiError(
-      `네이버 검색 API 오류 (${res.status}). ${body.slice(0, 200)}`,
+      `네이버 검색 API 오류 (${res.status}, ${ch.channel === 'hub' ? 'API 허브' : '개발자센터'}). ${body.slice(0, 200)}`,
       res.status
     )
   }
