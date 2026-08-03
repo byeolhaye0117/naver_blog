@@ -12,9 +12,10 @@ export const viewport: Viewport = {
   initialScale: 1,
   // 확대를 막지 않는다 — 접근성
   maximumScale: 5,
+  // 휴대폰 상단 표시줄 색 — 화면 배경(--bg)과 같은 값으로 맞춘다
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f7f8f9' },
-    { media: '(prefers-color-scheme: dark)', color: '#1b1d20' },
+    { media: '(prefers-color-scheme: light)', color: '#eff1f6' },
+    { media: '(prefers-color-scheme: dark)', color: '#1b1e23' },
   ],
 }
 
