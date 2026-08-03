@@ -37,7 +37,7 @@ export default function CopyButton({
     <button
       type="button"
       onClick={copy}
-      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+      className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
         done ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white hover:opacity-90 active:opacity-80'
       } ${block ? 'w-full' : ''} ${className}`}
     >

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import type { SerpAnalysis } from '@/lib/types'
 import { Badge, Card, Empty, Field, MockNotice, Stat, inputClass } from '@/components/ui'
+import { IconDoc, IconPencil, IconTarget, IconTrend } from '@/components/icons'
 import { naverBlogTabUrl, naverSearchUrl } from '@/lib/analysis/rank'
 import { parsePastedSerp, toEditableText } from '@/lib/analysis/paste'
 
@@ -101,7 +102,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
         href={naverBlogTabUrl(keyword)}
         target="_blank"
         rel="noreferrer noopener"
-        className="bg-brand-600 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white"
+        className="bg-brand-600 rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white"
       >
         블로그 탭 열기
       </a>
@@ -109,7 +110,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
         href={naverSearchUrl(keyword)}
         target="_blank"
         rel="noreferrer noopener"
-        className="bd rounded-lg border px-3 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+        className="bd rounded-xl border px-3 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
       >
         통합검색 열기
       </a>
@@ -119,22 +120,27 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
   return (
     <div className="space-y-4">
       <Card>
-        <div className="bd mb-4 flex gap-1 rounded-lg border p-1">
+        <div className="bd mb-4 flex gap-1 rounded-xl border bg-slate-500/8 p-1">
           {(
             [
-              ['auto', '자동 분석'],
-              ['paste', '붙여넣어 분석 (자동이 막혔을 때)'],
-            ] as [Mode, string][]
-          ).map(([m, label]) => (
+              ['auto', '자동 분석', ''],
+              // 좁은 화면에서는 괄호 설명을 접는다 — 탭 두 줄이 되면 화면 맨 위가 탭으로 찬다
+              ['paste', '붙여넣어 분석', '자동이 막혔을 때'],
+            ] as [Mode, string, string][]
+          ).map(([m, label, note]) => (
             <button
               key={m}
               type="button"
               onClick={() => setMode(m)}
-              className={`flex-1 rounded-md px-3 py-1.5 text-[12px] font-semibold transition ${
-                mode === m ? 'bg-brand-600 text-white' : 'hover:bg-slate-500/8'
+              // 고른 쪽만 하얗게 떠 보이는 형태 — 통째로 초록을 칠하면 화면에서 제일 센 것이 탭이 된다
+              className={`flex-1 rounded-lg px-3 py-2 text-[12px] font-semibold whitespace-nowrap transition ${
+                mode === m
+                  ? 'text-brand-700 dark:text-brand-100 bg-[var(--panel)] shadow-sm'
+                  : 'muted hover:bg-slate-500/8'
               }`}
             >
               {label}
+              {note && <span className="hidden font-medium opacity-70 sm:inline"> ({note})</span>}
             </button>
           ))}
         </div>
@@ -168,12 +174,12 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
                 type="button"
                 onClick={() => run(keyword, limit)}
                 disabled={loading}
-                className="bg-brand-600 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                className="bg-brand-600 rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {loading ? '분석 중…' : '분석'}
               </button>
             </div>
-            <div className="bd mt-3 rounded-lg border border-dashed p-3">
+            <div className="surface mt-3 rounded-xl p-3.5">
               <p className="text-[12px] font-semibold">이 화면이 하는 일</p>
               <p className="muted mt-1.5 text-[11px] leading-relaxed">
                 지금 이 키워드로 <b>이미 상위에 올라 있는 블로그 글들</b>을 앱이 직접 읽어와서, 그
@@ -187,7 +193,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
           </>
         ) : (
           <div className="mt-1 space-y-4">
-            <div className="bd rounded-lg border border-dashed p-3">
+            <div className="surface rounded-xl p-3.5">
               <p className="text-[12px] font-semibold">붙여넣는 방법</p>
               <p className="muted mt-1.5 text-[11px] leading-relaxed">
                 평소에는 쓰지 않아도 됩니다 — <b>자동 분석</b>이 같은 목록을 알아서 읽어옵니다. 자동이
@@ -218,7 +224,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
               type="button"
               onClick={extract}
               disabled={!pasted.trim()}
-              className="bd rounded-lg border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8 disabled:opacity-50"
+              className="bd rounded-xl border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8 disabled:opacity-50"
             >
               제목 뽑기
             </button>
@@ -247,7 +253,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
               type="button"
               onClick={runPaste}
               disabled={loading || !list.trim()}
-              className="bg-brand-600 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              className="bg-brand-600 rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
             >
               {loading ? '분석 중…' : '분석'}
             </button>
@@ -262,7 +268,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
         )}
 
         {error && (
-          <p className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-700 dark:text-rose-300">
+          <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-700 dark:text-rose-300">
             {error}
           </p>
         )}
@@ -288,7 +294,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
             </div>
           )}
           {data.source !== 'api' && (
-            <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] leading-relaxed text-emerald-800 dark:text-emerald-200">
+            <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] leading-relaxed text-emerald-800 dark:text-emerald-200">
               {data.source === 'section'
                 ? `지금 네이버 블로그 검색 관련도순 상위 ${data.items.length}개를 읽어와 분석한 결과입니다 — 샘플이 아니라 실제 화면 기준입니다.`
                 : `회원님이 직접 붙여넣은 ${data.items.length}개를 분석한 결과입니다 — 샘플이 아니라 실제 화면 기준입니다.`}
@@ -302,13 +308,23 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
               label="최근 30일 발행량"
               value={data.total > 0 ? data.total.toLocaleString() : '—'}
               hint={data.total > 0 ? '이 키워드로 한 달 새 올라온 글' : '자동 조회가 막혔습니다'}
+              icon={<IconDoc />}
+              iconTone="blue"
             />
-            <Stat label="상위 글 평균 제목" value={`${data.stats.avgTitleLength}자`} hint="모바일 표시 ~35자" />
+            <Stat
+              label="상위 글 평균 제목"
+              value={`${data.stats.avgTitleLength}자`}
+              hint="모바일 표시 ~35자"
+              icon={<IconPencil />}
+              iconTone="violet"
+            />
             <Stat
               label="제목 앞쪽 키워드"
               value={`${data.stats.keywordFrontRate}%`}
               hint={`제목에 포함 ${data.stats.keywordInTitleRate}%`}
               tone={data.stats.keywordFrontRate >= 60 ? 'good' : 'default'}
+              icon={<IconTarget />}
+              iconTone="brand"
             />
             <Stat
               label="30일 이내 글"
@@ -325,6 +341,8 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
                     ? 'warn'
                     : 'good'
               }
+              icon={<IconTrend />}
+              iconTone="amber"
             />
           </div>
 
@@ -334,7 +352,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
             right={
               <Link
                 href={`/write?main=${encodeURIComponent(data.keyword)}`}
-                className="bg-brand-600 rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
+                className="bg-brand-600 rounded-xl px-3 py-1.5 text-xs font-semibold text-white"
               >
                 이 키워드로 글쓰기
               </Link>
@@ -384,7 +402,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
                   href={naverSearchUrl(data.keyword)}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                  className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
                 >
                   통합검색
                 </a>
@@ -392,7 +410,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
                   href={naverBlogTabUrl(data.keyword)}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                  className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
                 >
                   블로그 탭
                 </a>

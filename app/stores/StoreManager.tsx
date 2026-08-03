@@ -160,7 +160,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
       <Card title={isNew ? '지점 추가' : `${editing.name} 수정`}>
         <div className="space-y-3.5">
           {/* 손으로 다 적지 않아도 되게 — 통합검색에 들어 있는 플레이스 정보를 읽어온다 */}
-          <div className="bd rounded-lg border border-dashed p-3">
+          <div className="surface rounded-xl p-3.5">
             <p className="text-[12px] font-semibold">네이버 플레이스에서 가져오기</p>
             <p className="muted mt-1 text-[11px] leading-relaxed">
               상호명으로 검색해 <b>주소·전화·예약링크·지역 키워드</b>를 채웁니다. 이미 적어둔 칸은
@@ -179,7 +179,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
                 type="button"
                 onClick={() => findPlaces(placeQuery || editing.legalName || editing.name)}
                 disabled={placeLoading}
-                className="bg-brand-600 shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                className="bg-brand-600 shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {placeLoading ? '찾는 중…' : '찾기'}
               </button>
@@ -195,7 +195,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
                     key={p.id}
                     type="button"
                     onClick={() => applyPlace(p)}
-                    className="bd panel block w-full rounded-lg border p-2.5 text-left hover:bg-slate-500/8"
+                    className="bd panel block w-full rounded-xl border p-2.5 text-left hover:bg-slate-500/8"
                   >
                     <span className="text-[12px] font-semibold">{p.name}</span>
                     {p.category && (
@@ -213,7 +213,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
             {placeMsg && <p className="muted mt-2 text-[11px] leading-relaxed">{placeMsg}</p>}
 
             {placeApplied && (
-              <div className="mt-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+              <div className="mt-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
                 <p className="text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
                   <strong>아직 저장되지 않았습니다.</strong> 이대로 나가면 사라집니다.
                 </p>
@@ -221,7 +221,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
                   type="button"
                   onClick={save}
                   disabled={saving}
-                  className="bg-brand-600 mt-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  className="bg-brand-600 mt-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {saving ? '저장 중…' : '지금 저장'}
                 </button>
@@ -329,7 +329,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
               type="button"
               onClick={save}
               disabled={saving}
-              className="bg-brand-600 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="bg-brand-600 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               {saving ? '저장 중…' : '저장'}
             </button>
@@ -339,7 +339,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
                 setEditing(null)
                 setIsNew(false)
               }}
-              className="bd rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-slate-500/8"
+              className="bd rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-slate-500/8"
             >
               취소
             </button>
@@ -354,7 +354,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
       <button
         type="button"
         onClick={() => startEdit(emptyStore(), true)}
-        className="bg-brand-600 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+        className="bg-brand-600 rounded-xl px-4 py-2 text-sm font-semibold text-white"
       >
         지점 추가
       </button>
@@ -376,7 +376,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
                 type="button"
                 onClick={() => startEdit(s, false)}
                 aria-label={`${s.name} 수정`}
-                className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
               >
                 수정
               </button>
@@ -384,7 +384,7 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
                 type="button"
                 onClick={() => remove(s)}
                 aria-label={`${s.name} 삭제`}
-                className="muted rounded-lg px-2.5 py-1.5 text-[11px] font-semibold hover:text-rose-600"
+                className="muted rounded-xl px-2.5 py-1.5 text-[11px] font-semibold hover:text-rose-600"
               >
                 삭제
               </button>
@@ -452,19 +452,19 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
           <div className="bd mt-3.5 flex flex-wrap gap-1.5 border-t pt-3.5">
             <Link
               href={`/write?store=${s.id}&type=promo`}
-              className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+              className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
             >
               홍보글 쓰기
             </Link>
             <Link
               href={`/write?store=${s.id}&type=info`}
-              className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+              className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
             >
               정보글 쓰기
             </Link>
             <Link
               href={`/write?store=${s.id}&type=review`}
-              className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+              className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
             >
               후기글 쓰기
             </Link>

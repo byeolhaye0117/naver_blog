@@ -14,21 +14,27 @@
 }
 
 :root {
-  --bg: oklch(0.985 0.002 250);
+  /* 배경은 살짝 푸른 회색, 카드는 순백 — 카드가 선이 아니라 밝기 차이로 떠 보이게 한다 */
+  --bg: oklch(0.957 0.008 262);
   --panel: oklch(1 0 0);
-  --border: oklch(0.9 0.005 250);
-  --text: oklch(0.24 0.01 250);
-  --muted: oklch(0.52 0.01 250);
+  /* 카드 안의 한 겹 더 들어간 면 (표 머리·입력창·보조 박스) */
+  --surface: oklch(0.978 0.004 262);
+  --border: oklch(0.925 0.006 262);
+  --text: oklch(0.26 0.014 265);
+  --muted: oklch(0.56 0.012 265);
+  --shadow: 0 1px 2px oklch(0.4 0.03 265 / 0.05), 0 10px 24px -14px oklch(0.4 0.03 265 / 0.16);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: oklch(0.19 0.008 255);
-    --panel: oklch(0.235 0.01 255);
-    --border: oklch(0.32 0.012 255);
-    --text: oklch(0.93 0.005 250);
-    --muted: oklch(0.68 0.01 250);
+    --bg: oklch(0.175 0.008 262);
+    --panel: oklch(0.225 0.01 262);
+    --surface: oklch(0.255 0.011 262);
+    --border: oklch(0.3 0.012 262);
+    --text: oklch(0.94 0.005 262);
+    --muted: oklch(0.7 0.012 262);
+    --shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 10px 24px -14px oklch(0 0 0 / 0.5);
     color-scheme: dark;
   }
 }
@@ -50,6 +56,16 @@ body {
   .panel {
     background: var(--panel);
     border: 1px solid var(--border);
+  }
+  /* 본문 카드 — 테두리는 거의 안 보이게 두고 그림자로 띄운다 */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+  }
+  /* 카드 안의 한 겹 안쪽 면 */
+  .surface {
+    background: var(--surface);
   }
   .muted {
     color: var(--muted);
@@ -73,6 +89,20 @@ body {
 /* 숫자 정렬 */
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+/* 스크롤바도 화면 톤에 맞춘다 (넓은 표를 옆으로 밀 때 눈에 덜 걸리게) */
+@supports selector(::-webkit-scrollbar) {
+  .scroll-x::-webkit-scrollbar {
+    height: 8px;
+  }
+  .scroll-x::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+  }
+  .scroll-x::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 /* ─── 차트 (dataviz 기준 팔레트) ─────────────────────────────

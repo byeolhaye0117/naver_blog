@@ -7,6 +7,7 @@ import { checkPost } from '@/lib/writing/checker'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL } from '@/lib/types'
 import { PageHeader } from '@/components/AppShell'
 import { Badge, Card, Empty, Progress, Stat } from '@/components/ui'
+import { IconBalance, IconDoc, IconTarget, IconTrend } from '@/components/icons'
 import StorageNotice from '@/components/StorageNotice'
 
 export const dynamic = 'force-dynamic'
@@ -73,24 +74,36 @@ export default async function Dashboard() {
       <StorageNotice />
 
       <div className="mb-5 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
-        <Stat label="발행 완료" value={`${published.length}편`} hint={`초안·검수중 ${drafts.length}편`} />
+        <Stat
+          label="발행 완료"
+          value={`${published.length}편`}
+          hint={`초안·검수중 ${drafts.length}편`}
+          icon={<IconDoc />}
+          iconTone="blue"
+        />
         <Stat
           label="정보 : 홍보"
           value={balance.ratio}
           hint="권장 2 : 1"
           tone={balance.level === 'good' ? 'good' : balance.level === 'warn' ? 'warn' : 'bad'}
+          icon={<IconBalance />}
+          iconTone="violet"
         />
         <Stat
           label="1페이지 진입"
           value={`${firstPage.length}개`}
           hint={`추적 ${views.length}개 중`}
           tone={firstPage.length ? 'good' : 'default'}
+          icon={<IconTarget />}
+          iconTone="brand"
         />
         <Stat
           label="순위 변동"
           value={`↑${risen.length} ↓${fallen.length}`}
           hint="직전 조회 대비"
           tone={fallen.length > risen.length ? 'bad' : risen.length ? 'good' : 'default'}
+          icon={<IconTrend />}
+          iconTone="amber"
         />
       </div>
 
@@ -313,7 +326,7 @@ export default async function Dashboard() {
               d: '검색어를 의도 단위로 쪼개 블록별로 노출합니다. 제목에 메인 키워드 + 세부 의도를 함께 담으면 진입에 유리합니다.',
             },
           ].map((x) => (
-            <div key={x.t} className="bd rounded-lg border p-3">
+            <div key={x.t} className="surface bd rounded-xl border p-3.5">
               <h3 className="text-[13px] font-bold">{x.t}</h3>
               <p className="muted mt-1.5 text-[12px] leading-relaxed">{x.d}</p>
             </div>

@@ -48,7 +48,7 @@ function Step({
   badge?: React.ReactNode
 }) {
   return (
-    <div className="bd rounded-lg border p-3.5">
+    <div className="surface bd rounded-xl border p-3.5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="bg-brand-500/15 text-brand-700 dark:text-brand-100 flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold">
           {n}
@@ -113,7 +113,7 @@ export default function DeployPage() {
             href={DEPLOY_URL}
             target="_blank"
             rel="noreferrer noopener"
-            className="bg-brand-600 inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+            className="bg-brand-600 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
           >
             Vercel 에서 배포 시작 →
           </a>
@@ -124,7 +124,7 @@ export default function DeployPage() {
             <code className="bd rounded border px-1 py-0.5 text-[11px]">…vercel.app</code> 주소가 나옵니다.
             그 주소를 휴대폰에서 열고 홈 화면에 추가하면 앱처럼 쓸 수 있습니다.
           </p>
-          <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+          <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
             <strong className="font-bold">“Create a Git repository” 화면이 나오면 멈추세요.</strong> 그건 이
             저장소를 <strong>복제해서 새 저장소를 만드는</strong> 흐름(Deploy 버튼 / clone 링크)입니다. 그대로
             만들면 이후 이 저장소에 올라가는 수정이 배포에 따라오지 않습니다. 화면 아래{' '}
@@ -259,7 +259,7 @@ export default function DeployPage() {
                 파일을 만들고 아래 내용을 붙여 값을 채운 뒤, 서버를 다시 시작하세요. 이 파일은 git 에 올라가지
                 않도록 이미 제외돼 있습니다.
               </p>
-              <pre className="bd scroll-x mt-2 rounded-lg border px-3 py-2.5 text-[11px] leading-relaxed">
+              <pre className="bd scroll-x mt-2 rounded-xl border px-3 py-2.5 text-[11px] leading-relaxed">
                 {ENV_TEMPLATE}
               </pre>
             </Step>
@@ -353,7 +353,7 @@ export default function DeployPage() {
           subtitle="이걸 하지 않으면 배포한 앱은 작성한 글을 보관하지 못합니다. Vercel 은 파일 쓰기가 막혀 있어서, 기록을 남기려면 저장소가 따로 필요합니다."
         >
           <div className="space-y-3">
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
               <strong className="font-bold">이 단계를 건너뛰면</strong> 배포한 앱에서 글을 저장해도 서버가
               쉬었다 깨어날 때 사라집니다. 대시보드에 빨간 경고가 뜨니 바로 알 수 있습니다. 조사·검수·가이드는
               저장이 필요 없어 그대로 잘 됩니다.

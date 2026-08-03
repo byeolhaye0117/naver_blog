@@ -163,7 +163,7 @@ export default function PostList({ posts, stores }: { posts: Post[]; stores: Sto
                 <div className="bd mt-3 flex flex-wrap items-center gap-1.5 border-t pt-3">
                   <Link
                     href={`/write?id=${p.id}`}
-                    className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                    className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
                   >
                     수정 · 발행 패키지
                   </Link>
@@ -172,7 +172,7 @@ export default function PostList({ posts, stores }: { posts: Post[]; stores: Sto
                       type="button"
                       disabled={busy === p.id}
                       onClick={() => setStatus(p, 'reviewed')}
-                      className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8 disabled:opacity-50"
+                      className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8 disabled:opacity-50"
                     >
                       검수완료로
                     </button>
@@ -182,7 +182,7 @@ export default function PostList({ posts, stores }: { posts: Post[]; stores: Sto
                       type="button"
                       disabled={busy === p.id}
                       onClick={() => setStatus(p, 'published')}
-                      className="bg-brand-600 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
+                      className="bg-brand-600 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
                     >
                       발행완료로
                     </button>
@@ -192,7 +192,7 @@ export default function PostList({ posts, stores }: { posts: Post[]; stores: Sto
                       href={`/rank?keyword=${encodeURIComponent(p.mainKeyword)}&url=${encodeURIComponent(
                         p.publishedUrl ?? ''
                       )}&postId=${p.id}`}
-                      className="bd rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                      className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
                     >
                       순위 추적 등록
                     </Link>
@@ -206,7 +206,7 @@ export default function PostList({ posts, stores }: { posts: Post[]; stores: Sto
                     type="button"
                     disabled={busy === p.id}
                     onClick={() => remove(p)}
-                    className="muted ml-auto rounded-lg px-2.5 py-1.5 text-[11px] font-semibold hover:text-rose-600 disabled:opacity-50"
+                    className="muted ml-auto rounded-xl px-2.5 py-1.5 text-[11px] font-semibold hover:text-rose-600 disabled:opacity-50"
                   >
                     삭제
                   </button>

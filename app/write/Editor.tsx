@@ -212,7 +212,7 @@ export default function Editor({
             type="button"
             onClick={save}
             disabled={saving}
-            className="bg-brand-600 rounded-lg px-3.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            className="bg-brand-600 rounded-xl px-3.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
           >
             {saving ? '저장 중…' : id ? '저장' : '새 글 저장'}
           </button>
@@ -232,7 +232,7 @@ export default function Editor({
             key={v}
             type="button"
             onClick={() => setView(v)}
-            className={`rounded-lg px-3.5 py-2 text-[13px] font-semibold transition ${
+            className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition ${
               view === v ? 'bg-brand-600 text-white' : 'panel bd border'
             } ${v === 'check' ? 'lg:hidden' : ''}`}
           >
@@ -257,7 +257,7 @@ export default function Editor({
                           key={t}
                           type="button"
                           onClick={() => setType(t)}
-                          className={`rounded-lg py-2 text-[13px] font-semibold transition ${
+                          className={`rounded-xl py-2 text-[13px] font-semibold transition ${
                             type === t ? 'bg-brand-600 text-white' : 'bd panel border'
                           }`}
                         >
@@ -355,7 +355,7 @@ export default function Editor({
                             key={s}
                             type="button"
                             onClick={() => setSponsorship(s)}
-                            className={`rounded-lg py-2 text-[12px] font-semibold transition ${
+                            className={`rounded-xl py-2 text-[12px] font-semibold transition ${
                               sponsorship === s ? 'bg-brand-600 text-white' : 'bd panel border'
                             }`}
                           >
@@ -392,7 +392,7 @@ export default function Editor({
                         }
                       />
                       {type === 'review' && eventText.trim() && sponsorship === 'unset' && (
-                        <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+                        <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
                           이벤트를 안내하는 후기는 업체와의 관계가 드러납니다. 위에서{' '}
                           <strong>대가성 여부</strong>를 먼저 지정하세요 — 협찬이면 표기가 법적
                           의무입니다.
@@ -412,7 +412,7 @@ export default function Editor({
                     {advice.warnings.map((w, i) => (
                       <li
                         key={i}
-                        className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200"
+                        className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200"
                       >
                         {w}
                       </li>
@@ -492,7 +492,7 @@ export default function Editor({
                   <button
                     type="button"
                     onClick={insertTemplate}
-                    className="bd rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-slate-500/8"
+                    className="bd rounded-xl border px-3 py-1.5 text-xs font-semibold hover:bg-slate-500/8"
                   >
                     골격 넣기
                   </button>
@@ -529,7 +529,7 @@ export default function Editor({
                     <button
                       type="button"
                       onClick={() => setBody(stripGuides(body))}
-                      className="bd mt-2 rounded-lg border px-3 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                      className="bd mt-2 rounded-xl border px-3 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
                     >
                       안내 줄 모두 지우기
                     </button>
@@ -620,7 +620,7 @@ function CopyPane({
         right={<CopyButton text={pkg.title} />}
         subtitle={`${pkg.title.length}자`}
       >
-        <p className="bd rounded-lg border px-3 py-2.5 text-[13px] font-semibold">{pkg.title || '(제목 없음)'}</p>
+        <p className="bd rounded-xl border px-3 py-2.5 text-[13px] font-semibold">{pkg.title || '(제목 없음)'}</p>
       </Card>
 
       <Card
@@ -628,7 +628,7 @@ function CopyPane({
         subtitle="작성 안내 줄과 이미지 지시문은 빠진 상태입니다. 소제목은 에디터에서 소제목 서식을 적용하세요."
         right={<CopyButton text={pkg.body} />}
       >
-        <pre className="bd scroll-x max-h-80 overflow-y-auto rounded-lg border px-3 py-2.5 text-[12px] leading-relaxed whitespace-pre-wrap">
+        <pre className="bd scroll-x max-h-80 overflow-y-auto rounded-xl border px-3 py-2.5 text-[12px] leading-relaxed whitespace-pre-wrap">
           {pkg.body || '(본문 없음)'}
         </pre>
       </Card>
@@ -672,7 +672,7 @@ function CopyPane({
       </Card>
 
       <Card title="4. 해시태그" right={<CopyButton text={pkg.tags} />} subtitle={`${post.tags.length}개`}>
-        <p className="bd rounded-lg border px-3 py-2.5 text-[12px] break-words">{pkg.tags || '(태그 없음)'}</p>
+        <p className="bd rounded-xl border px-3 py-2.5 text-[12px] break-words">{pkg.tags || '(태그 없음)'}</p>
       </Card>
 
       <Card title="5. 발행 체크리스트" subtitle="이 순서를 지키는 것이 노출의 절반입니다">
@@ -696,7 +696,7 @@ function CopyPane({
         subtitle="Claude 스킬(gym-blog-writer 등)로 다음 글을 쓸 때 붙여넣으면 소재·앵글이 겹치지 않게 잡아줍니다"
         right={<CopyButton text={logLine} />}
       >
-        <p className="bd rounded-lg border px-3 py-2.5 text-[11px] break-words">{logLine}</p>
+        <p className="bd rounded-xl border px-3 py-2.5 text-[11px] break-words">{logLine}</p>
         {store && (
           <p className="muted mt-2 text-[11px]">
             지점: {store.legalName} · {store.phone}
