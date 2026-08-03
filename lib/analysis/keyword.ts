@@ -162,16 +162,91 @@ export function areasFromStore(store: {
 }
 
 /**
- * 이 키워드가 **내 지점이 없는 동네** 것인지.
- *
- * 검색광고 API 의 연관 키워드에는 전국 동네가 섞여 온다 — 천안 지점을 조회했는데
- * 월평동·관저동(대전), 송탄(평택) 같은 게 들어온다. 지점이 없는 동네로는 글을 쓸 수
- * 없으니 걸러낸다. 동네 이름이 없는 키워드(예: "다이어트 정체기")는 지역과 무관하므로
- * 남긴다 — 정보글 소재로 쓸 수 있다.
+ * 업종·의도 단어. 지역 판별에서 두 가지로 쓴다.
+ *  1) 이 단어가 붙어 있으면 "지역 + 업종" 꼴의 키워드다 (예: 대전헬스장)
+ *  2) 내 지역 토큰을 뽑을 때 이 단어들은 지역이 아니므로 떼어낸다
  */
-export function isOtherArea(keyword: string, myAreas: Iterable<string>): boolean {
-  const mine = new Set(myAreas)
-  return Array.from(keyword.matchAll(/([가-힣]{2,10}?(?:동|읍|면))/g)).some((m) => !mine.has(m[1]))
+const TRADE_WORDS = [
+  '헬스장', '피트니스', '휘트니스', '필라테스', '요가원', '요가', '주짓수', '크로스핏', '복싱',
+  '스피닝', '태권도', '헬스', '짐', 'PT',
+]
+
+/**
+ * 의도·소재 단어. 지역 토큰을 뽑을 때만 제외한다.
+ *
+ * 업종 판별(TRADE_WORDS)에는 넣지 않는다 — "다이어트 정체기 극복" 처럼 지역과 무관한
+ * 정보 키워드까지 걸러지면 정보글 소재를 잃는다. 그런 키워드는 어차피 지역명이 없어서
+ * 어느 지역에도 쓸 수 있다.
+ */
+const INTENT_WORDS = [
+  '여성전용', '24시', '24시간', '다이어트', '가격', '추천', '후기', '새벽', '주말', '초보',
+  '비용', '위치', '운동',
+]
+
+/** 토큰 끝에 붙은 업종·의도 단어를 떼어낸다 ("쌍용동PT" → "쌍용동") */
+function stripTrade(token: string): string {
+  let t = token
+  for (let i = 0; i < 3; i++) {
+    const before = t
+    for (const w of [...TRADE_WORDS, ...INTENT_WORDS]) {
+      const flat = w.replace(/\s+/g, '')
+      if (t.length > flat.length && t.toUpperCase().endsWith(flat.toUpperCase())) {
+        t = t.slice(0, -flat.length)
+        break
+      }
+    }
+    if (t === before) break
+  }
+  return t
+}
+
+/**
+ * 내 지역을 가리키는 말 모음 — 지점 주소·지역 키워드에서 뽑는다.
+ * 동네(쌍용동)뿐 아니라 시 이름(천안)도 들어온다. 업종·의도 단어는 제외한다.
+ */
+export function myRegionTokens(
+  stores: { location?: string; localKeywords?: string[] }[]
+): Set<string> {
+  const out = new Set<string>()
+  const skip = new Set(
+    [...TRADE_WORDS, ...INTENT_WORDS].map((w) => w.replace(/\s+/g, '').toUpperCase())
+  )
+
+  for (const s of stores) {
+    for (const a of areasFromStore(s)) out.add(a)
+    const pool = [s.location ?? '', ...(s.localKeywords ?? [])].join(' ')
+    for (const raw of pool.split(/[\s,·/()[\]]+/)) {
+      const t = stripTrade(raw.trim())
+      if (t.length < 2 || t.length > 10) continue
+      if (!/^[가-힣]+$/.test(t)) continue
+      if (skip.has(t.toUpperCase())) continue
+      out.add(t)
+    }
+  }
+  return out
+}
+
+/**
+ * 이 연관 키워드를 보여줄 만한지.
+ *
+ * 검색광고 API 는 "헬스장" 계열로 연관을 뽑으면서 전국을 섞어 온다 — 천안 지점을
+ * 조회했는데 대전헬스장·세종헬스장·창원필라테스·월평동헬스장(대전)이 들어오고,
+ * 바디앤솔필라테스 같은 남의 브랜드도 들어온다. 지점이 없는 지역·남의 상호로는 글을
+ * 쓸 수 없으니 뺀다.
+ *
+ * 규칙: 업종 단어가 붙은 키워드는 앞에 지역이나 상호가 오는 꼴이므로, 그게 내 지역이
+ * 아니면 뺀다. 업종 단어가 없는 키워드는 지역과 무관한 정보 키워드로 보고 남긴다
+ * (예: "다리찢기", "다이어트 정체기 극복" — 정보글 소재로 쓸 수 있다).
+ */
+export function isRelevantKeyword(keyword: string, myTokens: Set<string>): boolean {
+  const flat = keyword.replace(/\s+/g, '')
+  for (const t of myTokens) if (flat.includes(t)) return true
+
+  const hasTrade = TRADE_WORDS.some((w) =>
+    flat.toUpperCase().includes(w.replace(/\s+/g, '').toUpperCase())
+  )
+  // 업종이 붙었는데 내 지역이 아니다 → 다른 지역이거나 남의 상호
+  return !hasTrade
 }
 
 /**
