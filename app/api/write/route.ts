@@ -1,0 +1,161 @@
+import { NextResponse } from 'next/server'
+import { readDB } from '@/lib/store'
+import { AiError, askClaude, extractJson, hasAiKey } from '@/lib/ai/claude'
+import { buildFixPrompt, buildSystemPrompt, buildUserPrompt } from '@/lib/ai/prompt'
+import { PUBLISH_THRESHOLD, SPECS, checkPost, summarize } from '@/lib/writing/checker'
+import type { PostType } from '@/lib/types'
+
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
+
+const TYPES: PostType[] = ['promo', 'info', 'review']
+
+interface Draft {
+  title: string
+  body: string
+  tags: string[]
+}
+
+function asDraft(v: unknown): Draft | null {
+  const o = v as { title?: unknown; body?: unknown; tags?: unknown }
+  if (!o || typeof o.title !== 'string' || typeof o.body !== 'string') return null
+  const tags = Array.isArray(o.tags) ? o.tags.filter((t): t is string => typeof t === 'string') : []
+  return { title: o.title.trim(), body: o.body.trim(), tags }
+}
+
+/**
+ * 글 본문 생성.
+ *
+ * 생성만 하고 끝내지 않는다 — 앱의 검수기로 점수를 매겨, 발행 기준(85점) 아래면
+ * 걸린 항목을 그대로 알려주고 한 번 더 고치게 한다. 두 번째도 기준에 못 미치면
+ * 그대로 내려주되 무엇이 남았는지 함께 보낸다 (사용자가 손으로 마무리할 수 있게).
+ */
+export async function POST(req: Request) {
+  if (!hasAiKey()) {
+    return NextResponse.json(
+      {
+        error:
+          'AI 글쓰기를 쓰려면 ANTHROPIC_API_KEY 를 설정해야 합니다. 「휴대폰에서 쓰기 · 배포」 화면의 안내를 보세요.',
+        needKey: true,
+      },
+      { status: 400 }
+    )
+  }
+
+  try {
+    const body = (await req.json()) as {
+      type?: string
+      storeId?: string
+      mainKeyword?: string
+      subKeywords?: string[]
+      localKeyword?: string
+      eventText?: string
+      sponsorship?: 'own' | 'sponsored' | 'unset'
+      prescription?: string[]
+    }
+
+    const type = TYPES.includes(body.type as PostType) ? (body.type as PostType) : 'promo'
+    const mainKeyword = body.mainKeyword?.trim()
+    if (!mainKeyword) {
+      return NextResponse.json({ error: '메인 키워드를 먼저 넣어주세요.' }, { status: 400 })
+    }
+
+    const db = await readDB()
+    const store = db.stores.find((s) => s.id === body.storeId)
+    if (!store) {
+      return NextResponse.json({ error: '지점을 먼저 골라주세요.' }, { status: 400 })
+    }
+
+    // 같은 지점의 최근 글 — 도입·앵글·키워드가 겹치지 않게 참고 자료로 넘긴다
+    const recent = db.posts
+      .filter((p) => p.storeId === store.id)
+      .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
+      .slice(0, 5)
+      .map((p) => ({
+        type: p.type,
+        title: p.title,
+        mainKeyword: p.mainKeyword,
+        introType: p.introType,
+        angle: p.angle,
+      }))
+
+    const request = {
+      type,
+      store,
+      mainKeyword,
+      subKeywords: (body.subKeywords ?? []).filter(Boolean),
+      localKeyword: body.localKeyword?.trim() || undefined,
+      eventText: body.eventText?.trim() || undefined,
+      sponsorship: body.sponsorship,
+      recent,
+      prescription: body.prescription,
+    }
+
+    const system = buildSystemPrompt(type)
+    const messages: { role: 'user' | 'assistant'; content: string }[] = [
+      { role: 'user', content: buildUserPrompt(request) },
+    ]
+
+    const check = (d: Draft) =>
+      checkPost({
+        type,
+        title: d.title,
+        body: d.body,
+        mainKeyword,
+        subKeywords: request.subKeywords,
+        localKeyword: request.localKeyword,
+        tags: d.tags,
+        legalName: store.legalName,
+        womenOnly: store.womenOnly,
+        sponsorship: body.sponsorship ?? 'unset',
+      })
+
+    let draft = asDraft(extractJson(await askClaude(system, messages)))
+    if (!draft) {
+      return NextResponse.json({ error: '글 형식을 읽지 못했습니다. 다시 시도해 주세요.' }, { status: 502 })
+    }
+    let result = check(draft)
+    let revised = false
+
+    if (result.score < PUBLISH_THRESHOLD) {
+      // 걸린 항목을 그대로 알려주고 한 번만 다시 쓰게 한다
+      const issues = result.items
+        .filter((i) => i.level !== 'pass')
+        .map((i) => `${i.label}: 지금 ${i.value} / 기준 ${i.target}`)
+        .concat(result.risks.map((r) => `위험 표현 "${r.term}" (${r.category}) — ${r.fix}`))
+      messages.push({ role: 'assistant', content: JSON.stringify(draft) })
+      messages.push({
+        role: 'user',
+        content: buildFixPrompt(issues, result.stats.charCount, SPECS[type]),
+      })
+      const second = asDraft(extractJson(await askClaude(system, messages)))
+      if (second) {
+        const secondResult = check(second)
+        // 나빠졌으면 첫 글을 유지한다
+        if (secondResult.score > result.score) {
+          draft = second
+          result = secondResult
+          revised = true
+        }
+      }
+    }
+
+    return NextResponse.json({
+      draft,
+      revised,
+      check: {
+        score: result.score,
+        ...summarize(result),
+        issues: result.items
+          .filter((i) => i.level !== 'pass')
+          .map((i) => ({ level: i.level, label: i.label, value: i.value, target: i.target })),
+      },
+    })
+  } catch (e) {
+    const status = e instanceof AiError ? e.status : 500
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : '글 생성 중 오류가 발생했습니다.' },
+      { status }
+    )
+  }
+}
