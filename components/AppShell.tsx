@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   IconBook,
   IconChart,
   IconDoc,
   IconGrid,
+  IconMore,
   IconPencil,
   IconPhone,
   IconSearch,
@@ -51,6 +52,15 @@ const GROUPS: { title: string; items: Item[] }[] = [
 
 const NAV: Item[] = GROUPS.flatMap((g) => g.items)
 
+/**
+ * 휴대폰 하단 탭 — 손가락이 닿는 자리에 자주 쓰는 4개만 둔다.
+ * 예전에는 9개를 상단에 가로로 늘어놓아서, 뒤쪽 메뉴는 옆으로 밀어야 보였다.
+ */
+const TAB_HREFS = ['/', '/keywords', '/serp', '/write']
+const TABS: Item[] = TAB_HREFS.map((h) => NAV.find((n) => n.href === h)!)
+/** 하단 탭에 없는 나머지 — 「더보기」 시트에서 보여준다 */
+const REST: Item[] = NAV.filter((n) => !TAB_HREFS.includes(n.href))
+
 function isActive(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(`${href}/`)
@@ -78,13 +88,20 @@ function Logo({ small = false }: { small?: boolean }) {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const activeTab = useRef<HTMLAnchorElement>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
 
-  // 모바일 탭이 가로로 스크롤되므로, 현재 화면 탭이 오른쪽으로 밀려 안 보일 수 있다.
-  // 지금 어느 화면인지 늘 보이도록 활성 탭을 시야로 끌어온다.
+  // 화면을 옮기면 시트는 닫는다 (뒤로가기로 돌아왔을 때 열려 있으면 안 된다)
+  useEffect(() => setMoreOpen(false), [pathname])
+
+  // 시트가 열려 있을 때 Esc 로 닫기
   useEffect(() => {
-    activeTab.current?.scrollIntoView({ block: 'nearest', inline: 'center' })
-  }, [pathname])
+    if (!moreOpen) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMoreOpen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [moreOpen])
+
+  const restActive = REST.some((n) => isActive(pathname, n.href))
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -138,46 +155,111 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      {/* 모바일·태블릿 상단 헤더 + 가로 스크롤 탭 */}
       <div className="min-w-0 flex-1">
+        {/* 휴대폰·태블릿 상단 — 이름표와 새 글만. 이동은 아래 탭으로 한다 */}
         <header className="panel bd sticky top-0 z-20 border-b lg:hidden">
-          <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-2.5">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
             <Link href="/" className="min-w-0">
               <Logo small />
             </Link>
             <Link
               href="/write"
-              className="bg-brand-600 shrink-0 rounded-xl px-3 py-2 text-xs font-bold text-white shadow-sm"
+              className="bg-brand-600 shrink-0 rounded-xl px-3.5 py-2 text-xs font-bold text-white shadow-sm"
             >
               새 글
             </Link>
           </div>
-          <nav className="scroll-x no-scrollbar px-4 pb-2.5">
-            <ul className="flex gap-1.5">
-              {NAV.map((n) => {
-                const active = isActive(pathname, n.href)
-                return (
-                  <li key={n.href}>
-                    <Link
-                      href={n.href}
-                      ref={active ? activeTab : undefined}
-                      aria-current={active ? 'page' : undefined}
-                      className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap transition ${
-                        active ? 'bg-brand-600 text-white shadow-sm' : 'muted surface bd border'
-                      }`}
-                    >
-                      <span className="block size-[14px]">{n.icon}</span>
-                      {n.short}
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
-          </nav>
         </header>
 
-        <main className="mx-auto max-w-6xl px-4 py-5 pb-16 sm:px-6 sm:py-7">{children}</main>
+        {/* 하단 탭바 높이(64px)만큼 본문 아래를 비워 둔다 */}
+        <main className="mx-auto max-w-6xl px-4 py-5 pb-24 sm:px-6 sm:py-7 lg:pb-16">{children}</main>
       </div>
+
+      {/* ─── 휴대폰 하단 탭바 ─── */}
+      <nav
+        aria-label="주요 화면"
+        className="panel bd fixed inset-x-0 bottom-0 z-30 border-t pb-[env(safe-area-inset-bottom)] lg:hidden"
+      >
+        <ul className="flex">
+          {TABS.map((n) => {
+            const active = isActive(pathname, n.href)
+            return (
+              <li key={n.href} className="flex-1">
+                <Link
+                  href={n.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={`flex flex-col items-center gap-1 py-2.5 text-[10.5px] font-bold transition ${
+                    active ? 'text-brand-600 dark:text-brand-100' : 'muted'
+                  }`}
+                >
+                  <span className="block size-[21px]">{n.icon}</span>
+                  {n.short}
+                </Link>
+              </li>
+            )
+          })}
+          <li className="flex-1">
+            <button
+              type="button"
+              onClick={() => setMoreOpen((v) => !v)}
+              aria-expanded={moreOpen}
+              className={`flex w-full flex-col items-center gap-1 py-2.5 text-[10.5px] font-bold transition ${
+                moreOpen || restActive ? 'text-brand-600 dark:text-brand-100' : 'muted'
+              }`}
+            >
+              <span className="block size-[21px]">
+                <IconMore />
+              </span>
+              더보기
+            </button>
+          </li>
+        </ul>
+      </nav>
+
+      {/* ─── 「더보기」 시트 ─── */}
+      {moreOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <button
+            type="button"
+            aria-label="메뉴 닫기"
+            onClick={() => setMoreOpen(false)}
+            className="absolute inset-0 bg-slate-900/40"
+          />
+          <div className="panel bd absolute inset-x-0 bottom-0 rounded-t-2xl border-t px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+16px)] shadow-2xl">
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-500/25" />
+            {GROUPS.map((g) => {
+              const items = g.items.filter((n) => REST.includes(n))
+              if (!items.length) return null
+              return (
+                <div key={g.title} className="mb-3 last:mb-0">
+                  <p className="muted mb-1.5 text-[11px] font-bold tracking-[0.06em]">{g.title}</p>
+                  <ul className="grid grid-cols-2 gap-1.5">
+                    {items.map((n) => {
+                      const active = isActive(pathname, n.href)
+                      return (
+                        <li key={n.href}>
+                          <Link
+                            href={n.href}
+                            aria-current={active ? 'page' : undefined}
+                            className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] transition ${
+                              active
+                                ? 'bg-brand-500/12 text-brand-700 dark:text-brand-100 font-bold'
+                                : 'surface font-semibold'
+                            }`}
+                          >
+                            <span className="block size-[17px] shrink-0 opacity-80">{n.icon}</span>
+                            {n.label}
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -194,7 +276,7 @@ export function PageHeader({
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-xl font-bold sm:text-[26px]">{title}</h1>
+        <h1 className="text-[22px] font-bold sm:text-[26px]">{title}</h1>
         {desc && <p className="muted mt-1.5 max-w-3xl text-[13px] leading-relaxed">{desc}</p>}
       </div>
       {right && <div className="shrink-0">{right}</div>}
