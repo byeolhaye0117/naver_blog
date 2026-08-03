@@ -119,7 +119,7 @@ export function storageStatus(): { mode: StorageMode; error: string | null; deta
 }
 
 function emptyDB(): DB {
-  return { stores: SEED_STORES, posts: [], rankTargets: [], rankSnapshots: [] }
+  return { stores: SEED_STORES, posts: [], rankTargets: [], rankSnapshots: [], placeRanks: [] }
 }
 
 function normalize(raw: unknown): DB {
@@ -131,6 +131,7 @@ function normalize(raw: unknown): DB {
     posts: Array.isArray(r.posts) ? r.posts : [],
     rankTargets: Array.isArray(r.rankTargets) ? r.rankTargets : [],
     rankSnapshots: Array.isArray(r.rankSnapshots) ? r.rankSnapshots : [],
+    placeRanks: Array.isArray(r.placeRanks) ? r.placeRanks : [],
   }
 }
 
@@ -237,7 +238,7 @@ export async function importDB(raw: unknown): Promise<DB> {
   }
 
   const r = raw as Record<string, unknown>
-  const known = ['stores', 'posts', 'rankTargets', 'rankSnapshots'] as const
+  const known = ['stores', 'posts', 'rankTargets', 'rankSnapshots', 'placeRanks'] as const
   const present = known.filter((k) => Array.isArray(r[k]))
   if (present.length === 0) {
     throw new Error(

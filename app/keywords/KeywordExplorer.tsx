@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import type { KeywordMetric, Store } from '@/lib/types'
+import type { KeywordMetric, PlaceRank, Store } from '@/lib/types'
 import { GRADE_LABEL } from '@/lib/types'
 import {
   COMPETITION_GOOD,
@@ -16,7 +16,7 @@ import {
 } from '@/lib/analysis/keyword'
 import { parseTotalCount } from '@/lib/analysis/paste'
 import { findMyPlaceIndex, type PlaceInfo } from '@/lib/naver/place'
-import { naverBlogSectionUrl } from '@/lib/analysis/rank'
+import { naverBlogSectionUrl, naverPlaceSearchUrl } from '@/lib/analysis/rank'
 import type { TrendSeries } from '@/lib/naver/datalab'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
 import LineChart, { MiniBar } from '@/components/LineChart'
@@ -63,6 +63,12 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const [placeKeyword, setPlaceKeyword] = useState<string | null>(null)
   const [places, setPlaces] = useState<PlaceInfo[] | null>(null)
   const [placeLoading, setPlaceLoading] = useState(false)
+  /** 직접 본 플레이스 순위 기록 */
+  const [placeRanks, setPlaceRanks] = useState<PlaceRank[]>([])
+  const [prStore, setPrStore] = useState('')
+  const [prRank, setPrRank] = useState('')
+  const [prSaving, setPrSaving] = useState(false)
+  const [prMsg, setPrMsg] = useState<string | null>(null)
 
   const [trendKeyword, setTrendKeyword] = useState<string | null>(null)
   const [trend, setTrend] = useState<TrendSeries | null>(null)
@@ -149,18 +155,61 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     setPlaceKeyword(keyword)
     setPlaceLoading(true)
     setPlaces(null)
+    setPrMsg(null)
+    setPrRank('')
+    // 키워드에 든 동네로 지점을 미리 골라둔다 (예: "두정동 헬스장" → 두정점)
+    const guess = stores.find((s) => areasFromStore(s).some((a) => keyword.includes(a)))
+    setPrStore(guess?.id ?? '')
     try {
-      const res = await fetch('/api/place', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: keyword }),
-      })
+      const [res, ranks] = await Promise.all([
+        fetch('/api/place', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: keyword }),
+        }),
+        fetch('/api/place/rank', { cache: 'no-store' }),
+      ])
       const json = await res.json()
       setPlaces(json.places ?? [])
+      const rj = await ranks.json().catch(() => ({}))
+      setPlaceRanks(rj.placeRanks ?? [])
     } catch {
       setPlaces([])
     } finally {
       setPlaceLoading(false)
+    }
+  }
+
+  /** 눈으로 확인한 플레이스 순위를 기록 */
+  async function savePlaceRank() {
+    if (!placeKeyword) return
+    if (!prStore) {
+      setPrMsg('어느 지점 순위인지 골라주세요.')
+      return
+    }
+    const rank = Number(prRank.replace(/[^\d]/g, ''))
+    if (!Number.isInteger(rank) || rank < 1) {
+      setPrMsg('순위를 숫자로 넣어주세요 (예: 13).')
+      return
+    }
+    setPrSaving(true)
+    setPrMsg(null)
+    try {
+      const res = await fetch('/api/place/rank', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: placeKeyword, storeId: prStore, rank }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? '저장에 실패했습니다.')
+      const list = await fetch('/api/place/rank', { cache: 'no-store' }).then((r) => r.json())
+      setPlaceRanks(list.placeRanks ?? [])
+      setPrRank('')
+      setPrMsg('기록했습니다.')
+    } catch (e) {
+      setPrMsg(e instanceof Error ? e.message : '저장 중 오류가 발생했습니다.')
+    } finally {
+      setPrSaving(false)
     }
   }
 
@@ -240,6 +289,16 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   }
 
   const dirty = Object.values(totalInput).some((v) => v.trim())
+
+  /** 지금 보고 있는 키워드에 대한 순위 기록 (최근 것부터 3개) */
+  const savedRanks = useMemo(
+    () =>
+      placeRanks
+        .filter((r) => r.keyword === placeKeyword)
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 3),
+    [placeRanks, placeKeyword]
+  )
 
   /** 플레이스 목록에서 내 지점이 몇 번째인지 — 목록을 그릴 때마다 다시 찾지 않게 한 번만 */
   const myPlace = useMemo(
@@ -757,9 +816,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                       </>
                     ) : (
                       <>
-                        <strong>내 지점이 이 목록에 없습니다.</strong> 플레이스에서는 이 키워드로 안
-                        잡히는 상태입니다 — 블로그로 파고들 여지가 그만큼 큽니다. 지점 화면에서 플레이스를
-                        한 번 가져와 두면 다음부터 정확히 짚어냅니다.
+                        <strong>위 {places.length}곳 안에는 내 지점이 없습니다.</strong> 자동으로 읽을
+                        수 있는 건 여기까지입니다 — 더 아래(2페이지 이후)에 있을 수 있으니, 없다는
+                        뜻이 아닙니다. 네이버에서 직접 넘겨 확인하고 아래에 순위를 적어두세요.
                       </>
                     )}
                   </p>
@@ -805,9 +864,73 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 })}
               </ul>
               <p className="muted mt-3 text-[11px] leading-relaxed">
-                네이버 통합검색에 노출되는 순서를 그대로 읽은 것입니다. 검색 위치·기기에 따라 달라질 수
-                있으니 절대 순위가 아니라 경쟁 구도를 보는 데 쓰세요.
+                네이버 통합검색 플레이스 블록에 노출되는 순서를 그대로 읽은 것입니다.{' '}
+                <b>자동으로는 이 {places.length}곳까지만 읽힙니다</b> — 그 아래 목록을 주는 네이버
+                플레이스 API 는 서버에서 차단됩니다. 검색 위치·기기에 따라 순서가 달라질 수 있으니 절대
+                순위가 아니라 경쟁 구도를 보는 데 쓰세요.
               </p>
+
+              {/* 7곳 아래는 사람이 봐야 안다 — 블로그 순위 추적과 같은 방식으로 기록해 둔다 */}
+              <div className="bd mt-3 rounded-lg border border-dashed p-3">
+                <p className="text-[12px] font-semibold">직접 본 순위 적어두기</p>
+                <p className="muted mt-1 text-[11px] leading-relaxed">
+                  네이버에서 플레이스 목록을 끝까지 넘겨 내 지점이 몇 번째인지 확인해 넣으세요. 한 번
+                  넣으면 기억해 두고, 다음에 조회할 때 함께 보여줍니다.
+                </p>
+                <a
+                  href={naverPlaceSearchUrl(placeKeyword)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="bg-brand-600 mt-2 inline-block rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white"
+                >
+                  플레이스 목록 열기 →
+                </a>
+
+                <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+                  <select
+                    value={prStore}
+                    onChange={(e) => setPrStore(e.target.value)}
+                    aria-label="순위를 적을 지점"
+                    className={inputClass}
+                  >
+                    <option value="">지점 고르기</option>
+                    {stores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={prRank}
+                    onChange={(e) => setPrRank(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="13"
+                    aria-label="플레이스 순위"
+                    className={`${inputClass} sm:w-24`}
+                  />
+                  <button
+                    type="button"
+                    onClick={savePlaceRank}
+                    disabled={prSaving}
+                    className="bg-brand-600 shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {prSaving ? '저장 중…' : '기록'}
+                  </button>
+                </div>
+                {prMsg && <p className="muted mt-2 text-[11px] leading-relaxed">{prMsg}</p>}
+
+                {savedRanks.length > 0 && (
+                  <ul className="mt-2.5 space-y-1">
+                    {savedRanks.map((r) => (
+                      <li key={r.id} className="muted text-[11px]">
+                        <span className="tnum font-semibold">{r.date}</span> ·{' '}
+                        {stores.find((s) => s.id === r.storeId)?.name ?? r.storeId} —{' '}
+                        <span className="tnum font-semibold">{r.rank}번째</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </>
           )}
         </Card>
