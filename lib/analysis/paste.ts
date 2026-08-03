@@ -210,6 +210,52 @@ export function parseEditedList(raw: string): PastedItem[] {
   return out
 }
 
+/** 플레이스 목록에서 업종만 적힌 줄 — 업체명이 아니라 그 위 업체의 분류다 */
+const PLACE_CATEGORY =
+  /^(헬스장|피트니스|피트니스센터|스포츠시설|필라테스|요가|요가원|크로스핏|체육관|종합체육시설|퍼스널트레이닝|PT|스포츠클럽|무술]?)$/
+
+/** 플레이스 목록의 부가 정보 줄 */
+const PLACE_NOISE = [
+  /^(영업\s*중|영업\s*종료|영업\s*전|24시간\s*영업|영업시간|휴무)/,
+  /^(리뷰|블로그리뷰|방문자리뷰|저장|공유|길찾기|전화|예약|주차|쿠폰|이벤트|광고|AD)/,
+  /^\d+(\.\d+)?\s*(km|m)$/,
+  /^[\d,.\s]+$/,
+  /^(거리순|정확도순|리뷰많은순|평점높은순|가까운\s*순)$/,
+]
+
+/**
+ * 네이버 플레이스 목록을 붙여넣은 텍스트에서 **업체명만 순서대로** 뽑는다.
+ *
+ * 통합검색은 플레이스를 7곳까지만 보여주고, 그 아래를 주는 플레이스 API 는 캡차로
+ * 막혀 있다. 그래서 8위 이후를 알려면 사람이 목록을 봐야 하는데, 눈으로 세는 건
+ * 오류가 나기 쉽다. 붙여넣으면 번호를 붙여 보여주고 내 지점을 고르게 한다.
+ *
+ * 완벽한 파싱이 목표가 아니다 — 번호가 붙은 목록을 사람이 보고 확인하는 구조라
+ * 잘못 뽑혀도 눈에 보이고, 순위를 직접 적는 길도 그대로 열려 있다.
+ */
+export function parsePlaceList(raw: string): string[] {
+  const out: string[] = []
+
+  for (const line of raw.split(/\r?\n/)) {
+    const t = line.trim()
+    if (!t) continue
+    if (t.length < 2 || t.length > 40) continue
+    if (PLACE_CATEGORY.test(t)) continue
+    if (PLACE_NOISE.some((re) => re.test(t))) continue
+    // 주소 줄. 도로명에 숫자가 섞여 있어("1공단1길 52", "두정중11길 62") 한글로만
+    // 시작한다고 볼 수 없으므로, 층·호로 끝나거나 도로명+번지 꼴이면 주소로 본다.
+    if (/\d+\s*(층|호)$/.test(t)) continue
+    if (/(로|길|대로)\s*\d/.test(t)) continue
+    if (/[가-힣]+(동|읍|면)\s*\d/.test(t)) continue
+    if (!/[가-힣A-Za-z]/.test(t)) continue
+    // 바로 앞과 같은 줄은 한 번만 (목록에 이름이 두 번 나오는 경우가 있다)
+    if (out[out.length - 1] === t) continue
+    out.push(t)
+  }
+
+  return out
+}
+
 /**
  * 검색 결과에 표시되는 총 건수를 뽑는다 — 경쟁률 계산에 쓰는 발행량.
  * 예: "블로그 1-10 / 2,345건", "총 12,345건", "2,345건"

@@ -11,7 +11,7 @@ const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
 const { buildCopyPackage } = require(`${OUT}/writing/export.js`)
 const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
-const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText } = require(
+const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parsePlaceList } = require(
   `${OUT}/analysis/paste.js`
 )
 const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffixesForStore, combineLocalKeywords } = require(`${OUT}/analysis/keyword.js`)
@@ -491,6 +491,43 @@ ok(!placeAreas1.some((a) => a.includes('시') || a.includes('구')), '시·구�
 ok(areasFromPlace(pr[1]).includes('두정동'), '두정동 추출')
 
 // 플레이스 노출 목록에서 내 지점 찾기 — 등록 이름에 키워드가 덧붙어 있어 단순 비교로는 안 된다
+console.log('\n[27] 플레이스 목록 붙여넣기 — 번호 세기')
+// 통합검색은 7곳까지만 주고 플레이스 API 는 캡차로 막혀 있다. 8위 이후는 사람이 목록을
+// 봐야 하는데 눈으로 세면 틀린다. 붙여넣으면 순서대로 업체명만 뽑아 번호를 매긴다.
+const PLACE_PASTE = `거리순
+365짐 천안두정점
+헬스장
+영업 중
+리뷰 128
+1공단1길 52 센트하임 2층
+0.4km
+드래곤짐 그린점
+헬스장
+영업 종료
+오성로 47 현대철건물 2층
+365짐 여성전용 헬스
+피트니스
+예약
+미라온휘트니스 천안두정점
+필라테스
+여성전용착한헬스&PT 두정점
+헬스장
+두정중11길 62 101, 201호`
+const pls = parsePlaceList(PLACE_PASTE)
+ok(pls.length === 5, `업체 5곳 추출 — ${pls.length}곳: ${pls.join(' / ')}`)
+ok(pls[0] === '365짐 천안두정점', '첫 업체')
+ok(pls[4] === '여성전용착한헬스&PT 두정점', `5번째가 내 지점 — ${pls[4]}`)
+ok(!pls.includes('헬스장'), '업종만 적힌 줄은 업체가 아니다')
+ok(!pls.includes('피트니스'), '업종 줄 제외 (피트니스)')
+ok(!pls.some((x) => /영업/.test(x)), '영업 상태 줄 제외')
+ok(!pls.some((x) => /^리뷰/.test(x)), '리뷰 줄 제외')
+ok(!pls.some((x) => /길 \d/.test(x)), '주소 줄 제외', pls.filter((x) => /길 \d/.test(x)).join(','))
+ok(!pls.includes('0.4km'), '거리 줄 제외')
+ok(!pls.includes('거리순'), '정렬 옵션 제외')
+ok(parsePlaceList('').length === 0, '빈 입력은 빈 배열')
+// 같은 이름이 연달아 나오는 화면도 한 번만
+ok(parsePlaceList('365짐 천안두정점\n365짐 천안두정점\n드래곤짐 그린점').length === 2, '연속 중복 제거')
+
 console.log('\n[26] 플레이스 목록에서 내 지점 찾기')
 const LIST = [
   { id: '1', name: '미녀와야수짐 봉명점 헬스&PT' },
