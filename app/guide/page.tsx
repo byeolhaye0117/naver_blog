@@ -109,20 +109,20 @@ export default function GuidePage() {
         >
           <div className="space-y-3 text-[12px] leading-relaxed">
             <p>
-              순위 추적과 상위노출 분석은 네이버 검색 API 의 블로그 검색을{' '}
-              <strong>관련도순(sort=sim)</strong> 으로 호출합니다. <strong>최신순이 아닙니다</strong> — 최신순은
-              발행만 하면 위에 있으니 재는 의미가 없습니다.
+              순위 추적과 상위노출 분석은 네이버 블로그 검색을 <strong>관련도순</strong> 으로
+              읽습니다. <strong>최신순이 아닙니다</strong> — 최신순은 발행만 하면 위에 있으니 재는
+              의미가 없습니다.
             </p>
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-amber-800 dark:text-amber-200">
               <strong className="font-bold">그런데 이 값은 실제 통합검색 상단과 같지 않습니다.</strong>
               <ul className="mt-2 list-inside list-disc space-y-1">
-                <li>검색 API 는 <strong>평면 목록</strong>만 줍니다.</li>
+                <li>블로그 검색은 <strong>평면 목록</strong>만 줍니다.</li>
                 <li>
                   실제 화면은 검색 의도별 <strong>스마트블록</strong>으로 재배치되고, 라이프스타일 키워드
                   상당수가 그 블록으로 노출됩니다.
                 </li>
                 <li>
-                  <strong>스마트블록의 자리는 API 로 볼 수 없습니다.</strong> 그러니 앱의 순위는 추세를 보는
+                  <strong>스마트블록의 자리는 자동으로 볼 수 없습니다.</strong> 그러니 앱의 순위는 추세를 보는
                   대리 지표이고, 진짜 자리는 직접 검색해서 확인해야 합니다.
                 </li>
               </ul>
@@ -140,8 +140,9 @@ export default function GuidePage() {
                   반영되니 API 값보다 정확합니다.
                 </li>
                 <li>
-                  <strong>상위노출 분석</strong> — 검색 결과 화면을 붙여넣으면 제목·날짜를 뽑아 분석합니다.
-                  실제 화면 순서가 곧 순위입니다.
+                  <strong>상위노출 분석</strong> — 자동입니다. 키워드만 넣으면 블로그 검색 관련도순
+                  상위 글의 제목·발행일·블로거를 읽어와 분석합니다. 자동이 막힌 경우에만 화면을
+                  붙여넣으면 됩니다.
                 </li>
                 <li>
                   <strong>발행량·경쟁률</strong> — 자동입니다. 월 검색량은 검색광고 API, 최근 30일
