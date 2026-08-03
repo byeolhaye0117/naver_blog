@@ -15,7 +15,7 @@ const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parse
   `${OUT}/analysis/paste.js`
 )
 const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffixesForStore, combineLocalKeywords, isRelevantKeyword, myRegionTokens, INTENT_SUFFIXES } = require(`${OUT}/analysis/keyword.js`)
-const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SECTION_CAP } = require(
+const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SECTION_CAP, normalizeBlogUrl, SECTION_PAGE_SIZE } = require(
   `${OUT}/naver/blogsection.js`
 )
 const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/naver/place.js`)
@@ -966,6 +966,18 @@ ok(s0.local === '쌍용동', '정보글 조연으로 쓸 지역 키워드')
 ok(plan.splits.some((x) => x.keyword === '쌍용동 헬스장 후기' && x.postType === 'review'), '후기는 따로 쓰라고 알려준다')
 ok(plan.sets.some((s) => s.main.keyword === '봉명동 헬스장'), '다른 지역은 별도 세트')
 ok(plan.sets.every((s) => !(s.area === '쌍용동' && s.subs.some((x) => x.metric.keyword.includes('봉명동')))), '지역이 섞이지 않는다')
+
+// 순위를 세려면 같은 글의 세 가지 주소 표기를 하나로 봐야 한다
+ok(normalizeBlogUrl('https://blog.naver.com/hyoni2_/224361842417') === 'blog.naver.com/hyoni2_/224361842417', '기본 주소')
+ok(normalizeBlogUrl('https://m.blog.naver.com/hyoni2_/224361842417') === 'blog.naver.com/hyoni2_/224361842417', '모바일 주소도 같은 글')
+ok(
+  normalizeBlogUrl('https://blog.naver.com/PostView.naver?blogId=hyoni2_&logNo=224361842417&from=search') ===
+    'blog.naver.com/hyoni2_/224361842417',
+  'PostView 주소도 같은 글'
+)
+ok(normalizeBlogUrl('blog.naver.com/hyoni2_/') === 'blog.naver.com/hyoni2_', '끝 슬래시 무시')
+ok(normalizeBlogUrl('') === '', '빈 주소')
+ok(SECTION_PAGE_SIZE === 30, '섹션 검색은 한 페이지 30개 (실측)')
 
 // 힌트를 5개씩 나눠 부르면 같은 키워드가 두 번 온다 (실측: 22개 요청에 24행)
 const dup = dedupeAdRows([

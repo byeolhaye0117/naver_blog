@@ -1,4 +1,4 @@
-import { getKeys, hasSearchKeys, seededRandom, NaverApiError } from './client'
+import { HUB_BASE, searchChannel, seededRandom, NaverApiError } from './client'
 
 /** 네이버 데이터랩 검색어 트렌드 — 계절성·상승세 파악용 */
 
@@ -15,7 +15,10 @@ export interface TrendSeries {
   mock: boolean
 }
 
-const ENDPOINT = 'https://openapi.naver.com/v1/datalab/search'
+const DEV_ENDPOINT = 'https://openapi.naver.com/v1/datalab/search'
+/** API 허브의 검색어 트렌드 — 요청 바디·응답 모양이 데이터랩과 같다 */
+const HUB_ENDPOINT = `${HUB_BASE}/search-trend/v1/search`
+const OVERRIDE = process.env.NAVER_TREND_API_ENDPOINT?.trim() || undefined
 
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
@@ -41,16 +44,13 @@ export async function searchTrend(keywords: string[]): Promise<TrendSeries[]> {
   const end = new Date()
   const start = new Date(end.getFullYear(), end.getMonth() - 12, 1)
 
-  if (!hasSearchKeys()) return mockTrend(list, start, end)
+  const ch = searchChannel()
+  if (!ch) return mockTrend(list, start, end)
 
-  const { clientId, clientSecret } = getKeys()
-  const res = await fetch(ENDPOINT, {
+  const url = OVERRIDE ?? (ch.channel === 'hub' ? HUB_ENDPOINT : DEV_ENDPOINT)
+  const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'X-Naver-Client-Id': clientId!,
-      'X-Naver-Client-Secret': clientSecret!,
-      'Content-Type': 'application/json',
-    },
+    headers: { ...ch.headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       startDate: ymd(start),
       endDate: ymd(end),
@@ -62,7 +62,10 @@ export async function searchTrend(keywords: string[]): Promise<TrendSeries[]> {
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new NaverApiError(`데이터랩 API 오류 (${res.status}). ${body.slice(0, 200)}`, res.status)
+    throw new NaverApiError(
+      `검색어 트렌드 API 오류 (${res.status}, ${ch.channel === 'hub' ? 'API 허브' : '개발자센터'}). ${body.slice(0, 200)}`,
+      res.status
+    )
   }
 
   const json = (await res.json()) as {
