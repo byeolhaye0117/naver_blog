@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import type { KeywordMetric, PlaceRank, Store } from '@/lib/types'
-import { GRADE_LABEL } from '@/lib/types'
+import { GRADE_LABEL, POST_TYPE_LABEL } from '@/lib/types'
 import {
   COMPETITION_GOOD,
   INTENT_SUFFIXES,
@@ -14,6 +14,7 @@ import {
   parseManualRows,
   suffixesForStore,
 } from '@/lib/analysis/keyword'
+import { buildKeywordSets, writeHrefForSet } from '@/lib/analysis/synergy'
 import { parsePlaceList, parseTotalCount } from '@/lib/analysis/paste'
 import { findMyPlaceIndex, type PlaceInfo } from '@/lib/naver/place'
 import { naverBlogSectionUrl, naverPlaceSearchUrl } from '@/lib/analysis/rank'
@@ -63,6 +64,8 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const [areas, setAreas] = useState('')
   const [combos, setCombos] = useState<string[]>([])
   const [picked, setPicked] = useState<string[]>([])
+  /** 조합을 만든 지점 — 세트 판정(24시·여성전용)과 글쓰기 링크에 쓴다 */
+  const [comboStore, setComboStore] = useState<Store | null>(null)
 
   /** 연관 키워드도 함께 볼지 — 기본은 켬. 내 지역이 아닌 것은 서버에서 걸러진다 */
   const [withRelated, setWithRelated] = useState(true)
@@ -112,7 +115,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     setOrder(sortMetrics(list, sort, mine).map((r) => r.keyword))
   }
 
-  async function run(list = keywords) {
+  async function run(list = keywords, related = withRelated) {
     if (!list.length) {
       setError('키워드를 1개 이상 입력하세요.')
       return
@@ -123,7 +126,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
       const res = await fetch('/api/keywords', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords: list, includeRelated: withRelated }),
+        body: JSON.stringify({ keywords: list, includeRelated: related }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? '조회에 실패했습니다.')
@@ -167,6 +170,23 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     // 여러 지점을 합칠 때는 어느 한 지점 성격에만 맞추면 안 되니 공통 의도를 쓴다
     setCombos(combineLocalKeywords(found, store ? suffixesForStore(store) : INTENT_SUFFIXES))
     setPicked([])
+    setComboStore(store ?? null)
+  }
+
+  /**
+   * 만든 조합을 한꺼번에 채점한다.
+   *
+   * 예전에는 24개를 똑같은 알약으로 늘어놓고 5개만 골라 조회하게 했다 — 무엇을 고를지
+   * 알려면 채점을 해야 하는데, 채점을 하려면 먼저 골라야 하는 앞뒤가 바뀐 순서였다.
+   * 그래서 전부 채점하고, 그 결과로 세트까지 묶어준다.
+   */
+  const COMBO_LIMIT = 24
+  async function gradeCombos() {
+    const list = (picked.length ? picked : combos).slice(0, COMBO_LIMIT)
+    if (!list.length) return
+    setRaw(list.join(', '))
+    // 조합은 이미 후보가 충분하다 — 연관 키워드까지 붙이면 24칸이 밀려 잘린다
+    await run(list, false)
   }
 
   /**
@@ -309,6 +329,22 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     return out
   }, [merged, order])
 
+  /**
+   * 채점된 키워드를 "한 글에 묶을 세트" 로 만든다.
+   *
+   * 판정 규칙은 lib/analysis/synergy.ts 에 있다 (순수 함수라 테스트로 고정된다).
+   * 지점을 알면 지점 성격과 어긋나는 키워드(24시간·여성전용)를 빼낸다.
+   */
+  const plan = useMemo(() => {
+    if (!merged || merged.length < 2) return null
+    const areaList = areas.split(',').map((s) => s.trim()).filter(Boolean)
+    const p = buildKeywordSets(merged, {
+      areas: areaList.length ? areaList : undefined,
+      store: comboStore ?? undefined,
+    })
+    return p.sets.length ? p : null
+  }, [merged, areas, comboStore])
+
   function resort(mode: Sort = sort) {
     setOrder(sortMetrics(merged ?? [], mode, requested).map((r) => r.keyword))
   }
@@ -356,7 +392,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   )
 
   function togglePick(k: string) {
-    setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : p.length >= 5 ? p : [...p, k]))
+    setPicked((p) =>
+      p.includes(k) ? p.filter((x) => x !== k) : p.length >= COMBO_LIMIT ? p : [...p, k]
+    )
   }
 
   return (
@@ -367,9 +405,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
         <ol className="mt-2 grid gap-1.5 text-[12px] leading-relaxed sm:grid-cols-2">
           {[
             ['지점 버튼 한 번', '아래 「지역 키워드 조합」에서 지점을 누르면 주소에서 동네를 뽑아 후보를 만듭니다'],
-            ['조회', '고른 키워드 + 연관 키워드까지 검색량·발행량·등급이 자동으로 나옵니다'],
-            ['「황금 키워드」 줄 고르기', '검색은 되는데 새 글이 적은 자리입니다'],
-            ['상위노출 분석 → 글쓰기', '그 줄의 링크로 바로 이어집니다'],
+            ['전부 채점', '만든 후보를 한꺼번에 채점합니다 — 황금 키워드가 자동으로 골라집니다'],
+            ['시너지 세트 고르기', '한 글에 같이 넣으면 검색어 여러 개를 잡는 조합을 묶어 드립니다'],
+            ['이 세트로 글쓰기', '메인·서브 키워드가 채워진 상태로 글쓰기 화면이 열립니다'],
           ].map(([t, d], i) => (
             <li key={t} className="flex gap-2">
               <span className="bg-brand-500/15 text-brand-700 dark:text-brand-100 tnum mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold">
@@ -522,14 +560,17 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
         </Field>
         <button
           type="button"
-          onClick={() =>
+          onClick={() => {
             setCombos(
               combineLocalKeywords(
                 areas.split(',').map((s) => s.trim()).filter(Boolean),
                 INTENT_SUFFIXES
               )
             )
-          }
+            // 지역을 직접 적었으면 어느 지점 글인지 알 수 없다 — 지점 성격 판정을 끈다
+            setComboStore(null)
+            setPicked([])
+          }}
           className="bd mt-3 rounded-xl border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8"
         >
           조합 생성
@@ -537,10 +578,36 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
 
         {combos.length > 0 && (
           <>
-            <p className="muted mt-4 mb-2 text-[11px]">
-              {combos.length}개 생성. 조회할 것을 최대 5개까지 고르세요 ({picked.length}/5)
+            {/* 채점이 먼저다 — 고르는 것은 그다음이다. 예전에는 순서가 반대였다. */}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={gradeCombos}
+                disabled={loading}
+                className="bg-brand-600 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {loading
+                  ? '채점 중…'
+                  : picked.length
+                    ? `고른 ${picked.length}개 채점`
+                    : `${Math.min(combos.length, COMBO_LIMIT)}개 전부 채점해서 황금 키워드 찾기`}
+              </button>
+              {picked.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setPicked([])}
+                  className="bd rounded-xl border px-3 py-2 text-[12px] font-semibold hover:bg-slate-500/8"
+                >
+                  선택 해제
+                </button>
+              )}
+            </div>
+            <p className="muted mt-2 text-[11px] leading-relaxed">
+              {combos.length}개 생성{combos.length > COMBO_LIMIT && ` (한 번에 ${COMBO_LIMIT}개까지 채점합니다 — 지점 버튼을 하나씩 누르면 전부 볼 수 있습니다)`}.
+              전부 채점하면 <b>황금 키워드</b>가 자동으로 골라지고, <b>같이 쓰면 시너지 나는 세트</b>까지
+              묶어 드립니다. 일부만 보려면 아래에서 고르세요.
             </p>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
               {combos.map((c) => (
                 <button
                   key={c}
@@ -556,22 +623,125 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 </button>
               ))}
             </div>
-            {picked.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setRaw(picked.join(', '))
-                  run(picked)
-                }}
-                disabled={loading}
-                className="bg-brand-600 mt-3 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                고른 {picked.length}개 조회
-              </button>
-            )}
           </>
         )}
       </Card>
+
+      {plan && (
+        <Card
+          title="같이 쓰면 시너지 나는 세트"
+          subtitle="글 한 편에 넣을 수 있는 키워드는 메인 1 + 서브 2입니다. 아무 셋이나 묶으면 안 되고, 지역이 같고 검색 의도가 같은 것끼리 묶어야 한 편으로 검색어 여러 개를 잡습니다."
+        >
+          <ul className="space-y-3">
+            {plan.sets.map((s) => (
+              <li key={s.id} className="surface bd rounded-2xl border p-3.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge tone={s.postType === 'info' ? 'info' : s.postType === 'review' ? 'default' : 'good'}>
+                    {POST_TYPE_LABEL[s.postType]}
+                  </Badge>
+                  <Badge tone={gradeTone(s.main.grade)}>{GRADE_LABEL[s.main.grade]}</Badge>
+                  <span className="muted ml-auto text-[11px] font-semibold">{s.headline}</span>
+                </div>
+
+                <p className="mt-2.5 text-[14px] leading-snug font-extrabold">{s.main.keyword}</p>
+                <p className="muted text-[11px]">
+                  메인 · 월 {s.main.monthlySearch.toLocaleString()}회 · 경쟁률{' '}
+                  {s.main.competition > 900 ? '—' : s.main.competition}
+                </p>
+
+                {s.subs.length > 0 && (
+                  <ul className="mt-2.5 space-y-1.5">
+                    {s.subs.map((sub) => (
+                      <li key={sub.metric.keyword} className="panel bd rounded-xl border px-3 py-2">
+                        <div className="flex flex-wrap items-baseline gap-1.5">
+                          <span className="text-[12.5px] font-bold">＋ {sub.metric.keyword}</span>
+                          <span className="muted tnum text-[11px]">
+                            월 {sub.metric.monthlySearch.toLocaleString()}회
+                          </span>
+                          <span
+                            className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              sub.strength === 'strong'
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-slate-500/15'
+                            }`}
+                          >
+                            {sub.strength === 'strong' ? '시너지 강함' : '함께 가능'}
+                          </span>
+                        </div>
+                        <p className="muted mt-1 text-[11px] leading-relaxed">{sub.why}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {s.warn && (
+                  <p className="mt-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+                    {s.warn}
+                  </p>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <Link
+                    href={writeHrefForSet(s, comboStore?.id)}
+                    className="bg-brand-600 rounded-xl px-3.5 py-2 text-[12px] font-bold text-white"
+                  >
+                    이 세트로 글쓰기 →
+                  </Link>
+                  <Link
+                    href={`/serp?keyword=${encodeURIComponent(s.main.keyword)}`}
+                    className="bd rounded-xl border px-3 py-2 text-[12px] font-semibold hover:bg-slate-500/8"
+                  >
+                    상위노출 분석
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {plan.splits.length > 0 && (
+            <div className="mt-3.5">
+              <p className="text-[12px] font-bold">따로 써야 하는 키워드</p>
+              <p className="muted mt-0.5 text-[11px] leading-relaxed">
+                한 글에 섞으면 둘 다 약해집니다 — 각각 다른 글로 쓰면 둘 다 상위에 갈 수 있습니다.
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {plan.splits.slice(0, 4).map((sp) => (
+                  <li key={sp.keyword} className="panel bd rounded-xl border px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[12.5px] font-bold">{sp.keyword}</span>
+                      {sp.postType && (
+                        <Badge tone="default">{POST_TYPE_LABEL[sp.postType]}로</Badge>
+                      )}
+                      <Link
+                        href={`/write?type=${sp.postType ?? 'promo'}&main=${encodeURIComponent(sp.keyword)}${comboStore ? `&store=${comboStore.id}` : ''}`}
+                        className="text-brand-600 dark:text-brand-100 ml-auto text-[11px] font-bold"
+                      >
+                        따로 쓰기 →
+                      </Link>
+                    </div>
+                    <p className="muted mt-1 text-[11px] leading-relaxed">{sp.why}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {plan.excluded.length > 0 && (
+            <div className="mt-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2.5">
+              <p className="text-[12px] font-bold text-rose-700 dark:text-rose-300">
+                이 지점으로는 쓸 수 없는 키워드 {plan.excluded.length}개
+              </p>
+              <ul className="mt-1 space-y-1 text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">
+                {plan.excluded.slice(0, 4).map((x) => (
+                  <li key={x.keyword}>
+                    <b>{x.keyword}</b> — {x.why}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* 자동 조회가 되는 동안에는 쓸 일이 없어서 접어 둔다 — 비상용 경로 */}
       <details className="bd panel rounded-xl border px-4 py-3">

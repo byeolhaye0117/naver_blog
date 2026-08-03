@@ -9,9 +9,23 @@ export const dynamic = 'force-dynamic'
 export default async function WritePage({
   searchParams,
 }: {
-  searchParams: Promise<{ id?: string; main?: string; type?: string; store?: string; new?: string }>
+  searchParams: Promise<{
+    id?: string
+    main?: string
+    /** 「시너지 세트」에서 넘어오는 서브 키워드 — 쉼표로 구분, 2개까지 쓴다 */
+    subs?: string
+    local?: string
+    type?: string
+    store?: string
+    new?: string
+  }>
 }) {
   const sp = await searchParams
+  const subs = (sp.subs ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 2)
   const db = await readDB()
   const type = (['promo', 'info', 'review'] as PostType[]).includes(sp.type as PostType)
     ? (sp.type as PostType)
@@ -22,7 +36,7 @@ export default async function WritePage({
    * 발행 관리로 돌아가 글을 찾아 누르게 하지 않는다 — 대부분은 어제 쓰던 글을 이어 쓴다.
    * 새로 시작하려면 ?new=1 (헤더의 「새 글」 버튼이 이 주소를 쓴다).
    */
-  const wantsNew = sp.new === '1' || Boolean(sp.type || sp.main || sp.store)
+  const wantsNew = sp.new === '1' || Boolean(sp.type || sp.main || sp.store || sp.subs)
   const latestDraft =
     !sp.id && !wantsNew
       ? [...db.posts]
@@ -44,11 +58,16 @@ export default async function WritePage({
         바뀌면 편집기를 새로 만들어야 한다.
       */}
       <Editor
-        key={existing?.id ?? `new:${sp.type ?? ''}:${sp.main ?? ''}:${sp.store ?? ''}`}
+        key={
+          existing?.id ??
+          `new:${sp.type ?? ''}:${sp.main ?? ''}:${sp.subs ?? ''}:${sp.store ?? ''}`
+        }
         stores={db.stores}
         posts={db.posts}
         existing={existing}
         initialMain={sp.main}
+        initialSubs={subs}
+        initialLocal={sp.local}
         initialType={type}
         initialStoreId={sp.store}
         autoOpened={Boolean(latestDraft)}

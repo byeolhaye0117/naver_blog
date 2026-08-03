@@ -14,7 +14,7 @@ const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parsePlaceList } = require(
   `${OUT}/analysis/paste.js`
 )
-const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffixesForStore, combineLocalKeywords, isRelevantKeyword, myRegionTokens } = require(`${OUT}/analysis/keyword.js`)
+const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffixesForStore, combineLocalKeywords, isRelevantKeyword, myRegionTokens, INTENT_SUFFIXES } = require(`${OUT}/analysis/keyword.js`)
 const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SECTION_CAP } = require(
   `${OUT}/naver/blogsection.js`
 )
@@ -894,6 +894,103 @@ ok(u3.includes('제목은 31~39자'), '상위노출 분석 처방을 넘긴다')
 const fix = buildFixPrompt(['본문 글자수: 지금 1,500자 / 기준 1,900~2,100자'], 1500, { charMin: 1900, charMax: 2100 })
 ok(fix.includes('1,500') && fix.includes('1,900'), '고쳐 쓰기 지시에 현재값과 기준이 들어간다')
 ok(fix.includes('JSON'), '고쳐 쓸 때도 JSON 으로 받는다')
+
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[32] 키워드 시너지 세트')
+const { splitKeyword, pairSynergy, buildKeywordSets, writeHrefForSet, INTENT_META } = require(
+  `${OUT}/analysis/synergy.js`
+)
+
+// 지역 + 의도로 쪼갠다
+const sp1 = splitKeyword('쌍용동 헬스장 가격', ['쌍용동'])
+ok(sp1.area === '쌍용동', '지역명을 뗀다', sp1.area)
+ok(sp1.intent === '헬스장 가격', '남은 의도', sp1.intent)
+ok(sp1.meta?.postType === 'promo', '가격은 홍보글')
+ok(splitKeyword('쌍용동헬스장', ['쌍용동']).meta?.family === 'gym', '띄어쓰기 없어도 의도를 알아본다')
+ok(splitKeyword('두정동 헬스장').area === '두정동', '지역 목록 없이도 동 이름을 찾는다')
+ok(splitKeyword('천안 쌍용동 헬스장', ['쌍용동', '천안 쌍용동']).area === '천안 쌍용동', '겹치면 긴 지역을 쓴다')
+ok(splitKeyword('다이어트 정체기 극복').area === '', '지역 없는 정보 키워드')
+
+// 조합 생성기가 만드는 접미사는 전부 성격표에 있어야 한다 (하나라도 빠지면 세트가 안 묶인다)
+const metaFlat = new Set(INTENT_META.map((m) => m.suffix.replace(/\s+/g, '')))
+ok(
+  INTENT_SUFFIXES.every((s) => metaFlat.has(s.replace(/\s+/g, ''))),
+  'INTENT_SUFFIXES 전부 성격표에 있다',
+  INTENT_SUFFIXES.filter((s) => !metaFlat.has(s.replace(/\s+/g, ''))).join(',')
+)
+ok(
+  suffixesForStore({ open24: true, womenOnly: true }).every((s) => metaFlat.has(s.replace(/\s+/g, ''))),
+  '지점 맞춤 접미사도 전부 성격표에 있다'
+)
+
+// 궁합 판정
+const AR = ['쌍용동', '봉명동']
+ok(pairSynergy('쌍용동 헬스장', '봉명동 헬스장', AR).strength === 'never', '지역이 다르면 같이 못 쓴다')
+ok(pairSynergy('쌍용동 헬스장', '봉명동 헬스장', AR).why.includes('나누세요'), '무엇을 하라고 말해준다')
+ok(pairSynergy('쌍용동 헬스장', '쌍용동 헬스장', AR).strength === 'never', '같은 키워드는 세트가 아니다')
+const ext = pairSynergy('쌍용동 헬스장', '쌍용동 헬스장 가격', AR)
+ok(ext.strength === 'strong' && ext.score >= 80, '확장 키워드는 시너지 강함', String(ext.score))
+const head = pairSynergy('쌍용동 헬스장 후기', '쌍용동 헬스장', AR)
+ok(head.strength === 'strong', '넓은 키워드를 서브로 얹는 것은 유형이 달라도 이득')
+const fam = pairSynergy('쌍용동 24시 헬스장', '쌍용동 헬스장 새벽', AR)
+ok(fam.strength === 'strong', '같은 의도군은 시너지 강함')
+const conflict = pairSynergy('쌍용동 헬스장', '쌍용동 헬스장 후기', AR)
+ok(conflict.strength === 'split', '홍보글 + 후기 키워드는 나눈다')
+ok(conflict.why.includes('홍보글') && conflict.why.includes('후기글'), '어느 유형끼리 어긋나는지 밝힌다')
+ok(pairSynergy('쌍용동 헬스장', '쌍용동 다이어트', AR).strength === 'split', '홍보글 + 정보 키워드도 나눈다')
+ok(pairSynergy('쌍용동 헬스장', '쌍용동 PT', AR).strength === 'ok', '같은 유형 다른 의도군은 함께 가능')
+
+// 세트 만들기
+const mk = (keyword, monthlySearch, blogRecent) =>
+  buildMetric({ keyword, monthlySearch, monthlyPc: 0, monthlyMobile: monthlySearch, blogRecent, mock: false })
+const METRICS = [
+  mk('쌍용동 헬스장', 1430, 430),        // 황금
+  mk('쌍용동 헬스장 가격', 320, 80),      // 검색량 부족이지만 서브로는 쓴다
+  mk('쌍용동 24시 헬스장', 210, 40),
+  mk('쌍용동 헬스장 후기', 260, 60),      // 유형이 달라 따로
+  mk('봉명동 헬스장', 880, 300),          // 다른 지역 → 다른 세트
+]
+const plan = buildKeywordSets(METRICS, { areas: ['쌍용동', '봉명동'], store: { open24: true, womenOnly: false } })
+ok(plan.sets.length >= 2, '지역마다 세트를 만든다', String(plan.sets.length))
+const s0 = plan.sets[0]
+ok(s0.main.keyword === '쌍용동 헬스장', '검색량 큰 진입 가능 키워드가 메인', s0.main.keyword)
+ok(s0.subs.length === 2, '서브는 2개까지', String(s0.subs.length))
+ok(s0.subs.every((s) => s.metric.monthlySearch <= s0.main.monthlySearch), '서브가 메인보다 크지 않다')
+ok(s0.subs.every((s) => s.metric.keyword.startsWith('쌍용동')), '세트 안은 같은 지역')
+ok(!s0.subs.some((s) => s.metric.keyword.includes('후기')), '후기 키워드는 홍보 세트에 안 넣는다')
+ok(s0.postType === 'promo', '세트의 글 유형')
+ok(s0.reach === 1430 + 320 + 210, '합계 검색량', String(s0.reach))
+ok(s0.headline.includes('3개 검색어') && s0.headline.includes('1,960'), '한 줄 요약', s0.headline)
+ok(s0.local === '쌍용동', '정보글 조연으로 쓸 지역 키워드')
+ok(plan.splits.some((x) => x.keyword === '쌍용동 헬스장 후기' && x.postType === 'review'), '후기는 따로 쓰라고 알려준다')
+ok(plan.sets.some((s) => s.main.keyword === '봉명동 헬스장'), '다른 지역은 별도 세트')
+ok(plan.sets.every((s) => !(s.area === '쌍용동' && s.subs.some((x) => x.metric.keyword.includes('봉명동')))), '지역이 섞이지 않는다')
+
+// 지점 성격과 어긋나는 키워드는 빼낸다 (사실과 달라지면 안 된다)
+const plan2 = buildKeywordSets(METRICS, { areas: ['쌍용동', '봉명동'], store: { open24: false, womenOnly: false } })
+ok(plan2.excluded.some((x) => x.keyword === '쌍용동 24시 헬스장'), '24시간 운영이 아니면 24시 키워드를 뺀다')
+ok(plan2.sets.every((s) => !s.subs.some((x) => x.metric.keyword.includes('24시'))), '빠진 키워드는 세트에도 없다')
+ok(plan2.excluded[0].why.includes('사실과'), '왜 빼는지 말해준다')
+
+// 전부 과열이면 그래도 방향을 준다
+const hardPlan = buildKeywordSets([mk('쌍용동 헬스장', 500, 900), mk('쌍용동 PT', 300, 700)], {
+  areas: ['쌍용동'],
+})
+ok(hardPlan.sets.length === 1, '과열이어도 세트를 하나는 낸다')
+ok(Boolean(hardPlan.sets[0].warn), '어렵다는 사실을 함께 알려준다')
+
+// 검색량을 못 읽은 키워드는 세트에 넣지 않는다 (경쟁률이 거짓이 된다)
+ok(buildKeywordSets([mk('쌍용동 헬스장', 0, 0), mk('쌍용동 PT', 0, 0)], { areas: ['쌍용동'] }).sets.length === 0,
+  '검색량 0 은 세트에서 제외')
+
+// 글쓰기 화면으로 그대로 넘어간다
+const href = writeHrefForSet(s0, 'store_1')
+ok(href.startsWith('/write?'), '글쓰기 주소')
+ok(href.includes('type=promo') && href.includes('store=store_1'), '유형·지점이 실린다')
+ok(decodeURIComponent(href).includes('main=쌍용동 헬스장'), '메인 키워드가 실린다')
+ok(decodeURIComponent(href).includes('subs=쌍용동 헬스장 가격,쌍용동 24시 헬스장'), '서브 2개가 실린다')
+ok(decodeURIComponent(href).includes('local=쌍용동'), '지역 키워드가 실린다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

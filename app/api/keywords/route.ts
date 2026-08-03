@@ -46,15 +46,32 @@ async function withBlogTotals(
   return out
 }
 
+/**
+ * 검색광고 키워드도구는 힌트를 5개까지만 받는다. 조합 채점은 24개를 한 번에 보내므로
+ * 5개씩 나눠 순서대로 부른다 (동시에 던지면 속도 제한에 걸린다).
+ */
+async function keywordToolMany(keywords: string[]) {
+  const rows = []
+  for (let i = 0; i < keywords.length; i += 5) {
+    rows.push(...(await keywordTool(keywords.slice(i, i + 5))))
+  }
+  return rows
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as { keywords?: string[]; includeRelated?: boolean }
-    const keywords = (body.keywords ?? []).map((k) => k.trim()).filter(Boolean).slice(0, 5)
+    const keywords = (body.keywords ?? []).map((k) => k.trim()).filter(Boolean).slice(0, MAX_GRADED)
     if (!keywords.length) {
       return NextResponse.json({ error: '키워드를 1개 이상 입력하세요.' }, { status: 400 })
     }
 
-    const adRows = await keywordTool(keywords)
+    // 조합을 한꺼번에 채점하는 경로에서는 연관 키워드를 붙이지 않는다 —
+    // 이미 24칸을 채웠으므로 붙일 자리가 없다.
+    const many = keywords.length > 5
+    const wantRelated = body.includeRelated ?? !many
+
+    const adRows = await keywordToolMany(keywords)
 
     // 요청한 키워드는 무조건 포함하고, 연관 키워드는 검색량 순으로 채운다
     const requested = new Set(keywords.map((k) => k.replace(/\s+/g, '')))
@@ -76,8 +93,8 @@ export async function POST(req: Request) {
 
     // 연관 키워드는 기본으로 붙인다 (안 떠올린 키워드를 발견하는 게 이 화면의 값이다).
     // 넣은 키워드가 묻히지 않게 화면에서 맨 위로 고정하고 배지로 구분한다.
-    const target = body.includeRelated === false
-      ? [...primary, ...missing]
+    const target = !wantRelated
+      ? [...primary, ...missing].slice(0, MAX_GRADED)
       : [...primary, ...missing, ...related].slice(0, MAX_GRADED)
 
     const metrics = await withBlogTotals(target)

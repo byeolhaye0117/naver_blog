@@ -26,6 +26,8 @@ export default function Editor({
   posts,
   existing,
   initialMain,
+  initialSubs,
+  initialLocal,
   initialType,
   initialStoreId,
   autoOpened = false,
@@ -34,6 +36,9 @@ export default function Editor({
   posts: Post[]
   existing?: Post
   initialMain?: string
+  /** 키워드 화면의 「시너지 세트」에서 넘어온 서브 키워드 (최대 2개) */
+  initialSubs?: string[]
+  initialLocal?: string
   initialType?: PostType
   initialStoreId?: string
   /** 「글 작성」만 눌러 들어와 쓰던 초안을 자동으로 열어준 경우 */
@@ -48,9 +53,9 @@ export default function Editor({
   const [title, setTitle] = useState(existing?.title ?? '')
   const [body, setBody] = useState(existing?.body ?? '')
   const [mainKeyword, setMainKeyword] = useState(existing?.mainKeyword ?? initialMain ?? '')
-  const [sub1, setSub1] = useState(existing?.subKeywords[0] ?? '')
-  const [sub2, setSub2] = useState(existing?.subKeywords[1] ?? '')
-  const [localKeyword, setLocalKeyword] = useState(existing?.localKeyword ?? '')
+  const [sub1, setSub1] = useState(existing?.subKeywords[0] ?? initialSubs?.[0] ?? '')
+  const [sub2, setSub2] = useState(existing?.subKeywords[1] ?? initialSubs?.[1] ?? '')
+  const [localKeyword, setLocalKeyword] = useState(existing?.localKeyword ?? initialLocal ?? '')
   const [tagText, setTagText] = useState((existing?.tags ?? []).join(', '))
   const [introType, setIntroType] = useState(existing?.introType ?? '')
   const [angle, setAngle] = useState(existing?.angle ?? '')
