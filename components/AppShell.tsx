@@ -7,7 +7,7 @@ import {
   IconBook,
   IconChart,
   IconDoc,
-  IconGrid,
+  IconHome,
   IconMore,
   IconPencil,
   IconPhone,
@@ -27,7 +27,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
   {
     title: '살펴보기',
     items: [
-      { href: '/', label: '대시보드', short: '홈', icon: <IconGrid /> },
+      { href: '/', label: '대시보드', short: '홈', icon: <IconHome /> },
       { href: '/keywords', label: '키워드 조사', short: '키워드', icon: <IconSearch /> },
       { href: '/serp', label: '상위노출 분석', short: '상위분석', icon: <IconChart /> },
     ],
@@ -70,17 +70,24 @@ function Logo({ small = false }: { small?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
       <span
-        className={`bg-brand-600 flex shrink-0 items-center justify-center rounded-xl font-bold text-white shadow-sm ${
-          small ? 'size-8 text-[15px]' : 'size-9 text-[17px]'
+        className={`bg-brand-600 relative flex shrink-0 items-center justify-center overflow-hidden font-extrabold text-white shadow-[0_6px_16px_-6px_var(--color-brand-600)] ${
+          small ? 'size-9 rounded-[12px] text-[16px]' : 'size-10 rounded-[13px] text-[18px]'
         }`}
       >
-        N
+        <span className="bg-brand-400/45 absolute -top-2 -right-2 size-6 rounded-full blur-[6px]" />
+        <span className="relative">N</span>
       </span>
       <span className="min-w-0">
-        <span className={`block leading-tight font-bold ${small ? 'text-[15px]' : 'text-[16px]'}`}>
+        <span
+          className={`block leading-tight font-extrabold tracking-[-0.03em] ${
+            small ? 'text-[15.5px]' : 'text-[16.5px]'
+          }`}
+        >
           상위노출 매니저
         </span>
-        <span className="muted block text-[10.5px] leading-tight">헬스장·피트니스 블로그</span>
+        <span className="muted block text-[10.5px] leading-tight font-semibold">
+          헬스장·피트니스 블로그
+        </span>
       </span>
     </span>
   )
@@ -106,7 +113,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh lg:flex">
       {/* 데스크톱 사이드바 */}
-      <aside className="bd panel hidden shrink-0 border-r lg:flex lg:w-[248px] lg:flex-col">
+      <aside className="bd panel hidden shrink-0 border-r lg:flex lg:w-[252px] lg:flex-col">
         <div className="px-4 py-5">
           <Link href="/" className="block">
             <Logo />
@@ -115,7 +122,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <nav className="flex-1 overflow-y-auto px-3 pb-3">
           {GROUPS.map((g) => (
             <div key={g.title} className="mb-5 last:mb-0">
-              <p className="muted mb-1.5 px-2.5 text-[11px] font-bold tracking-[0.06em]">{g.title}</p>
+              <p className="eyebrow mb-1.5 px-2.5">{g.title}</p>
               <ul className="space-y-0.5">
                 {g.items.map((n) => {
                   const active = isActive(pathname, n.href)
@@ -124,13 +131,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       <Link
                         href={n.href}
                         aria-current={active ? 'page' : undefined}
-                        className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13.5px] transition ${
+                        className={`group relative flex items-center gap-2.5 rounded-[13px] px-2.5 py-2.5 text-[13.5px] transition ${
                           active
                             ? 'bg-brand-500/12 text-brand-700 dark:text-brand-100 font-bold'
-                            : 'muted font-medium hover:bg-slate-500/8'
+                            : 'muted font-semibold hover:bg-slate-500/8'
                         }`}
                       >
-                        <span className={`block size-[17px] shrink-0 ${active ? '' : 'opacity-80'}`}>
+                        {active && (
+                          <span className="bg-brand-500 absolute top-1/2 left-0 h-4 w-[3px] -translate-y-1/2 rounded-r-full" />
+                        )}
+                        <span className={`block size-[18px] shrink-0 ${active ? '' : 'opacity-70'}`}>
                           {n.icon}
                         </span>
                         {n.label}
@@ -145,9 +155,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div className="p-3">
           <Link
             href="/write"
-            className="bg-brand-600 hover:bg-brand-700 flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[13px] font-bold text-white shadow-sm transition"
+            className="bg-brand-600 hover:bg-brand-700 flex items-center justify-center gap-1.5 rounded-[14px] px-3 py-3 text-[13.5px] font-bold text-white shadow-[0_8px_20px_-10px_var(--color-brand-600)] transition"
           >
-            <span className="block size-4">
+            <span className="block size-[17px]">
               <IconPencil />
             </span>
             새 글 쓰기
@@ -157,30 +167,30 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       <div className="min-w-0 flex-1">
         {/* 휴대폰·태블릿 상단 — 이름표와 새 글만. 이동은 아래 탭으로 한다 */}
-        <header className="panel bd sticky top-0 z-20 border-b lg:hidden">
+        <header className="bd sticky top-0 z-20 border-b bg-[var(--bg)]/85 backdrop-blur-xl lg:hidden">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <Link href="/" className="min-w-0">
               <Logo small />
             </Link>
             <Link
               href="/write"
-              className="bg-brand-600 shrink-0 rounded-xl px-3.5 py-2 text-xs font-bold text-white shadow-sm"
+              className="bg-brand-600 shrink-0 rounded-full px-4 py-2.5 text-[12.5px] font-bold text-white shadow-[0_8px_18px_-10px_var(--color-brand-600)]"
             >
               새 글
             </Link>
           </div>
         </header>
 
-        {/* 하단 탭바 높이(64px)만큼 본문 아래를 비워 둔다 */}
-        <main className="mx-auto max-w-6xl px-4 py-5 pb-24 sm:px-6 sm:py-7 lg:pb-16">{children}</main>
+        {/* 하단 탭바(떠 있는 형태)를 위해 본문 아래를 넉넉히 비운다 */}
+        <main className="mx-auto max-w-6xl px-4 py-5 pb-28 sm:px-6 sm:py-7 lg:pb-16">{children}</main>
       </div>
 
       {/* ─── 휴대폰 하단 탭바 ─── */}
       <nav
         aria-label="주요 화면"
-        className="panel bd fixed inset-x-0 bottom-0 z-30 border-t pb-[env(safe-area-inset-bottom)] lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 px-3 pb-[calc(env(safe-area-inset-bottom)+10px)] lg:hidden"
       >
-        <ul className="flex">
+        <ul className="card card-lg flex rounded-[20px] px-1.5 py-1.5">
           {TABS.map((n) => {
             const active = isActive(pathname, n.href)
             return (
@@ -188,8 +198,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <Link
                   href={n.href}
                   aria-current={active ? 'page' : undefined}
-                  className={`flex flex-col items-center gap-1 py-2.5 text-[10.5px] font-bold transition ${
-                    active ? 'text-brand-600 dark:text-brand-100' : 'muted'
+                  className={`flex flex-col items-center gap-1 rounded-[15px] py-2 text-[10px] font-bold transition ${
+                    active
+                      ? 'bg-brand-500/12 text-brand-700 dark:text-brand-100'
+                      : 'muted active:bg-slate-500/8'
                   }`}
                 >
                   <span className="block size-[21px]">{n.icon}</span>
@@ -203,8 +215,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
               type="button"
               onClick={() => setMoreOpen((v) => !v)}
               aria-expanded={moreOpen}
-              className={`flex w-full flex-col items-center gap-1 py-2.5 text-[10.5px] font-bold transition ${
-                moreOpen || restActive ? 'text-brand-600 dark:text-brand-100' : 'muted'
+              className={`flex w-full flex-col items-center gap-1 rounded-[15px] py-2 text-[10px] font-bold transition ${
+                moreOpen || restActive
+                  ? 'bg-brand-500/12 text-brand-700 dark:text-brand-100'
+                  : 'muted active:bg-slate-500/8'
               }`}
             >
               <span className="block size-[21px]">
@@ -223,17 +237,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
             type="button"
             aria-label="메뉴 닫기"
             onClick={() => setMoreOpen(false)}
-            className="absolute inset-0 bg-slate-900/40"
+            className="absolute inset-0 bg-slate-900/45 backdrop-blur-[2px]"
           />
-          <div className="panel bd absolute inset-x-0 bottom-0 rounded-t-2xl border-t px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+16px)] shadow-2xl">
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-500/25" />
+          <div className="panel card-lg absolute inset-x-0 bottom-0 rounded-t-[26px] px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+18px)]">
+            <div className="mx-auto mb-3 h-1.5 w-11 rounded-full bg-slate-500/25" />
             {GROUPS.map((g) => {
               const items = g.items.filter((n) => REST.includes(n))
               if (!items.length) return null
               return (
-                <div key={g.title} className="mb-3 last:mb-0">
-                  <p className="muted mb-1.5 text-[11px] font-bold tracking-[0.06em]">{g.title}</p>
-                  <ul className="grid grid-cols-2 gap-1.5">
+                <div key={g.title} className="mb-3.5 last:mb-0">
+                  <p className="eyebrow mb-2">{g.title}</p>
+                  <ul className="grid grid-cols-2 gap-2">
                     {items.map((n) => {
                       const active = isActive(pathname, n.href)
                       return (
@@ -241,13 +255,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
                           <Link
                             href={n.href}
                             aria-current={active ? 'page' : undefined}
-                            className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] transition ${
+                            className={`flex items-center gap-2.5 rounded-[15px] px-3 py-3 text-[13px] transition ${
                               active
                                 ? 'bg-brand-500/12 text-brand-700 dark:text-brand-100 font-bold'
-                                : 'surface font-semibold'
+                                : 'surface font-bold'
                             }`}
                           >
-                            <span className="block size-[17px] shrink-0 opacity-80">{n.icon}</span>
+                            <span className="block size-[18px] shrink-0 opacity-70">{n.icon}</span>
                             {n.label}
                           </Link>
                         </li>
@@ -268,16 +282,22 @@ export function PageHeader({
   title,
   desc,
   right,
+  eyebrow,
 }: {
   title: string
   desc?: ReactNode
   right?: ReactNode
+  /** 제목 위에 얹는 작은 안내 (예: 화면 이름) */
+  eyebrow?: string
 }) {
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-[22px] font-bold sm:text-[26px]">{title}</h1>
-        {desc && <p className="muted mt-1.5 max-w-3xl text-[13px] leading-relaxed">{desc}</p>}
+        {eyebrow && <p className="eyebrow mb-1.5">{eyebrow}</p>}
+        <h1 className="text-[25px] leading-[1.2] font-extrabold tracking-[-0.035em] sm:text-[30px]">
+          {title}
+        </h1>
+        {desc && <p className="muted mt-2 max-w-3xl text-[13px] leading-relaxed">{desc}</p>}
       </div>
       {right && <div className="shrink-0">{right}</div>}
     </div>

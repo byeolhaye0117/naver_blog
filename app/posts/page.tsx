@@ -48,7 +48,7 @@ export default async function PostsPage() {
           hint="권장 4~6편"
           tone={cadence.level === 'good' ? 'good' : cadence.level === 'warn' ? 'warn' : 'bad'}
           icon={<IconTrend />}
-          iconTone="amber"
+          iconTone="gold"
         />
       </div>
 

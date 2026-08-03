@@ -5,9 +5,18 @@ import { balanceReport, cadenceReport } from '@/lib/writing/rotation'
 import { buildRankViews, isFirstPage, rankLabel } from '@/lib/analysis/rank'
 import { checkPost } from '@/lib/writing/checker'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL } from '@/lib/types'
-import { PageHeader } from '@/components/AppShell'
-import { Badge, Card, Empty, Progress, Stat, btnPrimary } from '@/components/ui'
-import { IconBalance, IconCheck, IconDoc, IconTarget, IconTrend } from '@/components/icons'
+import { Badge, Card, Empty, IconTile, Progress, Stat, btnPrimary, inputClass } from '@/components/ui'
+import {
+  IconArrowRight,
+  IconBalance,
+  IconChart,
+  IconDoc,
+  IconPencil,
+  IconSearch,
+  IconSpark,
+  IconTarget,
+  IconTrend,
+} from '@/components/icons'
 import { nextActions } from '@/lib/writing/next-action'
 import StorageNotice from '@/components/StorageNotice'
 
@@ -51,66 +60,73 @@ export default async function Dashboard() {
   ]
   const stepNow = steps.findIndex((s) => !s.done)
 
+  /** 무엇을 쓸지 바로 고르는 자리 — 홈에서 한 번에 시작하게 */
+  const quick = [
+    { type: 'info', label: '정보글', why: '검색 유입·신뢰도' },
+    { type: 'promo', label: '홍보글', why: '방문 상담 유도' },
+    { type: 'review', label: '후기글', why: '제3자 시선' },
+  ]
+
   return (
     <>
-      <PageHeader title="대시보드" desc="글 하나가 아니라 블로그 단위로 봅니다 — 발행 균형·주기·순위." />
+      <p className="eyebrow mb-3">대시보드 · 글 하나가 아니라 블로그 단위로 봅니다</p>
 
       <StorageNotice />
 
-      {/* ─── 지금 할 일 하나 ─── */}
-      <section className="card relative mb-4 overflow-hidden rounded-2xl px-4 py-4 sm:px-5">
-        {/* 왼쪽 색 띠 — .card 의 border 단축 속성이 border-l-* 를 덮어써서 요소로 그린다 */}
+      {/* ─── 지금 할 일 (화면에서 가장 센 것 하나) ─── */}
+      <section
+        className={`${now.tone === 'bad' ? 'hero-warn' : 'hero'} card-lg relative mb-3.5 overflow-hidden rounded-[26px] border-0 p-5 sm:p-7`}
+      >
+        {/* 넓은 화면에서 오른쪽이 비어 보이지 않게 두는 장식 — 내용은 없다 */}
         <span
           aria-hidden
-          className={`absolute inset-y-0 left-0 w-1.5 ${
-            now.tone === 'bad'
-              ? 'bg-rose-500'
-              : now.tone === 'warn'
-                ? 'bg-amber-500'
-                : 'bg-brand-500'
-          }`}
-        />
-        <div className="flex items-start gap-3">
-          <span
-            className={`hidden size-9 shrink-0 items-center justify-center rounded-xl sm:flex ${
-              now.tone === 'bad'
-                ? 'bg-rose-500/12 text-rose-600 dark:text-rose-300'
-                : now.tone === 'warn'
-                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300'
-                  : 'bg-brand-500/12 text-brand-700 dark:text-brand-100'
-            }`}
-          >
-            <span className="block size-[19px]">
-              <IconCheck />
+          className="pointer-events-none absolute -top-6 -right-6 hidden size-52 text-white/10 sm:block"
+        >
+          <IconSpark />
+        </span>
+
+        <div className="relative flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/18 px-2.5 py-1 text-[10.5px] font-extrabold tracking-[0.08em] backdrop-blur-sm">
+            <span className="block size-3.5">
+              <IconSpark />
             </span>
+            지금 할 일
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="muted text-[11px] font-bold tracking-[0.06em]">지금 할 일</p>
-            <h2 className="mt-0.5 text-[17px] leading-snug font-bold sm:text-[19px]">{now.title}</h2>
-            <p className="muted mt-1.5 text-[12.5px] leading-relaxed">{now.why}</p>
-            <div className="mt-3">
-              <Link href={now.href} className={btnPrimary}>
-                {now.cta}
-              </Link>
-            </div>
-          </div>
+          {later.length > 0 && (
+            <span className="text-[11.5px] font-bold text-white/65">그 뒤로 {later.length}개</span>
+          )}
         </div>
 
+        <h1 className="relative mt-3.5 text-[24px] leading-[1.25] font-extrabold tracking-[-0.04em] sm:text-[31px]">
+          {now.title}
+        </h1>
+        <p className="relative max-w-xl mt-2.5 text-[13px] leading-relaxed text-white/80">{now.why}</p>
+
+        <Link
+          href={now.href}
+          className="text-brand-700 relative mt-5 inline-flex items-center gap-2 rounded-[15px] bg-white px-5 py-3.5 text-[14px] font-extrabold shadow-[0_10px_24px_-10px_rgb(0_0_0/.45)] transition active:scale-[.98]"
+        >
+          {now.cta}
+          <span className="block size-[17px]">
+            <IconArrowRight />
+          </span>
+        </Link>
+
         {later.length > 0 && (
-          <details className="mt-3.5">
-            <summary className="muted cursor-pointer text-[12px] font-semibold select-none">
+          <details className="mt-5 border-t border-white/15 pt-3.5">
+            <summary className="cursor-pointer text-[12px] font-bold text-white/75 select-none">
               나머지 할 일 {later.length}개 보기
             </summary>
-            <ul className="mt-2.5 space-y-2">
+            <ul className="mt-3 space-y-2.5">
               {later.map((a) => (
                 <li key={a.id}>
                   <Link href={a.href} className="group flex items-start gap-2.5">
-                    <Badge tone={a.tone === 'good' ? 'good' : a.tone === 'warn' ? 'warn' : 'bad'}>
+                    <span className="mt-0.5 shrink-0 rounded-full bg-white/18 px-2 py-0.5 text-[10px] font-extrabold">
                       {a.tone === 'bad' ? '조치' : a.tone === 'warn' ? '확인' : '양호'}
-                    </Badge>
+                    </span>
                     <span className="min-w-0 text-[12.5px] leading-relaxed">
-                      <b className="font-semibold group-hover:underline">{a.title}</b>
-                      <span className="muted"> — {a.why}</span>
+                      <b className="font-bold group-hover:underline">{a.title}</b>
+                      <span className="text-white/65"> — {a.why}</span>
                     </span>
                   </Link>
                 </li>
@@ -120,8 +136,48 @@ export default async function Dashboard() {
         )}
       </section>
 
+      {/* ─── 키워드 바로 분석 + 무엇을 쓸지 ─── */}
+      <div className="card mb-3.5 rounded-[22px] p-3.5 sm:p-4">
+        <form action="/serp" className="flex gap-2">
+          <div className="relative min-w-0 flex-1">
+            <span className="muted pointer-events-none absolute top-1/2 left-3.5 block size-[18px] -translate-y-1/2">
+              <IconSearch />
+            </span>
+            <input
+              name="keyword"
+              placeholder="키워드로 바로 분석"
+              aria-label="분석할 키워드"
+              className={`${inputClass} pl-11`}
+            />
+          </div>
+          <button type="submit" className={btnPrimary}>
+            <span className="block size-[17px] sm:hidden">
+              <IconChart />
+            </span>
+            <span className="hidden sm:inline">분석</span>
+          </button>
+        </form>
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="muted mr-0.5 text-[11.5px] font-bold">바로 쓰기</span>
+          {quick.map((q) => (
+            <Link
+              key={q.type}
+              href={`/write?type=${q.type}`}
+              className="bd surface hover:bg-slate-500/8 inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-[12px] font-bold transition"
+            >
+              <span className="block size-[14px] opacity-60">
+                <IconPencil />
+              </span>
+              {q.label}
+              <span className="muted font-semibold">{q.why}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+
       {/* ─── 어디까지 왔는지 ─── */}
-      <nav aria-label="진행 단계" className="card mb-4 rounded-2xl px-2 py-3 sm:px-4">
+      <nav aria-label="진행 단계" className="card mb-3.5 rounded-[22px] px-2 py-3.5 sm:px-4">
         <ol className="flex items-start">
           {steps.map((s, i) => {
             const current = i === stepNow
@@ -130,11 +186,11 @@ export default async function Dashboard() {
               return (
                 <span
                   aria-hidden
-                  className={`h-[2px] flex-1 ${
+                  className={`h-[2px] flex-1 rounded-full ${
                     (side === 'l' && i === 0) || (side === 'r' && i === steps.length - 1)
                       ? 'opacity-0'
                       : filled
-                        ? 'bg-brand-500/40'
+                        ? 'bg-brand-500/35'
                         : 'bg-slate-500/15'
                   }`}
                 />
@@ -145,14 +201,14 @@ export default async function Dashboard() {
                 <Link
                   href={s.href}
                   aria-current={current ? 'step' : undefined}
-                  className="group flex flex-col items-center gap-1"
+                  className="group flex flex-col items-center gap-1.5"
                 >
                   <span className="flex w-full items-center">
                     {line('l')}
                     <span
-                      className={`tnum flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition ${
+                      className={`tnum flex size-7 shrink-0 items-center justify-center rounded-full text-[11.5px] font-extrabold transition ${
                         current
-                          ? 'bg-brand-600 text-white shadow-sm'
+                          ? 'bg-brand-600 text-white shadow-[0_6px_14px_-6px_var(--color-brand-600)]'
                           : s.done
                             ? 'bg-brand-500/15 text-brand-700 dark:text-brand-100'
                             : 'surface muted bd border'
@@ -163,7 +219,7 @@ export default async function Dashboard() {
                     {line('r')}
                   </span>
                   <span
-                    className={`truncate text-[10.5px] font-bold sm:text-[11.5px] ${
+                    className={`truncate text-[11px] font-bold sm:text-[12px] ${
                       current ? 'text-brand-700 dark:text-brand-100' : s.done ? '' : 'muted'
                     }`}
                   >
@@ -176,7 +232,7 @@ export default async function Dashboard() {
         </ol>
       </nav>
 
-      <div className="mb-5 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+      <div className="mb-3.5 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
         <Stat
           label="발행 완료"
           value={`${published.length}편`}
@@ -206,7 +262,7 @@ export default async function Dashboard() {
           hint="직전 조회 대비"
           tone={fallen.length > risen.length ? 'bad' : risen.length ? 'good' : 'default'}
           icon={<IconTrend />}
-          iconTone="amber"
+          iconTone="gold"
         />
       </div>
 
