@@ -816,5 +816,66 @@ ok(
   '모든 항목에 무엇을·왜·어디로·버튼글자가 있다'
 )
 
+console.log('\n[31] AI 글쓰기 — 응답 파싱과 지시문')
+const { extractJson } = require(`${OUT}/ai/claude.js`)
+const { buildSystemPrompt, buildUserPrompt, buildFixPrompt } = require(`${OUT}/ai/prompt.js`)
+
+// 모델이 코드펜스·설명을 붙여 보내도 JSON 만 뽑아야 한다
+ok(extractJson('{"title":"ㄱ","body":"ㄴ"}').title === 'ㄱ', '맨 JSON 파싱')
+ok(extractJson('```json\n{"title":"ㄱ"}\n```').title === 'ㄱ', '코드펜스 안 JSON 파싱')
+ok(extractJson('설명입니다.\n{"title":"ㄱ"}\n끝.').title === 'ㄱ', '앞뒤 설명이 있어도 파싱')
+ok(extractJson('{"a":{"b":1},"title":"ㄱ"}').title === 'ㄱ', '중첩 객체도 끝까지 읽음')
+ok(extractJson('{"body":"중괄호 } 가 문자열 안에 있음","title":"ㄱ"}').title === 'ㄱ', '문자열 속 중괄호에 속지 않음')
+ok(extractJson('JSON 이 없는 응답') === null, 'JSON 이 없으면 null')
+ok(extractJson('{"깨진 JSON"') === null, '깨진 JSON 은 null')
+
+// 지시문에 검수 기준이 그대로 들어가야 한다 (기준이 바뀌면 지시도 바뀐다)
+const sysReview = buildSystemPrompt('review')
+ok(sysReview.includes('방문객'), '후기글 화자는 방문객')
+ok(sysReview.includes('"후기"'), '후기글은 제목에 후기 명시 지시')
+ok(sysReview.includes('1,900') && sysReview.includes('2,100'), '후기글 글자수 기준이 지시문에 있다')
+ok(sysReview.includes('3~5회'), '후기글 메인 키워드 3~5회')
+const sysPromo = buildSystemPrompt('promo')
+ok(sysPromo.includes('센터'), '홍보글 화자는 센터')
+ok(sysPromo.includes('5~7회'), '홍보글 메인 키워드 5~7회')
+ok(sysPromo.includes('3회 이상'), '홍보글은 상호명 3회 이상 지시')
+const sysInfo = buildSystemPrompt('info')
+ok(sysInfo.includes('지역 키워드'), '정보글은 지역 키워드 조연 지시')
+ok(!sysInfo.includes('제목에 "후기"'), '정보글에 후기 지시는 없다')
+ok(sysReview.includes('최고의') || sysReview.includes('최고'), '위험 표현 예시가 지시문에 들어간다')
+ok(sysReview.includes('첫째, 둘째'), 'AI 티 금지 패턴이 지시문에 들어간다')
+
+const STORE = {
+  id: 's', name: '쌍용점', legalName: 'MTO 피트니스 쌍용점', womenOnly: false, open24: true,
+  localKeywords: ['쌍용동 헬스장'], location: '쌍용동 먹자골목 인근', features: ['프리웨이트실 분리'],
+  strengths: ['천국의 계단 4대'], phone: '010-0000-0000', reserveUrl: 'https://x.test/r',
+}
+const u1 = buildUserPrompt({
+  type: 'review', store: STORE, mainKeyword: '쌍용동 헬스장', subKeywords: ['천안 쌍용동 헬스장'],
+  sponsorship: 'sponsored', eventText: '3개월 등록 시 1개월 추가',
+})
+ok(u1.includes('MTO 피트니스 쌍용점'), '정식 상호명을 넘긴다')
+ok(u1.includes('천국의 계단 4대'), '강점을 넘긴다')
+ok(u1.includes('3개월 등록 시 1개월 추가'), '이벤트를 그대로 넘긴다')
+ok(u1.includes('#협찬후기'), '협찬이면 표기 지시가 들어간다')
+ok(u1.includes('트레이너'), '트레이너 정보 없음을 명시한다')
+
+const u2 = buildUserPrompt({ type: 'review', store: STORE, mainKeyword: 'k', subKeywords: [], sponsorship: 'own' })
+ok(u2.includes('내돈내산'), '내돈내산은 그렇게 넘긴다')
+ok(!u2.includes('#협찬후기'), '내돈내산에 협찬 표기를 넣지 않는다')
+ok(u2.includes('이벤트 구간을 쓰지 말고'), '이벤트가 없으면 구간을 빼라고 지시한다')
+
+const u3 = buildUserPrompt({
+  type: 'promo', store: STORE, mainKeyword: 'k', subKeywords: [],
+  recent: [{ type: 'promo', title: '지난 글', mainKeyword: 'k', introType: '④상황묘사', angle: '시간' }],
+  prescription: ['제목은 31~39자로 맞추세요.'],
+})
+ok(u3.includes('지난 글') && u3.includes('④상황묘사'), '최근 글을 유사문서 방지용으로 넘긴다')
+ok(u3.includes('제목은 31~39자'), '상위노출 분석 처방을 넘긴다')
+
+const fix = buildFixPrompt(['본문 글자수: 지금 1,500자 / 기준 1,900~2,100자'], 1500, { charMin: 1900, charMax: 2100 })
+ok(fix.includes('1,500') && fix.includes('1,900'), '고쳐 쓰기 지시에 현재값과 기준이 들어간다')
+ok(fix.includes('JSON'), '고쳐 쓸 때도 JSON 으로 받는다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

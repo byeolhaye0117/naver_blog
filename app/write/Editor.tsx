@@ -9,6 +9,7 @@ import { buildTemplate, hasGuides, stripGuides } from '@/lib/writing/templates'
 import { adviseRotation, ANGLES, INFO_FORMATS, INTRO_TYPES, REVIEW_INTRO_TYPES, TOPIC_GROUPS } from '@/lib/writing/rotation'
 import { buildCopyPackage, postLogLine } from '@/lib/writing/export'
 import { Badge, Card, Field, inputClass } from '@/components/ui'
+import { IconSpark } from '@/components/icons'
 import CheckPanel from '@/components/CheckPanel'
 import CopyButton from '@/components/CopyButton'
 
@@ -59,6 +60,9 @@ export default function Editor({
 
   const [view, setView] = useState<View>('write')
   const [saving, setSaving] = useState(false)
+  /** AI 글쓰기 진행 상태·결과 안내 */
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiMsg, setAiMsg] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
 
   const store = stores.find((s) => s.id === storeId)
@@ -160,6 +164,53 @@ export default function Editor({
     } finally {
       setSaving(false)
       setTimeout(() => setSaved(null), 2500)
+    }
+  }
+
+  /** AI 로 본문까지 쓰게 한다 — 생성 후 앱 검수기가 매긴 점수를 함께 받는다 */
+  async function writeWithAi() {
+    if (!store) {
+      setAiMsg('지점을 먼저 골라주세요.')
+      return
+    }
+    if (!mainKeyword.trim()) {
+      setAiMsg('메인 키워드를 먼저 넣어주세요.')
+      return
+    }
+    if (body.trim() && !confirm('현재 제목·본문을 새로 쓴 글로 덮어씁니다. 계속할까요?')) return
+
+    setAiBusy(true)
+    setAiMsg('글을 쓰는 중입니다… 1~2분 걸립니다.')
+    try {
+      const res = await fetch('/api/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          storeId: store.id,
+          mainKeyword,
+          subKeywords,
+          localKeyword: localKeyword || store.localKeywords[0],
+          eventText,
+          sponsorship,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? '글 생성에 실패했습니다.')
+      setTitle(json.draft.title)
+      setBody(json.draft.body)
+      if (Array.isArray(json.draft.tags) && json.draft.tags.length) {
+        setTagText(json.draft.tags.join(', '))
+      }
+      const left = (json.check?.issues ?? []).length
+      setAiMsg(
+        `${json.check?.score ?? 0}점으로 나왔습니다${json.revised ? ' (한 번 고쳐 쓴 결과)' : ''}. ` +
+          (left ? `아직 ${left}개 항목이 남았으니 오른쪽 검수를 보고 손보세요.` : '검수 항목을 모두 통과했습니다.')
+      )
+    } catch (e) {
+      setAiMsg(e instanceof Error ? e.message : '글 생성 중 오류가 발생했습니다.')
+    } finally {
+      setAiBusy(false)
     }
   }
 
@@ -490,20 +541,49 @@ export default function Editor({
               <Card
                 title="제목 · 본문"
                 right={
-                  <button
-                    type="button"
-                    onClick={insertTemplate}
-                    className="bd rounded-xl border px-3 py-1.5 text-xs font-semibold hover:bg-slate-500/8"
-                  >
-                    골격 넣기
-                  </button>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={writeWithAi}
+                      disabled={aiBusy}
+                      className="bg-brand-600 hover:bg-brand-700 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold text-white shadow-[0_8px_18px_-10px_var(--color-brand-600)] transition disabled:opacity-50"
+                    >
+                      <span className="block size-[14px]">
+                        <IconSpark />
+                      </span>
+                      {aiBusy ? '쓰는 중…' : 'AI로 본문 쓰기'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={insertTemplate}
+                      className="bd rounded-full border px-3 py-2 text-xs font-bold hover:bg-slate-500/8"
+                    >
+                      골격만 넣기
+                    </button>
+                  </div>
                 }
               >
+                {aiMsg && (
+                  <p
+                    className={`mb-3 rounded-[14px] px-3.5 py-2.5 text-[12px] leading-relaxed ${
+                      aiBusy
+                        ? 'surface muted'
+                        : 'bg-brand-500/10 text-brand-700 dark:text-brand-100'
+                    }`}
+                  >
+                    {aiMsg}
+                  </p>
+                )}
                 <Field
                   label="제목"
                   hint={`28~40자 · 메인 키워드를 앞 7자 안에 · 세부 의도(새벽·여성전용·초보 등)를 함께 담으면 스마트블록 유리 — 현재 ${title.length}자`}
                 >
-                  <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputClass} />
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    aria-label="제목"
+                    className={inputClass}
+                  />
                 </Field>
 
                 <div className="mt-3.5">
@@ -516,6 +596,7 @@ export default function Editor({
                     onChange={(e) => setBody(e.target.value)}
                     rows={22}
                     spellCheck={false}
+                    aria-label="본문"
                     className={`${inputClass} font-mono leading-relaxed`}
                     placeholder={
                       '[이미지: 대표이미지 설명]\n후킹 문단…\n\n[이미지: 설명]\n## 소제목\n본문…'

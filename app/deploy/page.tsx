@@ -328,6 +328,21 @@ export default function DeployPage() {
                     <Env name="NAVER_AD_CUSTOMER_ID" />
                   </>,
                   <>
+                    <strong>AI 글쓰기를 쓰려면</strong> <Env name="ANTHROPIC_API_KEY" /> 도 함께 넣습니다.{' '}
+                    <a
+                      href="https://console.anthropic.com/settings/keys"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="text-brand-600 dark:text-brand-100 font-semibold underline"
+                    >
+                      console.anthropic.com
+                    </a>{' '}
+                    → API Keys → Create Key 로 발급합니다. 결제 수단을 등록해야 발급되고, 글 한 편당 대략
+                    30~80원 정도가 청구됩니다. 키가 없어도 앱의 다른 기능은 그대로 동작하고, 글 작성 화면의
+                    「AI로 본문 쓰기」만 안내 문구를 띄웁니다. 모델을 바꾸려면{' '}
+                    <Env name="ANTHROPIC_MODEL" /> 에 모델 이름을 넣으세요 (기본값 claude-sonnet-5).
+                  </>,
+                  <>
                     <strong>Deploy</strong> 를 누르고 1~2분 기다리면{' '}
                     <code className="bd rounded border px-1 py-0.5 text-[11px]">…vercel.app</code> 주소가
                     나옵니다. <strong>이 주소를 휴대폰에서 열면 됩니다.</strong> 홈 화면에 추가해두면 앱처럼
