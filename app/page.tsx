@@ -31,7 +31,7 @@ export default async function Dashboard() {
   const todo: { text: string; href: string; tone: 'good' | 'warn' | 'bad' }[] = []
   if (!keys.search) {
     todo.push({
-      text: '네이버 검색 API 키를 넣으면 상위노출 분석·순위 추적이 실제 데이터로 동작합니다 (발급 안내 보기)',
+      text: '순위 추적을 자동으로 돌리려면 네이버 검색 API 키가 필요합니다. 키가 없어도 순위는 직접 입력할 수 있고, 상위노출 분석·키워드 조사는 키 없이 그대로 됩니다 (안내 보기)',
       href: '/deploy',
       tone: 'warn',
     })

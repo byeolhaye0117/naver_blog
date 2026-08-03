@@ -106,9 +106,10 @@ export function analyzeSerp(
  */
 export function analyzePastedSerp(
   keyword: string,
-  pasted: PastedItem[],
+  pasted: (PastedItem & { url?: string })[],
   total: number,
-  limit = 30
+  limit = 30,
+  source: 'paste' | 'section' = 'paste'
 ): SerpAnalysis {
   const items: SerpItem[] = pasted.slice(0, limit).map((p, i) => {
     const title = p.title.trim()
@@ -117,7 +118,7 @@ export function analyzePastedSerp(
     return {
       rank: i + 1,
       title,
-      link: '',
+      link: p.url ?? '',
       description: '',
       bloggerName,
       bloggerLink: '',
@@ -129,8 +130,8 @@ export function analyzePastedSerp(
     }
   })
 
-  // 붙여넣은 값은 사용자가 실제 화면에서 본 것이므로 샘플(mock)이 아니다
-  return buildAnalysis(keyword, items, total, false, 'paste')
+  // 붙여넣은 값도, 섹션 검색에서 읽어온 값도 실제 화면 기준이므로 샘플(mock)이 아니다
+  return buildAnalysis(keyword, items, total, false, source)
 }
 
 function buildAnalysis(
@@ -138,7 +139,7 @@ function buildAnalysis(
   items: SerpItem[],
   total: number,
   mock: boolean,
-  source: 'api' | 'paste'
+  source: SerpAnalysis['source']
 ): SerpAnalysis {
   const n = items.length || 1
   const withKeyword = items.filter((i) => i.keywordPos >= 0)
@@ -207,7 +208,7 @@ function prescribe(
   keyword: string,
   s: SerpAnalysis['stats'],
   total: number,
-  source: 'api' | 'paste'
+  source: SerpAnalysis['source']
 ): string[] {
   const out: string[] = []
 

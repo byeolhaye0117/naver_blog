@@ -706,7 +706,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
               {unknownCount}개가 <strong>판정 불가</strong>입니다 — 그 줄만 발행량 자동 조회가
               실패했습니다. 없는 값을 0으로 넣고 계산하면 경쟁률이 0이 되어 실제로는 과열된 키워드가
               &quot;황금 키워드&quot;로 보이기 때문에 판정을 내리지 않았습니다.{' '}
-              <strong>「건수 보기」로 네이버를 열어 최근 30일 글 수를 넣으면</strong> 그 줄의 등급이
+              <strong>「30일 건수 →」로 네이버를 열어 그 수를 넣으면</strong> 그 줄의 등급이
               바로 나옵니다 — 검색량은 이미 실측값이라 다시 적지 않아도 됩니다.
             </p>
           )}

@@ -127,6 +127,98 @@ export async function recentBlogCount(keyword: string, now = new Date()): Promis
   return value
 }
 
+// ─── 관련도순 상위 글 목록 ──────────────────────────────────────
+
+export interface SectionPost {
+  title: string
+  /** YYYY-MM-DD */
+  date: string | null
+  blogger: string | null
+  url: string
+}
+
+/** <b> 강조 태그·엔티티 제거 */
+function plain(s: string): string {
+  return s
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .trim()
+}
+
+/** addDate 는 epoch 밀리초로 온다 */
+function fromEpoch(ms: unknown): string | null {
+  const n = typeof ms === 'number' ? ms : Number(ms)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return new Date(n).toISOString().slice(0, 10)
+}
+
+/** 응답 JSON 에서 글 목록을 뽑는다 (순수 함수 — 테스트 대상) */
+export function parseSectionPosts(body: string): SectionPost[] {
+  const at = body.indexOf('{')
+  if (at < 0) return []
+  let json: unknown
+  try {
+    json = JSON.parse(body.slice(at))
+  } catch {
+    return []
+  }
+  const list = (json as { result?: { searchList?: unknown[] } })?.result?.searchList
+  if (!Array.isArray(list)) return []
+
+  const out: SectionPost[] = []
+  for (const raw of list) {
+    const r = raw as Record<string, unknown>
+    const title = plain(String(r.noTagTitle ?? '')) || plain(String(r.title ?? ''))
+    if (!title) continue
+    // blogName 은 있어도 빈 문자열인 경우가 있다 (?? 로는 안 걸러진다) — 그때는 별명을 쓴다
+    const blogger = plain(String(r.blogName ?? '')) || plain(String(r.nickName ?? ''))
+    out.push({
+      title,
+      date: fromEpoch(r.addDate),
+      blogger: blogger || null,
+      url: String(r.postUrl ?? ''),
+    })
+  }
+  return out
+}
+
+/**
+ * 관련도순 상위 글 목록 — 상위노출 분석의 자동 입력 경로.
+ *
+ * 검색 API(openapi) 가 막힌 계정에서도 되고, 제목·발행일·블로거명·링크가 다 들어 있다.
+ * 붙여넣기를 시키지 않아도 되는 이유가 여기 있다. 실패하면 빈 배열을 돌려주고,
+ * 화면에서는 붙여넣기로 넘어가게 안내한다.
+ */
+export async function topBlogPosts(
+  keyword: string,
+  display = 15
+): Promise<{ items: SectionPost[]; total: number | null }> {
+  const q = keyword.trim()
+  if (!q) return { items: [], total: null }
+
+  const url =
+    `${ENDPOINT}?countPerPage=${Math.min(display, 30)}&currentPage=1&orderBy=sim&type=post` +
+    `&keyword=${encodeURIComponent(q)}`
+
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': UA, Referer: REFERER, Accept: 'application/json, text/plain, */*' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    })
+    if (!res.ok) return { items: [], total: null }
+    const body = await res.text()
+    return { items: parseSectionPosts(body), total: parseSectionTotal(body) }
+  } catch {
+    return { items: [], total: null }
+  }
+}
+
 /** 사용자가 같은 숫자를 눈으로 확인할 수 있는 화면 주소 */
 export function blogSectionUrl(keyword: string): string {
   return `${REFERER}?keyword=${encodeURIComponent(keyword)}&orderBy=sim`

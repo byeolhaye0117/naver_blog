@@ -15,7 +15,7 @@ const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parse
   `${OUT}/analysis/paste.js`
 )
 const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffixesForStore, combineLocalKeywords, isRelevantKeyword, myRegionTokens } = require(`${OUT}/analysis/keyword.js`)
-const { parseSectionTotal, monthlyFromWeek, resolveRecent, SECTION_CAP } = require(
+const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SECTION_CAP } = require(
   `${OUT}/naver/blogsection.js`
 )
 const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/naver/place.js`)
@@ -704,6 +704,45 @@ ok(mm[3].grade === 'hard', `2,580회·경쟁률 1.66 → hard — ${mm[3].grade}
 ok(
   buildManualMetrics([{ keyword: 'k', monthlySearch: 1000, blogRecent: 2000 }])[0].grade === 'hard',
   '경쟁률 2.0 → hard'
+)
+
+console.log('\n[29] 상위노출 분석 — 붙여넣기 없이 상위 글 목록 읽기')
+// 실제 응답 모양 그대로 (프리픽스 `)]}',` 포함, 제목에 <b> 강조, addDate 는 epoch 밀리초).
+// 이 파싱이 되면 사용자가 검색 결과를 복사·붙여넣을 이유가 없어진다.
+const SECTION_BODY = `)]}',
+{"result":{"totalCount":437,"searchList":[
+ {"postUrl":"https://blog.naver.com/heenu/223001","title":"천안헬스장 추천 <b>두정동</b> 미라온휘트니스 여름준비","noTagTitle":"천안헬스장 추천 두정동 미라온휘트니스 여름준비","nickName":"헤누","blogName":"헤누가 간다!","addDate":1785293520000},
+ {"postUrl":"https://blog.naver.com/gym2/223002","title":"두정동 헬스장 3개월 후기 &amp; 가격 정리","noTagTitle":"두정동 헬스장 3개월 후기 &amp; 가격 정리","nickName":"운동하는곰","blogName":"","addDate":1782701520000},
+ {"postUrl":"https://blog.naver.com/x/3","noTagTitle":"","nickName":"이름만","blogName":"제목없음","addDate":1782701520000},
+ {"postUrl":"https://blog.naver.com/y/4","noTagTitle":"날짜가 없는 글","blogName":"어떤블로그"}
+]}}`
+
+const sp = parseSectionPosts(SECTION_BODY)
+ok(sp.length === 3, `제목 있는 글만 3개 — ${sp.length}개`)
+ok(sp[0].title === '천안헬스장 추천 두정동 미라온휘트니스 여름준비', `<b> 태그 제거 — ${sp[0].title}`)
+ok(sp[1].title === '두정동 헬스장 3개월 후기 & 가격 정리', `HTML 엔티티 복원 — ${sp[1].title}`)
+ok(sp[0].date === '2026-07-29', `addDate epoch → 날짜 — ${sp[0].date}`)
+ok(sp[0].blogger === '헤누가 간다!', `블로그명 — ${sp[0].blogger}`)
+ok(sp[1].blogger === '운동하는곰', 'blogName 이 비면 nickName 으로 대체', `${sp[1].blogger}`)
+ok(sp[0].url === 'https://blog.naver.com/heenu/223001', '글 링크를 그대로 들고 온다')
+ok(sp[2].date === null, '날짜가 없으면 null (0 으로 채우지 않음)')
+ok(parseSectionPosts('건수만 있고 목록이 없는 응답').length === 0, '못 읽으면 빈 배열')
+ok(parseSectionPosts(`)]}',\n{"result":{"totalCount":0,"searchList":[]}}`).length === 0, '결과 0건도 빈 배열')
+
+// 같은 목록을 붙여넣기 분석기에 그대로 넣으면 source 만 'section' 으로 달라진다
+const sa = analyzePastedSerp('두정동 헬스장', sp, 437, 30, 'section')
+ok(sa.source === 'section', `출처 표시 — ${sa.source}`)
+ok(sa.mock === false, '실제 화면 기준이므로 mock 아님')
+ok(sa.items[0].link === sp[0].url, '결과 목록에서 글 링크를 누를 수 있다')
+ok(sa.items[1].rank === 2, '읽어온 순서가 곧 순위')
+ok(sa.stats.datedCount === 2, `날짜를 아는 항목만 최신성에 씀 — ${sa.stats.datedCount}개`)
+ok(
+  sa.prescription.some((p) => p.includes('437')),
+  '처방에 최근 30일 발행량이 들어간다'
+)
+ok(
+  analyzePastedSerp('두정동 헬스장', sp, 437).source === 'paste',
+  '출처를 안 넘기면 기존 붙여넣기 경로 그대로'
 )
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
