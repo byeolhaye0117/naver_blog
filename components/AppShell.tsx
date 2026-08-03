@@ -154,7 +154,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="p-3">
           <Link
-            href="/write"
+            href="/write?new=1"
             className="bg-brand-600 hover:bg-brand-700 flex items-center justify-center gap-1.5 rounded-[14px] px-3 py-3 text-[13.5px] font-bold text-white shadow-[0_8px_20px_-10px_var(--color-brand-600)] transition"
           >
             <span className="block size-[17px]">
@@ -173,7 +173,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Logo small />
             </Link>
             <Link
-              href="/write"
+              href="/write?new=1"
               className="bg-brand-600 shrink-0 rounded-full px-4 py-2.5 text-[12.5px] font-bold text-white shadow-[0_8px_18px_-10px_var(--color-brand-600)]"
             >
               새 글

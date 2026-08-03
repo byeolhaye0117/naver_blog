@@ -28,6 +28,7 @@ export default function Editor({
   initialMain,
   initialType,
   initialStoreId,
+  autoOpened = false,
 }: {
   stores: Store[]
   posts: Post[]
@@ -35,6 +36,8 @@ export default function Editor({
   initialMain?: string
   initialType?: PostType
   initialStoreId?: string
+  /** 「글 작성」만 눌러 들어와 쓰던 초안을 자동으로 열어준 경우 */
+  autoOpened?: boolean
 }) {
   const router = useRouter()
 
@@ -249,6 +252,22 @@ export default function Editor({
 
   return (
     <div>
+      {autoOpened && (
+        <div className="card mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] px-4 py-3">
+          <span className="text-[12.5px] leading-relaxed">
+            쓰던 초안을 열었습니다 —{' '}
+            <b className="font-bold">{title || '(제목 없음)'}</b>
+            <span className="muted"> · {POST_TYPE_LABEL[type]} · {result.score}점</span>
+          </span>
+          <a
+            href="/write?new=1"
+            className="bd surface ml-auto rounded-full border px-3 py-1.5 text-[12px] font-bold hover:bg-slate-500/8"
+          >
+            새 글로 시작
+          </a>
+        </div>
+      )}
+
       {/* 툴바 — 점수와 저장은 어느 화면에서든 보인다 */}
       {/* 상단 헤더(휴대폰 약 61px) 바로 아래에 붙어 따라온다 */}
       <div className="panel bd sticky top-[61px] z-10 mb-4 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2.5 lg:top-2">
