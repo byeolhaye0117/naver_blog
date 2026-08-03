@@ -162,6 +162,19 @@ export function areasFromStore(store: {
 }
 
 /**
+ * 이 키워드가 **내 지점이 없는 동네** 것인지.
+ *
+ * 검색광고 API 의 연관 키워드에는 전국 동네가 섞여 온다 — 천안 지점을 조회했는데
+ * 월평동·관저동(대전), 송탄(평택) 같은 게 들어온다. 지점이 없는 동네로는 글을 쓸 수
+ * 없으니 걸러낸다. 동네 이름이 없는 키워드(예: "다이어트 정체기")는 지역과 무관하므로
+ * 남긴다 — 정보글 소재로 쓸 수 있다.
+ */
+export function isOtherArea(keyword: string, myAreas: Iterable<string>): boolean {
+  const mine = new Set(myAreas)
+  return Array.from(keyword.matchAll(/([가-힣]{2,10}?(?:동|읍|면))/g)).some((m) => !mine.has(m[1]))
+}
+
+/**
  * 그 지점 성격에 맞는 의도 접미사.
  * 24시간 운영이면 새벽·주말, 여성전용이면 여성전용 계열을 앞에 둔다 —
  * 지점이 실제로 가진 강점이 검색 의도와 맞아야 상위 노출 확률이 올라간다.

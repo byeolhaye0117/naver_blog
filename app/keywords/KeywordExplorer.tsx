@@ -29,14 +29,26 @@ function gradeTone(g: KeywordMetric['grade']) {
 
 const NUM = (n: number | null) => (n === null ? '—' : n.toLocaleString())
 
-function sortMetrics(list: KeywordMetric[], mode: Sort): KeywordMetric[] {
+/** 내가 넣은 키워드는 어떤 정렬에서도 위에 둔다 — 연관 키워드에 묻히면 안 된다 */
+function sortMetrics(list: KeywordMetric[], mode: Sort, requested: string[] = []): KeywordMetric[] {
+  const mine = new Set(requested)
+  const isMine = (k: string) => mine.has(k.replace(/\s+/g, ''))
   const copy = [...list]
   if (mode === 'competition') {
     // 진입 가능한 것부터: 등급 좋은 순 → 경쟁률 낮은 순
     const order: Record<string, number> = { gold: 0, good: 1, toobig: 2, hard: 3, toosmall: 4, unknown: 5 }
-    copy.sort((a, b) => order[a.grade] - order[b.grade] || a.competition - b.competition)
+    copy.sort(
+      (a, b) =>
+        Number(isMine(b.keyword)) - Number(isMine(a.keyword)) ||
+        order[a.grade] - order[b.grade] ||
+        a.competition - b.competition
+    )
   } else {
-    copy.sort((a, b) => b.monthlySearch - a.monthlySearch)
+    copy.sort(
+      (a, b) =>
+        Number(isMine(b.keyword)) - Number(isMine(a.keyword)) ||
+        b.monthlySearch - a.monthlySearch
+    )
   }
   return copy
 }
@@ -51,6 +63,11 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const [areas, setAreas] = useState('')
   const [combos, setCombos] = useState<string[]>([])
   const [picked, setPicked] = useState<string[]>([])
+
+  /** 연관 키워드도 함께 볼지 — 기본은 끔. 켜면 내 동네 것만 붙는다 */
+  const [withRelated, setWithRelated] = useState(false)
+  /** 내가 넣은 키워드 (표에서 구분 표시) */
+  const [requested, setRequested] = useState<string[]>([])
 
   const [manual, setManual] = useState('')
   const [badLines, setBadLines] = useState<string[]>([])
@@ -87,10 +104,12 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   )
 
   /** 새 결과를 받을 때 — 표시 순서를 새로 잡고 이전에 넣은 발행량은 비운다 */
-  function applyRows(list: KeywordMetric[]) {
+  function applyRows(list: KeywordMetric[], mine: string[] = []) {
     setRows(list)
     setTotalInput({})
-    setOrder(sortMetrics(list, sort).map((r) => r.keyword))
+    setRequested(mine)
+    // setRequested 는 비동기라 정렬에는 인자로 받은 값을 쓴다
+    setOrder(sortMetrics(list, sort, mine).map((r) => r.keyword))
   }
 
   async function run(list = keywords) {
@@ -104,11 +123,14 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
       const res = await fetch('/api/keywords', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords: list }),
+        body: JSON.stringify({ keywords: list, includeRelated: withRelated }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? '조회에 실패했습니다.')
-      applyRows(json.rows)
+      applyRows(
+        json.rows,
+        (json.requested ?? list).map((k: string) => k.replace(/\s+/g, ''))
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : '조회 중 오류가 발생했습니다.')
     } finally {
@@ -288,10 +310,13 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   }, [merged, order])
 
   function resort(mode: Sort = sort) {
-    setOrder(sortMetrics(merged ?? [], mode).map((r) => r.keyword))
+    setOrder(sortMetrics(merged ?? [], mode, requested).map((r) => r.keyword))
   }
 
   const dirty = Object.values(totalInput).some((v) => v.trim())
+
+  /** 내가 직접 넣은 키워드인지 (연관 키워드와 구분해 표시) */
+  const isMine = (k: string) => requested.includes(k.replace(/\s+/g, ''))
 
   /** 붙여넣은 플레이스 목록에서 뽑은 업체명 (순서 = 순위) */
   const pastedPlaces = useMemo(() => parsePlaceList(prPaste), [prPaste])
@@ -406,11 +431,24 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
             {loading ? '조회 중…' : '검색량 · 경쟁률 조회'}
           </button>
           {keywords.length > 0 && <span className="muted text-xs">{keywords.length}개 입력됨</span>}
+          <label className="ml-auto flex items-center gap-2 text-[12px] font-semibold">
+            <input
+              type="checkbox"
+              checked={withRelated}
+              onChange={(e) => setWithRelated(e.target.checked)}
+              className="size-4"
+            />
+            연관 키워드도 함께
+          </label>
         </div>
         <p className="muted mt-2 text-[11px] leading-relaxed">
           월 검색량은 네이버 <b>검색광고 API</b>, 최근 30일 발행량은 <b>블로그 섹션 검색</b>에서
           자동으로 가져옵니다. 발행량 쪽은 공식 API 가 아니라 네이버 화면이 쓰는 경로라, 막히거나
           응답이 바뀌면 <b>판정 불가</b>로 표시되고 그 줄만 직접 넣으면 됩니다.
+          <br />
+          <b>연관 키워드</b>를 켜면 검색광고 API 가 제안하는 키워드도 함께 등급을 매깁니다 — 다만
+          전국 동네가 섞여 오므로 <b>내 지점이 있는 동네가 아닌 것은 빼고</b> 보여줍니다. 내가 넣은
+          키워드는 어떤 정렬에서도 맨 위에 둡니다.
         </p>
 
         {error && (
@@ -694,6 +732,11 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                   <tr key={r.keyword} className="bd border-b last:border-0 align-top">
                     <td className="py-2.5 pr-3">
                       <div className="font-semibold">{r.keyword}</div>
+                      {isMine(r.keyword) && (
+                        <div className="mt-1">
+                          <Badge tone="brand">내가 넣은 키워드</Badge>
+                        </div>
+                      )}
                       {r.source === 'manual' ? (
                         <div className="muted mt-0.5 text-[11px]">직접 입력</div>
                       ) : (

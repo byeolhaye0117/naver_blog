@@ -14,7 +14,7 @@ const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parsePlaceList } = require(
   `${OUT}/analysis/paste.js`
 )
-const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffixesForStore, combineLocalKeywords } = require(`${OUT}/analysis/keyword.js`)
+const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffixesForStore, combineLocalKeywords, isOtherArea } = require(`${OUT}/analysis/keyword.js`)
 const { parseSectionTotal, monthlyFromWeek, resolveRecent, SECTION_CAP } = require(
   `${OUT}/naver/blogsection.js`
 )
@@ -491,6 +491,20 @@ ok(!placeAreas1.some((a) => a.includes('시') || a.includes('구')), '시·구�
 ok(areasFromPlace(pr[1]).includes('두정동'), '두정동 추출')
 
 // 플레이스 노출 목록에서 내 지점 찾기 — 등록 이름에 키워드가 덧붙어 있어 단순 비교로는 안 된다
+console.log('\n[28] 연관 키워드에서 다른 동네 걸러내기')
+// 검색광고 API 는 "헬스장" 계열로 전국 동네를 섞어 준다. 지점이 없는 동네로는 글을 쓸 수 없다.
+const MINE = ['쌍용동', '봉명동', '성정동', '용곡동', '신방동', '두정동']
+ok(!isOtherArea('쌍용동 헬스장', MINE), '내 동네는 통과')
+ok(!isOtherArea('두정동헬스장', MINE), '붙여 쓴 것도 통과')
+ok(isOtherArea('월평동헬스장', MINE), '월평동(대전)은 걸러냄')
+ok(isOtherArea('관저동헬스장', MINE), '관저동(대전)은 걸러냄')
+ok(isOtherArea('청당동헬스장', MINE), '청당동은 지점이 없어 걸러냄')
+ok(!isOtherArea('다이어트 정체기 극복', MINE), '동네 이름이 없으면 통과 (정보글 소재)')
+ok(!isOtherArea('천안 헬스장', MINE), '시 이름만 있으면 통과')
+ok(isOtherArea('쌍용동 헬스장 청당동', MINE), '하나라도 다른 동네가 섞이면 걸러냄')
+ok(!isOtherArea('쌍용동 24시헬스장', MINE), '의도가 붙어도 통과')
+ok(isOtherArea('신방동 헬스장', []), '내 동네 목록이 비면 전부 걸러냄')
+
 console.log('\n[27] 플레이스 목록 붙여넣기 — 번호 세기')
 // 통합검색은 7곳까지만 주고 플레이스 API 는 캡차로 막혀 있다. 8위 이후는 사람이 목록을
 // 봐야 하는데 눈으로 세면 틀린다. 붙여넣으면 순서대로 업체명만 뽑아 번호를 매긴다.
