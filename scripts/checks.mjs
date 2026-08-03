@@ -20,7 +20,7 @@ const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SE
 )
 const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/naver/place.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
-const { mockKeywordTool } = require(`${OUT}/naver/searchad.js`)
+const { mockKeywordTool, dedupeAdRows } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
 const { phaseOf, buildRankViews } = require(`${OUT}/analysis/rank.js`)
 let fails = 0
@@ -966,6 +966,21 @@ ok(s0.local === '쌍용동', '정보글 조연으로 쓸 지역 키워드')
 ok(plan.splits.some((x) => x.keyword === '쌍용동 헬스장 후기' && x.postType === 'review'), '후기는 따로 쓰라고 알려준다')
 ok(plan.sets.some((s) => s.main.keyword === '봉명동 헬스장'), '다른 지역은 별도 세트')
 ok(plan.sets.every((s) => !(s.area === '쌍용동' && s.subs.some((x) => x.metric.keyword.includes('봉명동')))), '지역이 섞이지 않는다')
+
+// 힌트를 5개씩 나눠 부르면 같은 키워드가 두 번 온다 (실측: 22개 요청에 24행)
+const dup = dedupeAdRows([
+  { keyword: '봉명동헬스장', monthlySearch: 830, monthlyPc: 250, monthlyMobile: 580, mock: false },
+  { keyword: '쌍용동헬스장', monthlySearch: 1470, monthlyPc: 470, monthlyMobile: 1000, mock: false },
+  { keyword: '봉명동헬스장', monthlySearch: 830, monthlyPc: 250, monthlyMobile: 580, mock: false },
+  { keyword: '봉명동 헬스장', monthlySearch: 830, monthlyPc: 250, monthlyMobile: 580, mock: false },
+])
+ok(dup.length === 2, '같은 키워드는 한 줄로 합친다', String(dup.length))
+ok(dup.map((r) => r.keyword).join(',') === '봉명동헬스장,쌍용동헬스장', '먼저 온 순서를 지킨다', dup.map((r) => r.keyword).join(','))
+const dup2 = dedupeAdRows([
+  { keyword: '쌍용동PT', monthlySearch: 0, monthlyPc: 0, monthlyMobile: 0, mock: true },
+  { keyword: '쌍용동PT', monthlySearch: 90, monthlyPc: 40, monthlyMobile: 50, mock: false },
+])
+ok(dup2.length === 1 && dup2[0].monthlySearch === 90, '검색량을 읽은 행을 남긴다')
 
 // 궁합만 보고 고르면 안 된다 — 검색량 × 궁합으로 값을 매긴다 (실측에서 뒤집혔던 저울)
 const big = mk('쌍용동 24시 헬스장', 285, 95)   // 궁합 보통 + 검색량 큼

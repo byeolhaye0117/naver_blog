@@ -351,8 +351,17 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
 
   const dirty = Object.values(totalInput).some((v) => v.trim())
 
-  /** 내가 직접 넣은 키워드인지 (연관 키워드와 구분해 표시) */
+  /**
+   * 내가 직접 넣은 키워드인지 (연관 키워드와 구분해 표시).
+   *
+   * 표시는 **연관 키워드가 섞여 있을 때만** 한다. 조합을 전부 채점하면 모든 줄이
+   * 내가 넣은 것이라 배지가 전부 붙어 아무 정보도 주지 않는다.
+   */
   const isMine = (k: string) => requested.includes(k.replace(/\s+/g, ''))
+  const hasRelated = useMemo(
+    () => Boolean(rows?.length) && (rows ?? []).some((r) => !isMine(r.keyword)),
+    [rows, requested]
+  )
 
   /** 붙여넣은 플레이스 목록에서 뽑은 업체명 (순서 = 순위) */
   const pastedPlaces = useMemo(() => parsePlaceList(prPaste), [prPaste])
@@ -905,7 +914,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                     <p className="text-[13.5px] leading-snug font-bold">{r.keyword}</p>
                     <p className="muted mt-0.5 text-[11px]">
                       {r.source === 'manual' ? '직접 입력' : `모바일 ${r.mobileShare}%`}
-                      {isMine(r.keyword) && ' · 내가 넣은 키워드'}
+                      {hasRelated && isMine(r.keyword) && ' · 내가 넣은 키워드'}
                     </p>
                   </div>
                   <Badge tone={gradeTone(r.grade)}>{GRADE_LABEL[r.grade]}</Badge>
@@ -1011,7 +1020,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                   <tr key={r.keyword} className="bd border-b last:border-0 align-top">
                     <td className="py-3 pr-3 pl-2.5">
                       <div className="font-semibold">{r.keyword}</div>
-                      {isMine(r.keyword) && (
+                      {hasRelated && isMine(r.keyword) && (
                         <div className="mt-1">
                           <Badge tone="brand">내가 넣은 키워드</Badge>
                         </div>
