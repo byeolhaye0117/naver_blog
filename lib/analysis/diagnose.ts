@@ -86,6 +86,15 @@ export interface Diagnosis {
   /** 한 줄 판정 */
   verdict: string
   fixes: Fix[]
+  /**
+   * 검사했는데 문제가 없던 항목.
+   *
+   * 이걸 안 보여주면 "고칠 곳 3개" 가 **3개만 검사한 것처럼** 보인다. 무엇을 이미
+   * 맞췄는지 알려주는 것도 진단의 일부다.
+   */
+  passed: string[]
+  /** 잴 수 없어서 건너뛴 항목 (이유까지) */
+  skipped: string[]
   /** 고칠 게 없을 때 다음에 할 일 */
   note?: string
 }
@@ -123,6 +132,8 @@ export function diagnose(input: {
 }): Diagnosis {
   const { post, serp, rank } = input
   const fixes: Fix[] = []
+  const passed: string[] = []
+  const skipped: string[] = []
   const charCount = post.charCount
   const title = post.title.trim()
   const kw = post.mainKeyword.trim()
@@ -130,6 +141,8 @@ export function diagnose(input: {
   // ── 제목 ─────────────────────────────────────────────
   // 제목은 가장 먼저 본다. 상위권과 길이·키워드 위치가 어긋나면 본문을 고쳐도 안 잡힌다.
   const theirTitle = serp.stats.avgTitleLength
+  if (theirTitle <= 0) skipped.push('제목 길이 — 상위 글 제목을 못 읽어 비교할 수 없습니다')
+  else if (title.length >= theirTitle - 8) passed.push(`제목 길이 (${title.length}자 · 상위 평균 ${theirTitle}자)`)
   if (theirTitle > 0 && title.length < theirTitle - 8) {
     fixes.push({
       id: 'title-short',
@@ -160,12 +173,20 @@ export function diagnose(input: {
       action: `"${kw}"를 제목 맨 앞으로 옮기세요.`,
       severity: 'high',
     })
+  } else if (kw && pos >= 0) {
+    passed.push(pos <= 6 ? '제목 맨 앞에 메인 키워드가 있습니다' : '제목에 메인 키워드가 있습니다')
   }
 
   // ── 본문 실측 대조 ────────────────────────────────────
   // 커트라인이 있을 때만 비교한다. 없으면 "상위가 얼마인지" 를 모르는데 부족하다고 말할 수 없다.
   const c = serp.cutline
+  if (!c) {
+    skipped.push('본문 분량·이미지·영상 — 상위 글 본문을 못 읽어 기준을 세울 수 없습니다')
+  }
   if (c) {
+    if (charCount >= c.charMedian) {
+      passed.push(`본문 분량 (${n(charCount)}자 · 상위 중간값 ${n(c.charMedian)}자)`)
+    }
     if (charCount < c.charMedian) {
       fixes.push({
         id: 'body-short',
@@ -175,6 +196,9 @@ export function diagnose(input: {
         action: `본문을 ${n(c.charTarget)}자 이상으로 늘리세요. 분량만 채우지 말고 구체 수치(가격·운영시간·기구 수·거리)와 직접 겪은 장면을 더하세요.`,
         severity: 'high',
       })
+    }
+    if (post.imageCount >= c.imageMedian) {
+      passed.push(`이미지 수 (${post.imageCount}장 · 상위 중간값 ${c.imageMedian}장)`)
     }
     if (post.imageCount < c.imageMedian) {
       fixes.push({
@@ -186,6 +210,8 @@ export function diagnose(input: {
         severity: 'high',
       })
     }
+    if (!c.videoExpected) passed.push('영상 — 상위권도 절반 미만이라 필수가 아닙니다')
+    else if (post.videoCount > 0) passed.push(`영상 ${post.videoCount}개`)
     if (c.videoExpected && post.videoCount === 0) {
       fixes.push({
         id: 'body-video',
@@ -200,6 +226,11 @@ export function diagnose(input: {
 
   // ── 소제목 ───────────────────────────────────────────
   // 못 쟀으면(네이버에서 읽어온 글) 지적하지 않는다 — 0개로 취급하면 거짓이 된다
+  if (post.headingCount === null) {
+    skipped.push('소제목 수 — 네이버에서 읽어온 글은 소제목을 구분할 표시가 없어 셀 수 없습니다')
+  } else if (post.headingCount >= 4) {
+    passed.push(`소제목 ${post.headingCount}개`)
+  }
   if (post.headingCount !== null && post.headingCount < 4) {
     fixes.push({
       id: 'headings',
@@ -219,6 +250,11 @@ export function diagnose(input: {
     .slice(0, 6)
     .filter((t) => !post.text.includes(t.token) && !title.includes(t.token))
     .map((t) => t.token)
+  if (!(serp.stats.usableTokens ?? []).length) {
+    skipped.push('상위권이 쓰는 말 — 쓸 수 있는 말이 상위 제목에 반복되지 않았습니다')
+  } else if (missingTokens.length < 2) {
+    passed.push('상위권이 쓰는 말이 이미 글에 들어 있습니다')
+  }
   if (missingTokens.length >= 2) {
     fixes.push({
       id: 'tokens',
@@ -233,11 +269,12 @@ export function diagnose(input: {
   // 다른 업체 상호가 상위를 먹고 있다 — 지시가 아니라 정보다.
   // 그 이름을 우리 글에 쓰라고 하면 남의 가게를 홍보하는 셈이다.
   const rivals = (serp.stats.rivalTokens ?? []).slice(0, 3)
+  if (!rivals.length) passed.push('상위 제목에 특정 업체가 반복되지 않습니다')
   if (rivals.length) {
     fixes.push({
       id: 'rival-brands',
       label: '다른 업체 후기 글이 이 키워드를 먹고 있습니다',
-      mine: '우리 글은 1편',
+      mine: '우리 글 1편',
       theirs: `${rivals.map((t) => `"${t.token}"`).join(', ')} 가 상위 제목에 반복`,
       action:
         '같은 방식(방문 후기)으로 맞붙되, 그 업체 이름은 절대 쓰지 마세요 — 남의 가게를 홍보하는 글이 됩니다. 우리 지점 강점을 같은 자리에 놓고, 후기 편수를 늘리는 쪽이 실효가 있습니다.',
@@ -246,6 +283,11 @@ export function diagnose(input: {
   }
 
   // ── 최신성 ───────────────────────────────────────────
+  if (serp.stats.datedCount < 4) {
+    skipped.push('최신성 — 상위 글의 발행일을 아는 항목이 4개 미만입니다')
+  } else if (serp.stats.freshWithin30dRate < 60) {
+    passed.push(`최신성 압박 낮음 (상위 ${serp.stats.freshWithin30dRate}%만 30일 이내)`)
+  }
   if (serp.stats.datedCount >= 4 && serp.stats.freshWithin30dRate >= 60) {
     fixes.push({
       id: 'freshness',
@@ -260,6 +302,7 @@ export function diagnose(input: {
 
   // ── 선점 ─────────────────────────────────────────────
   const worst = serp.stats.repeatBloggers[0]
+  if (!worst || worst.count < 3) passed.push('한 블로그가 상위를 몰아 차지하고 있지 않습니다')
   if (worst && worst.count >= 3) {
     fixes.push({
       id: 'dominated',
@@ -286,6 +329,8 @@ export function diagnose(input: {
 
   return {
     verdict,
+    passed,
+    skipped,
     fixes: [...fixes].sort(
       (a, b) => Number(b.severity === 'high') - Number(a.severity === 'high')
     ),
