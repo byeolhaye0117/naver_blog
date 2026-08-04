@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import { dedupeAdRows, keywordTool } from '@/lib/naver/searchad'
 import { recentBlogCount } from '@/lib/naver/blogsection'
-import { buildMetric, cityTokens, isRelevantKeyword, myRegionTokens } from '@/lib/analysis/keyword'
+import {
+  areasFromStore,
+  buildMetric,
+  cityTokens,
+  isRelevantKeyword,
+  myRegionTokens,
+} from '@/lib/analysis/keyword'
 import { keyStatus, NaverApiError } from '@/lib/naver/client'
 import { readDB } from '@/lib/store'
 import type { KeywordMetric } from '@/lib/types'
@@ -110,14 +116,23 @@ export async function POST(req: Request) {
     const scoped = body.storeId ? allStores.filter((s) => s.id === body.storeId) : allStores
     // 시 이름은 전 지점에서 모은다 — 좁히는 순간 「천안쌍용동헬스장」이 남의 지역으로
     // 판정돼 사라졌다 (실측: 월 260·170 두 줄이 통째로 빠졌다). cityTokens 주석 참고.
-    const myTokens = new Set([
-      ...myRegionTokens(scoped.length ? scoped : allStores),
-      ...cityTokens(allStores),
-    ])
+    const cities = cityTokens(allStores)
+    const myTokens = new Set([...myRegionTokens(scoped.length ? scoped : allStores), ...cities])
+
+    /*
+     * 시는 우리 것이지만 동네는 아니다.
+     *
+     * 시 이름을 살려두자 「천안두정동헬스장」·「천안불당동헬스장」처럼 천안이 붙은 남의
+     * 동네가 전부 통과해 24칸을 먹었다 (실측: 24줄 중 8줄). 조사 범위의 동네만 남긴다.
+     */
+    const scopeAreas = Array.from(
+      new Set((scoped.length ? scoped : allStores).flatMap(areasFromStore))
+    )
+    const scope = { areas: scopeAreas, cities: Array.from(cities) }
 
     const related = adRows
       .filter((r) => !requested.has(r.keyword.replace(/\s+/g, '')))
-      .filter((r) => isRelevantKeyword(r.keyword, myTokens))
+      .filter((r) => isRelevantKeyword(r.keyword, myTokens, scope))
       .sort((a, b) => b.monthlySearch - a.monthlySearch)
 
     const missing = keywords
