@@ -1,14 +1,21 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { KIND_LABEL, type BlogProfile } from '@/lib/analysis/blogscore'
+import { GRADE_LABEL, KIND_LABEL, type BlogGrade, type BlogProfile } from '@/lib/analysis/blogscore'
 import { Badge, Card, Empty, Field, Progress, inputClass } from '@/components/ui'
 
 interface Result {
   profile: BlogProfile
+  grade: { grade: BlogGrade; reason: string }
+  indexedRate?: number
+  indexDetail?: { title: string; found: boolean }[]
   meaning: string
   exposureDetail?: { query: string; rank: number | null }[]
   recent: { title: string; date: string; category: string; link: string }[]
+}
+
+function gradeTone(g: BlogGrade) {
+  return g === 'optimal' ? 'good' : g === 'semi' ? 'info' : g === 'dropped' ? 'bad' : g === 'weak' ? 'warn' : 'default'
 }
 
 function kindTone(k: BlogProfile['kind']) {
@@ -75,7 +82,7 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
           disabled={busy}
           className="bg-brand-600 mt-3 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {busy ? '읽는 중… (10~20초)' : '진단하기'}
+          {busy ? '읽는 중… (20~40초)' : '진단하기'}
         </button>
         {error && (
           <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-relaxed text-rose-700 dark:text-rose-300">
@@ -96,6 +103,33 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
               <p className="text-[12px] font-bold">우리에게 뜻하는 것</p>
               <p className="mt-1 text-[12.5px] leading-relaxed">{data.meaning}</p>
             </div>
+          </Card>
+
+          <Card
+            title={`등급 추정 · ${GRADE_LABEL[data.grade.grade]}`}
+            subtitle="「최적·준최·저품질」은 네이버가 만든 등급이 아니라 업계에서 쓰는 말입니다. 여기 값도 표본으로 흉내낸 추정이니, 아래 근거를 함께 보세요."
+            right={<Badge tone={gradeTone(data.grade.grade)}>{GRADE_LABEL[data.grade.grade]}</Badge>}
+          >
+            <p className="text-[13px] leading-relaxed">{data.grade.reason}</p>
+            {data.indexDetail && data.indexDetail.length > 0 && (
+              <div className="surface mt-3 rounded-xl p-3.5">
+                <p className="text-[12px] font-bold">
+                  색인 검사 — 제목을 그대로 검색해 그 글이 나오는지 ({data.indexedRate}%)
+                </p>
+                <p className="muted mt-1 text-[11px] leading-relaxed">
+                  제목 완전일치인데도 안 나오면 검색에서 빠진 것입니다. 이게 업계에서 말하는 「저품질」의
+                  실체이고, <b>순위가 낮은 것과는 다른 문제</b>입니다.
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {data.indexDetail.map((d) => (
+                    <li key={d.title} className="flex items-center gap-2 text-[12px]">
+                      <span className="min-w-0 flex-1 truncate">{d.title}</span>
+                      <Badge tone={d.found ? 'good' : 'bad'}>{d.found ? '나옴' : '안 나옴'}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </Card>
 
           <Card
@@ -161,7 +195,7 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
           {data.exposureDetail && data.exposureDetail.length > 0 && (
             <Card
               title="노출력 표본"
-              subtitle="최근 글의 제목 앞부분을 검색어로 써서, 그 글이 30위 안에 있는지 확인한 결과입니다."
+              subtitle="최근 글의 제목 앞부분을 검색어로 써서, 그 글이 30위 안에 있는지 확인한 결과입니다. 경쟁이 센 검색어를 노린 글은 안 걸리는 게 정상이니 검색어를 함께 보세요."
             >
               <ul className="space-y-1.5">
                 {data.exposureDetail.map((e) => (
