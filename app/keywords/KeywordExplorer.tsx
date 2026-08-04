@@ -15,7 +15,13 @@ import {
   parseManualRows,
   suffixesForStore,
 } from '@/lib/analysis/keyword'
-import { buildKeywordSets, writeHrefForSet } from '@/lib/analysis/synergy'
+import {
+  bestPartner,
+  buildKeywordSets,
+  writeHrefForPair,
+  writeHrefForSet,
+  type Partner,
+} from '@/lib/analysis/synergy'
 import { parsePlaceList, parseTotalCount } from '@/lib/analysis/paste'
 import { findMyPlaceIndex, type PlaceInfo } from '@/lib/naver/place'
 import { naverBlogSectionUrl, naverPlaceSearchUrl } from '@/lib/analysis/rank'
@@ -38,11 +44,19 @@ const NUM = (n: number | null) => (n === null ? '—' : n.toLocaleString())
  * "광고가 하나도 없어서 블로그가 첫 화면에 바로 보이는 키워드" 가 똑같이 보인다.
  * 값이 없으면 아무것도 그리지 않는다 — 0 으로 대신 쓰면 "광고 없음" 이라는 거짓이 된다.
  */
-function AdLine({ r }: { r: KeywordMetric }) {
+function AdLine({
+  r,
+  partner,
+  storeId,
+}: {
+  r: KeywordMetric
+  partner: Partner | null
+  storeId?: string
+}) {
   if (typeof r.adDepth !== 'number') return null
   const heavy = r.adDepth >= AD_HEAVY
   return (
-    <p
+    <div
       data-ad="line"
       className={`mt-1.5 rounded-lg px-2 py-1.5 text-[11px] leading-relaxed ${
         heavy
@@ -50,9 +64,74 @@ function AdLine({ r }: { r: KeywordMetric }) {
           : 'muted'
       }`}
     >
-      <strong>광고 {Math.round(r.adDepth * 10) / 10}개</strong>
-      {typeof r.ctrMobile === 'number' && ` · 광고 클릭률 모바일 ${r.ctrMobile}%`}
-      {r.adNote && <span className="block">{r.adNote}</span>}
+      <p>
+        <strong>광고 {Math.round(r.adDepth * 10) / 10}개</strong>
+        {typeof r.ctrMobile === 'number' && ` · 광고 클릭률 모바일 ${r.ctrMobile}%`}
+      </p>
+      {r.adNote && <p>{r.adNote}</p>}
+      {/* 「광고가 적은 키워드도 함께 노리세요」로 끝내면 그게 무엇인지 알 수 없다 */}
+      {heavy && partner?.adRelief && (
+        <p className="mt-1">
+          이 판에서 함께 쓸 것 →{' '}
+          <PartnerLink r={r} partner={partner} storeId={storeId} />{' '}
+          <span className="opacity-80">
+            (광고 {partner.metric.adDepth}개라 블로그가 위에 옵니다)
+          </span>
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** 짝 키워드를 글쓰기 화면으로 바로 넘기는 링크 */
+function PartnerLink({
+  r,
+  partner,
+  storeId,
+}: {
+  r: KeywordMetric
+  partner: Partner
+  storeId?: string
+}) {
+  const [mainK, subK] =
+    partner.role === 'sub' ? [partner.metric.keyword, r.keyword] : [r.keyword, partner.metric.keyword]
+  return (
+    <Link href={writeHrefForPair(mainK, subK, { storeId })} className="font-bold underline">
+      {partner.metric.keyword}
+    </Link>
+  )
+}
+
+/**
+ * 「그럼 뭘 같이 쓰면 되나」.
+ *
+ * 표에서 한 줄을 보고 있는 사람은 아래 「시너지 세트」와 그 줄을 잇지 못한다. 줄마다
+ * 짝을 한 개 붙여, 그 자리에서 글쓰기로 넘어갈 수 있게 한다.
+ */
+function PartnerLine({
+  r,
+  partner,
+  storeId,
+}: {
+  r: KeywordMetric
+  partner: Partner | null
+  storeId?: string
+}) {
+  if (!partner) return null
+  const sub = partner.role === 'sub'
+  return (
+    <p data-partner="line" className="muted mt-1.5 text-[11px] leading-relaxed">
+      <strong>함께 쓰기 좋은 키워드</strong>{' '}
+      <PartnerLink r={r} partner={partner} storeId={storeId} />
+      <span className="tnum"> (월 {partner.metric.monthlySearch.toLocaleString()}회)</span>
+      {sub ? (
+        <span className="block">
+          이 키워드가 더 작으니 「{partner.metric.keyword}」 글에 한 단락으로 얹는 편이 낫습니다 —
+          따로 한 편 쓰면 품이 더 듭니다.
+        </span>
+      ) : (
+        <span className="block">{partner.why}</span>
+      )}
     </p>
   )
 }
@@ -374,6 +453,28 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
       store: comboStore ?? undefined,
     })
     return p.sets.length ? p : null
+  }, [merged, areas, comboStore])
+
+  /**
+   * 줄마다 「함께 쓰기 좋은 키워드」 한 개.
+   *
+   * 세트(아래)는 지역별로 묶어 보여주지만, 표에서 한 줄을 보는 사람은 그 줄과 세트를
+   * 잇지 못한다 — 광고 경고를 보고 "그럼 뭘 같이 쓰냐" 는 질문이 실제로 나왔다.
+   */
+  const partners = useMemo(() => {
+    const out = new Map<string, Partner | null>()
+    if (!merged || merged.length < 2) return out
+    const areaList = areas.split(',').map((s) => s.trim()).filter(Boolean)
+    for (const m of merged) {
+      out.set(
+        m.keyword,
+        bestPartner(m, merged, {
+          areas: areaList.length ? areaList : undefined,
+          store: comboStore ?? undefined,
+        })
+      )
+    }
+    return out
   }, [merged, areas, comboStore])
 
   function resort(mode: Sort = sort) {
@@ -999,7 +1100,8 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 )}
 
                 <p className="muted mt-2 text-[11.5px] leading-relaxed">{r.gradeReason}</p>
-                <AdLine r={r} />
+                <AdLine r={r} partner={partners.get(r.keyword) ?? null} storeId={comboStore?.id} />
+                <PartnerLine r={r} partner={partners.get(r.keyword) ?? null} storeId={comboStore?.id} />
 
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
                   <Link
@@ -1111,7 +1213,8 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                       <Badge tone={gradeTone(r.grade)}>{GRADE_LABEL[r.grade]}</Badge>
                       <p className="muted mt-1 max-w-[240px] text-[11px] leading-snug">{r.gradeReason}</p>
                       <div className="max-w-[240px]">
-                        <AdLine r={r} />
+                        <AdLine r={r} partner={partners.get(r.keyword) ?? null} storeId={comboStore?.id} />
+                        <PartnerLine r={r} partner={partners.get(r.keyword) ?? null} storeId={comboStore?.id} />
                       </div>
                     </td>
                     <td className="py-3 pr-2.5 whitespace-nowrap">

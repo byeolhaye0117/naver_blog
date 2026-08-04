@@ -1,5 +1,6 @@
 import { POST_TYPE_LABEL } from '../types'
 import type { KeywordMetric, PostType } from '@/lib/types'
+import { AD_HEAVY } from './keyword'
 
 /**
  * 키워드 시너지 — "이 키워드랑 이 키워드는 한 글에 같이 넣으면 이득" 을 판정한다.
@@ -273,6 +274,102 @@ const SETTABLE = new Set(['gold', 'good'])
  */
 export function subValue(metric: KeywordMetric, synergy: Synergy): number {
   return metric.monthlySearch * (synergy.score / 100)
+}
+
+/** 지점 성격과 어긋나지 않는지 (거짓이 되는 키워드를 걸러낸다) */
+function needsMet(
+  parts: KeywordParts,
+  store?: { open24?: boolean; womenOnly?: boolean }
+): boolean {
+  const needs = parts.meta?.needs
+  if (!needs || !store) return true
+  if (needs === 'open24') return store.open24 !== false
+  return store.womenOnly !== false
+}
+
+export interface Partner {
+  metric: KeywordMetric
+  why: string
+  strength: 'strong' | 'ok'
+  /**
+   * 이 줄의 키워드가 그 글에서 맡을 자리.
+   * 'main' = 이 키워드로 글을 쓰고 짝을 얹는다.
+   * 'sub'  = 짝이 더 크므로 이 키워드는 짝의 글에 얹는 편이 낫다.
+   */
+  role: 'main' | 'sub'
+  /**
+   * 이 줄 키워드는 광고가 많은데 짝은 적은 경우.
+   *
+   * 「광고가 적은 키워드도 함께 노리세요」 라고만 말하고 끝내면 회원은 그게 무엇인지
+   * 모른다. 그 자리에 실제 이름을 넣어주려고 표시한다.
+   */
+  adRelief: boolean
+}
+
+/**
+ * 「그럼 이 키워드랑 뭘 같이 쓰면 되나」 에 답한다 (한 줄짜리 답).
+ *
+ * buildKeywordSets 는 지역별로 세트를 만들어 주지만, 표에서 한 줄을 보고 있는 사람은
+ * 그 줄과 세트를 잇지 못한다 — 실제로 회원이 광고 경고를 보고 "그럼 뭘 같이 쓰냐" 고
+ * 물었다. 그래서 줄마다 짝을 하나 붙인다.
+ *
+ * 고르는 저울은 세트와 같다 (검색량 × 궁합). 다만 이 줄이 광고가 많고 짝은 적으면
+ * 값을 올려 준다 — 광고에 밀리는 키워드의 유입을 실제로 나눠 주는 짝이기 때문이다.
+ */
+export function bestPartner(
+  main: KeywordMetric,
+  pool: KeywordMetric[],
+  opts: { areas?: string[]; store?: { open24?: boolean; womenOnly?: boolean } } = {}
+): Partner | null {
+  const areas =
+    opts.areas?.map((a) => a.trim()).filter(Boolean) ??
+    Array.from(new Set(pool.map((m) => splitKeyword(m.keyword).area).filter(Boolean)))
+
+  const mainFlat = flat(main.keyword)
+  const heavy = typeof main.adDepth === 'number' && main.adDepth >= AD_HEAVY
+
+  const scored = pool
+    .filter((m) => flat(m.keyword) !== mainFlat && m.monthlySearch > 0)
+    .map((m) => ({
+      m,
+      parts: splitKeyword(m.keyword, areas),
+      s: pairSynergy(main.keyword, m.keyword, areas),
+    }))
+    .filter(({ s }) => s.strength === 'strong' || s.strength === 'ok')
+    .filter(({ parts }) => needsMet(parts, opts.store))
+    .map((c) => {
+      const adRelief = heavy && typeof c.m.adDepth === 'number' && c.m.adDepth < AD_HEAVY
+      return { ...c, adRelief, v: subValue(c.m, c.s) * (adRelief ? 1.5 : 1) }
+    })
+    .sort((a, b) => b.v - a.v)
+
+  const best = scored[0]
+  if (!best) return null
+
+  return {
+    metric: best.m,
+    why: best.s.why,
+    strength: best.s.strength as 'strong' | 'ok',
+    role: best.m.monthlySearch > main.monthlySearch ? 'sub' : 'main',
+    adRelief: best.adRelief,
+  }
+}
+
+/** 두 키워드를 그대로 글쓰기 화면으로 넘기는 주소 */
+export function writeHrefForPair(
+  mainKeyword: string,
+  subKeyword: string,
+  opts: { postType?: PostType; local?: string; storeId?: string } = {}
+): string {
+  const q: string[] = [
+    `type=${opts.postType ?? splitKeyword(mainKeyword).meta?.postType ?? 'promo'}`,
+    `main=${encodeURIComponent(mainKeyword)}`,
+    `subs=${encodeURIComponent(subKeyword)}`,
+  ]
+  const local = opts.local ?? splitKeyword(mainKeyword).area
+  if (local) q.push(`local=${encodeURIComponent(local)}`)
+  if (opts.storeId) q.push(`store=${encodeURIComponent(opts.storeId)}`)
+  return `/write?${q.join('&')}`
 }
 
 /**
