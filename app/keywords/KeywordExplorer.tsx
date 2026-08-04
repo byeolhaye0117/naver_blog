@@ -25,6 +25,7 @@ import {
   writeHrefForSet,
   type Partner,
 } from '@/lib/analysis/synergy'
+import type { ShortlistPick } from '@/lib/analysis/shortlist'
 import { parsePlaceList, parseTotalCount } from '@/lib/analysis/paste'
 import { findMyPlaceIndex, type PlaceInfo } from '@/lib/naver/place'
 import { naverBlogSectionUrl, naverPlaceSearchUrl } from '@/lib/analysis/rank'
@@ -33,6 +34,13 @@ import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/
 import LineChart, { MiniBar } from '@/components/LineChart'
 
 type Sort = 'competition' | 'volume'
+
+interface ShortlistResult {
+  picked: ShortlistPick[]
+  skipped: { keyword: string; why: string }[]
+  considered: number
+  headline: string
+}
 
 function gradeTone(g: KeywordMetric['grade']) {
   return g === 'gold' ? 'good' : g === 'good' ? 'info' : g === 'hard' ? 'bad' : g === 'toobig' ? 'warn' : 'default'
@@ -212,6 +220,13 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const [suggestDropped, setSuggestDropped] = useState<{ keyword: string; why: string }[]>([])
   const [suggestDroppedCount, setSuggestDroppedCount] = useState(0)
 
+  /**
+   * 추려낸 추천 — 조합 46개 + 실제 검색어 26개면 사람이 고를 수 없다.
+   * 검색량과 궁합으로 12개를 골라 보여주고, 그것만 채점한다.
+   */
+  const [shortlist, setShortlist] = useState<ShortlistResult | null>(null)
+  const [shortBusy, setShortBusy] = useState(false)
+
   /** 연관 키워드도 함께 볼지 — 기본은 켬. 내 지역이 아닌 것은 서버에서 걸러진다 */
   const [withRelated, setWithRelated] = useState(true)
   /** 내가 넣은 키워드 (표에서 구분 표시) */
@@ -337,6 +352,42 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   }
 
   /**
+   * 후보를 추려 그것만 채점한다 — 「키워드가 너무 많다」에 대한 답.
+   *
+   * 두 단계로 나눈 이유. 후보 전부(60개)의 발행량을 재면 60~120콜이라 화면이 한참
+   * 멈춘다. 1단계는 검색량(5개당 1콜)과 궁합만으로 12개를 추리고, 2단계에서 그 12개만
+   * 발행량까지 재서 경쟁률·등급을 확정한다.
+   */
+  async function gradeShortlist(limit = 12) {
+    const pool = (picked.length ? picked : combos).slice(0, 60)
+    if (!pool.length) return
+    setShortBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/keywords/shortlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: pool, storeId: comboStore?.id, limit }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? '추리기에 실패했습니다.')
+      setShortlist(json)
+      const words: string[] = (json.picked ?? []).map((p: ShortlistPick) => p.keyword)
+      if (!words.length) {
+        setError('추천할 만한 키워드를 찾지 못했습니다. 아래에서 직접 골라 채점해 보세요.')
+        return
+      }
+      setPicked(words)
+      // 추려낸 것만 채점한다 — 여기서 경쟁률·등급이 확정된다
+      await run(words, false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '추리는 중 오류가 발생했습니다.')
+    } finally {
+      setShortBusy(false)
+    }
+  }
+
+  /**
    * 지점 정보에서 동네를 뽑아 조합까지 만들어 준다.
    * 인자가 없으면 전 지점을 합친다. 지점 성격(24시·여성전용)에 맞는 의도를 곱한다.
    */
@@ -355,6 +406,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     setPicked([])
     setComboStore(store ?? null)
     setSuggested([])
+    setShortlist(null)
     // 실제 검색어는 네트워크를 타므로 뒤따라 얹는다 — 조합은 기다리지 않고 바로 보인다
     void loadSuggestions(found, store?.id)
   }
@@ -792,6 +844,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
             setComboStore(null)
             setPicked([])
             setSuggested([])
+            setShortlist(null)
             void loadSuggestions(areas.split(',').map((s) => s.trim()).filter(Boolean))
           }}
           className="bd mt-3 rounded-xl border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8"
@@ -811,19 +864,33 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
 
         {combos.length > 0 && (
           <>
-            {/* 채점이 먼저다 — 고르는 것은 그다음이다. 예전에는 순서가 반대였다. */}
+            {/*
+              추리기를 먼저 둔다. 회원이 그대로 말했다 — "지금 키워드가 너무 많으니까
+              자주 검색하는 것, 시너지 나는 것, 경쟁이 안 센 것을 선별해줬으면 좋겠어."
+              46개를 늘어놓고 고르라고 하면 고를 수 없다.
+            */}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
+                onClick={() => gradeShortlist(12)}
+                disabled={loading || shortBusy}
+                className="bg-brand-600 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {shortBusy || loading
+                  ? '추리는 중… (10~20초)'
+                  : '많이 찾고 궁합 좋은 12개만 골라 채점'}
+              </button>
+              <button
+                type="button"
                 onClick={gradeCombos}
-                disabled={loading}
-                className="bg-brand-600 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={loading || shortBusy}
+                className="bd rounded-xl border px-3.5 py-2 text-[12.5px] font-semibold hover:bg-slate-500/8 disabled:opacity-50"
               >
                 {loading
                   ? '채점 중…'
                   : picked.length
                     ? `고른 ${picked.length}개 채점`
-                    : `${Math.min(combos.length, COMBO_LIMIT)}개 전부 채점해서 황금 키워드 찾기`}
+                    : `${Math.min(combos.length, COMBO_LIMIT)}개 전부 채점`}
               </button>
               {picked.length > 0 && (
                 <button
@@ -835,6 +902,52 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 </button>
               )}
             </div>
+            {/* 추린 결과 — 무엇을 왜 골랐는지, 무엇을 왜 뺐는지 */}
+            {shortlist && shortlist.picked.length > 0 && (
+              <div
+                data-shortlist="block"
+                className="bg-brand-500/8 border-brand-500/30 mt-3 rounded-xl border px-3 py-2.5"
+              >
+                <p className="text-brand-700 dark:text-brand-100 text-[12px] font-bold">
+                  추려낸 {shortlist.picked.length}개
+                </p>
+                <p className="muted mt-1 text-[11px] leading-relaxed">{shortlist.headline}</p>
+                <ul className="mt-2 space-y-1.5">
+                  {shortlist.picked.map((p) => (
+                    <li key={p.keyword} className="panel bd rounded-lg border px-2.5 py-1.5">
+                      <div className="flex items-start gap-1.5">
+                        <span className="text-[11.5px] font-bold">
+                          {p.role === 'sub' && <span className="muted">+ </span>}
+                          {p.keyword}
+                        </span>
+                        <span className="tnum muted ml-auto shrink-0 text-[11px]">
+                          월 {p.monthlySearch.toLocaleString()}회
+                        </span>
+                      </div>
+                      <p className="muted mt-0.5 text-[11px] leading-relaxed">{p.why}</p>
+                    </li>
+                  ))}
+                </ul>
+                {shortlist.skipped.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="muted cursor-pointer text-[11px] font-semibold select-none">
+                      빼놓은 {shortlist.skipped.length}개 — 왜 뺐는지 보기
+                    </summary>
+                    <ul className="muted mt-1.5 space-y-1 text-[11px] leading-relaxed">
+                      {shortlist.skipped.slice(0, 20).map((d) => (
+                        <li key={d.keyword}>
+                          <b>{d.keyword}</b> — {d.why}
+                        </li>
+                      ))}
+                      {shortlist.skipped.length > 20 && (
+                        <li>… 외 {shortlist.skipped.length - 20}개</li>
+                      )}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+
             <p className="muted mt-2 text-[11px] leading-relaxed">
               {combos.length}개 생성{combos.length > COMBO_LIMIT && ` (한 번에 ${COMBO_LIMIT}개까지 채점합니다 — 지점 버튼을 하나씩 누르면 전부 볼 수 있습니다)`}.
               전부 채점하면 <b>황금 키워드</b>가 자동으로 골라지고, <b>같이 쓰면 시너지 나는 세트</b>까지

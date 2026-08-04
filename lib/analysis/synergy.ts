@@ -276,7 +276,7 @@ const SETTABLE = new Set(['gold', 'good'])
  * 순수 함수로 빼둔 이유는 테스트로 고정하기 위해서다 — 이 저울이 뒤집히면
  * 검색량 10회짜리가 285회짜리를 밀어낸다 (실제로 그랬다).
  */
-export function subValue(metric: KeywordMetric, synergy: Synergy): number {
+export function subValue(metric: { monthlySearch: number }, synergy: Synergy): number {
   return metric.monthlySearch * (synergy.score / 100)
 }
 

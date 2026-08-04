@@ -1994,5 +1994,95 @@ ok(
   '동네인지 업체인지 단정하지 않고 둘 다 말한다'
 )
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[47] 후보 추리기 — 「키워드가 너무 많다」')
+const { buildShortlist, shortlistHeadline, SHORTLIST_MIN_SEARCH } =
+  require(`${OUT}/analysis/shortlist.js`)
+
+/*
+ * 회원 화면 실측: 조합 46개 + 자동완성 26개 = 72줄. 사람이 고를 수 없다.
+ * 검색량은 운영에서 받은 실제 값을 쓴다.
+ */
+const CANDS = [
+  { keyword: '쌍용동헬스장', monthlySearch: 1500, adDepth: 10 },
+  { keyword: '쌍용동24시헬스장', monthlySearch: 305, adDepth: 2 },
+  { keyword: '쌍용동PT', monthlySearch: 90, adDepth: 9 },
+  { keyword: '쌍용동헬스', monthlySearch: 120, adDepth: 3 },
+  { keyword: '쌍용동헬스장가격', monthlySearch: 150, adDepth: 8 },
+  { keyword: '봉명동헬스장', monthlySearch: 840, adDepth: 10 },
+  { keyword: '봉명동헬스장일일권', monthlySearch: 210, adDepth: 4 },
+  { keyword: '봉명동PT', monthlySearch: 140, adDepth: 10 },
+  { keyword: '천안헬스장', monthlySearch: 3060, adDepth: 10 },
+  { keyword: '천안헬스장일일권', monthlySearch: 120, adDepth: 5 },
+  { keyword: '쌍용동필라테스', monthlySearch: 500, adDepth: 3 },
+]
+const SL = buildShortlist(CANDS, {
+  areas: ['쌍용동', '봉명동'],
+  store: { open24: true, womenOnly: false },
+  limit: 8,
+})
+const slKeys = SL.picked.map((p) => p.keyword)
+ok(SL.picked.length <= 8, '개수를 지킨다', String(SL.picked.length))
+ok(slKeys.includes('쌍용동헬스장'), '동네에서 가장 많이 찾는 말을 축으로 세운다', slKeys.join(','))
+ok(slKeys.includes('봉명동헬스장'), '다른 동네도 축을 하나 세운다')
+ok(SL.picked[0].role === 'main', '첫 줄은 축')
+ok(
+  SL.picked.some((p) => p.role === 'sub' && p.under === '쌍용동헬스장'),
+  '축에 얹을 말을 붙인다',
+  JSON.stringify(SL.picked.filter((p) => p.role === 'sub').map((p) => [p.keyword, p.under]))
+)
+// 지역이 다른 것은 같은 축에 얹지 않는다
+ok(
+  SL.picked.every((p) => p.role === 'main' || p.area === '쌍용동' || p.area === '봉명동'),
+  '지역이 섞이지 않는다'
+)
+ok(
+  SL.picked.filter((p) => p.role === 'sub').every((p) => p.under && p.area),
+  '서브는 어느 축에 얹는지 밝힌다'
+)
+
+// 왜 뺐는지 말한다
+const why = (k) => (SL.skipped.find((x) => x.keyword === k) ?? {}).why ?? ''
+ok(why('쌍용동PT').includes('유입이 거의 없습니다'), '검색량이 작으면 이유를 밝히고 뺀다', why('쌍용동PT'))
+ok(SHORTLIST_MIN_SEARCH === 100, '추천 하한')
+ok(
+  SL.skipped.some((x) => x.why.includes('밀렸습니다')),
+  '자리에 밀린 것은 나쁜 키워드가 아니라고 밝힌다'
+)
+// 실제로 걸린 결함: 「쌍용동필라테스」가 검색량 500 으로 24시 키워드를 밀어내고 뽑혔다
+ok(!slKeys.includes('쌍용동필라테스'), '다른 업종은 검색량이 커도 추천하지 않는다', slKeys.join(','))
+ok(why('쌍용동필라테스').includes('업종'), '업종이 달라 뺐다고 말한다', why('쌍용동필라테스'))
+ok(slKeys.includes('쌍용동24시헬스장'), '그 자리에 우리 업종 키워드가 들어온다')
+
+// 지점 성격과 어긋나는 것은 추천하지 않는다 (사실과 달라진다)
+const SL2 = buildShortlist(CANDS, {
+  areas: ['쌍용동'],
+  store: { open24: false, womenOnly: false },
+  limit: 8,
+})
+ok(
+  !SL2.picked.some((p) => p.keyword === '쌍용동24시헬스장'),
+  '24시간 운영이 아니면 24시 키워드를 추천하지 않는다'
+)
+ok(
+  SL2.skipped.some((x) => x.keyword === '쌍용동24시헬스장' && x.why.includes('24시간')),
+  '왜 뺐는지 말한다'
+)
+
+// 검색량을 못 읽은 것은 추천하지 않는다 (0 을 작은 값으로 취급하면 안 된다)
+const SL3 = buildShortlist([{ keyword: '쌍용동헬스장', monthlySearch: 0 }], { areas: ['쌍용동'] })
+ok(SL3.picked.length === 0, '검색량 0 은 추천하지 않는다')
+ok(SL3.skipped[0].why.includes('읽지 못'), '못 읽었다고 말한다 (작다고 하지 않는다)', SL3.skipped[0].why)
+
+// 한 줄 요약 — 몇 편으로 몇 회를 노리는지, 경쟁률은 아직 모른다는 것까지
+const HEAD = shortlistHeadline(SL)
+ok(HEAD.includes('골랐습니다'), '몇 개를 골랐는지 말한다')
+ok(HEAD.includes('경쟁률은 채점하면'), '경쟁률은 아직 모른다고 밝힌다', HEAD)
+ok(shortlistHeadline({ picked: [], skipped: [], considered: 0 }).includes('찾지 못했습니다'), '없으면 없다고 한다')
+
+// 광고가 적은 것은 그 사실을 이유에 곁들인다 (자리 다툼이 덜하다)
+const lowAd = SL.picked.find((p) => p.keyword === '쌍용동24시헬스장')
+ok(!lowAd || lowAd.why.includes('광고') || lowAd.role === 'sub', '광고 사정을 곁들인다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

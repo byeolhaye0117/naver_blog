@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { dedupeAdRows, keywordTool } from '@/lib/naver/searchad'
+import { dedupeAdRows, keywordToolMany } from '@/lib/naver/searchad'
 import { recentBlogCount } from '@/lib/naver/blogsection'
 import {
   areasFromStore,
@@ -63,18 +63,6 @@ async function withBlogTotals(
     })
   }
   return out
-}
-
-/**
- * 검색광고 키워드도구는 힌트를 5개까지만 받는다. 조합 채점은 24개를 한 번에 보내므로
- * 5개씩 나눠 순서대로 부른다 (동시에 던지면 속도 제한에 걸린다).
- */
-async function keywordToolMany(keywords: string[]) {
-  const rows = []
-  for (let i = 0; i < keywords.length; i += 5) {
-    rows.push(...(await keywordTool(keywords.slice(i, i + 5))))
-  }
-  return rows
 }
 
 export async function POST(req: Request) {
