@@ -1,6 +1,7 @@
 import type { SerpAnalysis, SerpItem } from '@/lib/types'
 import { stripTags, type RawBlogItem } from '../naver/search'
 import type { PastedItem } from './paste'
+import { cutlineLine, type Cutline } from './cutline'
 
 /** 조사·상투어 — 제목 공통 토큰 집계에서 뺀다 */
 const STOPWORDS = new Set([
@@ -51,7 +52,7 @@ function ageOf(y: number, mo: number, d: number): number {
 }
 
 /** 공백 무시 부분일치 — "쌍용동 헬스장" 이 "쌍용동헬스장" 으로 쓰인 제목도 잡는다 */
-function looseIndexOf(haystack: string, needle: string): number {
+export function looseIndexOf(haystack: string, needle: string): number {
   const flatNeedle = needle.replace(/\s+/g, '')
   if (!flatNeedle) return -1
 
@@ -109,7 +110,9 @@ export function analyzePastedSerp(
   pasted: (PastedItem & { url?: string })[],
   total: number,
   limit = 30,
-  source: 'paste' | 'section' = 'paste'
+  source: 'paste' | 'section' = 'paste',
+  /** 상위 글 본문을 실제로 재서 만든 커트라인 (있으면 일반 규격 대신 이걸 쓴다) */
+  cutline?: Cutline | null
 ): SerpAnalysis {
   const items: SerpItem[] = pasted.slice(0, limit).map((p, i) => {
     const title = p.title.trim()
@@ -131,7 +134,7 @@ export function analyzePastedSerp(
   })
 
   // 붙여넣은 값도, 섹션 검색에서 읽어온 값도 실제 화면 기준이므로 샘플(mock)이 아니다
-  return buildAnalysis(keyword, items, total, false, source)
+  return buildAnalysis(keyword, items, total, false, source, cutline)
 }
 
 function buildAnalysis(
@@ -139,7 +142,8 @@ function buildAnalysis(
   items: SerpItem[],
   total: number,
   mock: boolean,
-  source: SerpAnalysis['source']
+  source: SerpAnalysis['source'],
+  cutline?: Cutline | null
 ): SerpAnalysis {
   const n = items.length || 1
   const withKeyword = items.filter((i) => i.keywordPos >= 0)
@@ -194,7 +198,8 @@ function buildAnalysis(
     total,
     items,
     stats,
-    prescription: prescribe(keyword, stats, total, source),
+    prescription: prescribe(keyword, stats, total, source, cutline),
+    cutline: cutline ?? undefined,
     mock,
     source,
   }
@@ -208,7 +213,8 @@ function prescribe(
   keyword: string,
   s: SerpAnalysis['stats'],
   total: number,
-  source: SerpAnalysis['source']
+  source: SerpAnalysis['source'],
+  cutline?: Cutline | null
 ): string[] {
   const out: string[] = []
 
@@ -266,8 +272,11 @@ function prescribe(
     )
   }
 
-  const body =
-    '본문은 2,000자 이상(정보가 알차면 2,500자)으로, 직접 촬영 이미지 5장 이상, 30초~3분 영상 1개를 넣으세요.'
+  // 상위 글을 실제로 재봤으면 그 값이 기준이다. 일반 규격은 못 읽었을 때만 쓴다 —
+  // 실측하면 키워드마다 판이 다르다 ("쌍용동 헬스장" 1위는 2,223자·이미지 17장).
+  const body = cutline
+    ? cutlineLine(cutline)
+    : '본문은 2,000자 이상(정보가 알차면 2,500자)으로, 직접 촬영 이미지 5장 이상, 30초~3분 영상 1개를 넣으세요.'
   out.push(
     total > 0
       ? `이 키워드로 최근 30일에 새 글 ${total.toLocaleString()}개가 올라왔습니다. ${body}`

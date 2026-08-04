@@ -13,8 +13,17 @@ import {
   rankLabel,
   type RankView,
 } from '@/lib/analysis/rank'
+import { OUT_OF_RANGE, SETTLE_DAYS, shouldDiagnose, type Diagnosis } from '@/lib/analysis/diagnose'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
 import LineChart from '@/components/LineChart'
+
+interface DiagnoseResult {
+  diagnosis: Diagnosis
+  rank: number | null
+  daysSincePublish: number
+  postId: string
+  measured: number
+}
 
 export default function RankTracker({
   initialViews,
@@ -39,6 +48,10 @@ export default function RankTracker({
   const [savingManual, setSavingManual] = useState<string | null>(null)
   const [manualMsg, setManualMsg] = useState<{ id: string; text: string; ok: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** 발행 후 실패 진단 (항목별) */
+  const [dxBusy, setDxBusy] = useState<string | null>(null)
+  const [dx, setDx] = useState<Record<string, DiagnoseResult>>({})
+  const [dxError, setDxError] = useState<{ id: string; text: string } | null>(null)
 
   const publishedPosts = posts.filter((p) => p.status === 'published')
   const anyMock = views.some((v) => v.history.some((h) => h.mock))
@@ -86,6 +99,29 @@ export default function RankTracker({
       if (res.ok && Array.isArray(json.views)) setViews(json.views)
     } catch {
       /* 목록 갱신 실패는 조용히 넘긴다 — 화면을 새로고침하면 복구된다 */
+    }
+  }
+
+  /**
+   * 지금 상위권을 다시 분석해 내 글과 대조한다.
+   * 결과는 처방으로 저장되므로, 글쓰기 화면을 열면 이미 AI 지시문에 실려 있다.
+   */
+  async function runDiagnose(targetId: string) {
+    setDxBusy(targetId)
+    setDxError(null)
+    try {
+      const res = await fetch('/api/rank/diagnose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? '진단에 실패했습니다.')
+      setDx((m) => ({ ...m, [targetId]: json }))
+    } catch (e) {
+      setDxError({ id: targetId, text: e instanceof Error ? e.message : '진단 중 오류가 발생했습니다.' })
+    } finally {
+      setDxBusy(null)
     }
   }
 
@@ -373,6 +409,99 @@ export default function RankTracker({
               ) : (
                 <Empty>아직 조회 기록이 없습니다.</Empty>
               )}
+
+              {/*
+                발행 후 실패 진단.
+                예전에는 순위 그래프만 있고 "그래서 뭘 해야 하나" 가 없었다. 2주가 지나도
+                30위 밖이면 기다려서 올라가지 않는다 — 그때 상위권을 다시 분석해 내 글과
+                대조하고 고칠 순서를 준다.
+              */}
+              {(() => {
+                const days = v.publishedAt
+                  ? Math.max(0, Math.floor((Date.now() - Date.parse(v.publishedAt)) / 86400000))
+                  : null
+                const due = days !== null && shouldDiagnose(v.current, days)
+                const got = dx[v.target.id]
+                if (!due && !got) return null
+                return (
+                  <div
+                    data-dx="block"
+                    className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/8 p-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="text-[12.5px] font-bold text-amber-900 dark:text-amber-200">
+                        발행 {days}일째 · {v.current === null ? `${OUT_OF_RANGE}위 밖` : `${v.current}위`} — 무엇을 고쳐야 하나
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => runDiagnose(v.target.id)}
+                        disabled={dxBusy === v.target.id}
+                        className="bg-brand-600 ml-auto rounded-xl px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
+                      >
+                        {dxBusy === v.target.id ? '분석 중…' : got ? '다시 진단' : '진단하기'}
+                      </button>
+                    </div>
+                    {!got && (
+                      <p className="mt-1.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+                        발행 후 {SETTLE_DAYS}일이 지났는데 {OUT_OF_RANGE}위 안에 없습니다. 지금 상위 글을
+                        다시 읽어 내 글과 대조합니다 (본문 글자수·이미지까지 실측).
+                      </p>
+                    )}
+                    {dxError?.id === v.target.id && (
+                      <p className="mt-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">
+                        {dxError.text}
+                      </p>
+                    )}
+                    {got && (
+                      <>
+                        <p className="mt-2 text-[12px] font-bold">{got.diagnosis.verdict}</p>
+                        {got.measured > 0 && (
+                          <p className="muted mt-0.5 text-[10.5px]">
+                            상위 글 {got.measured}개의 본문을 실제로 읽어 비교했습니다.
+                          </p>
+                        )}
+                        {got.diagnosis.fixes.length > 0 && (
+                          <ul className="mt-2 space-y-1.5">
+                            {got.diagnosis.fixes.map((f) => (
+                              <li key={f.id} className="panel bd rounded-xl border px-3 py-2">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[12px] font-bold">{f.label}</span>
+                                  {f.severity === 'high' && <Badge tone="bad">먼저</Badge>}
+                                  <span className="muted tnum ml-auto text-[10.5px]">
+                                    내 글 {f.mine} · {f.theirs}
+                                  </span>
+                                </div>
+                                <p className="muted mt-1 text-[11px] leading-relaxed">{f.action}</p>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {got.diagnosis.note && (
+                          <p className="muted mt-2 text-[11px] leading-relaxed">{got.diagnosis.note}</p>
+                        )}
+                        <div className="mt-2.5 flex flex-wrap gap-1.5">
+                          <Link
+                            href={`/write?id=${got.postId}`}
+                            className="bg-brand-600 rounded-xl px-3.5 py-2 text-[12px] font-bold text-white"
+                          >
+                            이 처방으로 고쳐 쓰기 →
+                          </Link>
+                          <Link
+                            href={`/serp?keyword=${encodeURIComponent(v.target.keyword)}`}
+                            className="bd rounded-xl border px-3 py-2 text-[12px] font-semibold hover:bg-slate-500/8"
+                          >
+                            상위권 자세히 보기
+                          </Link>
+                        </div>
+                        <p className="muted mt-2 text-[10.5px] leading-relaxed">
+                          이 진단은 처방으로 저장됐습니다 — 글을 열면 「AI로 본문 쓰기」 지시문에 이미
+                          들어가 있습니다.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* 네이버에서 직접 본 순위 기록 — 검색 API 없이도 추적이 굴러가고,
                   API 가 있어도 스마트블록 자리를 반영하므로 더 정확하다 */}
