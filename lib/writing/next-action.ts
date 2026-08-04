@@ -28,6 +28,13 @@ export interface ActionInput {
   rankTargets: RankTarget[]
   /** 순위가 직전 조회보다 떨어진 키워드 수 */
   fallenCount: number
+  /**
+   * 발행 2주가 지났는데 1페이지 밖인 항목 — 진단이 준비돼 있다는 뜻이다.
+   *
+   * 크론이 밤에 진단해 처방까지 저장해 두는데, 순위 화면에 들어가지 않으면 그 사실을
+   * 모른다. 대시보드에서 먼저 알려준다.
+   */
+  stuck: { keyword: string; rank: number | null; days: number }[]
   /** 발행 균형 (정보 : 홍보) 판정 */
   balance: { level: ActionTone; ratio: string; info: number; promo: number; review: number }
   /** 발행 주기 판정 */
@@ -48,7 +55,7 @@ function missingType(b: ActionInput['balance']): { type: string; label: string }
  * 항목이 없을 수는 없다 — 다 잘 돌아가고 있으면 다음 글감을 고르는 것이 할 일이다.
  */
 export function nextActions(input: ActionInput): NextAction[] {
-  const { stores, posts, rankTargets, fallenCount, balance, cadence, keys } = input
+  const { stores, posts, rankTargets, fallenCount, stuck, balance, cadence, keys } = input
   const out: NextAction[] = []
 
   const drafts = posts.filter((p) => p.status === 'draft')
@@ -106,6 +113,19 @@ export function nextActions(input: ActionInput): NextAction[] {
       why: '등록해두면 그 키워드에서 오르는지 밀리는지가 날짜별로 쌓입니다.',
       href: '/rank',
       cta: '순위 추적 등록',
+      tone: 'warn',
+    })
+  }
+
+  // 밀린 것보다 먼저 본다 — "왜 안 올라오나" 에 대한 답이 이미 준비돼 있다
+  if (stuck.length) {
+    const w = stuck[0]
+    out.push({
+      id: 'stuck',
+      title: `「${w.keyword}」 진단 결과가 준비됐습니다`,
+      why: `발행 ${w.days}일째 ${w.rank === null ? '순위 밖' : `${w.rank}위`} — 1페이지 밖입니다. 상위 글 본문까지 재서 무엇을 고쳐야 하는지 정리해 두었습니다${stuck.length > 1 ? ` (다른 ${stuck.length - 1}개도 함께)` : ''}.`,
+      href: '/rank',
+      cta: '무엇을 고쳐야 하나 보기',
       tone: 'warn',
     })
   }

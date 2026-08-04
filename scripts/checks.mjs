@@ -754,7 +754,7 @@ const { nextActions } = require(`${OUT}/writing/next-action.js`)
 const OKB = { level: 'good', ratio: '2 : 1', info: 2, promo: 1, review: 1 }
 const OKC = { level: 'good', last14: 5 }
 const KEYS = { search: true, searchAd: true }
-const base = { stores: [{ id: 's' }], posts: [], rankTargets: [], fallenCount: 0, balance: OKB, cadence: OKC, keys: KEYS }
+const base = { stores: [{ id: 's' }], posts: [], rankTargets: [], fallenCount: 0, stuck: [], balance: OKB, cadence: OKC, keys: KEYS }
 
 // 순서: 지점 → 첫 키워드 → 초안 → 검수완료 → 순위 등록
 const noStore = nextActions({ ...base, stores: [] })
@@ -786,6 +786,7 @@ const fallen = nextActions({
   posts: [{ status: 'published' }],
   rankTargets: [{ id: 't' }],
   fallenCount: 2,
+  stuck: [],
   balance: { level: 'warn', ratio: '0 : 1', info: 0, promo: 1, review: 0 },
 })
 ok(fallen[0].id === 'fallen', `밀린 키워드가 먼저 — ${fallen[0].id}`)
@@ -1055,6 +1056,22 @@ ok(
 ok(buildCutline(MET.slice(0, 2)) === null, `${CUTLINE_MIN_SAMPLE}개 미만이면 커트라인을 만들지 않는다`)
 const LINE = cutlineLine(CUT)
 ok(LINE.includes('2,100자') && LINE.includes('2,400자'), '처방 문장에 실측값이 들어간다', LINE.slice(0, 60))
+
+// 크론이 밤에 진단해 처방을 만들어 두면, 순위 화면에 안 들어가도 알려줘야 한다
+const STUCK = nextActions({
+  ...base,
+  posts: [{ id: 'p', status: 'published', type: 'promo', storeId: 's' }],
+  rankTargets: [{ id: 'rt', keyword: '쌍용동 헬스장', url: 'u', createdAt: '' }],
+  stuck: [{ keyword: '쌍용동 헬스장', rank: 14, days: 15 }],
+})
+ok(STUCK.some((a) => a.id === 'stuck'), '진단 준비됨을 대시보드에서 알려준다', STUCK.map((a) => a.id).join(','))
+const stuckAct = STUCK.find((a) => a.id === 'stuck')
+ok(stuckAct.title.includes('쌍용동 헬스장'), '어느 키워드인지 밝힌다')
+ok(stuckAct.why.includes('15일째') && stuckAct.why.includes('14위'), '며칠째 몇 위인지 밝힌다', stuckAct.why)
+ok(stuckAct.href === '/rank', '순위 화면으로 보낸다')
+const idxStuck = STUCK.findIndex((a) => a.id === 'stuck')
+const idxFallen = STUCK.findIndex((a) => a.id === 'fallen')
+ok(idxFallen === -1 || idxStuck < idxFallen, '답이 준비된 것을 먼저 보여준다')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[34] 발행하면 순위 추적에 자동 등록')

@@ -18,6 +18,7 @@ import {
   IconTrend,
 } from '@/components/icons'
 import { nextActions } from '@/lib/writing/next-action'
+import { shouldDiagnose } from '@/lib/analysis/diagnose'
 import StorageNotice from '@/components/StorageNotice'
 
 export const dynamic = 'force-dynamic'
@@ -44,6 +45,19 @@ export default async function Dashboard() {
     posts: db.posts,
     rankTargets: db.rankTargets,
     fallenCount: fallen.length,
+    // 발행 2주가 지났는데 1페이지 밖인 것 — 크론이 밤에 진단해 처방을 만들어 둔다
+    stuck: views
+      .filter((v) => {
+        const days = v.publishedAt
+          ? Math.floor((Date.now() - Date.parse(v.publishedAt)) / 86400000)
+          : null
+        return days !== null && shouldDiagnose(v.current, days)
+      })
+      .map((v) => ({
+        keyword: v.target.keyword,
+        rank: v.current,
+        days: Math.floor((Date.now() - Date.parse(v.publishedAt!)) / 86400000),
+      })),
     balance,
     cadence,
     keys,
