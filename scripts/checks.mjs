@@ -1996,7 +1996,7 @@ ok(
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[47] 후보 추리기 — 「키워드가 너무 많다」')
-const { buildShortlist, shortlistHeadline, SHORTLIST_MIN_SEARCH } =
+const { buildShortlist, shortlistHeadline, isEssential, SHORTLIST_MIN_SEARCH } =
   require(`${OUT}/analysis/shortlist.js`)
 
 /*
@@ -2015,6 +2015,7 @@ const CANDS = [
   { keyword: '천안헬스장', monthlySearch: 3060, adDepth: 10 },
   { keyword: '천안헬스장일일권', monthlySearch: 120, adDepth: 5 },
   { keyword: '쌍용동필라테스', monthlySearch: 500, adDepth: 3 },
+  { keyword: '쌍용동헬스장새벽', monthlySearch: 30, adDepth: 1 },
 ]
 const SL = buildShortlist(CANDS, {
   areas: ['쌍용동', '봉명동'],
@@ -2022,7 +2023,22 @@ const SL = buildShortlist(CANDS, {
   limit: 8,
 })
 const slKeys = SL.picked.map((p) => p.keyword)
-ok(SL.picked.length <= 8, '개수를 지킨다', String(SL.picked.length))
+const essentials = SL.picked.filter((p) => p.essential)
+ok(SL.picked.length <= 8 + essentials.length, '개수를 지킨다 (필수 키워드는 별도)', String(SL.picked.length))
+// 필수 키워드는 검색량이 작아도, 자리에 밀려도 반드시 담는다
+ok(
+  slKeys.includes('쌍용동PT'),
+  '동네 + 업종 기본형은 월 90회여도 담는다',
+  JSON.stringify(essentials.map((p) => p.keyword))
+)
+ok(
+  essentials.some((p) => p.keyword === '쌍용동PT' && p.why.includes('가장 먼저 치는 말')),
+  '왜 필수인지 말한다'
+)
+ok(isEssential('쌍용동 헬스장', ['쌍용동']) && isEssential('쌍용동PT', ['쌍용동']), '기본형 두 개')
+ok(!isEssential('쌍용동 헬스장 가격', ['쌍용동']), '의도가 붙으면 기본형이 아니다')
+ok(!isEssential('쌍용동 헬스', ['쌍용동']), '같은 뜻의 변형은 필수로 올리지 않는다')
+ok(!isEssential('천안헬스장', ['쌍용동']), '내 동네가 아니면 필수가 아니다')
 ok(slKeys.includes('쌍용동헬스장'), '동네에서 가장 많이 찾는 말을 축으로 세운다', slKeys.join(','))
 ok(slKeys.includes('봉명동헬스장'), '다른 동네도 축을 하나 세운다')
 ok(SL.picked[0].role === 'main', '첫 줄은 축')
@@ -2050,8 +2066,6 @@ ok(splitKeyword('천안운동').area === '', '운동을 동네로 읽지 않는�
 ok(splitKeyword('천안활동비').area === '', '활동도 동네가 아니다')
 ok(splitKeyword('쌍용동헬스장').area === '쌍용동', '진짜 동네는 그대로 읽는다')
 ok(splitKeyword('두정동 PT').area === '두정동', '띄어쓴 동네도 읽는다')
-
-ok(!slKeys.includes('쌍용동헬스'), '월 120회짜리를 두 번째 축으로 세우지 않는다', slKeys.join(','))
 
 // 시를 넘기면 광역 키워드도 의도가 갈린다 — 정보글 키워드가 홍보글 서브로 붙지 않는다
 const SL4 = buildShortlist(
@@ -2104,13 +2118,18 @@ ok(
 
 // 왜 뺐는지 말한다
 const why = (k) => (SL.skipped.find((x) => x.keyword === k) ?? {}).why ?? ''
-ok(why('쌍용동PT').includes('유입이 거의 없습니다'), '검색량이 작으면 이유를 밝히고 뺀다', why('쌍용동PT'))
 ok(SHORTLIST_MIN_SEARCH === 100, '추천 하한')
+ok(
+  why('쌍용동헬스장새벽').includes('유입이 거의 없습니다'),
+  '검색량이 작으면 이유를 밝히고 뺀다',
+  why('쌍용동헬스장새벽')
+)
 ok(
   why('쌍용동헬스').includes('밀렸습니다'),
   '두 번째 축이 되지 못한 것은 자리에 밀렸다고 말한다',
   why('쌍용동헬스')
 )
+ok(!slKeys.includes('쌍용동헬스'), '월 120회짜리 변형은 축으로 세우지 않는다', slKeys.join(','))
 ok(
   SL.skipped.some((x) => x.why.includes('밀렸습니다')),
   '자리에 밀린 것은 나쁜 키워드가 아니라고 밝힌다'

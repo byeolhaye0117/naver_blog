@@ -10,13 +10,10 @@ import {
   ctrNote,
   keywordVerdict,
   type VerdictLevel,
-  INTENT_SUFFIXES,
   areasFromStore,
   buildManualMetrics,
   buildMetric,
-  combineLocalKeywords,
   parseManualRows,
-  suffixesForStore,
 } from '@/lib/analysis/keyword'
 import {
   bestPartner,
@@ -25,7 +22,7 @@ import {
   writeHrefForSet,
   type Partner,
 } from '@/lib/analysis/synergy'
-import type { ShortlistPick } from '@/lib/analysis/shortlist'
+import { SOURCE_LABEL, type ShortlistPick } from '@/lib/analysis/shortlist'
 import { parsePlaceList, parseTotalCount } from '@/lib/analysis/paste'
 import { findMyPlaceIndex, type PlaceInfo } from '@/lib/naver/place'
 import { naverBlogSectionUrl, naverPlaceSearchUrl } from '@/lib/analysis/rank'
@@ -40,6 +37,22 @@ interface ShortlistResult {
   skipped: { keyword: string; why: string }[]
   considered: number
   headline: string
+}
+
+/** 지점 하나를 진단한 결과 — 후보 모으기부터 채점까지 서버에서 한 번에 돈다 */
+interface DiagnoseResult extends ShortlistResult {
+  areas: string[]
+  rows: KeywordMetric[]
+  requested: string[]
+  sources: {
+    auto: number
+    combo: number
+    related: number
+    autoAsked: number
+    autoAnswered: number
+  }
+  autoDropped: { keyword: string; why: string }[]
+  autoDroppedCount: number
 }
 
 function gradeTone(g: KeywordMetric['grade']) {
@@ -205,7 +218,6 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   const [error, setError] = useState<string | null>(null)
 
   const [areas, setAreas] = useState('')
-  const [combos, setCombos] = useState<string[]>([])
   const [picked, setPicked] = useState<string[]>([])
   /** 조합을 만든 지점 — 세트 판정(24시·여성전용)과 글쓰기 링크에 쓴다 */
   const [comboStore, setComboStore] = useState<Store | null>(null)
@@ -214,18 +226,16 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
    * 네이버 검색창 자동완성에서 가져온 말 — **사람들이 실제로 치는 검색어**.
    * 우리가 만든 조합(가설)과 구분해서 표시하고, 채점은 함께 한다.
    */
-  const [suggested, setSuggested] = useState<string[]>([])
-  const [suggestBusy, setSuggestBusy] = useState(false)
-  const [suggestNote, setSuggestNote] = useState<string | null>(null)
-  const [suggestDropped, setSuggestDropped] = useState<{ keyword: string; why: string }[]>([])
-  const [suggestDroppedCount, setSuggestDroppedCount] = useState(0)
 
   /**
    * 추려낸 추천 — 조합 46개 + 실제 검색어 26개면 사람이 고를 수 없다.
    * 검색량과 궁합으로 12개를 골라 보여주고, 그것만 채점한다.
    */
-  const [shortlist, setShortlist] = useState<ShortlistResult | null>(null)
-  const [shortBusy, setShortBusy] = useState(false)
+  /** 진단 대상 지점 — null = 전 지점. 아직 안 골랐으면 diagPicked 가 false */
+  const [diagStore, setDiagStore] = useState<Store | null>(null)
+  const [diagPicked, setDiagPicked] = useState(false)
+  const [diagBusy, setDiagBusy] = useState(false)
+  const [diag, setDiag] = useState<DiagnoseResult | null>(null)
 
   /** 연관 키워드도 함께 볼지 — 기본은 켬. 내 지역이 아닌 것은 서버에서 걸러진다 */
   const [withRelated, setWithRelated] = useState(true)
@@ -316,115 +326,53 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   }
 
   /**
-   * 사람들이 실제로 치는 검색어를 가져와 후보 맨 앞에 얹는다.
-   *
-   * 조합 생성기는 우리가 만든 가설이다("이렇게 검색할 것 같다"). 자동완성은 실제로
-   * 입력되는 말이라, 우리가 못 떠올린 의도가 나온다 — 실측에서 「일일권」·「1일권」·
-   * 「사우나」가 나왔다. 우리 접미사 목록에는 없던 말이다.
-   *
-   * 조합 생성을 막지 않는다 — 이건 네트워크를 타므로 실패할 수 있고, 실패해도 조합은
-   * 그대로 쓸 수 있어야 한다.
+   * 지점을 고른다 — 동네를 채우고 이전 결과를 지운다.
+   * 조합·자동완성은 여기서 미리 만들지 않는다. 진단 버튼 하나가 서버에서 전부 돈다.
    */
-  async function loadSuggestions(areaList: string[], storeId?: string) {
-    if (!areaList.length) return
-    setSuggestBusy(true)
-    setSuggestNote(null)
-    try {
-      const res = await fetch('/api/suggest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ areas: areaList, storeId }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? '검색어를 가져오지 못했습니다.')
-      const words: string[] = json.keywords ?? []
-      setSuggested(words)
-      setSuggestDropped(json.dropped ?? [])
-      setSuggestDroppedCount(json.droppedCount ?? 0)
-      // 실제 검색어를 앞에 둔다 — 채점 한도(24개)에서 먼저 자리를 잡아야 한다
-      setCombos((prev) => Array.from(new Set([...words, ...prev])))
-      if (!words.length) setSuggestNote('자동완성에서 쓸 만한 말이 나오지 않았습니다.')
-    } catch (e) {
-      setSuggestNote(e instanceof Error ? e.message : '검색어를 가져오지 못했습니다.')
-    } finally {
-      setSuggestBusy(false)
-    }
-  }
-
-  /**
-   * 후보를 추려 그것만 채점한다 — 「키워드가 너무 많다」에 대한 답.
-   *
-   * 두 단계로 나눈 이유. 후보 전부(60개)의 발행량을 재면 60~120콜이라 화면이 한참
-   * 멈춘다. 1단계는 검색량(5개당 1콜)과 궁합만으로 12개를 추리고, 2단계에서 그 12개만
-   * 발행량까지 재서 경쟁률·등급을 확정한다.
-   */
-  async function gradeShortlist(limit = 12) {
-    const pool = (picked.length ? picked : combos).slice(0, 60)
-    if (!pool.length) return
-    setShortBusy(true)
+  function pickDiagStore(store: Store | null) {
+    setDiagStore(store)
+    setDiagPicked(true)
+    setDiag(null)
     setError(null)
-    try {
-      const res = await fetch('/api/keywords/shortlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords: pool, storeId: comboStore?.id, limit }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? '추리기에 실패했습니다.')
-      setShortlist(json)
-      const words: string[] = (json.picked ?? []).map((p: ShortlistPick) => p.keyword)
-      if (!words.length) {
-        setError('추천할 만한 키워드를 찾지 못했습니다. 아래에서 직접 골라 채점해 보세요.')
-        return
-      }
-      setPicked(words)
-      // 추려낸 것만 채점한다 — 여기서 경쟁률·등급이 확정된다
-      await run(words, false)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '추리는 중 오류가 발생했습니다.')
-    } finally {
-      setShortBusy(false)
-    }
-  }
-
-  /**
-   * 지점 정보에서 동네를 뽑아 조합까지 만들어 준다.
-   * 인자가 없으면 전 지점을 합친다. 지점 성격(24시·여성전용)에 맞는 의도를 곱한다.
-   */
-  function fillFromStore(store?: Store) {
     const list = store ? [store] : stores
-    if (!list.length) return
     const found = Array.from(new Set(list.flatMap(areasFromStore)))
-    if (!found.length) {
-      setError('지점 주소에서 동네를 찾지 못했습니다. 지역명을 직접 넣어주세요.')
-      return
-    }
-    setError(null)
     setAreas(found.join(', '))
-    // 여러 지점을 합칠 때는 어느 한 지점 성격에만 맞추면 안 되니 공통 의도를 쓴다
-    setCombos(combineLocalKeywords(found, store ? suffixesForStore(store) : INTENT_SUFFIXES))
-    setPicked([])
-    setComboStore(store ?? null)
-    setSuggested([])
-    setShortlist(null)
-    // 실제 검색어는 네트워크를 타므로 뒤따라 얹는다 — 조합은 기다리지 않고 바로 보인다
-    void loadSuggestions(found, store?.id)
+    // 아래 「시너지 세트」·짝 추천이 이 지점 성격으로 판정되게 맞춰 둔다
+    setComboStore(store)
   }
 
   /**
-   * 만든 조합을 한꺼번에 채점한다.
+   * 키워드 진단 — 지점 하나로 전부 돈다 (서버에서 순서대로).
    *
-   * 예전에는 24개를 똑같은 알약으로 늘어놓고 5개만 골라 조회하게 했다 — 무엇을 고를지
-   * 알려면 채점을 해야 하는데, 채점을 하려면 먼저 골라야 하는 앞뒤가 바뀐 순서였다.
-   * 그래서 전부 채점하고, 그 결과로 세트까지 묶어준다.
+   * 후보 모으기(실제 검색어 + 함께 찾는 말 + 우리 조합) → 추리기 → 추린 것만 채점.
+   * 예전에는 이걸 회원이 세 번 눌러서 했다.
    */
-  const COMBO_LIMIT = 24
-  async function gradeCombos() {
-    const list = (picked.length ? picked : combos).slice(0, COMBO_LIMIT)
-    if (!list.length) return
-    setRaw(list.join(', '))
-    // 조합은 이미 후보가 충분하다 — 연관 키워드까지 붙이면 24칸이 밀려 잘린다
-    await run(list, false)
+  async function runDiagnose(areaOverride?: string[]) {
+    setDiagBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/keywords/diagnose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeId: areaOverride?.length ? undefined : diagStore?.id,
+          areas: areaOverride?.length ? areaOverride : undefined,
+          extra: keywords,
+          limit: 12,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? '진단에 실패했습니다.')
+      setDiag(json)
+      // 표·세트는 기존 화면을 그대로 쓴다 (채점 결과가 곧 그 표다)
+      applyRows(json.rows, json.requested)
+      setPicked(json.requested)
+      if (Array.isArray(json.areas)) setAreas(json.areas.join(', '))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '진단 중 오류가 발생했습니다.')
+    } finally {
+      setDiagBusy(false)
+    }
   }
 
   /**
@@ -664,12 +612,6 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     [manual]
   )
 
-  function togglePick(k: string) {
-    setPicked((p) =>
-      p.includes(k) ? p.filter((x) => x !== k) : p.length >= COMBO_LIMIT ? p : [...p, k]
-    )
-  }
-
   return (
     <div className="space-y-4">
       {/* 카드가 여러 개라 무엇부터 해야 하는지 안 보인다. 순서를 먼저 적어둔다. */}
@@ -696,342 +638,302 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
         </ol>
       </div>
 
+      {/*
+        「키워드 조회」와 「지역 키워드 조합」을 하나로 합쳤다.
+
+        회원이 그대로 말했다 — "이거 두 개 따로 있는 이유가 없는 것 같아." 맞는 말이다.
+        조합을 만드는 것과 그걸 조회하는 것은 한 동작인데, 두 칸으로 나눠 놓으니 어느
+        쪽부터 써야 하는지 매번 판단해야 했다. 지점 하나 고르고 버튼 하나 누르면 끝나게 한다.
+      */}
       <Card
-        title="키워드 조회"
-        subtitle="한 번에 5개까지. 입력한 키워드의 연관 키워드도 함께 등급을 매깁니다. 무엇을 넣을지 모르겠으면 아래 「지역 키워드 조합」부터 쓰세요."
-      >
-        <Field
-          label="키워드 (쉼표 또는 줄바꿈으로 구분)"
-          hint="예: 쌍용동 헬스장, 다이어트 정체기 극복, 교대근무 운동"
-        >
-          <textarea
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            rows={2}
-            className={inputClass}
-            placeholder="쌍용동 헬스장, 성정동 여성전용"
-          />
-        </Field>
-
-        {stores.length > 0 && (
-          <div className="mt-3">
-            <p className="muted mb-1.5 text-[11px] font-semibold">지점 지역 키워드로 바로 채우기</p>
-            <div className="flex flex-wrap gap-1.5">
-              {stores.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setRaw(s.localKeywords.slice(0, 5).join(', '))}
-                  aria-label={`${s.name} 지역 키워드를 조회칸에 채우기`}
-                  className="bd rounded-full border px-2.5 py-1 text-[11px] font-semibold hover:bg-slate-500/8"
-                >
-                  {s.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => run()}
-            disabled={loading}
-            className="bg-brand-600 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {loading ? '조회 중…' : '검색량 · 경쟁률 조회'}
-          </button>
-          {keywords.length > 0 && <span className="muted text-xs">{keywords.length}개 입력됨</span>}
-          <label className="ml-auto flex items-center gap-2 text-[12px] font-semibold">
-            <input
-              type="checkbox"
-              checked={withRelated}
-              onChange={(e) => setWithRelated(e.target.checked)}
-              className="size-4"
-            />
-            연관 키워드도 함께
-          </label>
-        </div>
-        {/* 설명은 접어 둔다 — 매번 읽을 내용이 아니라 한 번 읽고 마는 내용이다 */}
-        <details className="muted mt-2.5 text-[11px] leading-relaxed">
-          <summary className="cursor-pointer font-semibold select-none">
-            숫자는 어디서 오나 · 연관 키워드는 어떻게 걸러지나
-          </summary>
-          <div className="mt-2 space-y-2">
-            <p>
-              월 검색량은 네이버 <b>검색광고 API</b>, 최근 30일 발행량은 <b>블로그 섹션 검색</b>에서
-              자동으로 가져옵니다. 발행량 쪽은 공식 API 가 아니라 네이버 화면이 쓰는 경로라, 막히거나
-              응답이 바뀌면 <b>판정 불가</b>로 표시되고 그 줄만 직접 넣으면 됩니다.
-            </p>
-            <p>
-              <b>연관 키워드</b>도 함께 등급을 매깁니다 — 안 떠올린 키워드를 찾는 게 이 화면의 값이라
-              기본으로 켜 둡니다. 다만 검색광고 API 는 전국·전업종을 섞어 주므로{' '}
-              <b>내 지점이 있는 지역 + 헬스·운동 업종만</b> 남깁니다 (다른 지역, 필라테스·요가·피부관리
-              같은 다른 업종, 남의 상호는 제외). 내가 직접 넣은 키워드는 이 걸러내기를 거치지 않고 어떤
-              정렬에서도 맨 위에 둡니다.
-            </p>
-          </div>
-        </details>
-
-        {error && (
-          <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-700 dark:text-rose-300">
-            {error}
-          </p>
-        )}
-      </Card>
-
-      <Card
-        title="지역 키워드 조합 만들기"
-        subtitle="스마트블록은 세부 의도를 가진 키워드에 걸릴 기회가 큽니다. 지역명에 의도를 곱해 후보를 만드세요."
+        title="키워드 진단"
+        subtitle="지점을 고르면 그 동네에서 사람들이 실제로 찾는 말·네이버가 함께 찾는다고 보는 말·궁합 좋은 조합을 모아 한 번에 진단합니다."
       >
         {stores.length > 0 ? (
-          <div className="surface mb-3 rounded-xl p-3.5">
-            <p className="text-[12px] font-semibold">내 지점에서 자동으로 채우기</p>
-            <p className="muted mt-1 text-[11px] leading-relaxed">
-              지점 버튼을 누르면 그 지점 <b>주소·지역 키워드에서 동네를 뽑고</b>, 지점 성격에 맞는
-              의도까지 곱해 후보를 만듭니다 (24시간 운영이면 새벽·주말, 여성전용이면 여성전용 계열).
-            </p>
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {stores.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => fillFromStore(s)}
-                  aria-label={`${s.name} 동네로 조합 만들기`}
-                  className="bg-brand-500/14 text-brand-700 dark:text-brand-100 rounded-full px-3 py-1.5 text-[11px] font-semibold transition hover:bg-brand-500/25"
-                >
-                  {s.name}
-                </button>
-              ))}
+          <>
+            <p className="muted mb-1.5 text-[11.5px] font-semibold">어느 지점을 진단할까요</p>
+            <div className="flex flex-wrap gap-1.5">
+              {stores.map((s) => {
+                const on = diagStore?.id === s.id
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => pickDiagStore(s)}
+                    aria-label={`${s.name} 진단 대상으로 고르기`}
+                    aria-pressed={on}
+                    className={`rounded-full border px-3 py-1.5 text-[12px] font-bold transition ${
+                      on
+                        ? 'bg-brand-600 border-brand-600 text-white'
+                        : 'bd hover:bg-slate-500/8'
+                    }`}
+                  >
+                    {s.name}
+                  </button>
+                )
+              })}
               {stores.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => fillFromStore()}
-                  className="bd rounded-full border px-3 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8"
+                  onClick={() => pickDiagStore(null)}
+                  aria-pressed={diagStore === null && diagPicked}
+                  className={`rounded-full border px-3 py-1.5 text-[12px] font-bold transition ${
+                    diagStore === null && diagPicked
+                      ? 'bg-brand-600 border-brand-600 text-white'
+                      : 'bd hover:bg-slate-500/8'
+                  }`}
                 >
                   전 지점 합쳐서
                 </button>
               )}
             </div>
-          </div>
+
+            {diagPicked && (
+              <p className="muted mt-2 text-[11.5px] leading-relaxed">
+                <b>{diagStore ? diagStore.name : '전 지점'}</b> · 동네{' '}
+                <b>{areas || '(주소에서 못 찾음)'}</b>
+                {diagStore && (
+                  <>
+                    {' '}
+                    · {diagStore.open24 ? '24시간 운영' : '24시간 아님'} ·{' '}
+                    {diagStore.womenOnly ? '여성전용' : '여성전용 아님'}
+                  </>
+                )}
+                <br />
+                지점 성격과 어긋나는 키워드(24시간이 아닌데 「24시」 같은 것)는 애초에 만들지 않습니다.
+              </p>
+            )}
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => runDiagnose()}
+                disabled={diagBusy || loading || !diagPicked}
+                className="bg-brand-600 rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {diagBusy
+                  ? '진단 중… (20~40초)'
+                  : diagStore
+                    ? `${diagStore.name} 키워드 진단`
+                    : '전 지점 키워드 진단'}
+              </button>
+              {!diagPicked && (
+                <span className="muted text-[11.5px]">지점을 먼저 고르세요.</span>
+              )}
+            </div>
+
+            {diagBusy && (
+              <p className="muted mt-2 text-[11px] leading-relaxed">
+                동네 확인 → 네이버 검색창에서 실제 검색어 가져오기 → 검색량 조회(함께 찾는 말 포함) →
+                추리기 → 추린 것만 발행량까지 재서 경쟁률 확정. 순서대로 도니 조금 걸립니다.
+              </p>
+            )}
+
+            {diag && (
+              <div className="mt-3 space-y-2.5">
+                <p className="bg-brand-500/8 border-brand-500/30 rounded-xl border px-3 py-2 text-[12.5px] leading-relaxed">
+                  {diag.headline}
+                </p>
+
+                <p className="muted text-[11px] leading-relaxed">
+                  실제 검색어 <b>{diag.sources.auto}개</b>(자동완성 {diag.sources.autoAnswered}/
+                  {diag.sources.autoAsked} 응답) · 함께 찾는 말 <b>{diag.sources.related}개</b> · 우리
+                  조합 <b>{diag.sources.combo}개</b> 를 후보로 놓고 골랐습니다.
+                  {diag.sources.autoAnswered === 0 && ' 자동완성은 읽지 못해 조합·연관 키워드로만 골랐습니다.'}
+                </p>
+
+                {/* 반드시 잡아야 하는 것부터 — 경쟁이 세도 여기서 안 보이면 그 동네에 없는 가게다 */}
+                {diag.picked.some((p) => p.essential) && (
+                  <div className="rounded-xl border border-rose-500/30 bg-rose-500/8 px-3 py-2.5">
+                    <p className="text-[12px] font-bold text-rose-700 dark:text-rose-300">
+                      반드시 잡아야 하는 키워드
+                    </p>
+                    <p className="muted mt-1 text-[11px] leading-relaxed">
+                      동네 + 업종 기본형입니다. 그 동네에서 헬스장을 찾는 사람이 가장 먼저 치는 말이라,
+                      경쟁이 세도 여기서 안 보이면 그 동네에 없는 가게가 됩니다.
+                    </p>
+                    <ul className="mt-2 space-y-1.5">
+                      {diag.picked
+                        .filter((p) => p.essential)
+                        .map((p) => (
+                          <li key={p.keyword} className="panel bd rounded-lg border px-2.5 py-1.5">
+                            <div className="flex items-start gap-1.5">
+                              <span className="text-[11.5px] font-bold">{p.keyword}</span>
+                              <span className="tnum muted ml-auto shrink-0 text-[11px]">
+                                월 {p.monthlySearch.toLocaleString()}회
+                              </span>
+                            </div>
+                            <p className="muted mt-0.5 text-[11px] leading-relaxed">{p.why}</p>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="panel bd rounded-xl border px-3 py-2.5">
+                  <p className="text-[12px] font-bold">지금 노릴 조합</p>
+                  <p className="muted mt-1 text-[11px] leading-relaxed">
+                    ■ 는 글 한 편의 메인, + 는 그 글에 얹어 검색어를 하나 더 잡는 말입니다.
+                  </p>
+                  <ul className="mt-2 space-y-1.5">
+                    {diag.picked
+                      .filter((p) => !p.essential)
+                      .map((p) => (
+                        <li key={p.keyword} className="panel bd rounded-lg border px-2.5 py-1.5">
+                          <div className="flex flex-wrap items-start gap-1.5">
+                            <span className="text-[11.5px] font-bold">
+                              {p.role === 'sub' ? <span className="muted">+ </span> : '■ '}
+                              {p.keyword}
+                            </span>
+                            {p.source && (
+                              <span className="muted bd rounded-full border px-1.5 py-0.5 text-[10px] font-semibold">
+                                {SOURCE_LABEL[p.source]}
+                              </span>
+                            )}
+                            <span className="tnum muted ml-auto shrink-0 text-[11px]">
+                              월 {p.monthlySearch.toLocaleString()}회
+                            </span>
+                          </div>
+                          <p className="muted mt-0.5 text-[11px] leading-relaxed">{p.why}</p>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+
+                {diag.skipped.length > 0 && (
+                  <details className="panel bd rounded-xl border px-3 py-2">
+                    <summary className="muted cursor-pointer text-[11.5px] font-semibold select-none">
+                      빼놓은 {diag.skipped.length}개 — 왜 뺐는지 보기
+                    </summary>
+                    <ul className="muted mt-1.5 space-y-1 text-[11px] leading-relaxed">
+                      {diag.skipped.slice(0, 20).map((d) => (
+                        <li key={d.keyword}>
+                          <b>{d.keyword}</b> — {d.why}
+                        </li>
+                      ))}
+                      {diag.skipped.length > 20 && <li>… 외 {diag.skipped.length - 20}개</li>}
+                    </ul>
+                  </details>
+                )}
+
+                {diag.autoDroppedCount > 0 && (
+                  <details className="panel bd rounded-xl border px-3 py-2">
+                    <summary className="muted cursor-pointer text-[11.5px] font-semibold select-none">
+                      실제 검색어 중 걸러낸 {diag.autoDroppedCount}개
+                    </summary>
+                    <p className="muted mt-1.5 text-[11px] leading-relaxed">
+                      남의 상호는 저희가 다 알아볼 수 없습니다(예: 「소노벨 천안 헬스장」) — 목록에 남의
+                      업체 이름이 보이면 눈으로 걸러주세요.
+                    </p>
+                    <ul className="muted mt-1.5 space-y-1 text-[11px] leading-relaxed">
+                      {diag.autoDropped.map((d) => (
+                        <li key={d.keyword}>
+                          <b>{d.keyword}</b> — {d.why}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+          </>
         ) : (
-          <p className="muted mb-3 text-[11px] leading-relaxed">
+          <p className="muted text-[12px] leading-relaxed">
             <Link href="/stores" className="text-brand-600 dark:text-brand-100 font-semibold underline">
               지점
             </Link>
-            을 먼저 등록하면 주소에서 동네를 자동으로 뽑아 채워드립니다.
+            을 먼저 등록하면 주소에서 동네를 뽑아 자동으로 진단합니다. 지점 없이 쓰려면 아래
+            「키워드 직접 넣기」를 여세요.
           </p>
         )}
 
-        <Field label="지역명 (쉼표로 구분)" hint="예: 쌍용동, 봉명동, 성정동, 두정동">
-          <input
-            value={areas}
-            onChange={(e) => setAreas(e.target.value)}
-            className={inputClass}
-            placeholder="쌍용동, 봉명동"
-          />
-        </Field>
-        <button
-          type="button"
-          onClick={() => {
-            setCombos(
-              combineLocalKeywords(
-                areas.split(',').map((s) => s.trim()).filter(Boolean),
-                INTENT_SUFFIXES
-              )
-            )
-            // 지역을 직접 적었으면 어느 지점 글인지 알 수 없다 — 지점 성격 판정을 끈다
-            setComboStore(null)
-            setPicked([])
-            setSuggested([])
-            setShortlist(null)
-            void loadSuggestions(areas.split(',').map((s) => s.trim()).filter(Boolean))
-          }}
-          className="bd mt-3 rounded-xl border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8"
-        >
-          조합 생성
-        </button>
-
-        {/* 자동완성 조회는 뒤따라 도착한다 — 진행 중임을 알려야 사라진 것처럼 보이지 않는다 */}
-        {suggestBusy && (
-          <p className="muted mt-2 text-[11px]">네이버 검색창에서 실제 검색어를 가져오는 중…</p>
-        )}
-        {suggestNote && !suggestBusy && (
-          <p className="muted mt-2 text-[11px] leading-relaxed">
-            {suggestNote} 아래 조합은 그대로 쓸 수 있습니다.
+        {error && (
+          <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-relaxed text-rose-700 dark:text-rose-300">
+            {error}
           </p>
         )}
 
-        {combos.length > 0 && (
-          <>
-            {/*
-              추리기를 먼저 둔다. 회원이 그대로 말했다 — "지금 키워드가 너무 많으니까
-              자주 검색하는 것, 시너지 나는 것, 경쟁이 안 센 것을 선별해줬으면 좋겠어."
-              46개를 늘어놓고 고르라고 하면 고를 수 없다.
-            */}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+        {/*
+          손으로 넣는 길은 남겨 두지만 접어 둔다 — 평소에는 지점 버튼 하나로 끝나야 한다.
+          다른 지역을 살펴보거나 정보 키워드(다이어트 정체기 같은 것)를 넣을 때 쓴다.
+        */}
+        <details className="bd mt-4 border-t pt-3">
+          <summary className="cursor-pointer text-[12.5px] font-bold select-none">
+            키워드 직접 넣기 · 동네 바꿔서 보기
+            <span className="muted ml-2 text-[11px] font-normal">
+              다른 지역을 살펴보거나 정보 키워드를 넣을 때
+            </span>
+          </summary>
+
+          <div className="mt-3">
+            <Field
+              label="키워드 (쉼표 또는 줄바꿈으로 구분)"
+              hint="예: 쌍용동 헬스장, 다이어트 정체기 극복, 교대근무 운동"
+            >
+              <textarea
+                value={raw}
+                onChange={(e) => setRaw(e.target.value)}
+                rows={2}
+                className={inputClass}
+                placeholder="쌍용동 헬스장, 성정동 여성전용"
+              />
+            </Field>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => gradeShortlist(12)}
-                disabled={loading || shortBusy}
-                className="bg-brand-600 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-              >
-                {shortBusy || loading
-                  ? '추리는 중… (10~20초)'
-                  : '많이 찾고 궁합 좋은 12개만 골라 채점'}
-              </button>
-              <button
-                type="button"
-                onClick={gradeCombos}
-                disabled={loading || shortBusy}
+                onClick={() => run()}
+                disabled={loading}
                 className="bd rounded-xl border px-3.5 py-2 text-[12.5px] font-semibold hover:bg-slate-500/8 disabled:opacity-50"
               >
-                {loading
-                  ? '채점 중…'
-                  : picked.length
-                    ? `고른 ${picked.length}개 채점`
-                    : `${Math.min(combos.length, COMBO_LIMIT)}개 전부 채점`}
+                {loading ? '조회 중…' : '넣은 키워드만 조회'}
               </button>
-              {picked.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setPicked([])}
-                  className="bd rounded-xl border px-3 py-2 text-[12px] font-semibold hover:bg-slate-500/8"
-                >
-                  선택 해제
-                </button>
-              )}
+              {keywords.length > 0 && <span className="muted text-xs">{keywords.length}개 입력됨</span>}
+              <label className="ml-auto flex items-center gap-2 text-[12px] font-semibold">
+                <input
+                  type="checkbox"
+                  checked={withRelated}
+                  onChange={(e) => setWithRelated(e.target.checked)}
+                  className="size-4"
+                />
+                연관 키워드도 함께
+              </label>
             </div>
-            {/* 추린 결과 — 무엇을 왜 골랐는지, 무엇을 왜 뺐는지 */}
-            {shortlist && shortlist.picked.length > 0 && (
-              <div
-                data-shortlist="block"
-                className="bg-brand-500/8 border-brand-500/30 mt-3 rounded-xl border px-3 py-2.5"
-              >
-                <p className="text-brand-700 dark:text-brand-100 text-[12px] font-bold">
-                  추려낸 {shortlist.picked.length}개
-                </p>
-                <p className="muted mt-1 text-[11px] leading-relaxed">{shortlist.headline}</p>
-                <ul className="mt-2 space-y-1.5">
-                  {shortlist.picked.map((p) => (
-                    <li key={p.keyword} className="panel bd rounded-lg border px-2.5 py-1.5">
-                      <div className="flex items-start gap-1.5">
-                        <span className="text-[11.5px] font-bold">
-                          {p.role === 'sub' && <span className="muted">+ </span>}
-                          {p.keyword}
-                        </span>
-                        <span className="tnum muted ml-auto shrink-0 text-[11px]">
-                          월 {p.monthlySearch.toLocaleString()}회
-                        </span>
-                      </div>
-                      <p className="muted mt-0.5 text-[11px] leading-relaxed">{p.why}</p>
-                    </li>
-                  ))}
-                </ul>
-                {shortlist.skipped.length > 0 && (
-                  <details className="mt-2">
-                    <summary className="muted cursor-pointer text-[11px] font-semibold select-none">
-                      빼놓은 {shortlist.skipped.length}개 — 왜 뺐는지 보기
-                    </summary>
-                    <ul className="muted mt-1.5 space-y-1 text-[11px] leading-relaxed">
-                      {shortlist.skipped.slice(0, 20).map((d) => (
-                        <li key={d.keyword}>
-                          <b>{d.keyword}</b> — {d.why}
-                        </li>
-                      ))}
-                      {shortlist.skipped.length > 20 && (
-                        <li>… 외 {shortlist.skipped.length - 20}개</li>
-                      )}
-                    </ul>
-                  </details>
-                )}
-              </div>
-            )}
 
-            <p className="muted mt-2 text-[11px] leading-relaxed">
-              {combos.length}개 생성{combos.length > COMBO_LIMIT && ` (한 번에 ${COMBO_LIMIT}개까지 채점합니다 — 지점 버튼을 하나씩 누르면 전부 볼 수 있습니다)`}.
-              전부 채점하면 <b>황금 키워드</b>가 자동으로 골라지고, <b>같이 쓰면 시너지 나는 세트</b>까지
-              묶어 드립니다. 일부만 보려면 아래에서 고르세요.
-            </p>
-            {/*
-              실제 검색어를 우리 조합과 갈라서 보여준다. 둘은 성격이 다르다 —
-              우리 조합은 "이렇게 검색할 것 같다" 는 가설이고, 이건 실제로 입력되는 말이다.
-            */}
-            {suggested.length > 0 && (
-              <div
-                data-suggest="block"
-                className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2.5"
-              >
-                <p className="text-[12px] font-bold text-emerald-800 dark:text-emerald-200">
-                  사람들이 실제로 이렇게 검색합니다 {suggested.length}개
-                </p>
-                <p className="muted mt-1 text-[11px] leading-relaxed">
-                  네이버 검색창 자동완성에서 그대로 가져온 말입니다 — 우리가 만든 조합과 달리 실제로
-                  입력되는 검색어라, 우리가 못 떠올린 의도가 여기서 나옵니다. 채점할 때 이 말들이 먼저
-                  자리를 잡습니다.
-                </p>
-                {/*
-                  남의 상호는 자동으로 다 걸러낼 수 없다 (「소노벨 천안 헬스장」이 실제로 왔다).
-                  못 하는 것을 못 한다고 말해야 회원이 눈으로 걸러낼 수 있다.
-                */}
-                <p className="muted mt-1 text-[11px] leading-relaxed">
-                  남의 상호가 섞여 올 수 있습니다(예: 「소노벨 천안 헬스장」) — 업체 이름은 저희가 다
-                  알아볼 수 없으니 눈으로 걸러주세요. 남의 상호로 우리 글이 걸려도 도움이 되지 않습니다.
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {suggested.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => togglePick(c)}
-                      className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
-                        picked.includes(c)
-                          ? 'bg-brand-600 border-brand-600 text-white'
-                          : 'border-emerald-500/40 bg-white/70 hover:bg-white dark:bg-white/10 dark:hover:bg-white/20'
-                      }`}
-                    >
-                      {c}
-                    </button>
-                  ))}
-                </div>
-                {suggestDroppedCount > 0 && (
-                  <details className="mt-2">
-                    <summary className="muted cursor-pointer text-[11px] font-semibold select-none">
-                      걸러낸 검색어 {suggestDroppedCount}개 — 왜 뺐는지 보기
-                    </summary>
-                    <ul className="muted mt-1.5 space-y-1 text-[11px] leading-relaxed">
-                      {suggestDropped.map((d) => (
-                        <li key={d.keyword}>
-                          <b>{d.keyword}</b> — {d.why}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-              </div>
-            )}
+            <Field label="동네 (쉼표로 구분)" hint="지점 버튼을 누르면 자동으로 채워집니다">
+              <input
+                value={areas}
+                onChange={(e) => setAreas(e.target.value)}
+                className={inputClass}
+                placeholder="쌍용동, 봉명동"
+              />
+            </Field>
+            <button
+              type="button"
+              onClick={() => runDiagnose(areas.split(',').map((s) => s.trim()).filter(Boolean))}
+              disabled={diagBusy}
+              className="bd mt-2 rounded-xl border px-3.5 py-2 text-[12.5px] font-semibold hover:bg-slate-500/8 disabled:opacity-50"
+            >
+              이 동네로 진단
+            </button>
 
-            <p className="muted mt-3 text-[11px] font-semibold">우리가 만든 조합</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {combos
-                .filter((c) => !suggested.includes(c))
-                .map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => togglePick(c)}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
-                      picked.includes(c)
-                        ? 'bg-brand-600 border-brand-600 text-white'
-                        : 'bd hover:bg-slate-500/8'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
-            </div>
-          </>
-        )}
+            <details className="muted mt-3 text-[11px] leading-relaxed">
+              <summary className="cursor-pointer font-semibold select-none">숫자는 어디서 오나</summary>
+              <div className="mt-2 space-y-2">
+                <p>
+                  월 검색량은 네이버 <b>검색광고 API</b>, 최근 30일 발행량은 <b>블로그 섹션 검색</b>,
+                  실제 검색어는 <b>검색창 자동완성</b>에서 가져옵니다. 발행량·자동완성은 공식 API 가
+                  아니라 네이버 화면이 쓰는 경로라, 막히면 <b>판정 불가</b>로 표시되고 그 줄만 직접
+                  넣으면 됩니다.
+                </p>
+                <p>
+                  검색광고 API 는 전국·전업종을 섞어 주므로 <b>고른 지점의 동네 + 헬스·운동 업종만</b>{' '}
+                  남깁니다 (다른 동네, 필라테스·요가 같은 다른 업종, 「먹튀」 같은 부정어는 제외).
+                </p>
+              </div>
+            </details>
+          </div>
+        </details>
       </Card>
 
       {plan && (

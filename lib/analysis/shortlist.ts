@@ -32,12 +32,49 @@ const SECOND_HEAD_MIN = 300
 /** 축 하나에 얹을 서브 최대 개수 (글 한 편 = 메인 1 + 서브 2) */
 const SUBS_PER_HEAD = 2
 
+/**
+ * 이 말이 어디서 왔는지.
+ *  'auto'    = 네이버 검색창 자동완성 — 사람들이 실제로 치는 말
+ *  'related' = 검색광고 API 연관 키워드 — 네이버가 「함께 찾는다」고 보는 말
+ *  'combo'   = 우리가 동네 × 의도로 만든 말 (가설)
+ */
+export type KeywordSource = 'auto' | 'related' | 'combo'
+
+export const SOURCE_LABEL: Record<KeywordSource, string> = {
+  auto: '실제 검색어',
+  related: '함께 찾는 말',
+  combo: '우리 조합',
+}
+
 export interface ShortlistCandidate {
   keyword: string
   monthlySearch: number
   adDepth?: number
-  /** 회원이 직접 넣었거나 조합으로 만든 말인지, 자동완성에서 온 말인지 */
-  fromNaver?: boolean
+  source?: KeywordSource
+}
+
+/**
+ * 이 동네에서 **반드시 잡아야 하는** 키워드인지 (순수 함수 — 테스트 대상).
+ *
+ * 「쌍용동 헬스장」·「쌍용동 PT」처럼 동네 + 업종 기본형은 우리 정체성이다. 그 동네에서
+ * 헬스장을 찾는 사람이 가장 먼저 치는 말이라, 경쟁이 세도 여기서 안 보이면 그 동네에서
+ * 없는 가게다. 검색량이 작아도 목록에서 빼면 안 된다 — 추리기가 검색량만 보고 잘라내던
+ * 자리다 (「쌍용동PT」 월 90회가 그렇게 빠졌다).
+ *
+ * 「헬스장」과 「PT」 둘만 본다. 「쌍용동 헬스」·「쌍용동 피트니스」는 같은 뜻의 변형이라
+ * 필수로 올리면 목록만 부풀고, 어차피 검색량 순으로 뽑힌다.
+ */
+const CORE_INTENTS = ['헬스장', 'PT']
+
+export function isEssential(keyword: string, myAreas: string[]): boolean {
+  const flat = keyword.replace(/\s+/g, '').toUpperCase()
+  for (const a of myAreas) {
+    const area = a.trim()
+    if (!area || !flat.includes(area.toUpperCase())) continue
+    const rest = flat.split(area.toUpperCase()).join('')
+    if (CORE_INTENTS.some((c) => rest === c.toUpperCase())) return true
+  }
+  return false
 }
 
 export interface ShortlistPick {
@@ -52,6 +89,9 @@ export interface ShortlistPick {
   why: string
   area: string
   postType: PostType
+  source?: KeywordSource
+  /** 동네 + 업종 기본형 — 경쟁이 세도 반드시 잡아야 한다 */
+  essential?: boolean
 }
 
 export interface Shortlist {
@@ -107,6 +147,8 @@ export function buildShortlist(
     parts: splitKeyword(c.keyword, areas),
   }))
 
+  const myAreas = opts.areas?.map((a) => a.trim()).filter(Boolean) ?? []
+
   const usable = rows.filter(({ c, parts }) => {
     // 업종부터 본다 — 「쌍용동필라테스」가 검색량 500 으로 추천에 뽑혔던 자리다
     const trade = tradeDrop(c.keyword)
@@ -118,7 +160,8 @@ export function buildShortlist(
       skipped.push({ keyword: c.keyword, why: '검색량을 읽지 못했습니다.' })
       return false
     }
-    if (c.monthlySearch < SHORTLIST_MIN_SEARCH) {
+    // 동네 + 업종 기본형은 검색량이 작아도 남긴다 (isEssential 주석 참고)
+    if (c.monthlySearch < SHORTLIST_MIN_SEARCH && !isEssential(c.keyword, myAreas)) {
       skipped.push({
         keyword: c.keyword,
         why: `월 ${c.monthlySearch.toLocaleString()}회 — 1위를 해도 유입이 거의 없습니다.`,
@@ -180,7 +223,17 @@ export function buildShortlist(
       const left = list.filter((r) => !used.has(r.c.keyword))
       if (!left.length) break
 
-      const head = [...left].sort((x, y) => y.c.monthlySearch - x.c.monthlySearch)[0]
+      /*
+       * 축은 「필수 키워드 우선, 그다음 검색량」 으로 고른다.
+       * 그 동네 기본형(쌍용동 헬스장)이 축이 아니면 글 구성이 뒤집힌다 — 기본형을 서브로
+       * 밀어 넣는 글은 그 동네 대표 검색어를 놓친다.
+       */
+      const head = [...left].sort((x, y) => {
+        const ex = isEssential(x.c.keyword, myAreas) ? 1 : 0
+        const ey = isEssential(y.c.keyword, myAreas) ? 1 : 0
+        if (ex !== ey) return ey - ex
+        return y.c.monthlySearch - x.c.monthlySearch
+      })[0]
       // 두 번째 축이 너무 작으면 세우지 않는다 (SECOND_HEAD_MIN 주석 참고)
       if (h > 0 && head.c.monthlySearch < SECOND_HEAD_MIN) break
       used.add(head.c.keyword)
@@ -193,6 +246,8 @@ export function buildShortlist(
         role: 'main',
         area,
         postType,
+        source: head.c.source,
+        essential: isEssential(head.c.keyword, myAreas),
         why:
           (area
             ? `월 ${head.c.monthlySearch.toLocaleString()}회 — ${area}에서 ${h === 0 ? '가장' : '그다음으로'} 많이 찾는 말입니다.`
@@ -220,6 +275,8 @@ export function buildShortlist(
           under: head.c.keyword,
           area,
           postType,
+          source: r.c.source,
+          essential: isEssential(r.c.keyword, myAreas),
           why:
             s.strength === 'strong'
               ? `월 ${r.c.monthlySearch.toLocaleString()}회 — 「${head.c.keyword}」 제목에 한 단어만 더 붙이면 같이 잡힙니다.`
@@ -227,6 +284,27 @@ export function buildShortlist(
         })
       }
     }
+  }
+
+  /*
+   * 필수 키워드는 자리에 밀려도 반드시 담는다.
+   * 그 동네 기본형이 추천에서 빠지면 「우리 동네에서 우리를 찾는 말」을 안 쓰게 된다.
+   */
+  for (const r of usable) {
+    if (used.has(r.c.keyword)) continue
+    if (!isEssential(r.c.keyword, myAreas)) continue
+    used.add(r.c.keyword)
+    picked.push({
+      keyword: r.c.keyword,
+      monthlySearch: r.c.monthlySearch,
+      adDepth: r.c.adDepth,
+      role: 'main',
+      area: r.parts.area,
+      postType: r.parts.meta?.postType ?? 'promo',
+      source: r.c.source,
+      essential: true,
+      why: `월 ${r.c.monthlySearch.toLocaleString()}회 — ${r.parts.area}에서 헬스장을 찾는 사람이 가장 먼저 치는 말입니다. 검색량이 크지 않아도 여기서 안 보이면 그 동네에 없는 가게가 됩니다.`,
+    })
   }
 
   // 자리가 없어 못 담은 것도 이유를 남긴다 (「나쁜 키워드」와 구별해야 한다)
