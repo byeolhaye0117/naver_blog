@@ -21,8 +21,13 @@ interface DiagnoseResult {
   diagnosis: Diagnosis
   rank: number | null
   daysSincePublish: number
-  postId: string
+  /** 앱에서 쓴 글이면 그 id — 네이버에서 읽어온 글은 null */
+  postId: string | null
+  /** 본문을 어디서 읽었나 */
+  postSource: 'app' | 'naver'
+  title: string
   measured: number
+  measuredMine: { charCount: number; imageCount: number; videoCount: number }
 }
 
 export default function RankTracker({
@@ -455,11 +460,12 @@ export default function RankTracker({
                     {got && (
                       <>
                         <p className="mt-2 text-[12px] font-bold">{got.diagnosis.verdict}</p>
-                        {got.measured > 0 && (
-                          <p className="muted mt-0.5 text-[10.5px]">
-                            상위 글 {got.measured}개의 본문을 실제로 읽어 비교했습니다.
-                          </p>
-                        )}
+                        <p className="muted mt-0.5 text-[10.5px] leading-relaxed">
+                          {got.measured > 0 && `상위 글 ${got.measured}개의 본문을 실제로 읽어 비교했습니다. `}
+                          {got.postSource === 'naver'
+                            ? `내 글은 네이버에서 직접 읽었습니다 (${got.measuredMine.charCount.toLocaleString()}자 · 이미지 ${got.measuredMine.imageCount}장). 앱에서 쓰지 않은 글도 진단합니다.`
+                            : `내 글은 앱에 저장된 본문으로 비교했습니다 (${got.measuredMine.charCount.toLocaleString()}자 · 이미지 ${got.measuredMine.imageCount}장).`}
+                        </p>
                         {got.diagnosis.fixes.length > 0 && (
                           <ul className="mt-2 space-y-1.5">
                             {got.diagnosis.fixes.map((f) => (
@@ -480,11 +486,20 @@ export default function RankTracker({
                           <p className="muted mt-2 text-[11px] leading-relaxed">{got.diagnosis.note}</p>
                         )}
                         <div className="mt-2.5 flex flex-wrap gap-1.5">
+                          {/*
+                            앱에서 쓴 글이면 그 글을 열어 고쳐 쓴다.
+                            네이버에만 있는 글은 앱에 본문이 없으므로 같은 키워드로 새로 쓰게 한다 —
+                            처방은 키워드로 저장돼 있어 그 화면에서 그대로 실린다.
+                          */}
                           <Link
-                            href={`/write?id=${got.postId}`}
+                            href={
+                              got.postId
+                                ? `/write?id=${got.postId}`
+                                : `/write?main=${encodeURIComponent(v.target.keyword)}`
+                            }
                             className="bg-brand-600 rounded-xl px-3.5 py-2 text-[12px] font-bold text-white"
                           >
-                            이 처방으로 고쳐 쓰기 →
+                            {got.postId ? '이 처방으로 고쳐 쓰기 →' : '이 처방으로 다시 쓰기 →'}
                           </Link>
                           <Link
                             href={`/serp?keyword=${encodeURIComponent(v.target.keyword)}`}

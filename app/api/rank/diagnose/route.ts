@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { analyzePastedSerp } from '@/lib/analysis/serp'
-import { diagnose, diagnosisToPrescription } from '@/lib/analysis/diagnose'
+import { diagnose, diagnosisToPrescription, fromAppPost, fromPublished } from '@/lib/analysis/diagnose'
 import { recentBlogCount, topBlogPosts } from '@/lib/naver/blogsection'
-import { measureTopPosts } from '@/lib/naver/blogpost'
+import { fetchPublishedPost, measureTopPosts } from '@/lib/naver/blogpost'
 import { buildCutline } from '@/lib/analysis/cutline'
 import { prescriptionKey, upsertPrescription } from '@/lib/analysis/prescription'
 
@@ -33,15 +33,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '추적 항목을 찾지 못했습니다.' }, { status: 404 })
     }
 
-    // 진단은 내 글의 본문을 봐야 한다. URL 만 등록하고 글을 앱에 안 쓴 경우가 있다.
-    const post =
+    /**
+     * 진단은 내 글의 본문을 봐야 한다. 본문은 두 곳에서 온다.
+     *  ① 앱에서 쓴 글 — 저장소에 본문이 있다 (소제목까지 셀 수 있다)
+     *  ② 네이버에 이미 발행한 글 — 앱에 없으므로 그 주소로 읽어온다
+     *
+     * ②를 지원하는 이유: 앱을 쓰기 전에 올린 글이 이미 여러 편 있다. 그 글을
+     * 진단할 수 없으면 이 기능은 새로 쓰는 글에만 쓸모가 있다.
+     */
+    const appPost =
       db.posts.find((p) => p.id === target.postId) ??
       db.posts.find((p) => p.publishedUrl && target.url.includes(p.publishedUrl))
-    if (!post) {
+
+    const mine = appPost
+      ? fromAppPost(appPost)
+      : await (async () => {
+          const read = await fetchPublishedPost(target.url)
+          return read ? fromPublished(read, target.keyword) : null
+        })()
+
+    if (!mine) {
       return NextResponse.json(
         {
           error:
-            '이 순위 항목에 연결된 글을 찾지 못했습니다. 발행 관리에서 그 글의 「발행 주소」를 넣어 연결해 주세요 — 본문을 봐야 무엇을 고칠지 말할 수 있습니다.',
+            '이 주소에서 글 본문을 읽지 못했습니다. 비공개·이웃공개 글이거나 주소가 글이 아닐 수 있습니다. 주소를 확인하거나, 앱에서 쓴 글이면 발행 관리에서 「발행 주소」를 넣어 연결해 주세요.',
         },
         { status: 400 }
       )
@@ -76,13 +91,14 @@ export async function POST(req: Request) {
       .filter((s) => s.targetId === target.id)
       .sort((a, b) => b.date.localeCompare(a.date))
     const rank = snaps[0]?.rank ?? null
-    const since = post.publishedAt ?? post.createdAt
-    const daysSincePublish = Math.max(
-      0,
-      Math.floor((Date.now() - Date.parse(since)) / 86400000)
-    )
+    // 발행일은 앱에 있으면 그 값, 없으면 순위를 처음 기록한 날로 대신한다
+    const since =
+      appPost?.publishedAt ?? appPost?.createdAt ?? snaps[snaps.length - 1]?.date ?? null
+    const daysSincePublish = since
+      ? Math.max(0, Math.floor((Date.now() - Date.parse(since)) / 86400000))
+      : 0
 
-    const result = diagnose({ post, serp, rank, daysSincePublish })
+    const result = diagnose({ post: mine, serp, rank, daysSincePublish })
 
     // 진단 결과를 처방으로 저장 — 글쓰기 화면이 이걸 그대로 AI 지시문에 넣는다
     const items = diagnosisToPrescription(result)
@@ -102,7 +118,15 @@ export async function POST(req: Request) {
       diagnosis: result,
       rank,
       daysSincePublish,
-      postId: post.id,
+      postId: appPost?.id ?? null,
+      /** 본문을 어디서 읽었나 — 화면에서 밝힌다 */
+      postSource: mine.source,
+      title: mine.title,
+      measuredMine: {
+        charCount: mine.charCount,
+        imageCount: mine.imageCount,
+        videoCount: mine.videoCount,
+      },
       cutline: serp.cutline ?? null,
       measured: measured.length,
     })
