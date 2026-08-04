@@ -232,7 +232,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
       const res = await fetch('/api/keywords', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords: list, includeRelated: related }),
+        // 지점을 골라 조합을 만든 경우엔 그 지점만 조사한다 — 다른 지점 지역의
+        // 연관 키워드가 들어오면 24칸을 차지하고 세트까지 만들어진다
+        body: JSON.stringify({ keywords: list, includeRelated: related, storeId: comboStore?.id }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? '조회에 실패했습니다.')
@@ -867,18 +869,49 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
             </div>
           )}
 
-          {plan.excluded.length > 0 && (
+          {/* 사실과 달라지는 것 — 빨강. 이건 절대 쓰면 안 된다 */}
+          {plan.excluded.some((x) => x.kind === 'fact') && (
             <div className="mt-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2.5">
               <p className="text-[12px] font-bold text-rose-700 dark:text-rose-300">
-                이 지점으로는 쓸 수 없는 키워드 {plan.excluded.length}개
+                이 지점으로는 쓸 수 없는 키워드{' '}
+                {plan.excluded.filter((x) => x.kind === 'fact').length}개
               </p>
               <ul className="mt-1 space-y-1 text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">
-                {plan.excluded.slice(0, 4).map((x) => (
-                  <li key={x.keyword}>
-                    <b>{x.keyword}</b> — {x.why}
-                  </li>
-                ))}
+                {plan.excluded
+                  .filter((x) => x.kind === 'fact')
+                  .slice(0, 4)
+                  .map((x) => (
+                    <li key={x.keyword}>
+                      <b>{x.keyword}</b> — {x.why}
+                    </li>
+                  ))}
               </ul>
+            </div>
+          )}
+
+          {/*
+            다른 지점 지역 — 쓸 수 없는 게 아니라 그 지점 글이다. 빨강으로 칠하면
+            "쓰면 안 되는 키워드" 로 읽히므로 색을 달리한다.
+          */}
+          {plan.excluded.some((x) => x.kind === 'otherArea') && (
+            <div data-excluded="otherArea" className="panel bd mt-3.5 rounded-xl border px-3 py-2.5">
+              <p className="text-[12px] font-bold">
+                다른 지점 지역 {plan.excluded.filter((x) => x.kind === 'otherArea').length}개는
+                세트에서 빼뒀습니다
+              </p>
+              <p className="muted mt-1 text-[11px] leading-relaxed">
+                한 글에 두 동네를 넣으면 지역 신호가 갈려 둘 다 밀립니다. 그 지점 조합으로 바꿔
+                조회하면 그 지역 세트가 나옵니다.
+              </p>
+              <p className="muted mt-1 text-[11px] leading-relaxed">
+                {plan.excluded
+                  .filter((x) => x.kind === 'otherArea')
+                  .slice(0, 8)
+                  .map((x) => x.keyword)
+                  .join(' · ')}
+                {plan.excluded.filter((x) => x.kind === 'otherArea').length > 8 &&
+                  ` … 외 ${plan.excluded.filter((x) => x.kind === 'otherArea').length - 8}개`}
+              </p>
             </div>
           )}
         </Card>

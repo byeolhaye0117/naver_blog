@@ -73,7 +73,12 @@ async function keywordToolMany(keywords: string[]) {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { keywords?: string[]; includeRelated?: boolean }
+    const body = (await req.json()) as {
+      keywords?: string[]
+      includeRelated?: boolean
+      /** 이 지점만 조사하는 경우 — 연관 키워드도 그 지점 지역으로 좁힌다 */
+      storeId?: string
+    }
     const keywords = (body.keywords ?? []).map((k) => k.trim()).filter(Boolean).slice(0, MAX_GRADED)
     if (!keywords.length) {
       return NextResponse.json({ error: '키워드를 1개 이상 입력하세요.' }, { status: 400 })
@@ -94,7 +99,16 @@ export async function POST(req: Request) {
     // 검색광고 API 의 연관 키워드에는 전국 지역과 남의 상호가 섞여 온다 (천안 지점을
     // 조회했는데 대전헬스장·창원필라테스·바디앤솔필라테스가 들어온다). 쓸 수 없는 것이
     // 화면을 차지하면 안 되니 걸러낸다 — isRelevantKeyword 주석에 규칙이 있다.
-    const myTokens = myRegionTokens((await readDB()).stores)
+    /*
+     * 어느 지점을 조사하는지 알면 그 지점 지역으로 좁힌다.
+     *
+     * 전 지점 토큰을 쓰면 쌍용점을 조사하는데 두정동헬스장이 연관 키워드로 들어와
+     * 24칸을 차지하고 세트까지 만들어진다 (회원이 실제로 겪었다). 같은 회사 지역이라도
+     * 다른 지점 글이라 지금 쓸 것이 아니다.
+     */
+    const allStores = (await readDB()).stores
+    const scoped = body.storeId ? allStores.filter((s) => s.id === body.storeId) : allStores
+    const myTokens = myRegionTokens(scoped.length ? scoped : allStores)
 
     const related = adRows
       .filter((r) => !requested.has(r.keyword.replace(/\s+/g, '')))

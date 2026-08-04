@@ -260,8 +260,12 @@ export interface SetPlan {
   sets: KeywordSet[]
   /** 세트에 넣지 말고 따로 써야 하는 키워드 */
   splits: { keyword: string; postType?: PostType; why: string }[]
-  /** 이 지점으로는 쓸 수 없는 키워드 (사실과 달라진다) */
-  excluded: { keyword: string; why: string }[]
+  /**
+   * 세트에서 빠진 키워드.
+   *  'fact'      = 이 지점으로 쓰면 사실과 달라진다 (24시간 아님·여성전용 아님)
+   *  'otherArea' = 쓸 수 없는 게 아니라 **다른 지점 글**이다 — 색을 달리해야 한다
+   */
+  excluded: { keyword: string; why: string; kind: 'fact' | 'otherArea' }[]
 }
 
 const SETTABLE = new Set(['gold', 'good'])
@@ -326,6 +330,7 @@ export function bestPartner(
     Array.from(new Set(pool.map((m) => splitKeyword(m.keyword).area).filter(Boolean)))
 
   const mainFlat = flat(main.keyword)
+  const mainArea = splitKeyword(main.keyword, areas).area
   const heavy = typeof main.adDepth === 'number' && main.adDepth >= AD_HEAVY
 
   const scored = pool
@@ -335,6 +340,16 @@ export function bestPartner(
       parts: splitKeyword(m.keyword, areas),
       s: pairSynergy(main.keyword, m.keyword, areas),
     }))
+    /*
+     * 지역이 같은 것끼리만 짝을 짓는다 — buildKeywordSets 가 지역별로 묶는 것과 같은 규칙이다.
+     *
+     * pairSynergy 는 "쌍용동 vs 봉명동" 처럼 둘 다 동네인 경우만 never 로 막는다. 한쪽이
+     * 광역 키워드(「천안헬스장」 → 동네 없음)면 막지 않아서, 검색량이 큰 광역 키워드가
+     * **모든 줄의 짝으로 뽑히는 일이 실제로 벌어졌다** — 4줄 전부 짝이 「천안헬스장」이었고,
+     * 황금 키워드인 「쌍용동헬스장」에게 "천안헬스장 글에 얹으세요" 라고 했다. 훨씬 어려운
+     * 키워드 밑에 황금 키워드를 넣으라는 뒤집힌 조언이다.
+     */
+    .filter(({ parts }) => parts.area === mainArea)
     .filter(({ s }) => s.strength === 'strong' || s.strength === 'ok')
     .filter(({ parts }) => needsMet(parts, opts.store))
     .map((c) => {
@@ -346,11 +361,19 @@ export function bestPartner(
   const best = scored[0]
   if (!best) return null
 
+  /*
+   * 자리를 뒤집는 것은 짝이 더 크고 **그 짝으로 진입할 수 있을 때만**이다.
+   * 짝이 크지만 과열(hard)이면 그쪽을 메인으로 세우라는 말이 되어버린다 —
+   * 못 이기는 키워드로 글을 쓰라는 뜻이 되므로 이 줄을 메인으로 남긴다.
+   */
+  const bigger = best.m.monthlySearch > main.monthlySearch
+  const enterable = SETTABLE.has(best.m.grade)
+
   return {
     metric: best.m,
     why: best.s.why,
     strength: best.s.strength as 'strong' | 'ok',
-    role: best.m.monthlySearch > main.monthlySearch ? 'sub' : 'main',
+    role: bigger && enterable ? 'sub' : 'main',
     adRelief: best.adRelief,
   }
 }
@@ -401,13 +424,36 @@ export function buildKeywordSets(
     .filter((m) => m.monthlySearch > 0)
     .map((m) => ({ m, parts: splitKeyword(m.keyword, areas) }))
 
-  const usable = rows.filter(({ m, parts }) => {
+  /*
+   * 지금 조사한 지역이 아닌 키워드는 세트로 만들지 않는다.
+   *
+   * 회원이 쌍용점만 조사했는데 두정동 세트가 나왔다. 검색광고 API 가 연관 키워드로
+   * 두정동헬스장을 얹어 줬고, 그게 표에 들어와 세트까지 만들어진 것이다. 다른 지점
+   * 지역은 그 지점 글로 따로 써야 하므로 여기서 갈라낸다.
+   *
+   * 지역이 없는 키워드(광역·정보)는 남긴다 — 어느 지점 글에도 쓸 수 있다.
+   */
+  const asked = opts.areas?.map((a) => a.trim()).filter(Boolean)
+  const inScope = asked?.length
+    ? rows.filter(({ m, parts }) => {
+        if (!parts.area || asked.includes(parts.area)) return true
+        excluded.push({
+          keyword: m.keyword,
+          why: `지금 조사한 지역(${asked.join('·')})이 아닙니다 — ${parts.area} 지점 글로 따로 쓰세요.`,
+          kind: 'otherArea',
+        })
+        return false
+      })
+    : rows
+
+  const usable = inScope.filter(({ m, parts }) => {
     const needs = parts.meta?.needs
     if (!needs || !opts.store) return true
     if (needs === 'open24' && opts.store.open24 === false) {
       excluded.push({
         keyword: m.keyword,
         why: '이 지점은 24시간 운영이 아닙니다 — 이 키워드로 글을 쓰면 사실과 달라집니다.',
+        kind: 'fact',
       })
       return false
     }
@@ -415,6 +461,7 @@ export function buildKeywordSets(
       excluded.push({
         keyword: m.keyword,
         why: '이 지점은 여성전용이 아닙니다 — 이 키워드로 글을 쓰면 사실과 달라집니다.',
+        kind: 'fact',
       })
       return false
     }

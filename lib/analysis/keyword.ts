@@ -110,17 +110,65 @@ export function gradeKeyword(
 export const AD_HEAVY = 5
 export const AD_SOME = 2
 
-export function adNoteFor(adDepth?: number): string | undefined {
-  // 값이 없으면 아무 말도 하지 않는다. 0 으로 대신 쓰면 "광고 없음" 이라는 거짓이 된다.
-  if (typeof adDepth !== 'number' || !Number.isFinite(adDepth)) return undefined
-  const n = Math.round(adDepth * 10) / 10
-  if (adDepth >= AD_HEAVY) {
-    return `광고 ${n}개가 경합하는 키워드 — 상업성이 높습니다. 통합검색에서 파워링크·플레이스가 블로그보다 위에 놓이니 검색량만큼 유입이 오지 않습니다. 광고가 적은 정보 키워드(운동 방법·식단 같은 것)도 함께 노려 유입을 나누세요.`
+export type AdPressure = 'heavy' | 'some' | 'light'
+
+export function adPressureOf(adDepth?: number): AdPressure | null {
+  // 값이 없으면 판정하지 않는다. 0 으로 대신 쓰면 "광고 없음" 이라는 거짓이 된다.
+  if (typeof adDepth !== 'number' || !Number.isFinite(adDepth)) return null
+  if (adDepth >= AD_HEAVY) return 'heavy'
+  if (adDepth >= AD_SOME) return 'some'
+  return 'light'
+}
+
+/**
+ * 「그래서 이 키워드를 어떻게 쓰라고?」 한 줄.
+ *
+ * 광고 개수만 말하면 회원이 할 일이 안 나온다 — 광고가 10개라는 사실과 그 키워드로
+ * 무엇을 해야 하는지는 다른 얘기다. 등급(검색량·경쟁률)과 광고 압박을 함께 읽어
+ * **쓰는 법**을 말한다. 같은 광고 10개여도 황금 키워드면 "메인으로 쓰되 세부 의도를
+ * 붙여라" 고, 검색량 부족이면 "따로 쓰지 말고 얹어라" 다.
+ */
+export function adNoteFor(
+  adDepth?: number,
+  ctx: { grade?: KeywordGrade } = {}
+): string | undefined {
+  const pressure = adPressureOf(adDepth)
+  if (!pressure) return undefined
+  const n = Math.round((adDepth as number) * 10) / 10
+  const grade = ctx.grade
+
+  if (pressure === 'heavy') {
+    const head = `광고 ${n}개가 경합하는 판입니다 — 통합검색에서 파워링크·플레이스가 블로그보다 위에 놓여 검색량만큼 유입이 오지 않습니다.`
+    switch (grade) {
+      case 'gold':
+        return `${head} 그래도 검색량·경쟁률이 좋으니 메인으로 쓰세요. 다만 제목에 세부 의도(후기·비용·초보) 하나를 붙여 스마트블록 자리를 함께 노리는 편이 안전합니다.`
+      case 'good':
+        return `${head} 메인으로 쓸 수는 있지만 광고에 밀립니다 — 광고가 적은 짝과 한 글로 묶어 유입을 나누세요.`
+      case 'hard':
+        return `${head} 게다가 발행량도 포화입니다 — 위는 광고, 아래는 새 글이 쏟아지는 자리입니다. 이 키워드로 따로 쓰지 말고 세부 의도로 좁히세요.`
+      case 'toosmall':
+        return `${head} 검색량도 작으니 따로 한 편 쓸 값이 없습니다 — 큰 글에 한 단락으로 얹으세요.`
+      case 'toobig':
+        return `${head} 대형 키워드라 광고와 대형 블로그를 동시에 상대해야 합니다 — 지역·세부 의도를 붙여 좁히세요.`
+      default:
+        return `${head} 광고가 적은 키워드와 한 글로 묶어 유입을 나누세요.`
+    }
   }
-  if (adDepth >= AD_SOME) {
-    return `광고 ${n}개 — 위쪽에 광고가 붙지만 많지는 않습니다. 블로그 자리는 남아 있습니다.`
+
+  if (pressure === 'some') {
+    const head = `광고 ${n}개 — 위쪽에 광고가 붙지만 블로그 자리는 남아 있습니다.`
+    if (grade === 'gold' || grade === 'good') return `${head} 메인으로 쓰기 좋습니다.`
+    if (grade === 'toosmall') return `${head} 검색량이 작으니 서브로 얹기 좋습니다.`
+    if (grade === 'hard') return `${head} 다만 발행량이 포화라 세부 의도로 좁혀야 합니다.`
+    return head
   }
-  return `광고가 거의 없는 키워드 (${n}개) — 통합검색 위쪽이 비어 있어 블로그가 먼저 보입니다. 순위가 그대로 유입이 됩니다.`
+
+  const head = `광고가 거의 없습니다 (${n}개) — 통합검색 위쪽이 비어 있어 순위가 그대로 유입이 됩니다.`
+  if (grade === 'gold' || grade === 'good') return `${head} 가장 먼저 잡아야 하는 판입니다.`
+  if (grade === 'toosmall')
+    return `${head} 검색량은 작지만 1페이지를 잡기 쉬워 연습용·보조용으로 좋습니다.`
+  if (grade === 'hard') return `${head} 광고는 없지만 새 글이 많으니 세부 의도로 좁히세요.`
+  return head
 }
 
 export function buildMetric(input: {
@@ -150,7 +198,8 @@ export function buildMetric(input: {
     adDepth: input.adDepth,
     ctrPc: input.ctrPc,
     ctrMobile: input.ctrMobile,
-    adNote: adNoteFor(input.adDepth),
+    // 등급을 함께 넘겨야 "그래서 어떻게 쓰라고" 가 나온다
+    adNote: adNoteFor(input.adDepth, { grade }),
     grade,
     gradeReason: reason,
     mobileShare:
