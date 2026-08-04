@@ -1723,5 +1723,53 @@ ok(!SIM_CLEAN.needsWork, '안 겹치면 손볼 게 없다고 한다')
 ok(SIM_CLEAN.headline.includes('따라 쓴 흔적은 없습니다'), '괜찮으면 괜찮다고 말한다', SIM_CLEAN.headline)
 ok(OVERLAP_HIGH === 25, '문장을 통째로 따라 쓴 것으로 보는 값')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[43] 줄마다 「함께 쓰기 좋은 키워드」')
+const { bestPartner, writeHrefForPair } = require(`${OUT}/analysis/synergy.js`)
+
+// 회원이 실제로 본 4줄 (운영 실측값 — 광고 수까지 실제로 받은 값)
+const pairMk = (k, v, r, ad) =>
+  buildMetric({ keyword: k, monthlySearch: v, monthlyPc: 0, monthlyMobile: 0, blogRecent: r, adDepth: ad, mock: false })
+const PAIR_ROWS = [
+  pairMk('쌍용동헬스장', 1470, 438, 10),
+  pairMk('봉명동헬스장', 830, 422, 10),
+  pairMk('쌍용동24시헬스장', 285, 96, 2),
+  pairMk('봉명동PT', 140, 360, 10),
+]
+const pairOpts = { areas: ['쌍용동', '봉명동'], store: { open24: true, womenOnly: false } }
+const pairFor = (k) => bestPartner(PAIR_ROWS.find((m) => m.keyword === k), PAIR_ROWS, pairOpts)
+
+const pr1 = pairFor('쌍용동헬스장')
+ok(pr1.metric.keyword === '쌍용동24시헬스장', '광고가 많은 줄에는 광고가 적은 짝을 붙인다', pr1.metric.keyword)
+ok(pr1.adRelief === true, '그 짝이 광고를 피해 가는 짝이라고 표시한다')
+ok(pr1.role === 'main', '이 줄이 더 크면 이 줄이 메인')
+
+// 작은 키워드는 따로 한 편 쓰지 말고 큰 글에 얹으라고 말해야 한다
+const pr3 = pairFor('쌍용동24시헬스장')
+ok(pr3.metric.keyword === '쌍용동헬스장' && pr3.role === 'sub', '짝이 더 크면 이 줄은 서브', pr3.role)
+
+// 지역이 다르면 절대 짝이 되지 않는다 (한 글에 두 동네를 넣으면 둘 다 밀린다)
+ok(pairFor('봉명동헬스장').metric.keyword === '봉명동PT', '짝은 같은 지역에서만 찾는다', pairFor('봉명동헬스장').metric.keyword)
+ok(
+  bestPartner(PAIR_ROWS[0], [PAIR_ROWS[0], PAIR_ROWS[1]], pairOpts) === null,
+  '같은 지역에 짝이 없으면 없다고 한다 (다른 동네를 억지로 붙이지 않는다)'
+)
+
+// 지점 성격과 어긋나는 짝은 붙이지 않는다 — 24시간이 아닌 지점에 24시 키워드를 얹으면 거짓이 된다
+ok(
+  bestPartner(PAIR_ROWS[0], PAIR_ROWS, { areas: ['쌍용동'], store: { open24: false, womenOnly: false } }) === null,
+  '24시간 운영이 아니면 24시 짝을 주지 않는다'
+)
+// 광고 수를 못 읽었으면 광고를 근거로 삼지 않는다
+const pairNoAd = [pairMk('쌍용동헬스장', 1470, 438, undefined), pairMk('쌍용동24시헬스장', 285, 96, undefined)]
+ok(bestPartner(pairNoAd[0], pairNoAd, pairOpts).adRelief === false, '광고 수가 없으면 광고를 이유로 대지 않는다')
+
+// 그 자리에서 글쓰기로 넘어간다
+const pairHref = decodeURIComponent(writeHrefForPair('쌍용동헬스장', '쌍용동24시헬스장', { storeId: 'store_1' }))
+ok(pairHref.includes('main=쌍용동헬스장') && pairHref.includes('subs=쌍용동24시헬스장'), '두 키워드가 실린다', pairHref)
+ok(pairHref.includes('local=쌍용동'), '지역 키워드를 알아서 넣는다')
+ok(pairHref.includes('type=promo'), '글 유형도 정해서 넘긴다')
+ok(pairHref.includes('store=store_1'), '지점도 실린다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
