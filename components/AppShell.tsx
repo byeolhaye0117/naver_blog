@@ -55,8 +55,15 @@ const NAV: Item[] = GROUPS.flatMap((g) => g.items)
 /**
  * 휴대폰 하단 탭 — 손가락이 닿는 자리에 자주 쓰는 4개만 둔다.
  * 예전에는 9개를 상단에 가로로 늘어놓아서, 뒤쪽 메뉴는 옆으로 밀어야 보였다.
+ *
+ * 「순위」가 여기 있는 이유: 순위를 매일 자동으로 재고 진단까지 해두는데, 그 화면이
+ * 「더보기」 안에 있어서 회원이 진단 버튼을 못 찾았다. 매일 볼 화면은 손가락이 닿는
+ * 자리에 있어야 한다.
+ *
+ * 「글쓰기」는 여기서 뺐다 — 상단 「새 글」 버튼이 어느 화면에서나 보이고, 순위·키워드
+ * 화면의 「이 처방으로 쓰기」·「이 세트로 글쓰기」로 들어가는 길이 이미 여러 개다.
  */
-const TAB_HREFS = ['/', '/keywords', '/serp', '/write']
+const TAB_HREFS = ['/', '/keywords', '/serp', '/rank']
 const TABS: Item[] = TAB_HREFS.map((h) => NAV.find((n) => n.href === h)!)
 /** 하단 탭에 없는 나머지 — 「더보기」 시트에서 보여준다 */
 const REST: Item[] = NAV.filter((n) => !TAB_HREFS.includes(n.href))
