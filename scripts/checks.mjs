@@ -1108,7 +1108,7 @@ ok(rx.includes('아직 안 다룬 자리'), '처방이 빈틈도 알려준다')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[35] 통합검색 스마트블록')
-const { parseUnifiedBlocks, findUnifiedRank, countByBlogger } = require(`${OUT}/naver/unified.js`)
+const { parseUnifiedBlocks, findUnifiedRank, countByBlogger, unifiedHasPost } = require(`${OUT}/naver/unified.js`)
 
 // 네이버는 블록마다 api_subject_bx 를 붙이고, 컨테이너가 겹쳐 같은 묶음이 두 번 잡힌다
 const UNI = [
@@ -1151,6 +1151,25 @@ ok(findUnifiedRank(BLOCKS, '') === null, '빈 주소')
 
 const CNT = countByBlogger(BLOCKS)
 ok(CNT.length === 5 && CNT[0].count === 1, '블로거별 편수를 센다', String(CNT.length))
+
+// 색인 검사는 블록 파서로 하면 안 된다 — 결과가 한 편뿐인 게 정상이라 블록이 버려진다
+ok(unifiedHasPost('<a href="https://blog.naver.com/z/9">1</a>', 'https://blog.naver.com/z/9'),
+  '글이 한 편뿐이어도 주소로는 찾는다')
+ok(unifiedHasPost('<a href="https://BLOG.naver.com/Hyoni2_/224361842417">x</a>', 'blog.naver.com/hyoni2_/224361842417'),
+  '대소문자가 달라도 같은 글')
+ok(
+  unifiedHasPost('<a href="https%3A%2F%2Fblog.naver.com%2Faaa%2F111">x</a>', 'https://blog.naver.com/aaa/111'),
+  '클릭 추적 주소 안에 인코딩돼 있어도 찾는다'
+)
+ok(
+  unifiedHasPost('<a href="/PostView.naver?logNo=111&blogId=aaa">x</a>', 'https://blog.naver.com/aaa/111'),
+  'PostView 파라미터 순서가 뒤바뀌어도 찾는다'
+)
+ok(!unifiedHasPost('<a href="https://blog.naver.com/aaa/999">x</a>', 'https://blog.naver.com/aaa/111'),
+  '같은 블로그의 다른 글은 아니다')
+ok(!unifiedHasPost('<html>없음</html>', 'https://blog.naver.com/aaa/111'), '없으면 없다고 한다')
+ok(!unifiedHasPost('<a href="https://blog.naver.com/aaa/111">x</a>', 'https://blog.naver.com/aaa'),
+  '글 번호가 없는 주소로는 판정하지 않는다')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[36] 블로그 성격 판별 · 추정 힘')
@@ -1596,6 +1615,47 @@ const noAd = buildMetric({
   mock: false,
 })
 ok(noAd.adDepth === undefined && noAd.adNote === undefined, '광고 지표를 못 받으면 비워둔다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[41] 누락 판별 — 블로그탭과 통합검색을 따로 본다')
+const { indexVerdict, buildIndexCheck, summarizeIndex, verdictNote, VERDICT_LABEL, VERDICT_TONE } =
+  require(`${OUT}/analysis/indexcheck.js`)
+
+ok(indexVerdict(true, true) === 'normal', '두 곳 다 나오면 정상')
+ok(indexVerdict(true, false) === 'unifiedMissing', '블로그탭에만 있으면 통합검색 누락')
+ok(indexVerdict(false, true) === 'blogTabMissing', '통합검색에만 있으면 블로그탭 누락')
+ok(indexVerdict(false, false) === 'missing', '두 곳 다 없으면 누락 의심')
+// 못 읽은 것을 없는 것으로 바꿔 읽으면 멀쩡한 글을 누락으로 몬다
+ok(indexVerdict(null, false) === 'unknown', '블로그탭을 못 읽었으면 판정하지 않는다')
+ok(indexVerdict(true, null) === 'unknown', '통합검색을 못 읽었으면 판정하지 않는다')
+
+// 「통합검색에만 없음」은 글 문제가 아니다 — 색을 다르게 준다
+ok(VERDICT_TONE.unifiedMissing === 'warn', '통합검색 누락은 빨강이 아니다')
+ok(VERDICT_TONE.missing === 'bad', '완전 누락은 빨강')
+ok(verdictNote('unifiedMissing').includes('색인은 됐습니다'), '색인은 됐다고 분명히 말한다')
+ok(verdictNote('unifiedMissing').includes('키워드를 바꿀 문제'), '고칠 곳이 본문이 아니라고 말한다')
+ok(verdictNote('missing').includes('검색에서 빠진 것'), '완전 누락은 색인 문제라고 말한다')
+ok(verdictNote('unknown').includes('없다는 뜻이 아닙니다'), '못 잰 것을 없다고 하지 않는다')
+ok(VERDICT_LABEL.missing === '누락 의심', '단정하지 않는다', VERDICT_LABEL.missing)
+
+const IC = [
+  buildIndexCheck({ title: 'ㄱ', blogTab: true, unified: true }),
+  buildIndexCheck({ title: 'ㄴ', blogTab: true, unified: false }),
+  buildIndexCheck({ title: 'ㄷ', blogTab: true, unified: null }),
+]
+const SUM = summarizeIndex(IC)
+ok(SUM.blogTabRate === 100, '블로그탭 색인율', String(SUM.blogTabRate))
+ok(SUM.unifiedRate === 50, '못 읽은 표본은 분모에서 뺀다', String(SUM.unifiedRate))
+ok(SUM.counts.unifiedMissing === 1 && SUM.counts.unknown === 1, '판정별 개수')
+ok(SUM.headline.includes('색인은 정상입니다'), '누락이 없으면 정상이라고 먼저 말한다', SUM.headline)
+
+const SUM2 = summarizeIndex([
+  buildIndexCheck({ title: 'ㄱ', blogTab: false, unified: false }),
+  buildIndexCheck({ title: 'ㄴ', blogTab: true, unified: false }),
+])
+ok(SUM2.headline.includes('색인 문제를 먼저'), '완전 누락이 있으면 그것부터 말한다', SUM2.headline)
+ok(summarizeIndex([]).blogTabRate === null, '표본이 없으면 비율도 없다')
+ok(summarizeIndex([]).headline.includes('못 했습니다'), '표본이 없으면 못 했다고 한다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
