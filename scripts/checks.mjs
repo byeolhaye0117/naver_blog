@@ -971,6 +971,143 @@ ok(plan.splits.some((x) => x.keyword === '쌍용동 헬스장 후기' && x.postT
 ok(plan.sets.some((s) => s.main.keyword === '봉명동 헬스장'), '다른 지역은 별도 세트')
 ok(plan.sets.every((s) => !(s.area === '쌍용동' && s.subs.some((x) => x.metric.keyword.includes('봉명동')))), '지역이 섞이지 않는다')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[33] 상위 글 본문 실측 · 커트라인')
+const { postViewUrl, parsePostMetrics } = require(`${OUT}/naver/blogpost.js`)
+const { buildCutline, cutlineLine, median, CUTLINE_MIN_SAMPLE } = require(`${OUT}/analysis/cutline.js`)
+
+// 본문은 PostView.naver 에만 실려 온다 (blog.naver.com/id/logNo 는 프레임 껍데기)
+ok(
+  postViewUrl('https://blog.naver.com/hyoni2_/224361842417') ===
+    'https://blog.naver.com/PostView.naver?blogId=hyoni2_&logNo=224361842417',
+  '기본 주소를 본문 주소로 바꾼다'
+)
+ok(
+  postViewUrl('https://m.blog.naver.com/hyoni2_/224361842417').includes('blogId=hyoni2_&logNo=224361842417'),
+  '모바일 주소도 바꾼다'
+)
+ok(
+  postViewUrl('https://blog.naver.com/PostView.naver?blogId=a&logNo=1&from=search') ===
+    'https://blog.naver.com/PostView.naver?blogId=a&logNo=1',
+  '이미 본문 주소면 군더더기를 뗀다'
+)
+ok(postViewUrl('https://blog.naver.com/hyoni2_') === '', '글 번호가 없으면 못 읽는다')
+ok(postViewUrl('') === '', '빈 주소')
+
+// 스마트에디터 구조에서 수치를 뽑는다. post_footer 뒤(댓글·이웃추가)는 본문이 아니다.
+const HTML = [
+  '<html><body><div class="wrap">',
+  '<div class="se-main-container">',
+  '<div class="se-component se-text"><p>가나다라마바사아자차카타파하</p></div>',
+  '<div class="se-component se-image"><img src="a.jpg"></div>',
+  '<div class="se-component se-text"><p>두 번째 문단입니다 여기도 글자</p></div>',
+  '<div class="se-component se-image"><img src="b.jpg"></div>',
+  '<div class="se-component se-video"><video></video></div>',
+  '<script>var x = "se-component se-image"</script>',
+  '</div>',
+  '<div class="post_footer"><div class="se-component se-image">댓글 영역 이미지</div>댓글 100개</div>',
+  '</body></html>',
+].join('')
+const PM = parsePostMetrics(HTML)
+ok(PM.imageCount === 2, 'post_footer 뒤 이미지는 안 센다', String(PM.imageCount))
+ok(PM.videoCount === 1, '영상 개수', String(PM.videoCount))
+ok(!/댓글/.test(String(PM.charCount)) && PM.charCount === 27, '본문 글자수만 센다(공백 제외)', String(PM.charCount))
+ok(parsePostMetrics('<html><body>본문 컨테이너가 없음</body></html>') === null, '못 읽으면 null')
+
+// 커트라인은 평균이 아니라 중간값 — 상위권에 이미지 40장짜리가 섞이면 평균이 망가진다
+ok(median([1, 2, 3]) === 2, '중간값 (홀수)')
+ok(median([1, 2, 3, 4]) === 3, '중간값 (짝수 — 반올림)', String(median([1, 2, 3, 4])))
+ok(median([]) === 0, '빈 배열은 0')
+const MET = [
+  { charCount: 2200, imageCount: 17, videoCount: 8, url: 'a' },
+  { charCount: 1800, imageCount: 9, videoCount: 1, url: 'b' },
+  { charCount: 2000, imageCount: 11, videoCount: 0, url: 'c' },
+  { charCount: 9000, imageCount: 40, videoCount: 0, url: 'd' },
+]
+const CUT = buildCutline(MET)
+ok(CUT.charMedian === 2100, '글자수 중간값', String(CUT.charMedian))
+ok(CUT.imageMedian === 14, '이미지 중간값', String(CUT.imageMedian))
+ok(CUT.charTarget === 2400, '목표는 중간값보다 위 + 100자 단위', String(CUT.charTarget))
+ok(CUT.imageTarget === 15, '이미지 목표는 중간값 +1', String(CUT.imageTarget))
+ok(CUT.charMedian < 9000, '이미지 40장짜리 특이값에 끌려가지 않는다')
+ok(CUT.videoExpected === false, '영상 넣은 글이 절반뿐이면 기대 안 함 (중간값 반올림에 속지 않는다)')
+ok(
+  buildCutline([
+    { charCount: 2000, imageCount: 9, videoCount: 2, url: 'a' },
+    { charCount: 2000, imageCount: 9, videoCount: 1, url: 'b' },
+    { charCount: 2000, imageCount: 9, videoCount: 0, url: 'c' },
+  ]).videoExpected === true,
+  '3개 중 2개가 영상을 넣었으면 기대한다'
+)
+ok(buildCutline(MET.slice(0, 2)) === null, `${CUTLINE_MIN_SAMPLE}개 미만이면 커트라인을 만들지 않는다`)
+const LINE = cutlineLine(CUT)
+ok(LINE.includes('2,100자') && LINE.includes('2,400자'), '처방 문장에 실측값이 들어간다', LINE.slice(0, 60))
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[34] 발행 후 실패 진단')
+const { diagnose, diagnosisToPrescription, shouldDiagnose, OUT_OF_RANGE, SETTLE_DAYS } = require(
+  `${OUT}/analysis/diagnose.js`
+)
+
+// 발행 직후의 낮은 순위는 실패가 아니다
+ok(!shouldDiagnose(45, 3), '발행 3일째는 진단하지 않는다')
+ok(!shouldDiagnose(null, 10), '10일째도 아직 기다린다')
+ok(shouldDiagnose(null, 20), '20일째 순위 밖이면 진단한다')
+ok(shouldDiagnose(45, 20), '20일째 45위도 진단한다')
+ok(!shouldDiagnose(8, 40), '8위면 진단하지 않는다')
+ok(SETTLE_DAYS === 14 && OUT_OF_RANGE === 30, '기준값')
+
+const MY_POST = {
+  id: 'p1', type: 'promo', status: 'published', storeId: 's', title: '헬스장 등록했어요',
+  body: '[이미지: 대표]\n짧은 본문입니다.\n\n## 소제목 하나\n내용.',
+  mainKeyword: '쌍용동 헬스장', subKeywords: [], tags: [], createdAt: '2026-07-01T00:00:00.000Z',
+  updatedAt: '2026-07-01T00:00:00.000Z', publishedAt: '2026-07-01T00:00:00.000Z',
+}
+const SERP_FOR_DX = {
+  keyword: '쌍용동 헬스장', total: 437, items: [],
+  stats: {
+    avgTitleLength: 43, keywordInTitleRate: 90, keywordFrontRate: 67, avgAgeDays: 21,
+    freshWithin30dRate: 70, datedCount: 12, bloggerKnownCount: 12,
+    commonTokens: [{ token: '후기', count: 5 }, { token: '가격', count: 4 }, { token: 'PT', count: 3 }],
+    repeatBloggers: [{ name: '천안 운동일기', count: 4 }],
+  },
+  prescription: [], cutline: CUT, mock: false, source: 'section',
+}
+const DX = diagnose({ post: MY_POST, serp: SERP_FOR_DX, rank: null, daysSincePublish: 34 })
+const ids = DX.fixes.map((f) => f.id)
+ok(ids.includes('title-short'), '제목이 짧은 것을 잡는다')
+ok(ids.includes('title-no-keyword'), '제목에 메인 키워드가 없는 것을 잡는다')
+ok(ids.includes('body-short'), '본문이 짧은 것을 잡는다')
+ok(ids.includes('body-images'), '이미지 부족을 잡는다')
+ok(ids.includes('headings'), '소제목 부족을 잡는다')
+ok(ids.includes('tokens'), '상위권이 쓰는 말이 빠진 것을 잡는다')
+ok(ids.includes('dominated'), '선점 상태를 알려준다')
+ok(DX.fixes[0].severity === 'high', '먼저 고칠 것을 앞에 둔다')
+ok(DX.verdict.includes(`${OUT_OF_RANGE}위 안에 안 잡힙니다`) && DX.verdict.includes('고칠 곳'), '한 줄 판정', DX.verdict)
+const RXP = diagnosisToPrescription(DX)
+ok(RXP.length === DX.fixes.length, '처방 문장으로 바뀐다')
+ok(RXP[0].includes('지금') && RXP[0].includes('→'), '현재값과 할 일이 함께 들어간다', RXP[0].slice(0, 50))
+
+// 커트라인이 없으면 본문 수치는 말하지 않는다 (상위가 얼마인지 모르는데 부족하다고 할 수 없다)
+const DX2 = diagnose({
+  post: MY_POST, serp: { ...SERP_FOR_DX, cutline: undefined }, rank: 33, daysSincePublish: 20,
+})
+ok(!DX2.fixes.some((f) => f.id === 'body-short'), '실측 없으면 글자수 지적을 안 한다')
+ok(DX2.verdict.includes('33위'), '순위를 그대로 말한다')
+
+// 이미 기준을 맞춘 글이면 글 문제가 아니라고 말해준다
+const GOOD_POST = {
+  ...MY_POST,
+  title: '쌍용동 헬스장 3개월 다녀본 솔직 후기, 가격과 PT까지 정리했어요',
+  body:
+    '[이미지: 1]\n'.repeat(16) +
+    '## 소제목1\n' + '가'.repeat(700) + '\n## 소제목2\n' + '나'.repeat(700) +
+    '\n## 소제목3\n' + '다'.repeat(700) + '\n## 소제목4\n' + '라'.repeat(500) + '\n[영상: 시설]\n',
+}
+const DX3 = diagnose({ post: GOOD_POST, serp: SERP_FOR_DX, rank: null, daysSincePublish: 40 })
+ok(!DX3.fixes.some((f) => ['title-short', 'body-short', 'body-images', 'headings'].includes(f.id)),
+  '기준을 맞춘 글은 그 항목들을 지적하지 않는다', DX3.fixes.map((f) => f.id).join(','))
+
 // 상위노출 처방이 글쓰기 화면까지 와야 분석이 글에 반영된다
 ok(prescriptionKey('쌍용동 헬스장') === '쌍용동헬스장', '띄어쓰기를 없앤 키로 찾는다')
 const RX1 = { key: prescriptionKey('쌍용동 헬스장'), keyword: '쌍용동 헬스장', items: ['제목 31~39자'], date: '2026-08-01', sampled: 15 }

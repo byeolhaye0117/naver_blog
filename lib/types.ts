@@ -251,6 +251,19 @@ export interface SerpAnalysis {
   }
   /** 이 키워드로 상위 가려면 뭘 맞춰야 하는지 */
   prescription: string[]
+  /**
+   * 상위 글 본문을 실제로 읽어 잰 커트라인. 못 읽으면 없다.
+   * 있으면 검수 기준이 "일반 규격" 에서 "이 키워드의 실제 기준" 으로 바뀐다.
+   */
+  cutline?: {
+    sampled: number
+    charMedian: number
+    imageMedian: number
+    videoMedian: number
+    charTarget: number
+    imageTarget: number
+    videoExpected: boolean
+  }
   mock: boolean
   /**
    * 어디서 온 데이터인지.
