@@ -283,6 +283,97 @@ export function queryFromTitle(title: string): string {
   return words.slice(0, 3).join(' ')
 }
 
+/**
+ * 업계에서 말하는 「최적 / 준최 / 저품질」 — 흉내낸 추정 등급.
+ *
+ * **네이버가 만든 등급이 아니다.** 이 말들은 블로그 마케팅 업계의 은어이고, 네이버는
+ * 그런 등급을 발표한 적이 없다. 시중 도구들이 붙이는 등급도 결국 "이 블로그 글이
+ * 검색에 걸리는지" 를 표본으로 재서 이름을 붙인 것이다. 그래서 우리도 같은 원리로
+ * 재되, **무엇으로 그렇게 판정했는지 표본을 다 보여준다.**
+ *
+ * 두 신호를 쓴다. 섞어 쓰면 안 되는 이유가 있다.
+ *
+ *  1) **색인 검사** — 글 제목을 그대로 검색해 그 글이 나오는지. 제목 완전일치인데도
+ *     안 나오면 검색에서 빠진 것이다(업계에서 말하는 "저품질" 의 실체). 실측으로
+ *     확인했다: 제목을 그대로 넣으면 그 글이 1위로 나온다.
+ *
+ *  2) **노출력** — 제목 앞부분을 검색어로 써서 30위 안에 걸리는 비율. 이건 그 글이
+ *     노린 키워드의 난이도에 좌우된다. 실제로 hyoni2_ 는 표본 3개가 전부 30위 밖으로
+ *     나와 0점이 됐는데, 정작 "쌍용동 헬스장" 에서는 1위였다 — 표본이 여행·맛집처럼
+ *     경쟁이 센 키워드였기 때문이다. 그래서 **노출력만으로 저품질을 말하면 안 된다.**
+ */
+export type BlogGrade = 'optimal' | 'semi' | 'normal' | 'weak' | 'dropped' | 'unknown'
+
+export const GRADE_LABEL: Record<BlogGrade, string> = {
+  optimal: '최적 추정',
+  semi: '준최 추정',
+  normal: '일반',
+  weak: '노출 약함',
+  dropped: '검색 누락 의심',
+  unknown: '판정 불가',
+}
+
+export function gradeBlog(input: {
+  /** 제목 완전일치 검색에서 그 글이 나온 비율(%) — 색인 검사 */
+  indexedRate?: number
+  /** 표본 글이 30위 안에 걸린 비율(%) */
+  exposureRate?: number
+  /** 표본 수 */
+  samples: number
+}): { grade: BlogGrade; reason: string } {
+  const { indexedRate, exposureRate, samples } = input
+
+  if (samples === 0 || typeof indexedRate !== 'number') {
+    return { grade: 'unknown', reason: '표본을 읽지 못해 등급을 낼 수 없습니다.' }
+  }
+
+  // 색인부터 본다. 제목을 그대로 넣어도 안 나오면 다른 지표는 의미가 없다.
+  if (indexedRate === 0) {
+    return {
+      grade: 'dropped',
+      reason:
+        '글 제목을 그대로 검색해도 그 글이 나오지 않습니다. 검색에서 빠진 상태(업계에서 말하는 "저품질")로 의심됩니다 — 다만 방금 올린 글이면 색인 전일 수 있으니 며칠 뒤 다시 확인하세요.',
+    }
+  }
+  if (indexedRate < 100) {
+    return {
+      grade: 'weak',
+      reason: `제목을 그대로 검색했을 때 나오는 글이 ${indexedRate}% 뿐입니다. 일부 글이 검색에서 빠져 있습니다.`,
+    }
+  }
+
+  if (typeof exposureRate !== 'number') {
+    return {
+      grade: 'normal',
+      reason: '색인은 정상입니다. 노출력을 재지 못해 그 이상은 판정하지 않았습니다.',
+    }
+  }
+
+  if (exposureRate >= 60) {
+    return {
+      grade: 'optimal',
+      reason: `색인 정상이고, 표본 글의 ${exposureRate}%가 30위 안에 걸립니다. 업계에서 "최적" 이라 부르는 상태에 가깝습니다.`,
+    }
+  }
+  if (exposureRate >= 30) {
+    return {
+      grade: 'semi',
+      reason: `색인 정상이고 표본의 ${exposureRate}%가 30위 안에 걸립니다. "준최" 라 부르는 구간에 가깝습니다.`,
+    }
+  }
+  if (exposureRate >= 10) {
+    return {
+      grade: 'normal',
+      reason: `색인은 정상이고 표본의 ${exposureRate}%가 걸립니다. 아직 힘이 붙는 중입니다.`,
+    }
+  }
+  return {
+    grade: 'weak',
+    reason:
+      '색인은 정상인데 표본이 거의 30위 안에 없습니다. **저품질이 아닙니다** — 표본 글이 경쟁이 센 키워드를 노렸으면 이렇게 나옵니다. 아래 표본 목록의 검색어를 보고 판단하세요.',
+  }
+}
+
 /** 이 블로그를 상위에서 만났을 때 무엇을 뜻하는지 — 전략 한 줄 */
 export function meaningForUs(p: BlogProfile): string {
   switch (p.kind) {

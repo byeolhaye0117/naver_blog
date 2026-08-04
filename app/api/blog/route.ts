@@ -1,16 +1,23 @@
 import { NextResponse } from 'next/server'
 import { blogIdFromInput, fetchBlogFeed } from '@/lib/naver/blogrss'
-import { buildBlogProfile, meaningForUs, queryFromTitle } from '@/lib/analysis/blogscore'
+import { buildBlogProfile, gradeBlog, meaningForUs, queryFromTitle } from '@/lib/analysis/blogscore'
 import { findBlogRank } from '@/lib/naver/blogsection'
 
 export const dynamic = 'force-dynamic'
-// RSS 1회 + 노출력 표본 조회 3회
-export const maxDuration = 60
+// RSS 1회 + 색인 검사 3회 + 노출력 표본 8회
+export const maxDuration = 120
 
-/** 노출력을 잴 표본 수 — 늘리면 정확해지지만 그만큼 느려진다 */
-const SAMPLE = 3
+/**
+ * 노출력을 잴 표본 수.
+ *
+ * 3개로 했더니 흔들렸다 — hyoni2_ 는 표본 3개가 전부 여행·맛집처럼 경쟁 센 키워드라
+ * 0% 가 나왔는데 정작 "쌍용동 헬스장" 에서는 1위였다. 표본을 늘려야 한다.
+ */
+const SAMPLE = 8
 /** 이 순위 안에 있으면 "걸렸다" 로 본다 */
 const SAMPLE_DEPTH = 30
+/** 색인 검사(제목 완전일치)는 이만큼만 — 이건 표본이 적어도 신호가 분명하다 */
+const INDEX_SAMPLE = 3
 
 export async function POST(req: Request) {
   try {
@@ -41,7 +48,31 @@ export async function POST(req: Request) {
      */
     let exposureRate: number | undefined
     let exposureDetail: { query: string; rank: number | null }[] | undefined
+    let indexedRate: number | undefined
+    let indexDetail: { title: string; found: boolean }[] | undefined
+
     if (body.exposure !== false) {
+      /*
+       * ① 색인 검사 — 제목을 그대로 검색해 그 글이 나오는지.
+       * 업계에서 말하는 "저품질" 의 실체가 이것이다. 노출력이 낮은 것과는 전혀 다른
+       * 문제이므로 따로 잰다 (경쟁 센 키워드를 노려 안 걸리는 것은 저품질이 아니다).
+       */
+      const idxPicks = feed.items.filter((i) => i.title.length >= 8).slice(0, INDEX_SAMPLE)
+      const idxGot: { title: string; found: boolean }[] = []
+      for (const it of idxPicks) {
+        try {
+          const r = await findBlogRank(it.title, it.link, 10)
+          if (r.ok) idxGot.push({ title: it.title, found: r.rank !== null })
+        } catch {
+          /* 한 표본이 실패해도 나머지로 센다 */
+        }
+      }
+      if (idxGot.length) {
+        indexDetail = idxGot
+        indexedRate = Math.round((idxGot.filter((g) => g.found).length / idxGot.length) * 100)
+      }
+
+      // ② 노출력 — 제목 앞부분을 검색어로 써서 30위 안에 걸리는지
       const picks = feed.items.filter((i) => queryFromTitle(i.title).length >= 4).slice(0, SAMPLE)
       const got: { query: string; rank: number | null }[] = []
       for (const it of picks) {
@@ -60,9 +91,17 @@ export async function POST(req: Request) {
     }
 
     const profile = buildBlogProfile(feed, undefined, exposureRate)
+    const grade = gradeBlog({
+      indexedRate,
+      exposureRate,
+      samples: (exposureDetail?.length ?? 0) + (indexDetail?.length ?? 0),
+    })
 
     return NextResponse.json({
       profile,
+      grade,
+      indexedRate,
+      indexDetail,
       meaning: meaningForUs(profile),
       exposureDetail,
       recent: feed.items.slice(0, 8).map((i) => ({ title: i.title, date: i.date, category: i.category, link: i.link })),

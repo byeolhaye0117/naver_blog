@@ -1076,9 +1076,8 @@ ok(idxFallen === -1 || idxStuck < idxFallen, '답이 준비된 것을 먼저 보
 // ─────────────────────────────────────────────────────────────
 console.log('\n[34] 블로그 성격 판별 · 추정 힘')
 const { blogIdFromInput, parseBlogRss, rssDate } = require(`${OUT}/naver/blogrss.js`)
-const { buildBlogProfile, classifyBlogger, queryFromTitle, meaningForUs, KIND_LABEL } = require(
-  `${OUT}/analysis/blogscore.js`
-)
+const { buildBlogProfile, classifyBlogger, queryFromTitle, meaningForUs, gradeBlog, KIND_LABEL, GRADE_LABEL } =
+  require(`${OUT}/analysis/blogscore.js`)
 
 // 아이디는 아무 형태로 넣어도 받는다
 ok(blogIdFromInput('jiyun0361') === 'jiyun0361', '아이디만')
@@ -1136,6 +1135,23 @@ ok(!PROF.scoreParts.some((s) => s.label === '노출력'), '안 재면 항목이 
 const WITH = buildBlogProfile({ ...FEED, blogId: 'me' }, '2026-08-04', 100)
 ok(WITH.scoreParts.some((s) => s.label === '노출력'), '재면 항목이 붙는다')
 ok(WITH.score > PROF.score - 30, '환산이 무너지지 않는다', `${PROF.score} → ${WITH.score}`)
+
+// 업계 은어(최적·준최·저품질)를 표본으로 흉내낸 등급
+ok(gradeBlog({ samples: 0 }).grade === 'unknown', '표본이 없으면 판정하지 않는다')
+// 색인부터 본다 — 제목 완전일치인데도 안 나오면 그게 "저품질" 의 실체다
+const DROP = gradeBlog({ indexedRate: 0, exposureRate: 0, samples: 5 })
+ok(DROP.grade === 'dropped', '제목 그대로 검색해도 안 나오면 누락 의심', DROP.grade)
+ok(DROP.reason.includes('색인 전일 수 있'), '방금 올린 글일 수 있다는 여지를 남긴다')
+ok(gradeBlog({ indexedRate: 67, exposureRate: 80, samples: 6 }).grade === 'weak', '일부만 색인되면 노출력이 좋아도 약함')
+ok(gradeBlog({ indexedRate: 100, exposureRate: 75, samples: 8 }).grade === 'optimal', '색인 정상 + 높은 노출률 = 최적 추정')
+ok(gradeBlog({ indexedRate: 100, exposureRate: 40, samples: 8 }).grade === 'semi', '중간이면 준최 추정')
+ok(gradeBlog({ indexedRate: 100, exposureRate: 15, samples: 8 }).grade === 'normal', '낮으면 일반')
+// **핵심**: 노출력만으로 저품질을 말하면 안 된다 (hyoni2_ 는 0% 였는데 우리 키워드 1위였다)
+const LOW = gradeBlog({ indexedRate: 100, exposureRate: 0, samples: 8 })
+ok(LOW.grade === 'weak', '색인 정상인데 노출률 0 이면 "약함" 이지 저품질이 아니다', LOW.grade)
+ok(LOW.reason.includes('저품질이 아닙니다'), '저품질이 아니라고 분명히 말한다')
+ok(gradeBlog({ indexedRate: 100, samples: 3 }).grade === 'normal', '노출력을 못 재면 색인만으로 일반')
+ok(GRADE_LABEL['optimal'] === '최적 추정' && GRADE_LABEL['dropped'] === '검색 누락 의심', '한국어 이름')
 
 // 제목에서 검색어 만들기
 ok(queryFromTitle('천안 쌍용동 헬스장 미녀와야수짐 봉명점 후기') === '천안 쌍용동 헬스장', '앞 세 낱말', queryFromTitle('천안 쌍용동 헬스장 미녀와야수짐 봉명점 후기'))
