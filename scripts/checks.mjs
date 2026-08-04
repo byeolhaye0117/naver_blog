@@ -2075,6 +2075,33 @@ ok(
   '같은 홍보글 키워드는 붙는다'
 )
 
+/*
+ * 순서 — 내 동네가 시 광역보다 위에 온다.
+ * 검색량만 보면 천안 묶음(합계 5,050)이 쌍용동(1,805)을 밀어낸다. 그런데 천안 급은
+ * 발행량이 포화라 이기기 어렵고, 우리가 실제로 먹을 판은 동네다.
+ */
+const SL5 = buildShortlist(
+  [
+    { keyword: '천안헬스장', monthlySearch: 3060 },
+    { keyword: '천안PT', monthlySearch: 740 },
+    { keyword: '천안다이어트', monthlySearch: 880 },
+    { keyword: '쌍용동헬스장', monthlySearch: 1500 },
+    { keyword: '쌍용동24시헬스장', monthlySearch: 305 },
+  ],
+  { areas: ['쌍용동'], cities: ['천안'], store: { open24: true, womenOnly: false }, limit: 12 }
+)
+ok(SL5.picked[0].keyword === '쌍용동헬스장', '내 동네가 맨 위에 온다', SL5.picked[0].keyword)
+ok(
+  SL5.picked.findIndex((p) => p.area === '쌍용동') <
+    SL5.picked.findIndex((p) => p.area === '천안'),
+  '동네 묶음이 시 묶음보다 앞이다',
+  SL5.picked.map((p) => p.area).join(',')
+)
+ok(
+  SL5.picked.some((p) => p.keyword === '천안헬스장'),
+  '시 광역도 빼지는 않는다 (뒤에 둘 뿐이다)'
+)
+
 // 왜 뺐는지 말한다
 const why = (k) => (SL.skipped.find((x) => x.keyword === k) ?? {}).why ?? ''
 ok(why('쌍용동PT').includes('유입이 거의 없습니다'), '검색량이 작으면 이유를 밝히고 뺀다', why('쌍용동PT'))

@@ -148,9 +148,18 @@ export function buildShortlist(
     groups.set(key, list)
   }
 
-  // 검색 수요가 큰 지역부터 (내 동네를 광역보다 앞에 둔다 — 지역 글이 우리 무기다)
+  /*
+   * 내 동네를 먼저, 시 광역을 나중에.
+   *
+   * 검색량으로만 줄을 세우면 「천안」 묶음(합계 5,050회)이 「쌍용동」보다 위에 온다.
+   * 그런데 천안 급 키워드는 발행량이 포화라 우리가 이기기 어렵고, 우리가 실제로 먹을 수
+   * 있는 판은 동네다. 지점 글이 우리 무기이므로 동네를 위에 둔다.
+   */
+  const cityKeys = new Set((opts.cities ?? []).map((c) => c.trim()).filter(Boolean))
+  const rank = (key: string) => (!key ? 2 : cityKeys.has(key) ? 1 : 0)
   const order = Array.from(groups.entries()).sort((a, b) => {
-    if (Boolean(a[0]) !== Boolean(b[0])) return a[0] ? -1 : 1
+    const d = rank(a[0]) - rank(b[0])
+    if (d !== 0) return d
     const sum = (list: typeof usable) => list.reduce((n, r) => n + r.c.monthlySearch, 0)
     return sum(b[1]) - sum(a[1])
   })
