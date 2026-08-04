@@ -13,6 +13,17 @@ export interface AdKeywordRow {
   monthlySearch: number
   /** 낮음 / 중간 / 높음 */
   compIdx?: string
+  /**
+   * 이 키워드에 붙은 광고 개수(평균 노출 광고수).
+   *
+   * 왜 보나. 광고가 많이 붙은 키워드는 통합검색 위쪽을 파워링크·플레이스가 차지해서
+   * **블로그 자리가 아래로 밀린다.** 검색량이 같아도 광고 5개짜리 키워드는 블로그로
+   * 들어오는 유입이 확 준다. 상업성 판정에 쓴다.
+   */
+  adDepth?: number
+  /** 광고 클릭률(%) — 상업적 의도가 강한 키워드일수록 높다 */
+  ctrPc?: number
+  ctrMobile?: number
   mock: boolean
 }
 
@@ -73,6 +84,10 @@ export async function keywordTool(hints: string[]): Promise<AdKeywordRow[]> {
       monthlyPcQcCnt: unknown
       monthlyMobileQcCnt: unknown
       compIdx?: string
+      /** 평균 노출 광고수 */
+      plAvgDepth?: unknown
+      monthlyAvePcCtr?: unknown
+      monthlyAveMobileCtr?: unknown
     }>
   }
 
@@ -85,9 +100,28 @@ export async function keywordTool(hints: string[]): Promise<AdKeywordRow[]> {
       monthlyMobile: mo,
       monthlySearch: pc + mo,
       compIdx: r.compIdx,
+      adDepth: toRate(r.plAvgDepth),
+      ctrPc: toRate(r.monthlyAvePcCtr),
+      ctrMobile: toRate(r.monthlyAveMobileCtr),
       mock: false,
     }
   })
+}
+
+/**
+ * 소수점이 있는 값 (클릭률·평균 광고수).
+ *
+ * **없는 값은 반드시 undefined 로 돌려준다.** Number('') 은 0 이므로 순진하게 쓰면
+ * 필드가 아예 안 온 키워드가 "광고 0개" 로 보인다 — 그러면 광고 6개짜리 키워드와
+ * 구분이 안 되는 것보다 더 나쁘게, 광고가 없다고 **거짓말**을 하게 된다.
+ */
+export function toRate(v: unknown): number | undefined {
+  if (v === null || v === undefined) return undefined
+  const n = typeof v === 'number' ? v : Number(String(v).replace(/[^0-9.]/g, ''))
+  if (!Number.isFinite(n)) return undefined
+  // "" · "-" 처럼 숫자가 한 글자도 없던 값
+  if (typeof v !== 'number' && !/[0-9]/.test(String(v))) return undefined
+  return Math.round(n * 100) / 100
 }
 
 /**
@@ -143,6 +177,11 @@ export function mockKeywordTool(hints: string[]): AdKeywordRow[] {
       monthlyMobile: mo,
       monthlySearch: total,
       compIdx: total > 8000 ? '높음' : total > 2000 ? '중간' : '낮음',
+      // 목업도 광고 지표를 채운다 — compIdx 와 같은 성격의 값이고, 이 행은 화면에서
+      // 계속 「샘플」로 표시된다. 비워두면 키 없이 써보는 사람은 기능 자체를 못 본다.
+      adDepth: Math.round(rnd() * 70) / 10,
+      ctrPc: Math.round(rnd() * 400) / 100,
+      ctrMobile: Math.round(rnd() * 600) / 100,
       mock: true,
     })
 
@@ -158,6 +197,9 @@ export function mockKeywordTool(hints: string[]): AdKeywordRow[] {
         monthlyMobile: m2,
         monthlySearch: t2,
         compIdx: t2 > 8000 ? '높음' : t2 > 2000 ? '중간' : '낮음',
+        adDepth: Math.round(r2() * 60) / 10,
+        ctrPc: Math.round(r2() * 400) / 100,
+        ctrMobile: Math.round(r2() * 600) / 100,
         mock: true,
       })
     }

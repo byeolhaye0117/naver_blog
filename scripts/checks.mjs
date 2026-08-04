@@ -20,8 +20,8 @@ const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SE
 )
 const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/naver/place.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
-const { mockKeywordTool, dedupeAdRows } = require(`${OUT}/naver/searchad.js`)
-const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
+const { mockKeywordTool, dedupeAdRows, toRate } = require(`${OUT}/naver/searchad.js`)
+const { gradeKeyword, adNoteFor, AD_HEAVY, AD_SOME } = require(`${OUT}/analysis/keyword.js`)
 const { phaseOf, buildRankViews, autoRankTargets } = require(`${OUT}/analysis/rank.js`)
 const { isPartialMonth, completedMonths, momentumOf } = require(`${OUT}/naver/datalab.js`)
 const { prescriptionKey, upsertPrescription, findPrescription, prescriptionAgeDays, isPrescriptionStale } = require(
@@ -1549,6 +1549,53 @@ ok(href.includes('type=promo') && href.includes('store=store_1'), '유형·지�
 ok(decodeURIComponent(href).includes('main=쌍용동 헬스장'), '메인 키워드가 실린다')
 ok(decodeURIComponent(href).includes('subs=쌍용동 헬스장 가격,쌍용동 24시 헬스장'), '서브 2개가 실린다')
 ok(decodeURIComponent(href).includes('local=쌍용동'), '지역 키워드가 실린다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[40] 광고가 블로그 자리를 밀어내는 정도')
+
+// 없는 값을 0 으로 읽으면 "광고 없음" 이라는 거짓이 된다 (Number('') === 0 함정)
+ok(toRate(undefined) === undefined, '필드가 없으면 모른다고 한다')
+ok(toRate(null) === undefined, 'null 도 모른다')
+ok(toRate('') === undefined, '빈 문자열을 0 으로 읽지 않는다', String(toRate('')))
+ok(toRate('-') === undefined, '숫자가 없는 문자열도 모른다', String(toRate('-')))
+ok(toRate(0) === 0, '실제로 0 이라고 온 값은 0 이다')
+ok(toRate('5.6') === 5.6, '문자열 소수', String(toRate('5.6')))
+ok(toRate(1.23456) === 1.23, '소수점 둘째 자리까지', String(toRate(1.23456)))
+ok(toRate('0.85%') === 0.85, '단위가 붙어 와도 읽는다', String(toRate('0.85%')))
+
+// 광고가 많으면 통합검색 위쪽이 덮여 블로그가 밀린다 — 검색량만으로는 안 보이는 사실
+ok(adNoteFor(undefined) === undefined, '광고 지표가 없으면 아무 말도 하지 않는다')
+ok(adNoteFor(AD_HEAVY).includes('아래로 밀립니다'), '광고가 많으면 밀린다고 말한다')
+ok(adNoteFor(6.2).includes('6.2개'), '실제 광고 수를 밝힌다', adNoteFor(6.2))
+ok(adNoteFor(AD_SOME).includes('블로그 자리는 남아 있습니다'), '중간은 중간이라고 한다')
+ok(adNoteFor(0).includes('먼저 보입니다'), '광고가 없으면 유리하다고 말한다')
+ok(!adNoteFor(0).includes('밀립니다'), '광고 0 개에 경고를 붙이지 않는다')
+
+// 지표가 metric 까지 그대로 실린다 (등급 판정은 광고와 무관하게 유지)
+const adM = buildMetric({
+  keyword: '쌍용동 헬스장',
+  monthlySearch: 1470,
+  monthlyPc: 470,
+  monthlyMobile: 1000,
+  blogRecent: 437,
+  adDepth: 6,
+  ctrPc: 0.4,
+  ctrMobile: 1.2,
+  mock: false,
+})
+ok(adM.adDepth === 6 && adM.ctrMobile === 1.2, '광고 지표가 지표에 실린다')
+ok(adM.adNote.includes('밀립니다'), '광고 안내문이 함께 만들어진다')
+ok(adM.grade === 'gold', '광고가 많아도 등급 기준(검색량·경쟁률)은 바뀌지 않는다', adM.grade)
+ok(!adM.gradeReason.includes('광고'), '등급 설명에는 광고를 섞지 않는다 — 따로 말한다')
+const noAd = buildMetric({
+  keyword: '쌍용동 PT',
+  monthlySearch: 1470,
+  monthlyPc: 470,
+  monthlyMobile: 1000,
+  blogRecent: 437,
+  mock: false,
+})
+ok(noAd.adDepth === undefined && noAd.adNote === undefined, '광고 지표를 못 받으면 비워둔다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

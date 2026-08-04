@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import type { KeywordMetric, PlaceRank, Store } from '@/lib/types'
 import { GRADE_LABEL, POST_TYPE_LABEL } from '@/lib/types'
 import {
+  AD_HEAVY,
   COMPETITION_GOOD,
   INTENT_SUFFIXES,
   areasFromStore,
@@ -29,6 +30,32 @@ function gradeTone(g: KeywordMetric['grade']) {
 }
 
 const NUM = (n: number | null) => (n === null ? '—' : n.toLocaleString())
+
+/**
+ * 광고가 블로그 자리를 얼마나 밀어내는지.
+ *
+ * 검색량·발행량만 보면 "광고 6개가 붙어서 블로그가 스크롤 두 번 아래에 있는 키워드" 와
+ * "광고가 하나도 없어서 블로그가 첫 화면에 바로 보이는 키워드" 가 똑같이 보인다.
+ * 값이 없으면 아무것도 그리지 않는다 — 0 으로 대신 쓰면 "광고 없음" 이라는 거짓이 된다.
+ */
+function AdLine({ r }: { r: KeywordMetric }) {
+  if (typeof r.adDepth !== 'number') return null
+  const heavy = r.adDepth >= AD_HEAVY
+  return (
+    <p
+      data-ad="line"
+      className={`mt-1.5 rounded-lg px-2 py-1.5 text-[11px] leading-relaxed ${
+        heavy
+          ? 'border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200'
+          : 'muted'
+      }`}
+    >
+      <strong>광고 {Math.round(r.adDepth * 10) / 10}개</strong>
+      {typeof r.ctrMobile === 'number' && ` · 광고 클릭률 모바일 ${r.ctrMobile}%`}
+      {r.adNote && <span className="block">{r.adNote}</span>}
+    </p>
+  )
+}
 
 /** 내가 넣은 키워드는 어떤 정렬에서도 위에 둔다 — 연관 키워드에 묻히면 안 된다 */
 function sortMetrics(list: KeywordMetric[], mode: Sort, requested: string[] = []): KeywordMetric[] {
@@ -307,6 +334,10 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
         monthlyMobile: r.monthlyMobile,
         blogRecent: n,
         compIdx: r.compIdx,
+        // 발행량을 손으로 채워 다시 채점할 때도 광고 지표를 잃지 않는다
+        adDepth: r.adDepth,
+        ctrPc: r.ctrPc,
+        ctrMobile: r.ctrMobile,
         mock: r.mock,
         source: r.source,
       })
@@ -968,6 +999,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 )}
 
                 <p className="muted mt-2 text-[11.5px] leading-relaxed">{r.gradeReason}</p>
+                <AdLine r={r} />
 
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
                   <Link
@@ -1078,6 +1110,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                     <td className="py-2.5 pr-3">
                       <Badge tone={gradeTone(r.grade)}>{GRADE_LABEL[r.grade]}</Badge>
                       <p className="muted mt-1 max-w-[240px] text-[11px] leading-snug">{r.gradeReason}</p>
+                      <div className="max-w-[240px]">
+                        <AdLine r={r} />
+                      </div>
                     </td>
                     <td className="py-3 pr-2.5 whitespace-nowrap">
                       {/* 다음에 눌러야 하는 것 하나만 색을 준다 — 넷 다 초록이면 뭘 먼저 볼지 알 수 없다 */}

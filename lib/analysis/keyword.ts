@@ -88,6 +88,34 @@ export function gradeKeyword(
   }
 }
 
+/**
+ * 광고가 블로그 자리를 얼마나 밀어내는지.
+ *
+ * **왜 보나.** 지금까지 이 앱은 검색량과 발행량만 봤다. 그런데 통합검색 첫 화면은
+ * 위에서부터 파워링크 → 플레이스 → 스마트블록 순서다. 광고가 5개 붙는 키워드는
+ * 사람이 스크롤을 두 번 내려야 블로그를 만난다. 즉 **같은 1위라도 광고가 많은
+ * 키워드는 유입이 적다.** 검색량 3,000 짜리 광고 6개와 검색량 1,500 짜리 광고 0개
+ * 중에 뒤쪽이 나은 경우가 실제로 있다.
+ *
+ * 임계값은 화면 구조에서 나온다 — 파워링크는 기본 5개까지 붙고, 그만큼 붙으면
+ * 모바일 첫 화면이 광고로 덮인다.
+ */
+export const AD_HEAVY = 5
+export const AD_SOME = 2
+
+export function adNoteFor(adDepth?: number): string | undefined {
+  // 값이 없으면 아무 말도 하지 않는다. 0 으로 대신 쓰면 "광고 없음" 이라는 거짓이 된다.
+  if (typeof adDepth !== 'number' || !Number.isFinite(adDepth)) return undefined
+  const n = Math.round(adDepth * 10) / 10
+  if (adDepth >= AD_HEAVY) {
+    return `광고 ${n}개가 붙는 키워드 — 통합검색 첫 화면 위쪽이 파워링크·플레이스로 덮여 블로그가 아래로 밀립니다. 검색량만큼 유입이 오지 않으니, 블로그가 위에 오는 세부 의도(후기·비용·초보)를 함께 노리세요.`
+  }
+  if (adDepth >= AD_SOME) {
+    return `광고 ${n}개 — 위쪽에 광고가 조금 붙습니다. 블로그 자리는 남아 있습니다.`
+  }
+  return `광고가 거의 붙지 않는 키워드 (${n}개) — 통합검색 위쪽이 비어 있어 블로그가 먼저 보입니다. 1위 값이 그대로 유입으로 옵니다.`
+}
+
 export function buildMetric(input: {
   keyword: string
   monthlySearch: number
@@ -96,6 +124,9 @@ export function buildMetric(input: {
   blogRecent: number | null
   blogRecentNote?: 'estimated' | 'atLeast'
   compIdx?: string
+  adDepth?: number
+  ctrPc?: number
+  ctrMobile?: number
   mock: boolean
   source?: 'api' | 'manual'
 }): KeywordMetric {
@@ -109,6 +140,10 @@ export function buildMetric(input: {
     blogRecentNote: input.blogRecentNote,
     competition,
     compIdx: input.compIdx,
+    adDepth: input.adDepth,
+    ctrPc: input.ctrPc,
+    ctrMobile: input.ctrMobile,
+    adNote: adNoteFor(input.adDepth),
     grade,
     gradeReason: reason,
     mobileShare:

@@ -16,7 +16,17 @@ const BATCH = 4
 
 /** 발행량 조회는 키워드당 1~2콜이라 배치로 나눠 돌린다 */
 async function withBlogTotals(
-  rows: { keyword: string; monthlySearch: number; monthlyPc: number; monthlyMobile: number; compIdx?: string; mock: boolean }[]
+  rows: {
+    keyword: string
+    monthlySearch: number
+    monthlyPc: number
+    monthlyMobile: number
+    compIdx?: string
+    adDepth?: number
+    ctrPc?: number
+    ctrMobile?: number
+    mock: boolean
+  }[]
 ): Promise<KeywordMetric[]> {
   const out: KeywordMetric[] = []
   for (let i = 0; i < rows.length; i += BATCH) {
@@ -37,6 +47,9 @@ async function withBlogTotals(
           blogRecent: c.count,
           blogRecentNote: c.note === 'exact' ? undefined : c.note,
           compIdx: r.compIdx,
+          adDepth: r.adDepth,
+          ctrPc: r.ctrPc,
+          ctrMobile: r.ctrMobile,
           // 발행량은 키가 필요 없는 경로라 샘플이 아니다. 검색량 쪽만 샘플일 수 있다.
           mock: r.mock,
         })
