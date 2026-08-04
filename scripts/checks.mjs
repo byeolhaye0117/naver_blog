@@ -1657,5 +1657,66 @@ ok(SUM2.headline.includes('색인 문제를 먼저'), '완전 누락이 있으�
 ok(summarizeIndex([]).blogTabRate === null, '표본이 없으면 비율도 없다')
 ok(summarizeIndex([]).headline.includes('못 했습니다'), '표본이 없으면 못 했다고 한다')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[42] 유사문서 판독 — 내 글이 상위 글과 그대로 겹치는지')
+const { compareOne, compareWithTop, normalizeForCompare, shingleSet, SHINGLE, MIN_LENGTH, OVERLAP_HIGH, SIMILARITY_CAVEAT } =
+  require(`${OUT}/analysis/similarity.js`)
+
+// 띄어쓰기 차이로 같은 문장을 다르게 보면 안 된다 (한국어에서 실제로 자주 어긋난다)
+const n1 = normalizeForCompare('쌍용동 헬스장, 새벽 6시에 문을 엽니다!')
+const n2 = normalizeForCompare('쌍용동헬스장 새벽6시에 문을엽니다')
+ok(n1.clean === '쌍용동헬스장새벽6시에문을엽니다', '공백·기호를 뺀다', n1.clean)
+ok(n1.clean === n2.clean, '띄어쓰기가 달라도 같은 글자열')
+ok(n1.map.length === n1.clean.length, '원문 자리를 함께 들고 있다')
+ok('쌍용동 헬스장'[n1.map[3]] === '헬', '원문 몇 번째 글자였는지 되짚을 수 있다')
+ok(shingleSet('가나다라마바사아자차카타파하하', SHINGLE).size === 2, '글자 사슬을 만든다')
+ok(shingleSet('짧다', SHINGLE).size === 0, '사슬보다 짧은 글은 조각이 없다')
+
+// 통째로 베낀 글 — 겹침이 크고, 겹친 구절을 원문 표기로 보여준다
+const SIM_COPIED =
+  '쌍용동 헬스장을 찾다가 여기를 알게 됐습니다. 새벽 여섯 시부터 문을 열어서 출근 전에 운동을 할 수 있었고, 기구도 넉넉해서 기다리는 일이 거의 없었습니다. 삼 개월 동안 다니면서 체지방이 오 킬로그램 줄었습니다.'
+const same = compareOne(SIM_COPIED, `앞말이 다릅니다. ${SIM_COPIED} 뒷말도 다릅니다.`, 'https://blog.naver.com/a/1')
+ok(same.overlap > 90, '통째로 같으면 겹침이 크다', String(same.overlap))
+ok(same.samples.length > 0 && same.samples[0].includes('새벽 여섯 시부터'), '겹친 구절을 원문 띄어쓰기 그대로 보여준다', same.samples[0]?.slice(0, 20))
+
+// 소재가 같아도 문장이 다르면 겹치지 않는다 — 이걸 못 가르면 경고가 무의미해진다
+const SIM_MINE =
+  '아침 일찍 운동하는 습관을 만들고 싶어서 집 근처를 알아봤습니다. 기구가 몇 대인지, 사람이 붐비는 시간대가 언제인지 직접 가서 물어봤습니다. 두 달째 다니는데 어깨 통증이 줄었습니다.'
+const diff = compareOne(SIM_MINE, SIM_COPIED, 'https://blog.naver.com/a/1')
+ok(diff.overlap < 10, '같은 주제라도 문장이 다르면 안 겹친다', String(diff.overlap))
+ok(compareOne('짧아', SIM_COPIED, 'x') === null, '사슬보다 짧은 글은 판정하지 않는다')
+ok(compareOne(SIM_COPIED, '짧아', 'x') === null, '상대 글이 너무 짧으면 판정하지 않는다')
+
+// 분모는 내 글이다 — 반대로 재면 남의 긴 글에 내 글이 묻혀 늘 낮게 나온다
+const longTheirs = `${SIM_COPIED} ${'다른 이야기가 아주 길게 이어집니다. '.repeat(20)}`
+ok(
+  compareOne(SIM_COPIED, longTheirs, 'x').overlap > compareOne(longTheirs, SIM_COPIED, 'x').overlap,
+  '내 글을 분모로 잡는다'
+)
+
+// 짧은 초안은 아예 재지 않는다 (비율이 튀어 없는 문제를 만든다)
+ok(compareWithTop('짧은 초안입니다', [{ url: 'x', text: SIM_COPIED }]) === null, `${MIN_LENGTH}자 미만은 판독하지 않는다`)
+
+const SIM_LONG = `${SIM_COPIED} ${SIM_MINE} ${'운동 기록을 매일 적어 두면 변화가 눈에 보입니다. '.repeat(10)}`
+const SIM_REPORT = compareWithTop(SIM_LONG, [
+  { url: 'https://blog.naver.com/a/1', text: SIM_COPIED },
+  { url: 'https://blog.naver.com/b/2', text: '전혀 다른 내용입니다. ' + 'PT 가격을 정리해 봤습니다. '.repeat(20) },
+])
+ok(SIM_REPORT.hits.length === 2, '견준 글을 다 돌려준다')
+ok(SIM_REPORT.hits[0].overlap >= SIM_REPORT.hits[1].overlap, '겹침이 큰 순서로 정렬')
+ok(SIM_REPORT.worst.url === 'https://blog.naver.com/a/1', '가장 많이 겹친 글을 짚어준다')
+ok(SIM_REPORT.compared === 2, '몇 편과 견줬는지 밝힌다')
+// 몇 % 를 넘으면 걸린다는 말은 하지 않는다 — 네이버 기준값은 공개돼 있지 않다
+ok(!SIMILARITY_CAVEAT.includes('걸립니다'), '기준값을 단정하지 않는다')
+ok(SIMILARITY_CAVEAT.includes('공개돼 있지 않습니다'), '모르는 것은 모른다고 밝힌다')
+ok(SIMILARITY_CAVEAT.includes('주소'), '어차피 같아야 하는 문구는 괜찮다고 알려준다')
+
+const SIM_CLEAN = compareWithTop(`${SIM_MINE} ${'서로 다른 이야기를 길게 적었습니다. '.repeat(20)}`, [
+  { url: 'x', text: 'PT 가격 이야기입니다. ' + '완전히 다른 문장들입니다. '.repeat(20) },
+])
+ok(!SIM_CLEAN.needsWork, '안 겹치면 손볼 게 없다고 한다')
+ok(SIM_CLEAN.headline.includes('따라 쓴 흔적은 없습니다'), '괜찮으면 괜찮다고 말한다', SIM_CLEAN.headline)
+ok(OVERLAP_HIGH === 25, '문장을 통째로 따라 쓴 것으로 보는 값')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
