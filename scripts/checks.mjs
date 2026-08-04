@@ -1584,11 +1584,16 @@ ok(toRate('0.85%') === 0.85, '단위가 붙어 와도 읽는다', String(toRate(
 
 // 광고가 많으면 통합검색 위쪽이 덮여 블로그가 밀린다 — 검색량만으로는 안 보이는 사실
 ok(adNoteFor(undefined) === undefined, '광고 지표가 없으면 아무 말도 하지 않는다')
-ok(adNoteFor(AD_HEAVY).includes('아래로 밀립니다'), '광고가 많으면 밀린다고 말한다')
+ok(adNoteFor(AD_HEAVY).includes('블로그보다 위에 놓이니'), '광고가 많으면 블로그가 아래라고 말한다')
+// 값이 곧 화면에 보이는 광고 개수는 아니다 (모바일은 몇 개만 펼친다)
+ok(!adNoteFor(10).includes('화면을 덮'), '화면을 덮는다고 단정하지 않는다')
 ok(adNoteFor(6.2).includes('6.2개'), '실제 광고 수를 밝힌다', adNoteFor(6.2))
 ok(adNoteFor(AD_SOME).includes('블로그 자리는 남아 있습니다'), '중간은 중간이라고 한다')
 ok(adNoteFor(0).includes('먼저 보입니다'), '광고가 없으면 유리하다고 말한다')
-ok(!adNoteFor(0).includes('밀립니다'), '광고 0 개에 경고를 붙이지 않는다')
+ok(!adNoteFor(0).includes('상업성이 높습니다'), '광고 0 개에 경고를 붙이지 않는다')
+// 실측 분포: 지역+업종은 8~10, 정보 키워드는 3 안쪽 — 이 둘이 갈려야 뜻이 있다
+ok(adNoteFor(10).includes('상업성이 높습니다'), '지역+업종 실측값(10)은 광고 많음')
+ok(adNoteFor(3).includes('많지는 않습니다'), '정보 키워드 실측값(3)은 중간', adNoteFor(3))
 
 // 지표가 metric 까지 그대로 실린다 (등급 판정은 광고와 무관하게 유지)
 const adM = buildMetric({
@@ -1603,7 +1608,7 @@ const adM = buildMetric({
   mock: false,
 })
 ok(adM.adDepth === 6 && adM.ctrMobile === 1.2, '광고 지표가 지표에 실린다')
-ok(adM.adNote.includes('밀립니다'), '광고 안내문이 함께 만들어진다')
+ok(adM.adNote.includes('경합하는 키워드'), '광고 안내문이 함께 만들어진다')
 ok(adM.grade === 'gold', '광고가 많아도 등급 기준(검색량·경쟁률)은 바뀌지 않는다', adM.grade)
 ok(!adM.gradeReason.includes('광고'), '등급 설명에는 광고를 섞지 않는다 — 따로 말한다')
 const noAd = buildMetric({
