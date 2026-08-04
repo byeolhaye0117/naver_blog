@@ -341,6 +341,13 @@ const TRADE_WORDS = [
 const INTENT_WORDS = [
   '여성전용', '24시', '24시간', '다이어트', '가격', '추천', '후기', '새벽', '주말', '초보',
   '비용', '위치', '운동',
+  /*
+   * 아래는 자동완성 실측으로 알게 된 말이다 (2026-08). 우리가 짐작한 목록에는 없었다 —
+   * 「일일권」·「1일권」은 봉명동·천안 헬스장 자동완성에 나란히 떴고, 「사우나」도 나왔다.
+   * 사람들이 실제로 치는 말을 우리 어휘에 되먹인다.
+   */
+  '일일권', '1일권', '하루', '당일', '사우나', '샤워', '회원권', '월회비', '단기', '학생',
+  '야간', '주차', '기구', '트레이너', '등록', '체험',
 ]
 
 /** 토큰 끝에 붙은 업종·의도 단어를 떼어낸다 ("쌍용동PT" → "쌍용동") */
@@ -488,13 +495,43 @@ export function hasForeignArea(keyword: string, myAreas: string[], myCities: str
   return FOREIGN_AREA.test(rest)
 }
 
+/**
+ * 내 동네가 없는 **광역 키워드**가 깨끗한지 (순수 함수 — 테스트 대상).
+ *
+ * 동/읍/면 규칙으로는 「천안목천헬스장」·「천안불당헬스장」을 못 잡는다 — 목천(읍)·
+ * 불당(동)을 사람들이 접미사 없이 쓰기 때문이다. 실측에서 이 셋이 끝까지 남았다.
+ *
+ * 그래서 반대로 본다. 광역 키워드는 **시 + 업종·의도 말**로만 이뤄져야 한다. 시와
+ * 업종·의도 말을 다 지웠는데 한글이 남으면, 그건 동네 이름이거나 업체 이름이다.
+ *   천안헬스장일일권 → (천안·헬스장·일일권 지움) → ''     → 깨끗함
+ *   천안목천헬스장   → (천안·헬스장 지움)        → 목천   → 동네·업체 이름
+ *   천안헬스보이짐   → (천안·헬스·짐 지움)       → 보이   → 남의 상호
+ *
+ * 내 동네가 든 키워드에는 적용하지 않는다 — 그쪽은 이미 우리 것이 분명하고,
+ * 우리가 모르는 새 의도(「일일권」처럼)를 발견하는 통로를 막아서는 안 된다.
+ */
+export function isCleanWideKeyword(keyword: string, cities: string[]): boolean {
+  let rest = keyword.replace(/\s+/g, '').toUpperCase()
+  const words = [...cities, ...TRADE_WORDS, ...GYM_WORDS, ...INTENT_WORDS]
+    .map((w) => w.replace(/\s+/g, '').toUpperCase())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+  for (const w of words) rest = rest.split(w).join('')
+  return rest.replace(/[0-9A-Z\s·\-_]+/g, '').length === 0
+}
+
 export function isRelevantKeyword(
   keyword: string,
   myTokens: Set<string>,
   /** 넘기면 「내 시 + 남의 동네」 꼴까지 걸러낸다 */
   scope?: { areas: string[]; cities: string[] }
 ): boolean {
-  if (scope && hasForeignArea(keyword, scope.areas, scope.cities)) return false
+  if (scope) {
+    if (hasForeignArea(keyword, scope.areas, scope.cities)) return false
+    const flat = keyword.replace(/\s+/g, '')
+    const hasMine = scope.areas.some((a) => a && flat.includes(a))
+    if (!hasMine && !isCleanWideKeyword(keyword, scope.cities)) return false
+  }
   return isRelevantKeywordBase(keyword, myTokens)
 }
 
@@ -535,8 +572,14 @@ export function suggestionDrop(
 ): string | null {
   const flat = keyword.replace(/\s+/g, '')
 
-  if (scope && hasForeignArea(keyword, scope.areas, scope.cities)) {
-    return '지금 조사하는 동네가 아닙니다 — 그 동네 지점 글로 따로 쓰세요.'
+  if (scope) {
+    if (hasForeignArea(keyword, scope.areas, scope.cities)) {
+      return '지금 조사하는 동네가 아닙니다 — 그 동네 지점 글로 따로 쓰세요.'
+    }
+    const hasMine = scope.areas.some((a) => a && flat.includes(a))
+    if (!hasMine && !isCleanWideKeyword(keyword, scope.cities)) {
+      return '동네 이름이나 업체 이름으로 보이는 말이 섞여 있습니다 — 우리 지역·우리 상호가 아닙니다.'
+    }
   }
 
   const bad = NEGATIVE_WORDS.find((w) => flat.includes(w))
