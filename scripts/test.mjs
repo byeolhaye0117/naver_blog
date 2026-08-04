@@ -29,6 +29,7 @@ const TARGETS = [
   'lib/analysis/cutline.ts',
   'lib/analysis/tokens.ts',
   'lib/naver/blogrss.ts',
+  'lib/naver/unified.ts',
   'lib/analysis/blogscore.ts',
   'lib/analysis/diagnose.ts',
   'lib/naver/blogpost.ts',

@@ -1,6 +1,7 @@
 import type { RankSnapshot, RankTarget } from '@/lib/types'
 import { searchBlog } from '../naver/search'
 import { findBlogRank, normalizeBlogUrl } from '../naver/blogsection'
+import { fetchUnifiedBlocks, findUnifiedRank } from '../naver/unified'
 import { seededInt } from '../naver/client'
 import { newId } from '../id'
 import { RANK_DEPTH, normalizeUrl } from './rank'
@@ -18,6 +19,18 @@ import { RANK_DEPTH, normalizeUrl } from './rank'
 export async function checkRank(target: RankTarget): Promise<RankSnapshot> {
   const date = new Date().toISOString().slice(0, 10)
 
+  /**
+   * 통합검색 스마트블록 위치도 함께 잰다 (조회 1번).
+   *
+   * 블로그탭 순위와 다르고, 사람이 실제로 보는 자리는 이쪽이다. 실패하면 그냥 없이
+   * 간다 — 블로그탭 순위 기록을 막지 않는다.
+   */
+  const unified = await fetchUnifiedBlocks(target.keyword).catch(() => null)
+  const hit = unified ? findUnifiedRank(unified, target.url) : null
+  const unifiedFields = hit
+    ? { unifiedBlock: hit.block, unifiedRank: hit.rank, unifiedBlockOrder: hit.blockOrder }
+    : {}
+
   // ① 화면 순위와 같은 경로부터
   const section = await findBlogRank(target.keyword, target.url, RANK_DEPTH)
   if (section.ok) {
@@ -27,6 +40,7 @@ export async function checkRank(target: RankTarget): Promise<RankSnapshot> {
       date,
       rank: section.rank,
       total: section.total ?? 0,
+      ...unifiedFields,
       mock: false,
       source: 'api',
     }
@@ -69,6 +83,7 @@ export async function checkRank(target: RankTarget): Promise<RankSnapshot> {
     date,
     rank,
     total: res.total,
+    ...unifiedFields,
     mock: res.mock,
     source: 'api',
   }
