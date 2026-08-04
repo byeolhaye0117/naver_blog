@@ -92,18 +92,23 @@ export interface Diagnosis {
 
 /** 이 순위 밖이면 "안 잡혔다" 로 본다 */
 export const OUT_OF_RANGE = 30
+/** 목표 자리 — 1페이지 */
+export const FIRST_PAGE = 10
 /** 발행 후 이만큼은 기다린다 — 네이버가 자리를 잡는 데 시간이 걸린다 */
 export const SETTLE_DAYS = 14
 
 /**
- * 지금 진단할 때인가.
+ * 지금 진단을 **먼저 권할** 때인가.
  *
- * 발행 직후의 낮은 순위는 실패가 아니다. 반대로 2주가 지나도 30위 밖이면 그냥
- * 기다려서 올라가지 않는다 — 글을 고쳐야 한다.
+ * 발행 직후의 낮은 순위는 실패가 아니므로 2주는 기다린다. 그 뒤로 1페이지(상위 10)
+ * 밖이면 고칠 여지가 있다는 뜻이니 화면에서 먼저 권한다.
+ *
+ * 이 함수가 false 라도 진단은 언제든 할 수 있다 — 회원이 누르고 싶을 때 못 누르게
+ * 막을 이유가 없다. 13위였던 실제 사례에서 30위 기준으로 잡아 버튼이 아예 안 보였다.
  */
 export function shouldDiagnose(rank: number | null, daysSincePublish: number): boolean {
   if (daysSincePublish < SETTLE_DAYS) return false
-  return rank === null || rank > OUT_OF_RANGE
+  return rank === null || rank > FIRST_PAGE
 }
 
 function n(v: number): string {
@@ -249,11 +254,17 @@ export function diagnose(input: {
   }
 
   const high = fixes.filter((f) => f.severity === 'high').length
+  const found = `고칠 곳 ${fixes.length}개를 찾았습니다${high ? ` (먼저 고칠 것 ${high}개)` : ''}.`
+  // 같은 "고쳐야 함" 이라도 30위 밖과 13위는 뜻이 다르다 — 13위는 실패가 아니라 문 앞이다
+  const where =
+    rank === null
+      ? `${OUT_OF_RANGE}위 안에 안 잡힙니다.`
+      : rank <= FIRST_PAGE
+        ? `${rank}위로 이미 1페이지입니다.`
+        : `${rank}위 — 1페이지(상위 ${FIRST_PAGE})까지 ${rank - FIRST_PAGE}칸 남았습니다.`
   const verdict = fixes.length
-    ? rank === null
-      ? `${OUT_OF_RANGE}위 안에 안 잡힙니다. 고칠 곳 ${fixes.length}개를 찾았습니다${high ? ` (먼저 고칠 것 ${high}개)` : ''}.`
-      : `${rank}위입니다. 고칠 곳 ${fixes.length}개를 찾았습니다${high ? ` (먼저 고칠 것 ${high}개)` : ''}.`
-    : '글 자체는 상위권 기준을 이미 맞췄습니다.'
+    ? `${where} ${found}`
+    : `${where} 글 자체는 상위권 기준을 이미 맞췄습니다.`
 
   return {
     verdict,

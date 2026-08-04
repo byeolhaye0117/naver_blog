@@ -13,7 +13,8 @@ import {
   rankLabel,
   type RankView,
 } from '@/lib/analysis/rank'
-import { OUT_OF_RANGE, SETTLE_DAYS, shouldDiagnose, type Diagnosis } from '@/lib/analysis/diagnose'
+import { FIRST_PAGE, OUT_OF_RANGE, SETTLE_DAYS, shouldDiagnose, type Diagnosis } from '@/lib/analysis/diagnose'
+import { SECTION_CAP } from '@/lib/naver/blogsection'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
 import LineChart from '@/components/LineChart'
 
@@ -389,14 +390,23 @@ export default function RankTracker({
                     발행 <span className="tnum font-bold">{v.publishedAt.slice(0, 10)}</span>
                   </span>
                 )}
-                {v.history.length > 0 && (
-                  <span className="muted">
-                    발행량{' '}
-                    <span className="tnum font-bold">
-                      {(v.history[v.history.length - 1].total ?? 0).toLocaleString()}
-                    </span>
-                  </span>
-                )}
+                {v.history.length > 0 &&
+                  (() => {
+                    // 네이버는 총 건수를 1,000 에서 잘라서 준다. 잘린 값을 실측처럼
+                    // 보여주면 "정확히 1,000건" 으로 읽힌다 — 키워드 화면과 같게 표시한다.
+                    const t = v.history[v.history.length - 1].total ?? 0
+                    const capped = t >= SECTION_CAP
+                    return (
+                      <span className="muted" title={capped ? '네이버가 1,000에서 잘라 준 값입니다' : undefined}>
+                        발행량{' '}
+                        <span className="tnum font-bold">
+                          {t.toLocaleString()}
+                          {capped ? '+' : ''}
+                        </span>
+                        {capped && <span className="text-[10px]"> (잘림)</span>}
+                      </span>
+                    )
+                  })()}
               </div>
 
               {points.length >= 1 ? (
@@ -448,8 +458,8 @@ export default function RankTracker({
                     </div>
                     {!got && (
                       <p className="mt-1.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
-                        발행 후 {SETTLE_DAYS}일이 지났는데 {OUT_OF_RANGE}위 안에 없습니다. 지금 상위 글을
-                        다시 읽어 내 글과 대조합니다 (본문 글자수·이미지까지 실측).
+                        발행 후 {SETTLE_DAYS}일이 지났는데 아직 1페이지(상위 {FIRST_PAGE}) 밖입니다. 지금 상위
+                        글을 다시 읽어 내 글과 대조합니다 (본문 글자수·이미지까지 실측).
                       </p>
                     )}
                     {dxError?.id === v.target.id && (
@@ -621,6 +631,18 @@ export default function RankTracker({
                 >
                   상위노출 분석
                 </Link>
+                {/*
+                  진단은 언제든 할 수 있어야 한다. 예전에는 "2주 경과 + 30위 밖" 일 때만
+                  카드가 떠서, 13위인 글은 버튼이 아예 보이지 않았다.
+                */}
+                <button
+                  type="button"
+                  onClick={() => runDiagnose(v.target.id)}
+                  disabled={dxBusy === v.target.id}
+                  className="bd rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-500/8 disabled:opacity-50"
+                >
+                  {dxBusy === v.target.id ? '진단 중…' : '무엇을 고쳐야 하나 진단'}
+                </button>
                 {v.target.postId && (
                   <Link
                     href={`/write?id=${v.target.postId}`}

@@ -1058,7 +1058,7 @@ ok(LINE.includes('2,100자') && LINE.includes('2,400자'), '처방 문장에 실
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[34] 발행 후 실패 진단')
-const { diagnose, diagnosisToPrescription, shouldDiagnose, fromAppPost, fromPublished, OUT_OF_RANGE, SETTLE_DAYS } =
+const { diagnose, diagnosisToPrescription, shouldDiagnose, fromAppPost, fromPublished, OUT_OF_RANGE, FIRST_PAGE, SETTLE_DAYS } =
   require(`${OUT}/analysis/diagnose.js`)
 
 // 발행 직후의 낮은 순위는 실패가 아니다
@@ -1066,8 +1066,12 @@ ok(!shouldDiagnose(45, 3), '발행 3일째는 진단하지 않는다')
 ok(!shouldDiagnose(null, 10), '10일째도 아직 기다린다')
 ok(shouldDiagnose(null, 20), '20일째 순위 밖이면 진단한다')
 ok(shouldDiagnose(45, 20), '20일째 45위도 진단한다')
-ok(!shouldDiagnose(8, 40), '8위면 진단하지 않는다')
-ok(SETTLE_DAYS === 14 && OUT_OF_RANGE === 30, '기준값')
+ok(!shouldDiagnose(8, 40), '1페이지 안이면 먼저 권하지 않는다')
+// 실제 사례: 13위인 글에서 30위 기준으로 잡았더니 버튼이 아예 안 보였다
+ok(shouldDiagnose(13, 15), '13위·15일째면 진단을 권한다 (1페이지 밖)')
+ok(shouldDiagnose(11, 20), '11위도 1페이지 밖')
+ok(!shouldDiagnose(10, 20), '10위는 1페이지')
+ok(SETTLE_DAYS === 14 && OUT_OF_RANGE === 30 && FIRST_PAGE === 10, '기준값')
 
 const MY_POST = {
   id: 'p1', type: 'promo', status: 'published', storeId: 's', title: '헬스장 등록했어요',
@@ -1109,6 +1113,12 @@ const DX2 = diagnose({
 })
 ok(!DX2.fixes.some((f) => f.id === 'body-short'), '실측 없으면 글자수 지적을 안 한다')
 ok(DX2.verdict.includes('33위'), '순위를 그대로 말한다')
+
+// 같은 "고쳐야 함" 이라도 33위와 13위는 뜻이 다르다 — 13위는 실패가 아니라 문 앞이다
+const DX_NEAR = diagnose({ post: MINE, serp: SERP_FOR_DX, rank: 13, daysSincePublish: 15 })
+ok(DX_NEAR.verdict.includes('1페이지') && DX_NEAR.verdict.includes('3칸'), '남은 칸수를 말한다', DX_NEAR.verdict)
+const DX_IN = diagnose({ post: MINE, serp: SERP_FOR_DX, rank: 7, daysSincePublish: 30 })
+ok(DX_IN.verdict.includes('이미 1페이지'), '1페이지면 그렇게 말한다', DX_IN.verdict)
 
 // 이미 기준을 맞춘 글이면 글 문제가 아니라고 말해준다
 const GOOD_POST = {
