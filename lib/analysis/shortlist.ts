@@ -22,6 +22,13 @@ import { adPressureOf, tradeDrop } from './keyword'
 export const SHORTLIST_MIN_SEARCH = 100
 /** 한 지역에서 만들 축(메인)의 최대 개수 */
 const HEADS_PER_AREA = 2
+/**
+ * 두 번째 축은 이만큼은 돼야 세운다.
+ *
+ * 실측에서 「쌍용동헬스」(월 120)가 두 번째 축으로 잡혔다 — 첫 축의 서브 자리가 이미
+ * 차서 밀려 올라온 것이다. 월 120회짜리로 글을 한 편 더 쓰라는 말이 되므로 막는다.
+ */
+const SECOND_HEAD_MIN = 300
 /** 축 하나에 얹을 서브 최대 개수 (글 한 편 = 메인 1 + 서브 2) */
 const SUBS_PER_HEAD = 2
 
@@ -66,14 +73,24 @@ export function buildShortlist(
   candidates: ShortlistCandidate[],
   opts: {
     areas?: string[]
+    /**
+     * 시·군 이름. 지역을 쪼갤 때 함께 넘긴다.
+     *
+     * 안 넘기면 「천안헬스장」이 지역 없는 말로 읽혀 의도(헬스장)를 못 알아본다.
+     * 그러면 「천안다이어트」(정보글)가 「천안헬스장」(홍보글) 서브로 붙는다 — 실측에서
+     * 그렇게 나왔다. 시를 넘기면 area=천안 / intent=다이어트 로 갈려 글 유형이 갈린다.
+     */
+    cities?: string[]
     store?: { open24?: boolean; womenOnly?: boolean }
     limit?: number
   } = {}
 ): Shortlist {
   const limit = opts.limit ?? 12
-  const areas =
-    opts.areas?.map((a) => a.trim()).filter(Boolean) ??
-    Array.from(new Set(candidates.map((c) => splitKeyword(c.keyword).area).filter(Boolean)))
+  const areas = [
+    ...(opts.areas?.map((a) => a.trim()).filter(Boolean) ??
+      Array.from(new Set(candidates.map((c) => splitKeyword(c.keyword).area).filter(Boolean)))),
+    ...(opts.cities?.map((c) => c.trim()).filter(Boolean) ?? []),
+  ]
 
   const skipped: { keyword: string; why: string }[] = []
 
@@ -155,6 +172,8 @@ export function buildShortlist(
       if (!left.length) break
 
       const head = [...left].sort((x, y) => y.c.monthlySearch - x.c.monthlySearch)[0]
+      // 두 번째 축이 너무 작으면 세우지 않는다 (SECOND_HEAD_MIN 주석 참고)
+      if (h > 0 && head.c.monthlySearch < SECOND_HEAD_MIN) break
       used.add(head.c.keyword)
       const postType = head.parts.meta?.postType ?? 'promo'
 
@@ -168,7 +187,7 @@ export function buildShortlist(
         why:
           (area
             ? `월 ${head.c.monthlySearch.toLocaleString()}회 — ${area}에서 ${h === 0 ? '가장' : '그다음으로'} 많이 찾는 말입니다.`
-            : `월 ${head.c.monthlySearch.toLocaleString()}회 — 동네를 넘어 넓게 찾는 말입니다.`) +
+            : `월 ${head.c.monthlySearch.toLocaleString()}회 — 지역을 안 붙이고 찾는 말입니다.`) +
           adTail(head.c.adDepth),
       })
 

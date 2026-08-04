@@ -73,6 +73,7 @@ export async function POST(req: Request) {
 
     const list = buildShortlist(candidates, {
       areas: areaList.length ? areaList : undefined,
+      cities: Array.from(cities),
       store: store ? { open24: store.open24, womenOnly: store.womenOnly } : undefined,
       limit,
     })

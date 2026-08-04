@@ -109,6 +109,18 @@ const META_BY_FLAT = new Map(INTENT_META.map((m) => [flat(m.suffix), m]))
 const AREA_BOUNDED = /([가-힣]{2,10}?(?:동|읍|면))(?=[\s,·/()[\]]|$)/
 const AREA_LOOSE = /([가-힣]{2,6}?(?:동|읍|면))/
 
+/**
+ * 동으로 끝나지만 동네가 아닌 말.
+ *
+ * 실측에서 「천안운동」이 동네 「천안운동」으로 읽혔다 — 추천 화면에 "천안운동에서 가장
+ * 많이 찾는 말입니다" 라고 나왔다. 운·동 을 붙여 읽은 것이다. 이런 말로 끝나면 동네가
+ * 아니라고 본다.
+ */
+const NOT_AREA_TAIL = [
+  '운동', '활동', '이동', '자동', '수동', '행동', '작동', '감동', '충동', '공동', '합동',
+  '아동', '노동', '유동', '변동', '진동', '부동', '출동', '파동', '자문', '측면', '반면',
+]
+
 export interface KeywordParts {
   /** 지역명 ("쌍용동"). 지역이 없는 정보 키워드는 빈 문자열 */
   area: string
@@ -136,7 +148,8 @@ export function splitKeyword(keyword: string, areas: string[] = []): KeywordPart
   }
   if (!area) {
     const m = AREA_BOUNDED.exec(k) ?? AREA_LOOSE.exec(k)
-    if (m) area = m[1]
+    // 「천안운동」을 동네로 읽지 않는다 (NOT_AREA_TAIL 주석 참고)
+    if (m && !NOT_AREA_TAIL.some((w) => m[1].endsWith(w))) area = m[1]
   }
 
   let intent = k
