@@ -132,7 +132,37 @@ export function countByBlogger(blocks: UnifiedBlock[]): { blogId: string; count:
     .sort((a, b) => b.count - a.count)
 }
 
-export async function fetchUnifiedBlocks(keyword: string): Promise<UnifiedBlock[] | null> {
+/**
+ * 이 글이 통합검색 결과 안에 있는지 (순수 함수 — 테스트 대상).
+ *
+ * **블록 파서로 판정하면 안 된다.** parseUnifiedBlocks 는 글이 2편 미만인 묶음을
+ * 광고·채널 카드로 보고 버린다. 순위를 잴 때는 맞는 규칙이지만, 제목을 그대로 넣는
+ * 색인 검사에서는 결과가 그 글 한 편뿐일 수 있다 — 그러면 색인된 글을 「누락」으로
+ * 거짓 판정한다. 판정 대상이 순서가 아니라 존재 여부이므로 주소 자체를 찾는다.
+ *
+ * 실측(2026-08, hyoni2_ 최근 글 2편): 제목 완전일치로 통합검색을 읽으면 두 편 다
+ * `blog.naver.com/{id}/{logNo}` 꼴로 페이지에 실려 있었다.
+ *
+ * 네이버는 같은 글을 여러 꼴로 싣는다 — blog.naver.com/id/logNo, PostView 파라미터,
+ * 그리고 클릭 추적 주소 안에 퍼센트 인코딩된 꼴까지. 그래서 %2F·%3A 를 먼저 풀어둔다.
+ */
+export function unifiedHasPost(html: string, url: string): boolean {
+  const k = key(url)
+  const [id, logNo] = k.split('/')
+  if (!id || !logNo) return false
+
+  const flat = html.replace(/%2F/gi, '/').replace(/%3A/gi, ':').toLowerCase()
+  if (flat.includes(`blog.naver.com/${id}/${logNo}`)) return true
+
+  // PostView 꼴 — 파라미터 순서가 뒤바뀌어 오기도 한다
+  const esc = id.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')
+  return new RegExp(
+    `blogid=${esc}[^"'\\s]{0,200}logno=${logNo}|logno=${logNo}[^"'\\s]{0,200}blogid=${esc}`
+  ).test(flat)
+}
+
+/** 통합검색 페이지 HTML. 실패하면 null — 「없음」과 「못 읽음」을 구별해야 한다. */
+export async function fetchUnifiedHtml(keyword: string): Promise<string | null> {
   const q = keyword.trim()
   if (!q) return null
   try {
@@ -142,8 +172,19 @@ export async function fetchUnifiedBlocks(keyword: string): Promise<UnifiedBlock[
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
     if (!res.ok) return null
-    return parseUnifiedBlocks(await res.text())
+    return await res.text()
   } catch {
     return null
   }
+}
+
+export async function fetchUnifiedBlocks(keyword: string): Promise<UnifiedBlock[] | null> {
+  const html = await fetchUnifiedHtml(keyword)
+  return html === null ? null : parseUnifiedBlocks(html)
+}
+
+/** 제목을 그대로 검색해 그 글이 통합검색에 있는지. null = 조회 실패 */
+export async function checkUnifiedIndexed(title: string, url: string): Promise<boolean | null> {
+  const html = await fetchUnifiedHtml(title)
+  return html === null ? null : unifiedHasPost(html, url)
 }

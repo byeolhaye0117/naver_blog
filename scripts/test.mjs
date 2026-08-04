@@ -28,6 +28,8 @@ const TARGETS = [
   'lib/analysis/prescription.ts',
   'lib/analysis/cutline.ts',
   'lib/analysis/tokens.ts',
+  'lib/analysis/indexcheck.ts',
+  'lib/analysis/similarity.ts',
   'lib/naver/blogrss.ts',
   'lib/naver/unified.ts',
   'lib/analysis/blogscore.ts',

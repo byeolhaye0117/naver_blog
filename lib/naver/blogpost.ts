@@ -24,6 +24,17 @@ export interface PostMetrics {
 }
 
 /**
+ * 수치 + 본문 평문.
+ *
+ * 커트라인만 낼 때는 숫자만 있으면 되지만, 유사문서 판독(내 초안이 상위 글과
+ * 글자 그대로 겹치는지)은 본문이 있어야 한다. 이미 읽어온 것이므로 버리지 않는다.
+ * 다만 화면으로 내려보내지는 않는다 — 서버에서 비교하고 결과만 준다.
+ */
+export interface PostBody extends PostMetrics {
+  text: string
+}
+
+/**
  * 네이버에 이미 발행돼 있는 내 글. 앱에서 쓰지 않은 글도 진단할 수 있게 하려고
  * 제목과 본문 텍스트까지 함께 읽는다.
  *
@@ -129,7 +140,7 @@ export function parsePostTitle(html: string): string {
 }
 
 /** 글 하나를 읽어 수치를 잰다. 실패하면 null — 한 글이 막혀도 나머지로 계속 간다 */
-export async function fetchPostMetrics(url: string): Promise<PostMetrics | null> {
+export async function fetchPostMetrics(url: string): Promise<PostBody | null> {
   const target = postViewUrl(url)
   if (!target) return null
   try {
@@ -171,9 +182,9 @@ export async function fetchPublishedPost(url: string): Promise<PublishedPost | n
 }
 
 /** 상위 글 여러 개를 동시에 잰다 (동시에 다 던지면 막히므로 묶어서) */
-export async function measureTopPosts(urls: string[], limit = 6): Promise<PostMetrics[]> {
+export async function measureTopPosts(urls: string[], limit = 6): Promise<PostBody[]> {
   const list = urls.filter(Boolean).slice(0, limit)
-  const out: PostMetrics[] = []
+  const out: PostBody[] = []
   const BATCH = 3
   for (let i = 0; i < list.length; i += BATCH) {
     const got = await Promise.all(list.slice(i, i + BATCH).map((u) => fetchPostMetrics(u)))

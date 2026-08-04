@@ -12,6 +12,7 @@ import { isPrescriptionStale, prescriptionAgeDays } from '@/lib/analysis/prescri
 import { Badge, Card, Field, inputClass } from '@/components/ui'
 import { IconSpark } from '@/components/icons'
 import CheckPanel from '@/components/CheckPanel'
+import SimilarityCard from '@/components/SimilarityCard'
 import CopyButton from '@/components/CopyButton'
 
 const TYPE_HINT: Record<PostType, string> = {
@@ -763,8 +764,10 @@ export default function Editor({
 
         {/* 오른쪽 — 검수 (데스크톱 고정) */}
         <div className={`${view === 'check' ? '' : 'hidden lg:block'} mt-4 lg:mt-0`}>
-          <div className="lg:sticky lg:top-16">
+          <div className="space-y-4 lg:sticky lg:top-16">
             <CheckPanel result={result} />
+            {/* 검수기는 내 글만 본다. 남의 글과 겹치는지는 네이버를 읽어야 알 수 있다 */}
+            <SimilarityCard keyword={mainKeyword} text={stripGuides(body)} />
           </div>
         </div>
       </div>

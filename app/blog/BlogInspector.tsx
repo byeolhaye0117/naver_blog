@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { GRADE_LABEL, GRADE_LADDER, KIND_LABEL, type BlogGrade, type BlogProfile } from '@/lib/analysis/blogscore'
+import {
+  VERDICT_LABEL,
+  VERDICT_TONE,
+  verdictNote,
+  type IndexCheck,
+  type IndexSummary,
+} from '@/lib/analysis/indexcheck'
 import { Badge, Card, Empty, Field, Progress, inputClass } from '@/components/ui'
 
 interface Result {
@@ -10,7 +17,8 @@ interface Result {
   indexedRate?: number
   exposureRate?: number
   firstPageRate?: number
-  indexDetail?: { title: string; found: boolean }[]
+  indexDetail?: IndexCheck[]
+  indexSummary?: IndexSummary
   meaning: string
   exposureDetail?: { query: string; rank: number | null }[]
   recent: { title: string; date: string; category: string; link: string }[]
@@ -141,19 +149,35 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
               </p>
             )}
             {data.indexDetail && data.indexDetail.length > 0 && (
-              <div className="surface mt-3 rounded-xl p-3.5">
-                <p className="text-[12px] font-bold">
-                  색인 검사 — 제목을 그대로 검색해 그 글이 나오는지 ({data.indexedRate}%)
+              <div data-index="card" className="surface mt-3 rounded-xl p-3.5">
+                <p className="text-[12px] font-bold">색인 검사 — 제목을 그대로 검색해 어디에 나오는지</p>
+                {data.indexSummary && (
+                  <p className="mt-1.5 text-[12px] leading-relaxed">{data.indexSummary.headline}</p>
+                )}
+                <p className="muted mt-1.5 text-[11px] leading-relaxed">
+                  <b>블로그탭</b>에도 없으면 검색에서 빠진 것입니다 — 업계에서 말하는 「저품질」의 실체이고
+                  순위가 낮은 것과는 다른 문제입니다. <b>블로그탭에는 있는데 통합검색에만 없는 것</b>은
+                  글 문제가 아닙니다 — 그 키워드 위쪽을 광고·플레이스가 차지한 것이니 키워드를 바꿔야 합니다.
                 </p>
                 <p className="muted mt-1 text-[11px] leading-relaxed">
-                  제목 완전일치인데도 안 나오면 검색에서 빠진 것입니다. 이게 업계에서 말하는 「저품질」의
-                  실체이고, <b>순위가 낮은 것과는 다른 문제</b>입니다.
+                  블로그탭 {data.indexSummary?.blogTabRate ?? '—'}% · 통합검색{' '}
+                  {data.indexSummary?.unifiedRate ?? '—'}% (표본 {data.indexDetail.length}편)
                 </p>
-                <ul className="mt-2 space-y-1.5">
+                <ul className="mt-2 space-y-2">
                   {data.indexDetail.map((d) => (
-                    <li key={d.title} className="flex items-center gap-2 text-[12px]">
-                      <span className="min-w-0 flex-1 truncate">{d.title}</span>
-                      <Badge tone={d.found ? 'good' : 'bad'}>{d.found ? '나옴' : '안 나옴'}</Badge>
+                    <li key={d.title} className="panel bd rounded-xl border px-2.5 py-2">
+                      <div className="flex items-start gap-2">
+                        <span className="min-w-0 flex-1 text-[12px] leading-snug">{d.title}</span>
+                        <Badge tone={VERDICT_TONE[d.verdict]}>{VERDICT_LABEL[d.verdict]}</Badge>
+                      </div>
+                      {/* 어느 쪽을 못 읽었는지까지 밝힌다 — 「없음」과 「못 읽음」은 다르다 */}
+                      <div className="muted mt-1 text-[11px]">
+                        블로그탭 {d.blogTab === null ? '못 잼' : d.blogTab ? '나옴' : '안 나옴'} · 통합검색{' '}
+                        {d.unified === null ? '못 잼' : d.unified ? '나옴' : '안 나옴'}
+                      </div>
+                      {d.verdict !== 'normal' && (
+                        <p className="muted mt-1 text-[11px] leading-relaxed">{verdictNote(d.verdict)}</p>
+                      )}
                     </li>
                   ))}
                 </ul>

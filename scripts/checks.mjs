@@ -20,8 +20,8 @@ const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SE
 )
 const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/naver/place.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
-const { mockKeywordTool, dedupeAdRows } = require(`${OUT}/naver/searchad.js`)
-const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
+const { mockKeywordTool, dedupeAdRows, toRate } = require(`${OUT}/naver/searchad.js`)
+const { gradeKeyword, adNoteFor, AD_HEAVY, AD_SOME } = require(`${OUT}/analysis/keyword.js`)
 const { phaseOf, buildRankViews, autoRankTargets } = require(`${OUT}/analysis/rank.js`)
 const { isPartialMonth, completedMonths, momentumOf } = require(`${OUT}/naver/datalab.js`)
 const { prescriptionKey, upsertPrescription, findPrescription, prescriptionAgeDays, isPrescriptionStale } = require(
@@ -1108,7 +1108,7 @@ ok(rx.includes('아직 안 다룬 자리'), '처방이 빈틈도 알려준다')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[35] 통합검색 스마트블록')
-const { parseUnifiedBlocks, findUnifiedRank, countByBlogger } = require(`${OUT}/naver/unified.js`)
+const { parseUnifiedBlocks, findUnifiedRank, countByBlogger, unifiedHasPost } = require(`${OUT}/naver/unified.js`)
 
 // 네이버는 블록마다 api_subject_bx 를 붙이고, 컨테이너가 겹쳐 같은 묶음이 두 번 잡힌다
 const UNI = [
@@ -1151,6 +1151,25 @@ ok(findUnifiedRank(BLOCKS, '') === null, '빈 주소')
 
 const CNT = countByBlogger(BLOCKS)
 ok(CNT.length === 5 && CNT[0].count === 1, '블로거별 편수를 센다', String(CNT.length))
+
+// 색인 검사는 블록 파서로 하면 안 된다 — 결과가 한 편뿐인 게 정상이라 블록이 버려진다
+ok(unifiedHasPost('<a href="https://blog.naver.com/z/9">1</a>', 'https://blog.naver.com/z/9'),
+  '글이 한 편뿐이어도 주소로는 찾는다')
+ok(unifiedHasPost('<a href="https://BLOG.naver.com/Hyoni2_/224361842417">x</a>', 'blog.naver.com/hyoni2_/224361842417'),
+  '대소문자가 달라도 같은 글')
+ok(
+  unifiedHasPost('<a href="https%3A%2F%2Fblog.naver.com%2Faaa%2F111">x</a>', 'https://blog.naver.com/aaa/111'),
+  '클릭 추적 주소 안에 인코딩돼 있어도 찾는다'
+)
+ok(
+  unifiedHasPost('<a href="/PostView.naver?logNo=111&blogId=aaa">x</a>', 'https://blog.naver.com/aaa/111'),
+  'PostView 파라미터 순서가 뒤바뀌어도 찾는다'
+)
+ok(!unifiedHasPost('<a href="https://blog.naver.com/aaa/999">x</a>', 'https://blog.naver.com/aaa/111'),
+  '같은 블로그의 다른 글은 아니다')
+ok(!unifiedHasPost('<html>없음</html>', 'https://blog.naver.com/aaa/111'), '없으면 없다고 한다')
+ok(!unifiedHasPost('<a href="https://blog.naver.com/aaa/111">x</a>', 'https://blog.naver.com/aaa'),
+  '글 번호가 없는 주소로는 판정하지 않는다')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[36] 블로그 성격 판별 · 추정 힘')
@@ -1549,6 +1568,155 @@ ok(href.includes('type=promo') && href.includes('store=store_1'), '유형·지�
 ok(decodeURIComponent(href).includes('main=쌍용동 헬스장'), '메인 키워드가 실린다')
 ok(decodeURIComponent(href).includes('subs=쌍용동 헬스장 가격,쌍용동 24시 헬스장'), '서브 2개가 실린다')
 ok(decodeURIComponent(href).includes('local=쌍용동'), '지역 키워드가 실린다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[40] 광고가 블로그 자리를 밀어내는 정도')
+
+// 없는 값을 0 으로 읽으면 "광고 없음" 이라는 거짓이 된다 (Number('') === 0 함정)
+ok(toRate(undefined) === undefined, '필드가 없으면 모른다고 한다')
+ok(toRate(null) === undefined, 'null 도 모른다')
+ok(toRate('') === undefined, '빈 문자열을 0 으로 읽지 않는다', String(toRate('')))
+ok(toRate('-') === undefined, '숫자가 없는 문자열도 모른다', String(toRate('-')))
+ok(toRate(0) === 0, '실제로 0 이라고 온 값은 0 이다')
+ok(toRate('5.6') === 5.6, '문자열 소수', String(toRate('5.6')))
+ok(toRate(1.23456) === 1.23, '소수점 둘째 자리까지', String(toRate(1.23456)))
+ok(toRate('0.85%') === 0.85, '단위가 붙어 와도 읽는다', String(toRate('0.85%')))
+
+// 광고가 많으면 통합검색 위쪽이 덮여 블로그가 밀린다 — 검색량만으로는 안 보이는 사실
+ok(adNoteFor(undefined) === undefined, '광고 지표가 없으면 아무 말도 하지 않는다')
+ok(adNoteFor(AD_HEAVY).includes('아래로 밀립니다'), '광고가 많으면 밀린다고 말한다')
+ok(adNoteFor(6.2).includes('6.2개'), '실제 광고 수를 밝힌다', adNoteFor(6.2))
+ok(adNoteFor(AD_SOME).includes('블로그 자리는 남아 있습니다'), '중간은 중간이라고 한다')
+ok(adNoteFor(0).includes('먼저 보입니다'), '광고가 없으면 유리하다고 말한다')
+ok(!adNoteFor(0).includes('밀립니다'), '광고 0 개에 경고를 붙이지 않는다')
+
+// 지표가 metric 까지 그대로 실린다 (등급 판정은 광고와 무관하게 유지)
+const adM = buildMetric({
+  keyword: '쌍용동 헬스장',
+  monthlySearch: 1470,
+  monthlyPc: 470,
+  monthlyMobile: 1000,
+  blogRecent: 437,
+  adDepth: 6,
+  ctrPc: 0.4,
+  ctrMobile: 1.2,
+  mock: false,
+})
+ok(adM.adDepth === 6 && adM.ctrMobile === 1.2, '광고 지표가 지표에 실린다')
+ok(adM.adNote.includes('밀립니다'), '광고 안내문이 함께 만들어진다')
+ok(adM.grade === 'gold', '광고가 많아도 등급 기준(검색량·경쟁률)은 바뀌지 않는다', adM.grade)
+ok(!adM.gradeReason.includes('광고'), '등급 설명에는 광고를 섞지 않는다 — 따로 말한다')
+const noAd = buildMetric({
+  keyword: '쌍용동 PT',
+  monthlySearch: 1470,
+  monthlyPc: 470,
+  monthlyMobile: 1000,
+  blogRecent: 437,
+  mock: false,
+})
+ok(noAd.adDepth === undefined && noAd.adNote === undefined, '광고 지표를 못 받으면 비워둔다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[41] 누락 판별 — 블로그탭과 통합검색을 따로 본다')
+const { indexVerdict, buildIndexCheck, summarizeIndex, verdictNote, VERDICT_LABEL, VERDICT_TONE } =
+  require(`${OUT}/analysis/indexcheck.js`)
+
+ok(indexVerdict(true, true) === 'normal', '두 곳 다 나오면 정상')
+ok(indexVerdict(true, false) === 'unifiedMissing', '블로그탭에만 있으면 통합검색 누락')
+ok(indexVerdict(false, true) === 'blogTabMissing', '통합검색에만 있으면 블로그탭 누락')
+ok(indexVerdict(false, false) === 'missing', '두 곳 다 없으면 누락 의심')
+// 못 읽은 것을 없는 것으로 바꿔 읽으면 멀쩡한 글을 누락으로 몬다
+ok(indexVerdict(null, false) === 'unknown', '블로그탭을 못 읽었으면 판정하지 않는다')
+ok(indexVerdict(true, null) === 'unknown', '통합검색을 못 읽었으면 판정하지 않는다')
+
+// 「통합검색에만 없음」은 글 문제가 아니다 — 색을 다르게 준다
+ok(VERDICT_TONE.unifiedMissing === 'warn', '통합검색 누락은 빨강이 아니다')
+ok(VERDICT_TONE.missing === 'bad', '완전 누락은 빨강')
+ok(verdictNote('unifiedMissing').includes('색인은 됐습니다'), '색인은 됐다고 분명히 말한다')
+ok(verdictNote('unifiedMissing').includes('키워드를 바꿀 문제'), '고칠 곳이 본문이 아니라고 말한다')
+ok(verdictNote('missing').includes('검색에서 빠진 것'), '완전 누락은 색인 문제라고 말한다')
+ok(verdictNote('unknown').includes('없다는 뜻이 아닙니다'), '못 잰 것을 없다고 하지 않는다')
+ok(VERDICT_LABEL.missing === '누락 의심', '단정하지 않는다', VERDICT_LABEL.missing)
+
+const IC = [
+  buildIndexCheck({ title: 'ㄱ', blogTab: true, unified: true }),
+  buildIndexCheck({ title: 'ㄴ', blogTab: true, unified: false }),
+  buildIndexCheck({ title: 'ㄷ', blogTab: true, unified: null }),
+]
+const SUM = summarizeIndex(IC)
+ok(SUM.blogTabRate === 100, '블로그탭 색인율', String(SUM.blogTabRate))
+ok(SUM.unifiedRate === 50, '못 읽은 표본은 분모에서 뺀다', String(SUM.unifiedRate))
+ok(SUM.counts.unifiedMissing === 1 && SUM.counts.unknown === 1, '판정별 개수')
+ok(SUM.headline.includes('색인은 정상입니다'), '누락이 없으면 정상이라고 먼저 말한다', SUM.headline)
+
+const SUM2 = summarizeIndex([
+  buildIndexCheck({ title: 'ㄱ', blogTab: false, unified: false }),
+  buildIndexCheck({ title: 'ㄴ', blogTab: true, unified: false }),
+])
+ok(SUM2.headline.includes('색인 문제를 먼저'), '완전 누락이 있으면 그것부터 말한다', SUM2.headline)
+ok(summarizeIndex([]).blogTabRate === null, '표본이 없으면 비율도 없다')
+ok(summarizeIndex([]).headline.includes('못 했습니다'), '표본이 없으면 못 했다고 한다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[42] 유사문서 판독 — 내 글이 상위 글과 그대로 겹치는지')
+const { compareOne, compareWithTop, normalizeForCompare, shingleSet, SHINGLE, MIN_LENGTH, OVERLAP_HIGH, SIMILARITY_CAVEAT } =
+  require(`${OUT}/analysis/similarity.js`)
+
+// 띄어쓰기 차이로 같은 문장을 다르게 보면 안 된다 (한국어에서 실제로 자주 어긋난다)
+const n1 = normalizeForCompare('쌍용동 헬스장, 새벽 6시에 문을 엽니다!')
+const n2 = normalizeForCompare('쌍용동헬스장 새벽6시에 문을엽니다')
+ok(n1.clean === '쌍용동헬스장새벽6시에문을엽니다', '공백·기호를 뺀다', n1.clean)
+ok(n1.clean === n2.clean, '띄어쓰기가 달라도 같은 글자열')
+ok(n1.map.length === n1.clean.length, '원문 자리를 함께 들고 있다')
+ok('쌍용동 헬스장'[n1.map[3]] === '헬', '원문 몇 번째 글자였는지 되짚을 수 있다')
+ok(shingleSet('가나다라마바사아자차카타파하하', SHINGLE).size === 2, '글자 사슬을 만든다')
+ok(shingleSet('짧다', SHINGLE).size === 0, '사슬보다 짧은 글은 조각이 없다')
+
+// 통째로 베낀 글 — 겹침이 크고, 겹친 구절을 원문 표기로 보여준다
+const SIM_COPIED =
+  '쌍용동 헬스장을 찾다가 여기를 알게 됐습니다. 새벽 여섯 시부터 문을 열어서 출근 전에 운동을 할 수 있었고, 기구도 넉넉해서 기다리는 일이 거의 없었습니다. 삼 개월 동안 다니면서 체지방이 오 킬로그램 줄었습니다.'
+const same = compareOne(SIM_COPIED, `앞말이 다릅니다. ${SIM_COPIED} 뒷말도 다릅니다.`, 'https://blog.naver.com/a/1')
+ok(same.overlap > 90, '통째로 같으면 겹침이 크다', String(same.overlap))
+ok(same.samples.length > 0 && same.samples[0].includes('새벽 여섯 시부터'), '겹친 구절을 원문 띄어쓰기 그대로 보여준다', same.samples[0]?.slice(0, 20))
+
+// 소재가 같아도 문장이 다르면 겹치지 않는다 — 이걸 못 가르면 경고가 무의미해진다
+const SIM_MINE =
+  '아침 일찍 운동하는 습관을 만들고 싶어서 집 근처를 알아봤습니다. 기구가 몇 대인지, 사람이 붐비는 시간대가 언제인지 직접 가서 물어봤습니다. 두 달째 다니는데 어깨 통증이 줄었습니다.'
+const diff = compareOne(SIM_MINE, SIM_COPIED, 'https://blog.naver.com/a/1')
+ok(diff.overlap < 10, '같은 주제라도 문장이 다르면 안 겹친다', String(diff.overlap))
+ok(compareOne('짧아', SIM_COPIED, 'x') === null, '사슬보다 짧은 글은 판정하지 않는다')
+ok(compareOne(SIM_COPIED, '짧아', 'x') === null, '상대 글이 너무 짧으면 판정하지 않는다')
+
+// 분모는 내 글이다 — 반대로 재면 남의 긴 글에 내 글이 묻혀 늘 낮게 나온다
+const longTheirs = `${SIM_COPIED} ${'다른 이야기가 아주 길게 이어집니다. '.repeat(20)}`
+ok(
+  compareOne(SIM_COPIED, longTheirs, 'x').overlap > compareOne(longTheirs, SIM_COPIED, 'x').overlap,
+  '내 글을 분모로 잡는다'
+)
+
+// 짧은 초안은 아예 재지 않는다 (비율이 튀어 없는 문제를 만든다)
+ok(compareWithTop('짧은 초안입니다', [{ url: 'x', text: SIM_COPIED }]) === null, `${MIN_LENGTH}자 미만은 판독하지 않는다`)
+
+const SIM_LONG = `${SIM_COPIED} ${SIM_MINE} ${'운동 기록을 매일 적어 두면 변화가 눈에 보입니다. '.repeat(10)}`
+const SIM_REPORT = compareWithTop(SIM_LONG, [
+  { url: 'https://blog.naver.com/a/1', text: SIM_COPIED },
+  { url: 'https://blog.naver.com/b/2', text: '전혀 다른 내용입니다. ' + 'PT 가격을 정리해 봤습니다. '.repeat(20) },
+])
+ok(SIM_REPORT.hits.length === 2, '견준 글을 다 돌려준다')
+ok(SIM_REPORT.hits[0].overlap >= SIM_REPORT.hits[1].overlap, '겹침이 큰 순서로 정렬')
+ok(SIM_REPORT.worst.url === 'https://blog.naver.com/a/1', '가장 많이 겹친 글을 짚어준다')
+ok(SIM_REPORT.compared === 2, '몇 편과 견줬는지 밝힌다')
+// 몇 % 를 넘으면 걸린다는 말은 하지 않는다 — 네이버 기준값은 공개돼 있지 않다
+ok(!SIMILARITY_CAVEAT.includes('걸립니다'), '기준값을 단정하지 않는다')
+ok(SIMILARITY_CAVEAT.includes('공개돼 있지 않습니다'), '모르는 것은 모른다고 밝힌다')
+ok(SIMILARITY_CAVEAT.includes('주소'), '어차피 같아야 하는 문구는 괜찮다고 알려준다')
+
+const SIM_CLEAN = compareWithTop(`${SIM_MINE} ${'서로 다른 이야기를 길게 적었습니다. '.repeat(20)}`, [
+  { url: 'x', text: 'PT 가격 이야기입니다. ' + '완전히 다른 문장들입니다. '.repeat(20) },
+])
+ok(!SIM_CLEAN.needsWork, '안 겹치면 손볼 게 없다고 한다')
+ok(SIM_CLEAN.headline.includes('따라 쓴 흔적은 없습니다'), '괜찮으면 괜찮다고 말한다', SIM_CLEAN.headline)
+ok(OVERLAP_HIGH === 25, '문장을 통째로 따라 쓴 것으로 보는 값')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server'
 import { blogIdFromInput, fetchBlogFeed } from '@/lib/naver/blogrss'
 import { buildBlogProfile, gradeBlog, meaningForUs, queryFromTitle } from '@/lib/analysis/blogscore'
 import { findBlogRank } from '@/lib/naver/blogsection'
+import { checkUnifiedIndexed } from '@/lib/naver/unified'
+import { buildIndexCheck, summarizeIndex, type IndexCheck } from '@/lib/analysis/indexcheck'
 
 export const dynamic = 'force-dynamic'
-// RSS 1회 + 색인 검사 3회 + 노출력 표본 10회
+// RSS 1회 + 색인 검사 3회 × 2곳 + 노출력 표본 10회
 export const maxDuration = 120
 
 /**
@@ -50,27 +52,38 @@ export async function POST(req: Request) {
     let exposureDetail: { query: string; rank: number | null }[] | undefined
     let firstPageRate: number | undefined
     let indexedRate: number | undefined
-    let indexDetail: { title: string; found: boolean }[] | undefined
+    let indexDetail: IndexCheck[] | undefined
+    let indexSummary: ReturnType<typeof summarizeIndex> | undefined
 
     if (body.exposure !== false) {
       /*
        * ① 색인 검사 — 제목을 그대로 검색해 그 글이 나오는지.
        * 업계에서 말하는 "저품질" 의 실체가 이것이다. 노출력이 낮은 것과는 전혀 다른
        * 문제이므로 따로 잰다 (경쟁 센 키워드를 노려 안 걸리는 것은 저품질이 아니다).
+       *
+       * 블로그탭과 통합검색을 **따로** 본다. 둘을 하나로 묶으면 "색인은 됐는데
+       * 통합검색 자리만 못 얻은 글"과 "검색에서 아예 빠진 글"이 같아 보인다 —
+       * 앞은 키워드를 바꿀 문제, 뒤는 블로그를 살릴 문제다 (indexcheck.ts 주석).
        */
       const idxPicks = feed.items.filter((i) => i.title.length >= 8).slice(0, INDEX_SAMPLE)
-      const idxGot: { title: string; found: boolean }[] = []
+      const idxGot: IndexCheck[] = []
       for (const it of idxPicks) {
-        try {
-          const r = await findBlogRank(it.title, it.link, 10)
-          if (r.ok) idxGot.push({ title: it.title, found: r.rank !== null })
-        } catch {
-          /* 한 표본이 실패해도 나머지로 센다 */
-        }
+        // 두 조회는 서로 무관하므로 같이 던진다 (한 표본에 2초씩 더 쓰지 않게)
+        const [tab, uni] = await Promise.all([
+          findBlogRank(it.title, it.link, 10)
+            .then((r) => (r.ok ? r.rank !== null : null))
+            .catch(() => null),
+          checkUnifiedIndexed(it.title, it.link).catch(() => null),
+        ])
+        // 두 곳 다 못 읽은 표본은 아무 뜻이 없으니 세지 않는다
+        if (tab === null && uni === null) continue
+        idxGot.push(buildIndexCheck({ title: it.title, blogTab: tab, unified: uni }))
       }
       if (idxGot.length) {
         indexDetail = idxGot
-        indexedRate = Math.round((idxGot.filter((g) => g.found).length / idxGot.length) * 100)
+        indexSummary = summarizeIndex(idxGot)
+        // 등급 판정은 지금까지와 같은 축(블로그탭 색인율)을 쓴다
+        indexedRate = indexSummary.blogTabRate ?? undefined
       }
 
       // ② 노출력 — 제목 앞부분을 검색어로 써서 30위 안에 걸리는지
@@ -110,6 +123,7 @@ export async function POST(req: Request) {
       exposureRate,
       firstPageRate,
       indexDetail,
+      indexSummary,
       meaning: meaningForUs(profile),
       exposureDetail,
       recent: feed.items.slice(0, 8).map((i) => ({ title: i.title, date: i.date, category: i.category, link: i.link })),
