@@ -103,11 +103,23 @@ export interface RankSnapshot {
   rank: number | null
   /** 해당 키워드 전체 블로그 발행량 (API 조회 시에만) */
   total?: number
+  /**
+   * 통합검색 스마트블록 위치 — **사람이 실제로 보는 자리**.
+   *
+   * 블로그탭 순위와 다르다. 실측: "쌍용동 헬스장" 에서 블로그탭 14위인 글이
+   * 통합검색 「스포츠 인기글」 블록에서는 4번째였다. 블로그탭만 보면 실제 노출을
+   * 절반만 보는 셈이다.
+   */
+  unifiedBlock?: string
+  /** 그 블록 안에서 몇 번째 */
+  unifiedRank?: number
+  /** 페이지에서 몇 번째 블록인지 (위에 있을수록 먼저 눈에 띈다) */
+  unifiedBlockOrder?: number
   mock?: boolean
   /**
    * 어디서 온 값인지.
-   * 'manual' = 사용자가 네이버에서 직접 보고 입력한 값. 검색 API 는 평면 목록만 주고
-   * 스마트블록 자리를 못 보기 때문에, 직접 본 순위가 오히려 실제에 더 가깝다.
+   * 'manual' = 사용자가 네이버에서 직접 보고 입력한 값. 스마트블록은 로그인 상태·
+   * 지역·개인화에 따라 달라질 수 있어, 직접 본 값이 가장 정확하다.
    */
   source?: 'api' | 'manual'
   /** 직접 입력할 때 남기는 메모 (예: "스마트블록 인기글 2번째") */
@@ -256,6 +268,18 @@ export interface SerpAnalysis {
     usableTokens: { token: string; count: number }[]
     rivalTokens: { token: string; count: number }[]
     otherTradeTokens: { token: string; count: number }[]
+    /**
+     * 상위 1~3위가 **공통으로** 쓴 말. 15개 중 2번 이상보다 훨씬 강한 신호다 —
+     * 위쪽 세 편이 다 쓴 말이면 그 키워드에서 사실상 필수 요소다.
+     */
+    sharedTop3: { token: string; count: number }[]
+    /** 상위 1~5위 공통 */
+    sharedTop5: { token: string; count: number }[]
+    /**
+     * 상위 10위 안에는 없는데 그 아래에서는 쓰이는 말 = **아직 위쪽이 안 쓴 자리**.
+     * 여기를 파면 같은 키워드에서 다른 각도로 들어갈 수 있다.
+     */
+    gapTokens: { token: string; count: number }[]
     /** 같은 블로거가 여러 개 차지하는지 */
     repeatBloggers: { name: string; count: number }[]
   }

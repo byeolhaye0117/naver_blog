@@ -171,6 +171,36 @@ function buildAnalysis(
     .slice(0, 12)
     .map(([token, count]) => ({ token, count }))
 
+  /**
+   * 상위권을 층으로 나눠 본다.
+   *
+   * "상위 15개에 2번 이상 나온 말" 은 뭉툭하다. 1~3위가 **공통으로** 쓴 말은 훨씬
+   * 강한 신호이고, 반대로 **상위 10위 안에 한 번도 안 나온 말**은 아직 아무도 안
+   * 쓴 자리다(빈틈). 두 목록을 따로 만든다.
+   */
+  const topN = (n: number) => items.slice(0, n)
+  const tokensOf = (list: SerpItem[]) =>
+    list.map((i) => new Set(tokenize(i.title).filter((t) => !keywordParts.has(t) && !flatKeyword.includes(t))))
+
+  const top3 = tokensOf(topN(3))
+  const sharedTop3 = top3.length
+    ? Array.from(top3[0]).filter((t) => top3.every((set) => set.has(t)))
+    : []
+
+  const top5 = tokensOf(topN(5))
+  const sharedTop5 = top5.length
+    ? Array.from(top5[0]).filter((t) => top5.every((set) => set.has(t)))
+    : []
+
+  // 상위 10위 안에는 없는데 그 아래에서는 쓰이는 말 = 아직 위쪽이 안 쓴 자리
+  const inTop10 = new Set<string>()
+  for (const set of tokensOf(topN(10))) for (const t of set) inTop10.add(t)
+  const belowOnly = Array.from(tokenCount.entries())
+    .filter(([t, c]) => c >= 2 && !inTop10.has(t))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([token, count]) => ({ token, count }))
+
   // 이름을 모르는 항목끼리 한 덩어리로 묶여 "빈 이름이 5개 선점" 처럼 보이면 안 된다
   const named = items.filter((i) => i.bloggerName)
   const bloggerCount = new Map<string, number>()
@@ -195,6 +225,9 @@ function buildAnalysis(
     bloggerKnownCount: named.length,
     commonTokens,
     ...splitTokensToStats(commonTokens, myNames),
+    sharedTop3: splitTokens(sharedTop3.map((token) => ({ token, count: 3 })), myNames).usable,
+    sharedTop5: splitTokens(sharedTop5.map((token) => ({ token, count: 5 })), myNames).usable,
+    gapTokens: splitTokens(belowOnly, myNames).usable,
     repeatBloggers,
   }
 
@@ -273,10 +306,29 @@ function prescribe(
 
   // 지시에는 쓸 수 있는 말만 넣는다. 남의 상호·다른 종목을 "소제목에 넣으세요" 라고
   // 하면 남의 가게를 홍보하거나 안 하는 걸 한다고 쓰는 글이 된다.
+  // 1~3위가 다 쓴 말은 사실상 필수 요소다 — 뭉툭한 "2번 이상" 보다 먼저 말한다
+  if (s.sharedTop3?.length) {
+    const top = s.sharedTop3.slice(0, 4).map((t) => t.token).join(', ')
+    out.push(
+      `**상위 1~3위가 모두 쓴 말: ${top}.** 위쪽 세 편이 공통으로 넣었다는 것은 이 키워드에서 사실상 필수 요소라는 뜻입니다 — 제목이나 첫 소제목에 넣으세요.`
+    )
+  } else if (s.sharedTop5?.length) {
+    const top = s.sharedTop5.slice(0, 4).map((t) => t.token).join(', ')
+    out.push(`상위 1~5위가 모두 쓴 말: ${top}. 소제목에 반영하세요.`)
+  }
+
   if (s.usableTokens.length) {
     const top = s.usableTokens.slice(0, 5).map((t) => t.token).join(', ')
     out.push(
       `상위 제목에 반복되는 말: ${top}. 검색하는 사람이 실제로 알고 싶은 게 이쪽이라는 신호이니 소제목에 반영하세요.`
+    )
+  }
+
+  // 위쪽이 아직 안 쓴 말 = 빈틈
+  if (s.gapTokens?.length) {
+    const gap = s.gapTokens.slice(0, 3).map((t) => t.token).join(', ')
+    out.push(
+      `상위 10위 안에는 안 나오는데 그 아래에서는 쓰이는 말: ${gap}. 위쪽이 아직 안 다룬 자리이니, 이 각도로 한 편 쓰면 같은 키워드에서 다른 의도로 들어갈 수 있습니다.`
     )
   }
 

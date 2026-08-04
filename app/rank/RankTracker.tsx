@@ -327,14 +327,15 @@ export default function RankTracker({
         <strong className="font-bold">이 화면이 재는 순위: {RANK_BASIS}</strong>
         <p className="mt-1.5">
           최신순이 아닙니다 — 최신순은 발행만 하면 위에 있으니 의미가 없습니다. <strong>블로그 검색
-          결과 화면을 그대로 읽으므로 블로그 탭 순위와 일치합니다.</strong> 다만 이 값은{' '}
-          <strong>실제 통합검색 상단과 같지 않습니다.</strong> 실제 화면은
-          의도별 <strong>스마트블록</strong>으로 재배치되고 그 자리는 어떤 경로로도 볼 수 없습니다.
+          결과 화면을 그대로 읽으므로 블로그 탭 순위와 일치합니다.</strong> 그리고 이제{' '}
+          <strong>통합검색 스마트블록 위치도 함께 잽니다</strong> — 둘은 실제로 다릅니다. 실측에서
+          블로그탭 14위인 글이 통합검색 「스포츠 인기글」 블록에서는 4번째였습니다. 사람이 눈으로 보는
+          자리는 통합검색 쪽입니다.
         </p>
         <p className="mt-2">
-          그래서 각 항목에 <strong>“네이버에서 직접 본 순위 기록”</strong> 을 두었습니다. 검색해서 눈으로 확인한
-          순위를 넣으면 그래프·변동·구간 판정이 똑같이 동작합니다. 스마트블록 자리까지 확인하려면 이 방법이
-          가장 정확합니다.
+          그래도 스마트블록은 로그인 상태·지역·개인화에 따라 달라질 수 있습니다. 그래서 각 항목에{' '}
+          <strong>“네이버에서 직접 본 순위 기록”</strong> 을 두었습니다 — 직접 확인한 값이 가장 정확하고,
+          넣으면 그래프·변동·구간 판정이 똑같이 동작합니다.
         </p>
       </div>
 
@@ -393,6 +394,25 @@ export default function RankTracker({
                   발행일과 함께 다시 등록하거나, 연결된 글에 발행일을 채우세요.
                 </div>
               )}
+
+              {/* 통합검색 위치 — 사람이 실제로 보는 자리 (블로그탭 순위와 다르다) */}
+              {(() => {
+                const last = v.history[v.history.length - 1]
+                if (!last?.unifiedBlock) return null
+                return (
+                  <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2.5 text-[12px] leading-relaxed text-emerald-900 dark:text-emerald-200">
+                    <strong className="font-bold">
+                      통합검색 「{last.unifiedBlock}」 {last.unifiedRank}번째
+                    </strong>
+                    <span className="mx-1.5 opacity-50">·</span>
+                    페이지에서 {last.unifiedBlockOrder}번째 블록
+                    <p className="mt-1 text-[11px] opacity-80">
+                      사람이 눈으로 보는 자리입니다. 위 블로그탭 순위와 다를 수 있습니다 — 다르면 이쪽이
+                      실제 노출에 가깝습니다.
+                    </p>
+                  </div>
+                )
+              })()}
 
               <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
                 <span className="muted">

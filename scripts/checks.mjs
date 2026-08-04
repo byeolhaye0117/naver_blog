@@ -1074,7 +1074,86 @@ const idxFallen = STUCK.findIndex((a) => a.id === 'fallen')
 ok(idxFallen === -1 || idxStuck < idxFallen, '답이 준비된 것을 먼저 보여준다')
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[34] 블로그 성격 판별 · 추정 힘')
+console.log('\n[34] 상위권 층별 단어 (공통·빈틈)')
+// 상위 1~3위가 다 쓴 말과, 상위 10위 안에는 없는 말을 갈라낸다
+const LAYER = analyzePastedSerp(
+  '쌍용동 헬스장',
+  [
+    { title: '쌍용동 헬스장 가격 후기 정리', date: '', blogger: 'a' },
+    { title: '쌍용동 헬스장 후기 가격 비교', date: '', blogger: 'b' },
+    { title: '쌍용동 헬스장 후기 가격 상담', date: '', blogger: 'c' },
+    { title: '쌍용동 헬스장 시설 둘러봄', date: '', blogger: 'd' },
+    { title: '쌍용동 헬스장 주차 편함', date: '', blogger: 'e' },
+    { title: '쌍용동 헬스장 추천 4', date: '', blogger: 'f' },
+    { title: '쌍용동 헬스장 추천 5', date: '', blogger: 'g' },
+    { title: '쌍용동 헬스장 추천 6', date: '', blogger: 'h' },
+    { title: '쌍용동 헬스장 추천 7', date: '', blogger: 'i' },
+    { title: '쌍용동 헬스장 추천 8', date: '', blogger: 'j' },
+    { title: '쌍용동 헬스장 새벽 운동 자리', date: '', blogger: 'k' },
+    { title: '쌍용동 헬스장 새벽 다녀옴', date: '', blogger: 'l' },
+  ],
+  500,
+  15,
+  'section'
+)
+const shared3 = LAYER.stats.sharedTop3.map((t) => t.token)
+ok(shared3.includes('후기') && shared3.includes('가격'), '상위 1~3위 공통 단어', shared3.join(','))
+ok(!shared3.includes('시설'), '4위에만 있는 말은 공통이 아니다')
+const gap = LAYER.stats.gapTokens.map((t) => t.token)
+ok(gap.includes('새벽'), '상위 10위 밖에서만 쓰이는 말을 빈틈으로 잡는다', gap.join(','))
+ok(!gap.includes('후기'), '상위권이 쓰는 말은 빈틈이 아니다')
+const rx = LAYER.prescription.join(' | ')
+ok(rx.includes('상위 1~3위가 모두 쓴 말'), '처방이 공통 단어를 먼저 말한다')
+ok(rx.includes('아직 안 다룬 자리'), '처방이 빈틈도 알려준다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[35] 통합검색 스마트블록')
+const { parseUnifiedBlocks, findUnifiedRank, countByBlogger } = require(`${OUT}/naver/unified.js`)
+
+// 네이버는 블록마다 api_subject_bx 를 붙이고, 컨테이너가 겹쳐 같은 묶음이 두 번 잡힌다
+const UNI = [
+  '<div class="api_subject_bx"><h2>광고</h2><a href="https://ader.naver.com/x">광고</a></div>',
+  '<div class="api_subject_bx"><h2>스포츠 인기글</h2>',
+  '<a href="https://blog.naver.com/aaa/111">1</a>',
+  '<a href="https://blog.naver.com/aaa/111">중복</a>',
+  '<a href="https://blog.naver.com/bbb/222">2</a>',
+  '<a href="https://blog.naver.com/ccc/333">3</a></div>',
+  // 같은 묶음이 한 번 더 (컨테이너 중첩)
+  '<div class="api_subject_bx"><a href="https://blog.naver.com/aaa/111">1</a>',
+  '<a href="https://blog.naver.com/bbb/222">2</a><a href="https://blog.naver.com/ccc/333">3</a></div>',
+  '<div class="api_subject_bx"><h2>블로그</h2><a href="https://blog.naver.com/ddd/444">x</a>',
+  '<a href="https://blog.naver.com/eee/555">y</a></div>',
+].join('')
+const BLOCKS = parseUnifiedBlocks(UNI)
+ok(BLOCKS.length === 2, '겹친 컨테이너를 한 블록으로 본다', String(BLOCKS.length))
+ok(BLOCKS[0].name === '스포츠 인기글', '블록 이름을 읽는다', BLOCKS[0].name)
+ok(BLOCKS[0].posts.length === 3, '중복 링크는 한 번만 센다', String(BLOCKS[0].posts.length))
+ok(BLOCKS[0].posts[0].blogId === 'aaa', '나온 순서를 지킨다')
+ok(BLOCKS[1].name === '블로그', '두 번째 블록')
+ok(parseUnifiedBlocks('<html>블록 없음</html>').length === 0, '블록이 없으면 빈 배열')
+
+// 글이 한 편뿐인 묶음은 블록이 아니다 (광고·채널 카드)
+ok(
+  parseUnifiedBlocks('<div class="api_subject_bx"><a href="https://blog.naver.com/z/9">1</a></div>').length === 0,
+  '한 편뿐인 묶음은 제외'
+)
+
+// 내 글 위치 — 주소 형태가 달라도 찾는다
+ok(findUnifiedRank(BLOCKS, 'https://blog.naver.com/bbb/222').rank === 2, '블록 안 순서', String(findUnifiedRank(BLOCKS, 'https://blog.naver.com/bbb/222')?.rank))
+ok(findUnifiedRank(BLOCKS, 'https://m.blog.naver.com/bbb/222').rank === 2, '모바일 주소로도 찾는다')
+ok(
+  findUnifiedRank(BLOCKS, 'https://blog.naver.com/PostView.naver?blogId=bbb&logNo=222').rank === 2,
+  'PostView 주소로도 찾는다'
+)
+ok(findUnifiedRank(BLOCKS, 'https://blog.naver.com/ddd/444').blockOrder === 2, '몇 번째 블록인지도 준다')
+ok(findUnifiedRank(BLOCKS, 'https://blog.naver.com/none/1') === null, '없으면 null')
+ok(findUnifiedRank(BLOCKS, '') === null, '빈 주소')
+
+const CNT = countByBlogger(BLOCKS)
+ok(CNT.length === 5 && CNT[0].count === 1, '블로거별 편수를 센다', String(CNT.length))
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[36] 블로그 성격 판별 · 추정 힘')
 const { blogIdFromInput, parseBlogRss, rssDate } = require(`${OUT}/naver/blogrss.js`)
 const { buildBlogProfile, classifyBlogger, queryFromTitle, meaningForUs, gradeBlog, KIND_LABEL, GRADE_LABEL, GRADE_LADDER } =
   require(`${OUT}/analysis/blogscore.js`)
@@ -1180,7 +1259,7 @@ ok(queryFromTitle('[협찬] 강릉, 여행!') === '협찬 강릉 여행', '기�
 ok(queryFromTitle('') === '', '빈 제목')
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[35] 발행하면 순위 추적에 자동 등록')
+console.log('\n[37] 발행하면 순위 추적에 자동 등록')
 const PUBLISHED = {
   id: 'p9', status: 'published', mainKeyword: '쌍용동 헬스장',
   publishedUrl: 'https://blog.naver.com/me/224352038257', publishedAt: '2026-07-20T00:00:00.000Z',
@@ -1196,7 +1275,7 @@ const EXIST = [{ id: 'rt1', keyword: '쌍용동헬스장', url: 'https://m.blog.
 ok(autoRankTargets(PUBLISHED, EXIST).length === 0, '띄어쓰기·모바일 주소만 달라도 중복으로 안 넣는다')
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[36] 상위 제목 단어 가르기')
+console.log('\n[38] 상위 제목 단어 가르기')
 const { classifyToken, splitTokens } = require(`${OUT}/analysis/tokens.js`)
 
 // 실제 진단에서 나온 문제: "미녀와야수짐"·"필라테스" 를 소제목에 넣으라고 지시했다
@@ -1232,7 +1311,7 @@ ok(SPL.otherTrades[0].token === '필라테스', '다른 종목도 따로')
 ok(SPL.usable.length + SPL.rivals.length + SPL.otherTrades.length === 4, '문체 조각은 어디에도 안 들어간다')
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[37] 발행 후 실패 진단')
+console.log('\n[39] 발행 후 실패 진단')
 const { diagnose, diagnosisToPrescription, shouldDiagnose, fromAppPost, fromPublished, OUT_OF_RANGE, FIRST_PAGE, SETTLE_DAYS } =
   require(`${OUT}/analysis/diagnose.js`)
 

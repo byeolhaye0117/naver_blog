@@ -372,9 +372,48 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
 
           {data.stats.commonTokens.length > 0 && (
             <Card
-              title="상위 제목에 반복되는 말"
-              subtitle="검색한 사람이 실제로 알고 싶은 것의 신호입니다. 소제목 소재로 쓰세요."
+              title="상위 제목에 쓰인 말"
+              subtitle="층으로 나눠 봅니다 — 위쪽 세 편이 다 쓴 말은 사실상 필수 요소이고, 상위 10위에 없는 말은 아직 아무도 안 쓴 자리입니다."
             >
+              {/* 1~3위 공통 — 가장 강한 신호라 맨 위에 */}
+              {(data.stats.sharedTop3?.length ?? 0) > 0 && (
+                <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2.5">
+                  <p className="text-[12px] font-bold text-emerald-900 dark:text-emerald-200">
+                    상위 1~3위가 모두 쓴 말 — 이 키워드의 필수 요소
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {data.stats.sharedTop3.map((t) => (
+                      <span
+                        key={t.token}
+                        className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-[12px] font-bold text-emerald-900 dark:text-emerald-100"
+                      >
+                        {t.token}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(data.stats.gapTokens?.length ?? 0) > 0 && (
+                <div className="bd surface mb-3 rounded-xl border px-3 py-2.5">
+                  <p className="text-[12px] font-bold">
+                    상위 10위에는 없는 말 — 아직 위쪽이 안 다룬 자리
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {data.stats.gapTokens.map((t) => (
+                      <span key={t.token} className="bd rounded-full border px-2.5 py-1 text-[12px] font-semibold">
+                        {t.token}
+                        <span className="muted tnum ml-1.5 text-[10px]">{t.count}</span>
+                      </span>
+                    ))}
+                  </div>
+                  <p className="muted mt-1.5 text-[11px] leading-relaxed">
+                    이 각도로 한 편 쓰면 같은 키워드에서 다른 의도로 들어갈 수 있습니다.
+                  </p>
+                </div>
+              )}
+
+              <p className="muted mb-1.5 text-[11px] font-semibold">상위 {data.items.length}개 전체에서 반복</p>
               <div className="flex flex-wrap gap-1.5">
                 {data.stats.commonTokens.map((t) => (
                   <span
