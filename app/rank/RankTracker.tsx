@@ -309,6 +309,20 @@ export default function RankTracker({
         </div>
       </Card>
 
+      {/* 자동 추적은 눈에 보이지 않으니 명시한다 — 안 보이면 안 되는 줄 안다 */}
+      <div className="bd panel rounded-xl border px-4 py-3 text-[12px] leading-relaxed">
+        <strong className="font-bold">자동 추적 중</strong>
+        <span className="mx-1.5 opacity-40">·</span>
+        등록한 항목은 <b>매일 오전 9시·오후 6시에 앱이 스스로 순위를 재서</b> 기록합니다. 발행 첫날부터
+        점이 찍히니 며칠째에 올라왔는지 추세로 보입니다.{' '}
+        <b>발행 2주 뒤에도 1페이지 밖이면 진단까지 자동으로 해둡니다</b> — 그 결과는 처방으로 저장돼
+        글쓰기 화면에 바로 실립니다.
+        <span className="muted mt-1 block text-[11px]">
+          「API 로 조회」는 지금 당장 다시 재고 싶을 때 쓰면 됩니다. 순위는 하루 안에도 흔들려서
+          분 단위로 재는 것은 잡음만 늘립니다 — 그래서 하루 두 번입니다.
+        </span>
+      </div>
+
       <div className="rounded-xl border border-sky-500/30 bg-sky-500/8 px-4 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
         <strong className="font-bold">이 화면이 재는 순위: {RANK_BASIS}</strong>
         <p className="mt-1.5">

@@ -4,5 +4,15 @@
     "deploymentEnabled": {
       "claude/**": false
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/rank",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/rank",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }

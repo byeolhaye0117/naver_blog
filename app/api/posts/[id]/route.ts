@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { guard } from '@/lib/api'
+import { autoRankTargets } from '@/lib/analysis/rank'
+import { newId } from '@/lib/id'
 import type { Post } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -34,11 +36,25 @@ export const PATCH = guard('글 저장에 실패했습니다.', async (req: Requ
       next.publishedAt = new Date().toISOString().slice(0, 10)
     }
     db.posts[idx] = next
-    return next
+
+    /*
+     * 발행 주소가 들어오면 순위 추적에 바로 등록한다.
+     * 예전에는 발행하고 나서 순위 화면에 가서 키워드와 주소를 손으로 다시 넣어야 했다 —
+     * 발행 첫날부터 추세를 보려면 그 단계가 없어야 한다.
+     */
+    const seeds = autoRankTargets(next, db.rankTargets)
+    for (const seed of seeds) {
+      db.rankTargets.push({ id: newId('rt'), ...seed, createdAt: new Date().toISOString() })
+    }
+    return { post: next, tracked: seeds.length }
   })
 
   if (!result) return NextResponse.json({ error: '글을 찾을 수 없습니다.' }, { status: 404 })
-  return NextResponse.json({ post: result })
+  return NextResponse.json({
+    post: result.post,
+    // 자동 등록됐으면 화면에서 알려준다
+    tracked: result.tracked,
+  })
 })
 
 export const DELETE = guard('글 삭제에 실패했습니다.', async (_req: Request, { params }: Ctx) => {

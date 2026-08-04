@@ -1,4 +1,5 @@
 import type { Post, RankSnapshot, RankTarget } from '@/lib/types'
+import { normalizeBlogUrl } from '../naver/blogsection'
 
 /**
  * 순위 계산 — 순수 로직만. (실제 조회는 rank-check.ts, 서버 전용)
@@ -81,6 +82,49 @@ export interface PhaseInfo {
   label: string
   note: string
   tone: 'info' | 'good' | 'warn' | 'bad'
+}
+
+/**
+ * 발행한 글을 순위 추적에 **자동으로 등록**할 목록.
+ *
+ * 예전에는 발행하고 나서 순위 화면에 가서 키워드와 주소를 손으로 다시 넣어야 했다.
+ * 발행 첫날부터 추세를 보려면 그 단계가 없어야 한다 — 발행 주소를 넣는 순간 등록된다.
+ *
+ * 메인 키워드만 등록한다. 서브까지 자동으로 넣으면 항목이 세 배가 되어 화면이 흐려지고,
+ * 실제로 봐야 하는 것은 메인이다 (서브는 필요하면 손으로 추가한다).
+ */
+export function autoRankTargets(
+  post: {
+    id: string
+    status: string
+    mainKeyword: string
+    publishedUrl?: string
+    publishedAt?: string
+    createdAt?: string
+  },
+  existing: RankTarget[]
+): { keyword: string; url: string; postId: string; publishedAt?: string }[] {
+  if (post.status !== 'published') return []
+  const url = (post.publishedUrl ?? '').trim()
+  const keyword = (post.mainKeyword ?? '').trim()
+  if (!url || !keyword) return []
+
+  const flat = (s: string) => s.replace(/\s+/g, '')
+  // normalizeUrl 은 m. 을 떼지 않는다 — m.blog 와 blog 를 다른 글로 봐서 중복이 쌓였다.
+  // 같은 글 판정은 normalizeBlogUrl 로 한다 (모바일·PostView 주소까지 하나로 맞춘다).
+  const already = existing.some(
+    (t) => flat(t.keyword) === flat(keyword) && normalizeBlogUrl(t.url) === normalizeBlogUrl(url)
+  )
+  if (already) return []
+
+  return [
+    {
+      keyword,
+      url,
+      postId: post.id,
+      publishedAt: (post.publishedAt ?? post.createdAt ?? '').slice(0, 10) || undefined,
+    },
+  ]
 }
 
 export function phaseOf(ageDays: number | null, rank: number | null): PhaseInfo | null {
