@@ -302,26 +302,71 @@ export function queryFromTitle(title: string): string {
  *     나와 0점이 됐는데, 정작 "쌍용동 헬스장" 에서는 1위였다 — 표본이 여행·맛집처럼
  *     경쟁이 센 키워드였기 때문이다. 그래서 **노출력만으로 저품질을 말하면 안 된다.**
  */
-export type BlogGrade = 'optimal' | 'semi' | 'normal' | 'weak' | 'dropped' | 'unknown'
+export type BlogGrade =
+  | 'optimal1'
+  | 'optimal2'
+  | 'optimal3'
+  | 'semi1'
+  | 'semi2'
+  | 'semi3'
+  | 'normal'
+  | 'weak'
+  | 'partial'
+  | 'dropped'
+  | 'unknown'
 
 export const GRADE_LABEL: Record<BlogGrade, string> = {
-  optimal: '최적 추정',
-  semi: '준최 추정',
+  optimal1: '최적 1',
+  optimal2: '최적 2',
+  optimal3: '최적 3',
+  semi1: '준최 1',
+  semi2: '준최 2',
+  semi3: '준최 3',
   normal: '일반',
   weak: '노출 약함',
+  partial: '부분 누락',
   dropped: '검색 누락 의심',
   unknown: '판정 불가',
 }
 
+/**
+ * 강한 것부터 약한 것 순서 — 화면에서 사다리로 보여준다.
+ * 업계 관례대로 숫자가 작을수록 강하다 (최적 1 > 최적 2 > 최적 3).
+ */
+export const GRADE_LADDER: BlogGrade[] = [
+  'optimal1',
+  'optimal2',
+  'optimal3',
+  'semi1',
+  'semi2',
+  'semi3',
+  'normal',
+  'weak',
+  'partial',
+  'dropped',
+]
+
+/**
+ * 등급을 매긴다.
+ *
+ * **두 축으로 나눈다.** 30위 안에 걸리는 비율만 보면 최적과 준최이 안 갈린다 —
+ * 30위에 겨우 걸리는 블로그와 1페이지를 먹는 블로그가 같은 칸에 들어간다. 그래서
+ * 1페이지(10위) 비율을 두 번째 축으로 쓴다.
+ *
+ *   노출률  = 표본 글이 30위 안에 걸린 비율
+ *   1페이지 = 표본 글이 10위 안에 걸린 비율
+ */
 export function gradeBlog(input: {
   /** 제목 완전일치 검색에서 그 글이 나온 비율(%) — 색인 검사 */
   indexedRate?: number
   /** 표본 글이 30위 안에 걸린 비율(%) */
   exposureRate?: number
+  /** 표본 글이 10위 안에 걸린 비율(%) */
+  firstPageRate?: number
   /** 표본 수 */
   samples: number
 }): { grade: BlogGrade; reason: string } {
-  const { indexedRate, exposureRate, samples } = input
+  const { indexedRate, exposureRate, firstPageRate = 0, samples } = input
 
   if (samples === 0 || typeof indexedRate !== 'number') {
     return { grade: 'unknown', reason: '표본을 읽지 못해 등급을 낼 수 없습니다.' }
@@ -337,7 +382,7 @@ export function gradeBlog(input: {
   }
   if (indexedRate < 100) {
     return {
-      grade: 'weak',
+      grade: 'partial',
       reason: `제목을 그대로 검색했을 때 나오는 글이 ${indexedRate}% 뿐입니다. 일부 글이 검색에서 빠져 있습니다.`,
     }
   }
@@ -349,28 +394,36 @@ export function gradeBlog(input: {
     }
   }
 
-  if (exposureRate >= 60) {
-    return {
-      grade: 'optimal',
-      reason: `색인 정상이고, 표본 글의 ${exposureRate}%가 30위 안에 걸립니다. 업계에서 "최적" 이라 부르는 상태에 가깝습니다.`,
-    }
+  const both = `표본의 ${exposureRate}%가 30위 안, ${firstPageRate}%가 1페이지(10위 안)에 있습니다`
+
+  // 최적 구간 — 30위 안에 대부분 걸리고, 1페이지까지 먹는다
+  if (exposureRate >= 85 && firstPageRate >= 60) {
+    return { grade: 'optimal1', reason: `${both}. 거의 쓰는 대로 1페이지에 올라갑니다 — 업계에서 "최적" 최상단이라 부르는 상태에 가깝습니다.` }
   }
-  if (exposureRate >= 30) {
-    return {
-      grade: 'semi',
-      reason: `색인 정상이고 표본의 ${exposureRate}%가 30위 안에 걸립니다. "준최" 라 부르는 구간에 가깝습니다.`,
-    }
+  if (exposureRate >= 80 && firstPageRate >= 40) {
+    return { grade: 'optimal2', reason: `${both}. 1페이지 진입이 절반 가까이 됩니다 — "최적" 구간에 가깝습니다.` }
+  }
+  if (exposureRate >= 70 && firstPageRate >= 20) {
+    return { grade: 'optimal3', reason: `${both}. 대부분 30위 안에 걸리고 1페이지도 나옵니다 — "최적" 진입 구간에 가깝습니다.` }
+  }
+
+  // 준최 구간 — 걸리기는 하는데 1페이지가 드물다
+  if (exposureRate >= 55) {
+    return { grade: 'semi1', reason: `${both}. 절반 이상 걸리지만 1페이지는 아직 드뭅니다 — "준최" 상단에 가깝습니다.` }
+  }
+  if (exposureRate >= 40) {
+    return { grade: 'semi2', reason: `${both}. "준최" 중간 구간에 가깝습니다.` }
+  }
+  if (exposureRate >= 25) {
+    return { grade: 'semi3', reason: `${both}. "준최" 진입 구간에 가깝습니다.` }
   }
   if (exposureRate >= 10) {
-    return {
-      grade: 'normal',
-      reason: `색인은 정상이고 표본의 ${exposureRate}%가 걸립니다. 아직 힘이 붙는 중입니다.`,
-    }
+    return { grade: 'normal', reason: `${both}. 아직 힘이 붙는 중입니다.` }
   }
+
   return {
     grade: 'weak',
-    reason:
-      '색인은 정상인데 표본이 거의 30위 안에 없습니다. **저품질이 아닙니다** — 표본 글이 경쟁이 센 키워드를 노렸으면 이렇게 나옵니다. 아래 표본 목록의 검색어를 보고 판단하세요.',
+    reason: `색인은 정상인데 ${both}. **저품질이 아닙니다** — 표본 글이 경쟁이 센 키워드를 노렸으면 이렇게 나옵니다. 아래 표본 목록의 검색어를 보고 판단하세요.`,
   }
 }
 

@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { GRADE_LABEL, KIND_LABEL, type BlogGrade, type BlogProfile } from '@/lib/analysis/blogscore'
+import { GRADE_LABEL, GRADE_LADDER, KIND_LABEL, type BlogGrade, type BlogProfile } from '@/lib/analysis/blogscore'
 import { Badge, Card, Empty, Field, Progress, inputClass } from '@/components/ui'
 
 interface Result {
   profile: BlogProfile
   grade: { grade: BlogGrade; reason: string }
   indexedRate?: number
+  exposureRate?: number
+  firstPageRate?: number
   indexDetail?: { title: string; found: boolean }[]
   meaning: string
   exposureDetail?: { query: string; rank: number | null }[]
@@ -15,7 +17,11 @@ interface Result {
 }
 
 function gradeTone(g: BlogGrade) {
-  return g === 'optimal' ? 'good' : g === 'semi' ? 'info' : g === 'dropped' ? 'bad' : g === 'weak' ? 'warn' : 'default'
+  if (g.startsWith('optimal')) return 'good'
+  if (g.startsWith('semi')) return 'info'
+  if (g === 'dropped' || g === 'partial') return 'bad'
+  if (g === 'weak') return 'warn'
+  return 'default'
 }
 
 function kindTone(k: BlogProfile['kind']) {
@@ -111,6 +117,29 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
             right={<Badge tone={gradeTone(data.grade.grade)}>{GRADE_LABEL[data.grade.grade]}</Badge>}
           >
             <p className="text-[13px] leading-relaxed">{data.grade.reason}</p>
+
+            {/* 어느 칸인지 눈으로 보이게 — 숫자만 보면 위아래 폭을 알 수 없다 */}
+            <div className="mt-3 flex flex-wrap gap-1">
+              {GRADE_LADDER.map((g) => (
+                <span
+                  key={g}
+                  className={`rounded-full px-2 py-1 text-[10.5px] font-bold ${
+                    g === data.grade.grade
+                      ? 'bg-brand-600 text-white'
+                      : 'muted surface'
+                  }`}
+                >
+                  {GRADE_LABEL[g]}
+                </span>
+              ))}
+            </div>
+            {typeof data.exposureRate === 'number' && (
+              <p className="muted mt-2 text-[11px] leading-relaxed">
+                30위 안 <b>{data.exposureRate}%</b> · 1페이지 <b>{data.firstPageRate ?? 0}%</b> 로 계산했습니다.
+                표본이 {data.exposureDetail?.length ?? 0}개라 한 칸 차이는 표본에 따라 흔들릴 수 있습니다 —
+                아래 표본 목록을 함께 보세요.
+              </p>
+            )}
             {data.indexDetail && data.indexDetail.length > 0 && (
               <div className="surface mt-3 rounded-xl p-3.5">
                 <p className="text-[12px] font-bold">
