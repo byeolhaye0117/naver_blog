@@ -21,7 +21,7 @@ const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SE
 const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/naver/place.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool, dedupeAdRows, toRate } = require(`${OUT}/naver/searchad.js`)
-const { gradeKeyword, adNoteFor, AD_HEAVY, AD_SOME } = require(`${OUT}/analysis/keyword.js`)
+const { gradeKeyword, adNoteFor, adPressureOf, AD_HEAVY, AD_SOME } = require(`${OUT}/analysis/keyword.js`)
 const { phaseOf, buildRankViews, autoRankTargets } = require(`${OUT}/analysis/rank.js`)
 const { isPartialMonth, completedMonths, momentumOf } = require(`${OUT}/naver/datalab.js`)
 const { prescriptionKey, upsertPrescription, findPrescription, prescriptionAgeDays, isPrescriptionStale } = require(
@@ -1584,16 +1584,30 @@ ok(toRate('0.85%') === 0.85, '단위가 붙어 와도 읽는다', String(toRate(
 
 // 광고가 많으면 통합검색 위쪽이 덮여 블로그가 밀린다 — 검색량만으로는 안 보이는 사실
 ok(adNoteFor(undefined) === undefined, '광고 지표가 없으면 아무 말도 하지 않는다')
-ok(adNoteFor(AD_HEAVY).includes('블로그보다 위에 놓이니'), '광고가 많으면 블로그가 아래라고 말한다')
+ok(adNoteFor(AD_HEAVY).includes('블로그보다 위에 놓여'), '광고가 많으면 블로그가 아래라고 말한다')
 // 값이 곧 화면에 보이는 광고 개수는 아니다 (모바일은 몇 개만 펼친다)
 ok(!adNoteFor(10).includes('화면을 덮'), '화면을 덮는다고 단정하지 않는다')
 ok(adNoteFor(6.2).includes('6.2개'), '실제 광고 수를 밝힌다', adNoteFor(6.2))
 ok(adNoteFor(AD_SOME).includes('블로그 자리는 남아 있습니다'), '중간은 중간이라고 한다')
-ok(adNoteFor(0).includes('먼저 보입니다'), '광고가 없으면 유리하다고 말한다')
+ok(adNoteFor(0).includes('순위가 그대로 유입'), '광고가 없으면 유리하다고 말한다')
 ok(!adNoteFor(0).includes('상업성이 높습니다'), '광고 0 개에 경고를 붙이지 않는다')
 // 실측 분포: 지역+업종은 8~10, 정보 키워드는 3 안쪽 — 이 둘이 갈려야 뜻이 있다
-ok(adNoteFor(10).includes('상업성이 높습니다'), '지역+업종 실측값(10)은 광고 많음')
-ok(adNoteFor(3).includes('많지는 않습니다'), '정보 키워드 실측값(3)은 중간', adNoteFor(3))
+ok(adNoteFor(10).includes('경합하는 판'), '지역+업종 실측값(10)은 광고 많음')
+ok(adNoteFor(3).includes('블로그 자리는 남아 있습니다'), '정보 키워드 실측값(3)은 중간', adNoteFor(3))
+
+// 「그래서 어떻게 쓰라고」 — 같은 광고 10개여도 등급에 따라 할 일이 다르다
+const heavyGold = adNoteFor(10, { grade: 'gold' })
+const heavySmall = adNoteFor(10, { grade: 'toosmall' })
+const heavyHard = adNoteFor(10, { grade: 'hard' })
+ok(heavyGold.includes('메인으로 쓰세요'), '광고가 많아도 황금 키워드는 메인으로 쓰라고 한다', heavyGold.slice(-60))
+ok(heavyGold.includes('세부 의도'), '광고를 피할 방법까지 말한다')
+ok(heavySmall.includes('한 단락으로 얹으세요'), '검색량이 작으면 따로 쓰지 말라고 한다', heavySmall.slice(-40))
+ok(heavyHard.includes('좁히세요'), '포화면 좁히라고 한다')
+ok(heavyGold !== heavySmall, '등급이 다르면 안내가 다르다')
+ok(adNoteFor(0, { grade: 'gold' }).includes('가장 먼저 잡아야'), '광고 없는 황금 키워드는 먼저 잡으라고 한다')
+ok(adNoteFor(0, { grade: 'toosmall' }).includes('연습용'), '광고 없고 작으면 연습용이라고 한다')
+ok(adPressureOf(undefined) === null, '광고 수를 모르면 압박도 판정하지 않는다')
+ok(adPressureOf(10) === 'heavy' && adPressureOf(3) === 'some' && adPressureOf(0) === 'light', '압박 3단계')
 
 // 지표가 metric 까지 그대로 실린다 (등급 판정은 광고와 무관하게 유지)
 const adM = buildMetric({
@@ -1608,7 +1622,8 @@ const adM = buildMetric({
   mock: false,
 })
 ok(adM.adDepth === 6 && adM.ctrMobile === 1.2, '광고 지표가 지표에 실린다')
-ok(adM.adNote.includes('경합하는 키워드'), '광고 안내문이 함께 만들어진다')
+ok(adM.adNote.includes('경합하는 판'), '광고 안내문이 함께 만들어진다')
+ok(adM.adNote.includes('메인으로 쓰세요'), '지표에 실린 안내문도 등급을 읽는다 (황금 → 메인)')
 ok(adM.grade === 'gold', '광고가 많아도 등급 기준(검색량·경쟁률)은 바뀌지 않는다', adM.grade)
 ok(!adM.gradeReason.includes('광고'), '등급 설명에는 광고를 섞지 않는다 — 따로 말한다')
 const noAd = buildMetric({
@@ -1770,6 +1785,72 @@ ok(pairHref.includes('main=쌍용동헬스장') && pairHref.includes('subs=쌍�
 ok(pairHref.includes('local=쌍용동'), '지역 키워드를 알아서 넣는다')
 ok(pairHref.includes('type=promo'), '글 유형도 정해서 넘긴다')
 ok(pairHref.includes('store=store_1'), '지점도 실린다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[44] 조사한 지역만 — 다른 지점이 섞이지 않게')
+
+/*
+ * 회원이 쌍용점만 조사했는데 두정동 세트가 나왔다. 검색광고 API 가 연관 키워드로
+ * 두정동헬스장을 얹어 준 것이 표에 들어와 세트까지 만들어졌다.
+ */
+const MIX = [
+  pairMk('쌍용동헬스장', 1500, 446, 10),
+  pairMk('쌍용동24시헬스장', 305, 98, 2),
+  pairMk('두정동헬스장', 1760, 598, 10),
+  pairMk('두정동PT', 230, 80, 10),
+]
+const scoped = buildKeywordSets(MIX, {
+  areas: ['쌍용동'],
+  store: { open24: true, womenOnly: false },
+})
+ok(
+  scoped.sets.every((s) => s.area === '쌍용동'),
+  '조사한 지역의 세트만 만든다',
+  scoped.sets.map((s) => s.area).join(',')
+)
+const other = scoped.excluded.filter((x) => x.kind === 'otherArea')
+ok(other.length === 2, '다른 지점 지역은 빼고 몇 개인지 밝힌다', String(other.length))
+ok(other[0].why.includes('두정동 지점 글로 따로 쓰세요'), '어디로 가야 하는지 말해준다', other[0].why)
+// 쓸 수 없는 키워드와 다른 지점 키워드는 뜻이 다르다 — 화면에서 색을 갈라야 한다
+const factOnly = buildKeywordSets([pairMk('쌍용동24시헬스장', 305, 98, 2), pairMk('쌍용동헬스장', 1500, 446, 10)], {
+  areas: ['쌍용동'],
+  store: { open24: false, womenOnly: false },
+})
+ok(factOnly.excluded.every((x) => x.kind === 'fact'), '사실과 달라지는 것은 kind=fact')
+// 지역을 지정하지 않으면 예전처럼 다 만든다 (직접 키워드를 넣는 경로)
+ok(buildKeywordSets(MIX).sets.length >= 2, '지역을 안 주면 전부 만든다')
+// 광역·정보 키워드는 지역이 없으니 어느 지점 글에도 쓸 수 있다 — 빼지 않는다
+const wide = buildKeywordSets([...MIX, pairMk('천안헬스장', 3060, 900, 10)], { areas: ['쌍용동'] })
+ok(
+  !wide.excluded.some((x) => x.keyword === '천안헬스장'),
+  '지역이 없는 키워드는 빼지 않는다'
+)
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[45] 짝은 같은 지역에서만 — 광역 키워드가 모든 줄을 먹지 않게')
+
+/*
+ * 실제로 벌어진 일: 4줄 전부 짝이 「천안헬스장」(월 3,060)이었다. 황금 키워드인
+ * 「쌍용동헬스장」에게 "천안헬스장 글에 얹으세요" 라고 했다 — 훨씬 어려운 키워드
+ * 밑에 황금 키워드를 넣으라는 뒤집힌 조언이다.
+ */
+const WIDE_POOL = [
+  pairMk('쌍용동헬스장', 1500, 446, 10),
+  pairMk('쌍용동24시헬스장', 305, 98, 2),
+  pairMk('천안쌍용동헬스장', 260, 90, 10),
+  pairMk('천안헬스장', 3060, 3400, 10),
+]
+const wOpts = { areas: ['쌍용동'], store: { open24: true, womenOnly: false } }
+const wp = bestPartner(WIDE_POOL[0], WIDE_POOL, wOpts)
+ok(wp.metric.keyword !== '천안헬스장', '광역 키워드를 짝으로 주지 않는다', wp.metric.keyword)
+ok(splitKeyword(wp.metric.keyword, ['쌍용동']).area === '쌍용동', '같은 동네에서 고른다')
+ok(wp.role === 'main', '황금 키워드를 다른 키워드의 서브로 내리지 않는다', wp.role)
+// 광역 키워드 줄에는 같은 처지(지역 없음)의 짝만 — 없으면 없다고 한다
+ok(bestPartner(WIDE_POOL[3], WIDE_POOL, wOpts) === null, '짝이 없으면 억지로 만들지 않는다')
+// 짝이 더 커도 그 짝이 과열이면 자리를 뒤집지 않는다 (못 이기는 키워드로 글을 쓰라는 말이 된다)
+const hardBig = [pairMk('쌍용동PT', 300, 100, 3), pairMk('쌍용동헬스장', 1500, 3000, 10)]
+const hb = bestPartner(hardBig[0], hardBig, wOpts)
+ok(hb.role === 'main', '짝이 크지만 과열이면 이 줄을 메인으로 남긴다', hb.role)
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
