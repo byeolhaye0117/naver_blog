@@ -21,7 +21,7 @@ const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SE
 const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/naver/place.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool, dedupeAdRows, toRate } = require(`${OUT}/naver/searchad.js`)
-const { gradeKeyword, adNoteFor, adPressureOf, AD_HEAVY, AD_SOME } = require(`${OUT}/analysis/keyword.js`)
+const { gradeKeyword, adNoteFor, adPressureOf, ctrNote, keywordVerdict, AD_HEAVY, AD_SOME } = require(`${OUT}/analysis/keyword.js`)
 const { phaseOf, buildRankViews, autoRankTargets } = require(`${OUT}/analysis/rank.js`)
 const { isPartialMonth, completedMonths, momentumOf } = require(`${OUT}/naver/datalab.js`)
 const { prescriptionKey, upsertPrescription, findPrescription, prescriptionAgeDays, isPrescriptionStale } = require(
@@ -1584,7 +1584,7 @@ ok(toRate('0.85%') === 0.85, '단위가 붙어 와도 읽는다', String(toRate(
 
 // 광고가 많으면 통합검색 위쪽이 덮여 블로그가 밀린다 — 검색량만으로는 안 보이는 사실
 ok(adNoteFor(undefined) === undefined, '광고 지표가 없으면 아무 말도 하지 않는다')
-ok(adNoteFor(AD_HEAVY).includes('블로그보다 위에 놓여'), '광고가 많으면 블로그가 아래라고 말한다')
+ok(adNoteFor(AD_HEAVY).includes('블로그보다 위에 놓입니다'), '광고가 많으면 블로그가 아래라고 말한다')
 // 값이 곧 화면에 보이는 광고 개수는 아니다 (모바일은 몇 개만 펼친다)
 ok(!adNoteFor(10).includes('화면을 덮'), '화면을 덮는다고 단정하지 않는다')
 ok(adNoteFor(6.2).includes('6.2개'), '실제 광고 수를 밝힌다', adNoteFor(6.2))
@@ -1592,22 +1592,38 @@ ok(adNoteFor(AD_SOME).includes('블로그 자리는 남아 있습니다'), '중�
 ok(adNoteFor(0).includes('순위가 그대로 유입'), '광고가 없으면 유리하다고 말한다')
 ok(!adNoteFor(0).includes('상업성이 높습니다'), '광고 0 개에 경고를 붙이지 않는다')
 // 실측 분포: 지역+업종은 8~10, 정보 키워드는 3 안쪽 — 이 둘이 갈려야 뜻이 있다
-ok(adNoteFor(10).includes('경합하는 판'), '지역+업종 실측값(10)은 광고 많음')
+ok(adNoteFor(10).includes('블로그보다 위에'), '지역+업종 실측값(10)은 광고 많음')
 ok(adNoteFor(3).includes('블로그 자리는 남아 있습니다'), '정보 키워드 실측값(3)은 중간', adNoteFor(3))
 
-// 「그래서 어떻게 쓰라고」 — 같은 광고 10개여도 등급에 따라 할 일이 다르다
-const heavyGold = adNoteFor(10, { grade: 'gold' })
-const heavySmall = adNoteFor(10, { grade: 'toosmall' })
-const heavyHard = adNoteFor(10, { grade: 'hard' })
-ok(heavyGold.includes('메인으로 쓰세요'), '광고가 많아도 황금 키워드는 메인으로 쓰라고 한다', heavyGold.slice(-60))
-ok(heavyGold.includes('세부 의도'), '광고를 피할 방법까지 말한다')
-ok(heavySmall.includes('한 단락으로 얹으세요'), '검색량이 작으면 따로 쓰지 말라고 한다', heavySmall.slice(-40))
-ok(heavyHard.includes('좁히세요'), '포화면 좁히라고 한다')
-ok(heavyGold !== heavySmall, '등급이 다르면 안내가 다르다')
-ok(adNoteFor(0, { grade: 'gold' }).includes('가장 먼저 잡아야'), '광고 없는 황금 키워드는 먼저 잡으라고 한다')
-ok(adNoteFor(0, { grade: 'toosmall' }).includes('연습용'), '광고 없고 작으면 연습용이라고 한다')
+// 설명문은 사실만 말한다 — 할 일은 판정 한 곳에서만 (두 곳에서 조언하면 같은 말이 두 번 나온다)
+ok(!adNoteFor(10).includes('쓰세요'), '광고 설명문은 할 일을 말하지 않는다', adNoteFor(10))
 ok(adPressureOf(undefined) === null, '광고 수를 모르면 압박도 판정하지 않는다')
 ok(adPressureOf(10) === 'heavy' && adPressureOf(3) === 'some' && adPressureOf(0) === 'light', '압박 3단계')
+
+// 클릭률은 광고 개수와 다른 것을 말한다 — 자리가 아니라 「살 마음의 세기」다
+ok(ctrNote(undefined) === undefined, '클릭률을 못 읽으면 말하지 않는다')
+ok(ctrNote(1.14).includes('상담으로 이어지기 쉬운'), '클릭률이 높으면 상업적 의도가 강하다고 말한다')
+ok(ctrNote(0.33).includes('알아보려는 검색'), '클릭률이 낮으면 정보 검색에 가깝다고 말한다')
+ok(!ctrNote(1.14).includes('유입이 오지 않'), '클릭률을 유입 손실로 말하지 않는다 (100명 중 99명은 안 누른다)')
+
+// ─────────────────────────────────────────────────────────────
+// 「그래서 써도 되나」 — 숫자를 읽을 줄 모르는 사람도 한 줄로 알 수 있어야 한다
+const vd = (grade, monthlySearch, adDepth) => keywordVerdict({ grade, monthlySearch, adDepth })
+ok(vd('gold', 1500, 2).level === 'go', '광고가 적은 황금 키워드는 바로 쓴다')
+ok(vd('gold', 1500, 2).label === '바로 쓰세요', '배지 말이 짧고 분명하다', vd('gold', 1500, 2).label)
+ok(vd('gold', 1500, 10).level === 'conditional', '광고가 많으면 조건이 붙는다')
+ok(vd('gold', 1500, 10).line.includes('세부 의도'), '조건이 무엇인지 말한다')
+ok(vd('good', 840, 10).level === 'conditional', '노려볼 만함 + 광고 많음도 조건부')
+ok(vd('good', 840, 2).level === 'go', '노려볼 만함 + 광고 적음은 바로 쓴다')
+ok(vd('toosmall', 140, 10).level === 'attach', '검색량 부족은 따로 쓰지 않는다')
+ok(vd('toosmall', 140, 10).label === '얹기만', '얹으라고 한 마디로 말한다')
+ok(vd('toosmall', 140, 10).line.includes('140회'), '왜 그런지 숫자를 함께 준다')
+ok(vd('hard', 500, 2).level === 'avoid', '포화는 피한다 (광고가 적어도)')
+ok(vd('toobig', 40000, 10).level === 'conditional', '대형 키워드는 좁혀서 쓴다')
+ok(vd('unknown', 0, undefined).level === 'unknown', '판정 못 한 것은 판정하지 않는다')
+ok(vd('unknown', 0, undefined).line.includes('30일 건수'), '어떻게 하면 판정되는지 알려준다')
+// 광고 수를 모르면 광고를 이유로 조건을 붙이지 않는다
+ok(vd('gold', 1500, undefined).level === 'go', '광고 수를 모르면 등급대로 판정한다')
 
 // 지표가 metric 까지 그대로 실린다 (등급 판정은 광고와 무관하게 유지)
 const adM = buildMetric({
@@ -1622,8 +1638,7 @@ const adM = buildMetric({
   mock: false,
 })
 ok(adM.adDepth === 6 && adM.ctrMobile === 1.2, '광고 지표가 지표에 실린다')
-ok(adM.adNote.includes('경합하는 판'), '광고 안내문이 함께 만들어진다')
-ok(adM.adNote.includes('메인으로 쓰세요'), '지표에 실린 안내문도 등급을 읽는다 (황금 → 메인)')
+ok(adM.adNote.includes('광고 6개'), '광고 안내문이 함께 만들어진다', adM.adNote)
 ok(adM.grade === 'gold', '광고가 많아도 등급 기준(검색량·경쟁률)은 바뀌지 않는다', adM.grade)
 ok(!adM.gradeReason.includes('광고'), '등급 설명에는 광고를 섞지 않는다 — 따로 말한다')
 const noAd = buildMetric({

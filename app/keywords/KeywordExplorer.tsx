@@ -7,6 +7,9 @@ import { GRADE_LABEL, POST_TYPE_LABEL } from '@/lib/types'
 import {
   AD_HEAVY,
   COMPETITION_GOOD,
+  ctrNote,
+  keywordVerdict,
+  type VerdictLevel,
   INTENT_SUFFIXES,
   areasFromStore,
   buildManualMetrics,
@@ -37,6 +40,34 @@ function gradeTone(g: KeywordMetric['grade']) {
 
 const NUM = (n: number | null) => (n === null ? '—' : n.toLocaleString())
 
+const VERDICT_STYLE: Record<VerdictLevel, string> = {
+  go: 'border-emerald-500/35 bg-emerald-500/12 text-emerald-800 dark:text-emerald-200',
+  conditional: 'border-amber-500/35 bg-amber-500/12 text-amber-800 dark:text-amber-200',
+  attach: 'border-sky-500/35 bg-sky-500/10 text-sky-800 dark:text-sky-200',
+  avoid: 'border-rose-500/35 bg-rose-500/10 text-rose-800 dark:text-rose-200',
+  unknown: 'bd panel',
+}
+
+/**
+ * 「그래서 써도 되나」 한 줄.
+ *
+ * 등급·경쟁률·광고 개수·클릭률을 다 보여줘도, 이 분야를 모르는 사람은 "쓰라는 거야
+ * 말라는 거야" 를 못 읽는다. 숫자를 읽을 줄 아는 사람만 쓸 수 있는 화면이면 도구가
+ * 아니다 — 그래서 할 일을 맨 위에 못 박는다.
+ */
+function VerdictLine({ r }: { r: KeywordMetric }) {
+  const v = keywordVerdict(r)
+  return (
+    <div
+      data-verdict={v.level}
+      className={`mt-2.5 rounded-xl border px-2.5 py-2 text-[11.5px] leading-relaxed ${VERDICT_STYLE[v.level]}`}
+    >
+      <strong className="text-[12.5px]">{v.label}</strong>
+      <span className="block">{v.line}</span>
+    </div>
+  )
+}
+
 /**
  * 광고가 블로그 자리를 얼마나 밀어내는지.
  *
@@ -64,11 +95,9 @@ function AdLine({
           : 'muted'
       }`}
     >
-      <p>
-        <strong>광고 {Math.round(r.adDepth * 10) / 10}개</strong>
-        {typeof r.ctrMobile === 'number' && ` · 광고 클릭률 모바일 ${r.ctrMobile}%`}
-      </p>
       {r.adNote && <p>{r.adNote}</p>}
+      {/* 클릭률은 광고 개수와 다른 것을 말한다 — 자리가 아니라 「살 마음의 세기」다 */}
+      {ctrNote(r.ctrMobile) && <p className="mt-1">{ctrNote(r.ctrMobile)}</p>}
       {/* 「광고가 적은 키워드도 함께 노리세요」로 끝내면 그게 무엇인지 알 수 없다 */}
       {heavy && partner?.adRelief && (
         <p className="mt-1">
@@ -1054,6 +1083,36 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           }
         >
           {isMock && <MockNotice what="검색광고·검색" />}
+
+          {/*
+            숫자 이름표만 있으면 이 분야를 모르는 사람은 못 읽는다.
+            실제로 「모바일 70%」가 무슨 뜻이냐는 질문을 받았다 — 한 번만 설명해 둔다.
+          */}
+          <details className="panel bd mb-3 rounded-xl border px-3 py-2">
+            <summary className="cursor-pointer text-[12px] font-bold select-none">
+              숫자 읽는 법 (한 번만 보면 됩니다)
+            </summary>
+            <ul className="muted mt-2 space-y-1.5 text-[11.5px] leading-relaxed">
+              <li>
+                <b>휴대폰 검색 70%</b> — 그 키워드를 검색하는 사람 중 휴대폰으로 찾는 비율입니다.
+                높으면 글을 휴대폰 화면 기준으로 쓰세요 (문단 짧게, 사진은 세로).
+              </li>
+              <li>
+                <b>경쟁률</b> — 최근 30일 발행량 ÷ 월 검색량. 0.3이면 검색 3회당 새 글 1개꼴로 시장이
+                비어 있다는 뜻입니다. 1을 넘으면 검색보다 새 글이 더 많이 쏟아지는 포화입니다.
+              </li>
+              <li>
+                <b>광고 개수</b> — 그 키워드에 붙는 광고 수. <b>내 글이 아래로 밀리는 정도</b>입니다.
+                5개 이상이면 통합검색 위쪽을 광고가 차지합니다.
+              </li>
+              <li>
+                <b>광고 클릭률</b> — 광고를 누르는 비율. <b>사는 마음의 세기</b>입니다(자리와는 다른
+                얘기입니다). 1%를 넘으면 돈 쓸 마음으로 검색하는 사람이 많아 걸리면 상담으로
+                이어지기 쉽습니다. 100명 중 99명은 광고를 누르지 않으니, 이 숫자가 유입을 깎는다는
+                뜻은 아닙니다.
+              </li>
+            </ul>
+          </details>
           {unknownCount > 0 && (
             <p className="mb-3 rounded-xl border border-slate-500/30 bg-slate-500/10 px-3 py-2 text-[12px] leading-relaxed">
               {unknownCount}개가 <strong>판정 불가</strong>입니다 — 그 줄만 발행량 자동 조회가
@@ -1078,7 +1137,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                   <div className="min-w-0">
                     <p className="text-[13.5px] leading-snug font-bold">{r.keyword}</p>
                     <p className="muted mt-0.5 text-[11px]">
-                      {r.source === 'manual' ? '직접 입력' : `모바일 ${r.mobileShare}%`}
+                      {r.source === 'manual' ? '직접 입력' : `휴대폰 검색 ${r.mobileShare}%`}
                       {hasRelated && isMine(r.keyword) && ' · 내가 넣은 키워드'}
                     </p>
                   </div>
@@ -1111,6 +1170,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                     </div>
                   </div>
                 </div>
+
+                {/* 숫자를 본 바로 다음 줄에서 결론을 준다 */}
+                {!needsTotal.has(r.keyword) && <VerdictLine r={r} />}
 
                 {needsTotal.has(r.keyword) && (
                   <div className="mt-2 flex items-center gap-2">
@@ -1195,7 +1257,7 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                       {r.source === 'manual' ? (
                         <div className="muted mt-0.5 text-[11px]">직접 입력</div>
                       ) : (
-                        <div className="muted mt-0.5 text-[11px]">모바일 {r.mobileShare}%</div>
+                        <div className="muted mt-0.5 text-[11px]">휴대폰 검색 {r.mobileShare}%</div>
                       )}
                     </td>
                     <td className="tnum py-2.5 pr-3 whitespace-nowrap">
@@ -1244,6 +1306,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                     </td>
                     <td className="py-2.5 pr-3">
                       <Badge tone={gradeTone(r.grade)}>{GRADE_LABEL[r.grade]}</Badge>
+                      <div className="max-w-[240px]">
+                        <VerdictLine r={r} />
+                      </div>
                       <p className="muted mt-1 max-w-[240px] text-[11px] leading-snug">{r.gradeReason}</p>
                       <div className="max-w-[240px]">
                         <AdLine r={r} partner={partners.get(r.keyword) ?? null} storeId={comboStore?.id} />

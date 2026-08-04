@@ -128,47 +128,117 @@ export function adPressureOf(adDepth?: number): AdPressure | null {
  * **쓰는 법**을 말한다. 같은 광고 10개여도 황금 키워드면 "메인으로 쓰되 세부 의도를
  * 붙여라" 고, 검색량 부족이면 "따로 쓰지 말고 얹어라" 다.
  */
-export function adNoteFor(
-  adDepth?: number,
-  ctx: { grade?: KeywordGrade } = {}
-): string | undefined {
+export function adNoteFor(adDepth?: number): string | undefined {
   const pressure = adPressureOf(adDepth)
   if (!pressure) return undefined
   const n = Math.round((adDepth as number) * 10) / 10
-  const grade = ctx.grade
 
+  // 여기서는 **사실만** 말한다. 할 일은 keywordVerdict 한 곳에서만 말한다 —
+  // 두 곳에서 각자 조언하면 같은 말이 두 번 나와 화면이 길어진다 (실제로 그랬다).
   if (pressure === 'heavy') {
-    const head = `광고 ${n}개가 경합하는 판입니다 — 통합검색에서 파워링크·플레이스가 블로그보다 위에 놓여 검색량만큼 유입이 오지 않습니다.`
-    switch (grade) {
-      case 'gold':
-        return `${head} 그래도 검색량·경쟁률이 좋으니 메인으로 쓰세요. 다만 제목에 세부 의도(후기·비용·초보) 하나를 붙여 스마트블록 자리를 함께 노리는 편이 안전합니다.`
-      case 'good':
-        return `${head} 메인으로 쓸 수는 있지만 광고에 밀립니다 — 광고가 적은 짝과 한 글로 묶어 유입을 나누세요.`
-      case 'hard':
-        return `${head} 게다가 발행량도 포화입니다 — 위는 광고, 아래는 새 글이 쏟아지는 자리입니다. 이 키워드로 따로 쓰지 말고 세부 의도로 좁히세요.`
-      case 'toosmall':
-        return `${head} 검색량도 작으니 따로 한 편 쓸 값이 없습니다 — 큰 글에 한 단락으로 얹으세요.`
-      case 'toobig':
-        return `${head} 대형 키워드라 광고와 대형 블로그를 동시에 상대해야 합니다 — 지역·세부 의도를 붙여 좁히세요.`
-      default:
-        return `${head} 광고가 적은 키워드와 한 글로 묶어 유입을 나누세요.`
+    return `광고 ${n}개 — 통합검색에서 파워링크·플레이스가 블로그보다 위에 놓입니다. 검색량만큼 유입이 오지 않습니다.`
+  }
+  if (pressure === 'some') {
+    return `광고 ${n}개 — 위쪽에 광고가 붙지만 블로그 자리는 남아 있습니다.`
+  }
+  return `광고 ${n}개 — 통합검색 위쪽이 비어 있어 순위가 그대로 유입이 됩니다.`
+}
+
+/**
+ * 광고 클릭률을 사람 말로.
+ *
+ * **광고 개수와는 다른 것을 말한다.** 개수는 「내 글이 아래로 밀리는 정도」이고,
+ * 클릭률은 「검색한 사람이 살 마음을 갖고 있는 정도」다. 값이 0.2~1.5% 라 그 자체로
+ * 유입을 크게 깎지는 않는다 — 100명 중 99명은 광고를 누르지 않는다. 그래서
+ * 유입 손실이 아니라 **상업성 가늠자**로 읽어야 한다.
+ */
+export const CTR_HIGH = 1.0
+export const CTR_SOME = 0.5
+
+export function ctrNote(ctr?: number): string | undefined {
+  if (typeof ctr !== 'number' || !Number.isFinite(ctr)) return undefined
+  if (ctr >= CTR_HIGH) {
+    return `광고 클릭률 ${ctr}% — 검색 100번에 1번쯤 광고를 누릅니다. 돈을 쓸 마음으로 검색한다는 뜻이라, 걸리면 상담으로 이어지기 쉬운 키워드입니다.`
+  }
+  if (ctr >= CTR_SOME) {
+    return `광고 클릭률 ${ctr}% — 보통입니다. 사는 사람과 알아보는 사람이 섞여 있습니다.`
+  }
+  return `광고 클릭률 ${ctr}% — 광고를 누르는 사람이 거의 없습니다. 사려는 검색보다 알아보려는 검색에 가깝습니다.`
+}
+
+// ─── 한 줄 판정 ─────────────────────────────────────────────────
+
+/**
+ * 「이 키워드 써도 되나」 를 한 눈에.
+ *
+ * 왜 필요한가. 등급·경쟁률·광고 개수·클릭률을 다 보여줘도, 이 분야를 모르는 사람은
+ * "그래서 쓰라는 거야 말라는 거야" 를 못 읽는다. 숫자를 읽는 법을 아는 사람만 쓸 수
+ * 있는 화면이면 도구가 아니다. 그래서 **할 일을 한 줄로 못 박는다.**
+ *
+ * 조언은 이 함수 한 곳에서만 한다 (다른 설명문은 사실만 말한다).
+ */
+export type VerdictLevel = 'go' | 'conditional' | 'attach' | 'avoid' | 'unknown'
+
+export interface KeywordVerdict {
+  level: VerdictLevel
+  /** 배지에 넣는 짧은 말 */
+  label: string
+  /** 왜 그런지 + 무엇을 할지 한 줄 */
+  line: string
+}
+
+export function keywordVerdict(m: {
+  grade: KeywordGrade
+  monthlySearch: number
+  adDepth?: number
+}): KeywordVerdict {
+  const heavyAd = adPressureOf(m.adDepth) === 'heavy'
+  const n = typeof m.adDepth === 'number' ? Math.round(m.adDepth * 10) / 10 : 0
+
+  switch (m.grade) {
+    case 'unknown':
+      return {
+        level: 'unknown',
+        label: '판정 못 함',
+        line: '발행량을 못 읽어 판정하지 않았습니다 — 「30일 건수」를 넣으면 바로 나옵니다.',
+      }
+    case 'toosmall':
+      return {
+        level: 'attach',
+        label: '얹기만',
+        line: `월 ${m.monthlySearch.toLocaleString()}회라 한 편을 따로 쓸 값이 없습니다 — 더 큰 키워드 글에 한 단락으로 얹으세요.`,
+      }
+    case 'hard':
+      return {
+        level: 'avoid',
+        label: '지금은 피하세요',
+        line: '검색보다 새 글이 더 많이 쏟아지는 자리입니다 — 세부 의도를 붙여 좁히거나 다른 키워드를 고르세요.',
+      }
+    case 'toobig':
+      return {
+        level: 'conditional',
+        label: '좁혀서',
+        line: '대형 키워드라 그대로는 대형 블로그·언론사와 겨루게 됩니다 — 지역이나 세부 의도를 붙여 좁히면 쓸 수 있습니다.',
+      }
+    default: {
+      // gold · good
+      if (heavyAd) {
+        return {
+          level: 'conditional',
+          label: '조건 지켜서',
+          line: `경쟁률은 좋지만 광고 ${n}개가 위를 차지합니다 — 제목에 세부 의도(후기·비용·초보) 하나를 붙여 광고 아래 자리를 노리세요.`,
+        }
+      }
+      return {
+        level: 'go',
+        label: '바로 쓰세요',
+        line:
+          m.grade === 'gold'
+            ? '경쟁이 비어 있고 광고도 적습니다 — 이 키워드로 글 한 편 쓰세요. 가장 먼저 잡을 판입니다.'
+            : '글 품질이 받쳐주면 진입할 수 있고 광고도 적습니다 — 써도 됩니다.',
+      }
     }
   }
-
-  if (pressure === 'some') {
-    const head = `광고 ${n}개 — 위쪽에 광고가 붙지만 블로그 자리는 남아 있습니다.`
-    if (grade === 'gold' || grade === 'good') return `${head} 메인으로 쓰기 좋습니다.`
-    if (grade === 'toosmall') return `${head} 검색량이 작으니 서브로 얹기 좋습니다.`
-    if (grade === 'hard') return `${head} 다만 발행량이 포화라 세부 의도로 좁혀야 합니다.`
-    return head
-  }
-
-  const head = `광고가 거의 없습니다 (${n}개) — 통합검색 위쪽이 비어 있어 순위가 그대로 유입이 됩니다.`
-  if (grade === 'gold' || grade === 'good') return `${head} 가장 먼저 잡아야 하는 판입니다.`
-  if (grade === 'toosmall')
-    return `${head} 검색량은 작지만 1페이지를 잡기 쉬워 연습용·보조용으로 좋습니다.`
-  if (grade === 'hard') return `${head} 광고는 없지만 새 글이 많으니 세부 의도로 좁히세요.`
-  return head
 }
 
 export function buildMetric(input: {
@@ -198,8 +268,7 @@ export function buildMetric(input: {
     adDepth: input.adDepth,
     ctrPc: input.ctrPc,
     ctrMobile: input.ctrMobile,
-    // 등급을 함께 넘겨야 "그래서 어떻게 쓰라고" 가 나온다
-    adNote: adNoteFor(input.adDepth, { grade }),
+    adNote: adNoteFor(input.adDepth),
     grade,
     gradeReason: reason,
     mobileShare:
