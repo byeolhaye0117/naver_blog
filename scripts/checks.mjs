@@ -1076,7 +1076,7 @@ ok(idxFallen === -1 || idxStuck < idxFallen, '답이 준비된 것을 먼저 보
 // ─────────────────────────────────────────────────────────────
 console.log('\n[34] 블로그 성격 판별 · 추정 힘')
 const { blogIdFromInput, parseBlogRss, rssDate } = require(`${OUT}/naver/blogrss.js`)
-const { buildBlogProfile, classifyBlogger, queryFromTitle, meaningForUs, gradeBlog, KIND_LABEL, GRADE_LABEL } =
+const { buildBlogProfile, classifyBlogger, queryFromTitle, meaningForUs, gradeBlog, KIND_LABEL, GRADE_LABEL, GRADE_LADDER } =
   require(`${OUT}/analysis/blogscore.js`)
 
 // 아이디는 아무 형태로 넣어도 받는다
@@ -1136,22 +1136,43 @@ const WITH = buildBlogProfile({ ...FEED, blogId: 'me' }, '2026-08-04', 100)
 ok(WITH.scoreParts.some((s) => s.label === '노출력'), '재면 항목이 붙는다')
 ok(WITH.score > PROF.score - 30, '환산이 무너지지 않는다', `${PROF.score} → ${WITH.score}`)
 
-// 업계 은어(최적·준최·저품질)를 표본으로 흉내낸 등급
+// 업계 은어(최적·준최·저품질)를 표본으로 흉내낸 등급 — 두 축(30위 내 / 1페이지)으로 쪼갠다
 ok(gradeBlog({ samples: 0 }).grade === 'unknown', '표본이 없으면 판정하지 않는다')
+
 // 색인부터 본다 — 제목 완전일치인데도 안 나오면 그게 "저품질" 의 실체다
 const DROP = gradeBlog({ indexedRate: 0, exposureRate: 0, samples: 5 })
 ok(DROP.grade === 'dropped', '제목 그대로 검색해도 안 나오면 누락 의심', DROP.grade)
 ok(DROP.reason.includes('색인 전일 수 있'), '방금 올린 글일 수 있다는 여지를 남긴다')
-ok(gradeBlog({ indexedRate: 67, exposureRate: 80, samples: 6 }).grade === 'weak', '일부만 색인되면 노출력이 좋아도 약함')
-ok(gradeBlog({ indexedRate: 100, exposureRate: 75, samples: 8 }).grade === 'optimal', '색인 정상 + 높은 노출률 = 최적 추정')
-ok(gradeBlog({ indexedRate: 100, exposureRate: 40, samples: 8 }).grade === 'semi', '중간이면 준최 추정')
-ok(gradeBlog({ indexedRate: 100, exposureRate: 15, samples: 8 }).grade === 'normal', '낮으면 일반')
+const PART = gradeBlog({ indexedRate: 67, exposureRate: 90, firstPageRate: 80, samples: 6 })
+ok(PART.grade === 'partial', '일부만 색인되면 노출력이 좋아도 부분 누락', PART.grade)
+
+// 최적 구간은 1페이지 비율로 갈린다
+ok(gradeBlog({ indexedRate: 100, exposureRate: 90, firstPageRate: 70, samples: 10 }).grade === 'optimal1', '최적 1')
+ok(gradeBlog({ indexedRate: 100, exposureRate: 90, firstPageRate: 45, samples: 10 }).grade === 'optimal2', '최적 2')
+ok(gradeBlog({ indexedRate: 100, exposureRate: 75, firstPageRate: 25, samples: 10 }).grade === 'optimal3', '최적 3')
+// 같은 노출률이어도 1페이지가 없으면 준최다 — 이게 쪼갠 이유다
+const SAME = gradeBlog({ indexedRate: 100, exposureRate: 90, firstPageRate: 0, samples: 10 })
+ok(SAME.grade === 'semi1', '30위 안에 다 걸려도 1페이지가 없으면 준최 1', SAME.grade)
+
+ok(gradeBlog({ indexedRate: 100, exposureRate: 45, firstPageRate: 10, samples: 10 }).grade === 'semi2', '준최 2')
+ok(gradeBlog({ indexedRate: 100, exposureRate: 30, firstPageRate: 0, samples: 10 }).grade === 'semi3', '준최 3')
+ok(gradeBlog({ indexedRate: 100, exposureRate: 15, firstPageRate: 0, samples: 10 }).grade === 'normal', '일반')
+
 // **핵심**: 노출력만으로 저품질을 말하면 안 된다 (hyoni2_ 는 0% 였는데 우리 키워드 1위였다)
-const LOW = gradeBlog({ indexedRate: 100, exposureRate: 0, samples: 8 })
+const LOW = gradeBlog({ indexedRate: 100, exposureRate: 0, firstPageRate: 0, samples: 10 })
 ok(LOW.grade === 'weak', '색인 정상인데 노출률 0 이면 "약함" 이지 저품질이 아니다', LOW.grade)
 ok(LOW.reason.includes('저품질이 아닙니다'), '저품질이 아니라고 분명히 말한다')
 ok(gradeBlog({ indexedRate: 100, samples: 3 }).grade === 'normal', '노출력을 못 재면 색인만으로 일반')
-ok(GRADE_LABEL['optimal'] === '최적 추정' && GRADE_LABEL['dropped'] === '검색 누락 의심', '한국어 이름')
+
+// 사다리는 강한 것부터 약한 것 순서여야 화면에서 위치가 읽힌다
+ok(GRADE_LADDER[0] === 'optimal1' && GRADE_LADDER[GRADE_LADDER.length - 1] === 'dropped', '사다리 순서')
+ok(GRADE_LADDER.length === 10, '10칸', String(GRADE_LADDER.length))
+ok(GRADE_LADDER.every((g) => GRADE_LABEL[g]), '모든 칸에 한국어 이름이 있다')
+ok(GRADE_LABEL['optimal1'] === '최적 1' && GRADE_LABEL['semi3'] === '준최 3', '이름 표기')
+// 사다리 순서가 실제 판정 강도와 맞는지 (위 칸이 더 좋은 조건에서 나와야 한다)
+const strong = gradeBlog({ indexedRate: 100, exposureRate: 90, firstPageRate: 70, samples: 10 }).grade
+const weaker = gradeBlog({ indexedRate: 100, exposureRate: 30, firstPageRate: 0, samples: 10 }).grade
+ok(GRADE_LADDER.indexOf(strong) < GRADE_LADDER.indexOf(weaker), '좋은 조건이 사다리 위쪽에 온다')
 
 // 제목에서 검색어 만들기
 ok(queryFromTitle('천안 쌍용동 헬스장 미녀와야수짐 봉명점 후기') === '천안 쌍용동 헬스장', '앞 세 낱말', queryFromTitle('천안 쌍용동 헬스장 미녀와야수짐 봉명점 후기'))

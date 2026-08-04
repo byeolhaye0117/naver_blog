@@ -4,7 +4,7 @@ import { buildBlogProfile, gradeBlog, meaningForUs, queryFromTitle } from '@/lib
 import { findBlogRank } from '@/lib/naver/blogsection'
 
 export const dynamic = 'force-dynamic'
-// RSS 1회 + 색인 검사 3회 + 노출력 표본 8회
+// RSS 1회 + 색인 검사 3회 + 노출력 표본 10회
 export const maxDuration = 120
 
 /**
@@ -13,7 +13,7 @@ export const maxDuration = 120
  * 3개로 했더니 흔들렸다 — hyoni2_ 는 표본 3개가 전부 여행·맛집처럼 경쟁 센 키워드라
  * 0% 가 나왔는데 정작 "쌍용동 헬스장" 에서는 1위였다. 표본을 늘려야 한다.
  */
-const SAMPLE = 8
+const SAMPLE = 10
 /** 이 순위 안에 있으면 "걸렸다" 로 본다 */
 const SAMPLE_DEPTH = 30
 /** 색인 검사(제목 완전일치)는 이만큼만 — 이건 표본이 적어도 신호가 분명하다 */
@@ -48,6 +48,7 @@ export async function POST(req: Request) {
      */
     let exposureRate: number | undefined
     let exposureDetail: { query: string; rank: number | null }[] | undefined
+    let firstPageRate: number | undefined
     let indexedRate: number | undefined
     let indexDetail: { title: string; found: boolean }[] | undefined
 
@@ -87,6 +88,10 @@ export async function POST(req: Request) {
       if (got.length) {
         exposureDetail = got
         exposureRate = Math.round((got.filter((g) => g.rank !== null).length / got.length) * 100)
+        // 1페이지 비율 — 30위 안에 겨우 걸리는 것과 1페이지를 먹는 것을 가른다
+        firstPageRate = Math.round(
+          (got.filter((g) => g.rank !== null && g.rank <= 10).length / got.length) * 100
+        )
       }
     }
 
@@ -94,6 +99,7 @@ export async function POST(req: Request) {
     const grade = gradeBlog({
       indexedRate,
       exposureRate,
+      firstPageRate,
       samples: (exposureDetail?.length ?? 0) + (indexDetail?.length ?? 0),
     })
 
@@ -101,6 +107,8 @@ export async function POST(req: Request) {
       profile,
       grade,
       indexedRate,
+      exposureRate,
+      firstPageRate,
       indexDetail,
       meaning: meaningForUs(profile),
       exposureDetail,
