@@ -115,6 +115,15 @@ export interface RankSnapshot {
   unifiedRank?: number
   /** 페이지에서 몇 번째 블록인지 (위에 있을수록 먼저 눈에 띈다) */
   unifiedBlockOrder?: number
+  /**
+   * 통합검색을 실제로 읽어봤는지.
+   *
+   * unifiedBlock 이 없는 것에는 두 가지 뜻이 있다 — **읽어봤지만 그 글이 없었다**와
+   * **아직 안 읽어봤다**. 이 둘을 구분하지 않으면 "블로그탭 4위" 만 보고 잘 되고
+   * 있다고 오해한다. 실제로 그런 일이 있었다: 블로그탭 4위인 글이 통합검색 인기글
+   * 블록에는 아예 없었다.
+   */
+  unifiedChecked?: boolean
   mock?: boolean
   /**
    * 어디서 온 값인지.

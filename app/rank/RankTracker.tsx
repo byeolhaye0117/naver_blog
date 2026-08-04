@@ -365,8 +365,9 @@ export default function RankTracker({
                       {v.delta > 0 ? `▲ ${v.delta}` : `▼ ${Math.abs(v.delta)}`}
                     </span>
                   )}
+                  {/* 「4위」만 쓰면 "검색하면 4번째" 로 읽힌다 — 어느 자리 기준인지 붙인다 */}
                   <Badge tone={isFirstPage(v.current) ? 'good' : v.current === null ? 'default' : 'warn'}>
-                    {rankLabel(v.current)}
+                    블로그탭 {rankLabel(v.current)}
                   </Badge>
                 </div>
               }
@@ -398,6 +399,24 @@ export default function RankTracker({
               {/* 통합검색 위치 — 사람이 실제로 보는 자리 (블로그탭 순위와 다르다) */}
               {(() => {
                 const last = v.history[v.history.length - 1]
+                /*
+                  읽어봤는데 없는 경우를 반드시 말해준다. 실제로 블로그탭 4위인 글이
+                  통합검색 인기글 블록에는 아예 없었고, 「4위」만 보고 잘 되고 있다고
+                  오해할 수 있었다.
+                */
+                if (last?.unifiedChecked && !last.unifiedBlock) {
+                  return (
+                    <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[12px] leading-relaxed text-amber-900 dark:text-amber-200">
+                      <strong className="font-bold">통합검색 첫 화면에는 없습니다</strong>
+                      <p className="mt-1 text-[11px] leading-relaxed">
+                        블로그탭에서는 {rankLabel(v.current)}지만, 검색하면 처음 보이는 통합검색
+                        스마트블록(인기글 등)에는 이 글이 들어가지 못했습니다. 블록은 보통 6편만 뽑고
+                        블로그탭과 뽑는 기준이 다릅니다 — <b>사람 눈에 닿는 자리는 이쪽</b>이니, 블로그탭
+                        순위만 보고 판단하지 마세요.
+                      </p>
+                    </div>
+                  )
+                }
                 if (!last?.unifiedBlock) return null
                 return (
                   <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2.5 text-[12px] leading-relaxed text-emerald-900 dark:text-emerald-200">
