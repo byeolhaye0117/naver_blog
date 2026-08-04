@@ -420,6 +420,36 @@ const REGION_NAMES = [
 ]
 
 /**
+ * 시·군 이름은 지점을 좁혀도 남긴다.
+ *
+ * 지점 하나로 좁히면 그 지점 주소·지역 키워드에서만 토큰을 뽑는다. 그런데 쌍용점
+ * 주소에는 「천안」이 없어서, 좁히는 순간 **우리 도시 이름이 남의 지역으로 판정됐다** —
+ * 「천안쌍용동헬스장」(월 260) · 「천안24시헬스장」(월 170) 이 통째로 사라졌다.
+ * 시 이름은 지점이 아니라 회사 전체가 공유하는 말이므로 전 지점에서 모아 둔다.
+ */
+export function cityTokens(stores: { location?: string; localKeywords?: string[] }[]): Set<string> {
+  const out = new Set<string>()
+  const pool = stores
+    .map((s) => [s.location ?? '', ...(s.localKeywords ?? [])].join(' '))
+    .join(' ')
+    .replace(/\s+/g, '')
+  for (const r of REGION_NAMES) if (pool.includes(r)) out.add(r)
+  return out
+}
+
+/**
+ * 우리 글감으로 쓸 수 없는 말.
+ *
+ * 자동완성에는 사람들이 실제로 치는 말이 그대로 온다 — 「천안 헬스장 먹튀」처럼
+ * 검색량이 있어도 우리가 노리면 안 되는 말이 섞인다. 헬스장이 「먹튀」로 상위에
+ * 걸리는 것은 유입이 아니라 사고다.
+ */
+export const NEGATIVE_WORDS = [
+  '먹튀', '사기', '환불', '폐업', '고소', '소송', '민원', '논란', '피해', '탈퇴', '해지', '위생',
+  '벌레', '진상', '갑질',
+]
+
+/**
  * 이 연관 키워드를 보여줄 만한지.
  *
  * 검색광고 API 는 "헬스장" 계열로 연관을 뽑으면서 전국과 다른 업종을 섞어 온다 —
@@ -456,6 +486,39 @@ export function isRelevantKeyword(keyword: string, myTokens: Set<string>): boole
 
   // 4. 헬스·운동 업종이어야 한다
   return GYM_WORDS.some((w) => upper.includes(w.toUpperCase()))
+}
+
+/**
+ * 자동완성으로 가져온 말을 쓸 수 있는지 — 못 쓰면 **왜 못 쓰는지**를 돌려준다.
+ *
+ * 그냥 걸러내면 회원은 네이버가 준 말이 몇 개였는지도 모른다. 무엇을 왜 뺐는지
+ * 보여줘야 걸러내기가 지나친지 판단할 수 있다.
+ */
+export function suggestionDrop(keyword: string, myTokens: Set<string>): string | null {
+  const flat = keyword.replace(/\s+/g, '')
+
+  const bad = NEGATIVE_WORDS.find((w) => flat.includes(w))
+  if (bad) return `「${bad}」가 든 검색어 — 우리 글이 이 말로 걸리면 유입이 아니라 사고입니다.`
+
+  const other = OTHER_TRADES.find((w) => flat.includes(w))
+  if (other) return `${other} — 우리 업종이 아닙니다.`
+
+  const region = REGION_NAMES.find((r) => !myTokens.has(r) && flat.includes(r))
+  if (region) return `${region} — 우리 지역이 아닙니다 (같은 동 이름이 다른 도시에도 있습니다).`
+
+  let inMyArea = false
+  for (const t of myTokens) {
+    if (flat.includes(t)) {
+      inMyArea = true
+      break
+    }
+  }
+  if (!inMyArea) return '우리 지역 말이 없습니다.'
+
+  if (!GYM_WORDS.some((w) => flat.toUpperCase().includes(w.toUpperCase()))) {
+    return '헬스·운동 업종 말이 없습니다.'
+  }
+  return null
 }
 
 /**
