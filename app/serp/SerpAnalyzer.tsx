@@ -305,13 +305,13 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
 
           <Card
             title="이 키워드로 상위 가려면"
-            subtitle="위 수치를 실제 작성 지시로 번역한 것입니다"
+            subtitle="위 수치를 실제 작성 지시로 번역한 것입니다. 이 처방은 저장돼서, 같은 키워드로 글을 쓰면 AI 지시문에 자동으로 들어갑니다 — 외워서 옮겨 적지 않아도 됩니다."
             right={
               <Link
                 href={`/write?main=${encodeURIComponent(data.keyword)}`}
                 className="bg-brand-600 rounded-xl px-3 py-1.5 text-xs font-semibold text-white"
               >
-                이 키워드로 글쓰기
+                이 처방으로 글쓰기 →
               </Link>
             }
           >

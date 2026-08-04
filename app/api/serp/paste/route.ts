@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { analyzePastedSerp } from '@/lib/analysis/serp'
 import { parseEditedList, parseTotalCount } from '@/lib/analysis/paste'
 import { recentBlogCount } from '@/lib/naver/blogsection'
+import { keepPrescription } from '@/lib/analysis/keep-prescription'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -38,7 +39,10 @@ export async function POST(req: Request) {
       if (raw) total = parseTotalCount(raw) ?? (Number.isFinite(digits) ? digits : 0)
     }
 
-    return NextResponse.json({ analysis: analyzePastedSerp(keyword, items, total) })
+    // 붙여넣어 분석한 것도 처방은 똑같이 남긴다 — 글 쓸 때 자동으로 꺼내 쓴다
+    const analysis = analyzePastedSerp(keyword, items, total)
+    await keepPrescription(analysis)
+    return NextResponse.json({ analysis })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : '분석 중 오류가 발생했습니다.' },
