@@ -481,21 +481,63 @@ export default function RankTracker({
                         {got.diagnosis.fixes.length > 0 && (
                           <ul className="mt-2 space-y-1.5">
                             {got.diagnosis.fixes.map((f) => (
-                              <li key={f.id} className="panel bd rounded-xl border px-3 py-2">
+                              <li key={f.id} className="panel bd rounded-xl border px-3 py-2.5">
+                                {/*
+                                  비교값을 ml-auto 로 같은 줄 오른쪽에 붙였더니, 휴대폰에서
+                                  줄이 넘칠 때 오른쪽 정렬 상태로 아래로 떨어져 들여쓰기처럼
+                                  보였다. 항목마다 한 줄씩 왼쪽 정렬로 내린다.
+                                */}
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="text-[12px] font-bold">{f.label}</span>
+                                  <span className="text-[12.5px] font-bold">{f.label}</span>
                                   {f.severity === 'high' && <Badge tone="bad">먼저</Badge>}
-                                  <span className="muted tnum ml-auto text-[10.5px]">
-                                    내 글 {f.mine} · {f.theirs}
-                                  </span>
                                 </div>
-                                <p className="muted mt-1 text-[11px] leading-relaxed">{f.action}</p>
+                                <p className="muted mt-1 text-[11px] leading-snug">
+                                  내 글 <b className="tnum">{f.mine}</b>
+                                  <span className="mx-1 opacity-40">/</span>
+                                  {f.theirs}
+                                </p>
+                                <p className="mt-1.5 text-[11.5px] leading-relaxed">{f.action}</p>
                               </li>
                             ))}
                           </ul>
                         )}
                         {got.diagnosis.note && (
                           <p className="muted mt-2 text-[11px] leading-relaxed">{got.diagnosis.note}</p>
+                        )}
+
+                        {/*
+                          "고칠 곳 3개" 만 보여주면 3개만 검사한 것처럼 보인다.
+                          이미 맞춘 항목과 잴 수 없던 항목까지 밝힌다.
+                        */}
+                        {(got.diagnosis.passed?.length || got.diagnosis.skipped?.length) && (
+                          <details className="muted mt-2.5 text-[11px] leading-relaxed">
+                            <summary className="cursor-pointer font-semibold select-none">
+                              검사 {got.diagnosis.fixes.length + (got.diagnosis.passed?.length ?? 0) + (got.diagnosis.skipped?.length ?? 0)}개 항목 중
+                              고칠 곳 {got.diagnosis.fixes.length}개 · 이미 맞춘 것{' '}
+                              {got.diagnosis.passed?.length ?? 0}개
+                              {got.diagnosis.skipped?.length ? ` · 못 잰 것 ${got.diagnosis.skipped.length}개` : ''}
+                            </summary>
+                            {got.diagnosis.passed?.length > 0 && (
+                              <div className="mt-2">
+                                <p className="font-bold text-emerald-700 dark:text-emerald-300">이미 맞춘 것</p>
+                                <ul className="mt-1 space-y-0.5">
+                                  {got.diagnosis.passed.map((t) => (
+                                    <li key={t}>· {t}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {got.diagnosis.skipped?.length > 0 && (
+                              <div className="mt-2">
+                                <p className="font-bold">못 잰 것</p>
+                                <ul className="mt-1 space-y-0.5">
+                                  {got.diagnosis.skipped.map((t) => (
+                                    <li key={t}>· {t}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </details>
                         )}
                         <div className="mt-2.5 flex flex-wrap gap-1.5">
                           {/*

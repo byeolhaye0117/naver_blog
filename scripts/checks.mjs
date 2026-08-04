@@ -1147,6 +1147,33 @@ const tokenFix = DX.fixes.find((f) => f.id === 'tokens')
 ok(!tokenFix.action.includes('미녀와야수짐'), '지시에 남의 상호가 안 들어간다', tokenFix.action.slice(0, 60))
 ok(DX.fixes[0].severity === 'high', '먼저 고칠 것을 앞에 둔다')
 ok(DX.verdict.includes(`${OUT_OF_RANGE}위 안에 안 잡힙니다`) && DX.verdict.includes('고칠 곳'), '한 줄 판정', DX.verdict)
+// "고칠 곳 3개" 가 3개만 검사한 것처럼 보이면 안 된다 — 통과·건너뜀도 함께 돌려준다
+ok(Array.isArray(DX.passed) && Array.isArray(DX.skipped), '통과·건너뜀 목록을 돌려준다')
+ok(DX.fixes.length + DX.passed.length + DX.skipped.length >= 8, '검사한 항목 수가 고친 항목 수보다 많다',
+  `고침 ${DX.fixes.length} + 통과 ${DX.passed.length} + 못잼 ${DX.skipped.length}`)
+
+// 네이버에서 읽어온 글은 소제목을 못 재므로 "건너뜀" 에 이유가 남아야 한다
+const PUB_FOR_SKIP = fromPublished(
+  { title: '쌍용동 헬스장 후기', charCount: 1785, imageCount: 12, videoCount: 0, text: '후기 가격 PT', url: 'u' },
+  '쌍용동 헬스장'
+)
+const DX_PUB = diagnose({ post: PUB_FOR_SKIP, serp: SERP_FOR_DX, rank: 14, daysSincePublish: 15 })
+ok(DX_PUB.skipped.some((t) => t.includes('소제목')), '못 잰 항목을 이유와 함께 밝힌다', DX_PUB.skipped.join(' | '))
+ok(!DX_PUB.fixes.some((f) => f.id === 'headings'), '못 잰 항목은 고칠 곳에 넣지 않는다')
+
+// 기준을 맞춘 항목은 통과로 잡힌다
+const BIG_POST = {
+  ...MY_POST,
+  title: '쌍용동 헬스장 3개월 다녀본 솔직 후기, 가격과 PT까지 정리했어요',
+  body:
+    '[이미지: 1]\n'.repeat(20) +
+    '## 소제목1\n' + '가'.repeat(800) + '\n## 소제목2\n' + '나'.repeat(800) +
+    '\n## 소제목3\n' + '다'.repeat(800) + '\n## 소제목4\n' + '라'.repeat(600),
+}
+const DX_OK = diagnose({ post: fromAppPost(BIG_POST), serp: SERP_FOR_DX, rank: 9, daysSincePublish: 30 })
+ok(DX_OK.passed.some((t) => t.includes('본문 분량')), '맞춘 분량을 통과로 알려준다', DX_OK.passed.join(' | '))
+ok(DX_OK.passed.some((t) => t.includes('이미지')), '맞춘 이미지 수도 통과로 알려준다')
+
 const RXP = diagnosisToPrescription(DX)
 ok(RXP.length === DX.fixes.length, '처방 문장으로 바뀐다')
 ok(RXP[0].includes('지금') && RXP[0].includes('→'), '현재값과 할 일이 함께 들어간다', RXP[0].slice(0, 50))
