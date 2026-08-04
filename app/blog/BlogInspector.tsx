@@ -1,0 +1,212 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { KIND_LABEL, type BlogProfile } from '@/lib/analysis/blogscore'
+import { Badge, Card, Empty, Field, Progress, inputClass } from '@/components/ui'
+
+interface Result {
+  profile: BlogProfile
+  meaning: string
+  exposureDetail?: { query: string; rank: number | null }[]
+  recent: { title: string; date: string; category: string; link: string }[]
+}
+
+function kindTone(k: BlogProfile['kind']) {
+  return k === 'owner' ? 'bad' : k === 'mixed' ? 'warn' : k === 'topical' ? 'good' : 'default'
+}
+
+export default function BlogInspector({ initialId }: { initialId: string }) {
+  const [id, setId] = useState(initialId)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [data, setData] = useState<Result | null>(null)
+
+  async function run(target = id) {
+    if (!target.trim()) {
+      setError('블로그 아이디나 주소를 넣어주세요.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/blog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blogId: target }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? '진단에 실패했습니다.')
+      setData(json)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '진단 중 오류가 발생했습니다.')
+      setData(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 상위노출 분석에서 「이 블로그 진단」으로 넘어온 경우 바로 돌린다
+  useEffect(() => {
+    if (initialId) void run(initialId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialId])
+
+  const p = data?.profile
+
+  return (
+    <div className="space-y-4">
+      <Card
+        title="블로그 아이디 또는 주소"
+        subtitle="상위에 있는 블로그가 업체 본인인지, 체험단·대행으로 올라온 글인지 판정합니다."
+      >
+        <Field label="아이디 · 주소" hint="예: jiyun0361 · blog.naver.com/jiyun0361 · 글 주소를 그대로 붙여도 됩니다">
+          <input
+            value={id}
+            onChange={(e) => setId(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && run()}
+            aria-label="블로그 아이디"
+            className={inputClass}
+            placeholder="blog.naver.com/아이디"
+          />
+        </Field>
+        <button
+          type="button"
+          onClick={() => run()}
+          disabled={busy}
+          className="bg-brand-600 mt-3 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? '읽는 중… (10~20초)' : '진단하기'}
+        </button>
+        {error && (
+          <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-relaxed text-rose-700 dark:text-rose-300">
+            {error}
+          </p>
+        )}
+      </Card>
+
+      {p && (
+        <>
+          <Card title={`${p.blogName || p.blogId}`} subtitle={`최근 ${p.sampled}편으로 판정했습니다`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={kindTone(p.kind)}>{KIND_LABEL[p.kind]}</Badge>
+              <span className="muted text-[11.5px]">우리 업종 글 {p.gymShare}%</span>
+            </div>
+            <p className="mt-2.5 text-[13px] leading-relaxed">{p.kindReason}</p>
+            <div className="surface mt-3 rounded-xl p-3.5">
+              <p className="text-[12px] font-bold">우리에게 뜻하는 것</p>
+              <p className="mt-1 text-[12.5px] leading-relaxed">{data.meaning}</p>
+            </div>
+          </Card>
+
+          <Card
+            title={`추정 힘 ${p.score}점`}
+            subtitle="네이버가 매기는 블로그 지수는 공개되지 않습니다. 이 점수는 밖에서 관찰할 수 있는 것만으로 만든 추정값이니, 숫자보다 아래 항목을 보세요."
+          >
+            <Progress value={p.score} />
+            <ul className="mt-3 space-y-2">
+              {p.scoreParts.map((s) => (
+                <li key={s.label} className="panel bd rounded-xl border px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12.5px] font-bold">{s.label}</span>
+                    <span className="tnum muted ml-auto text-[11.5px]">
+                      {s.value} / {s.max}
+                    </span>
+                  </div>
+                  <p className="muted mt-1 text-[11px] leading-relaxed">{s.note}</p>
+                </li>
+              ))}
+            </ul>
+            {!p.scoreParts.some((s) => s.label === '노출력') && (
+              <p className="muted mt-2.5 text-[11px] leading-relaxed">
+                노출력은 재지 못했습니다 — 최근 글로 검색해 봤지만 결과를 읽지 못했습니다. 그래서 그 항목을
+                빼고 나머지로만 환산했습니다 (없는 값을 0점으로 넣으면 점수가 거짓이 됩니다).
+              </p>
+            )}
+            <p className="muted mt-2 text-[11px] leading-relaxed">
+              이웃 수·방문자 수·체류시간은 밖에서 볼 수 없어 아예 넣지 않았습니다.
+            </p>
+          </Card>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Card title="발행 습관">
+              <ul className="space-y-1.5 text-[12.5px]">
+                <li>
+                  최근 30일 <b className="tnum">{p.last30}편</b> · 7일{' '}
+                  <b className="tnum">{p.last7}편</b>
+                </li>
+                <li>
+                  글 사이 평균 간격 <b className="tnum">{p.avgGapDays}일</b>
+                </li>
+                <li>
+                  마지막 글 <b className="tnum">{p.daysSinceLast}일 전</b>
+                </li>
+                <li className="muted text-[11.5px]">
+                  섞여 있는 업종: {p.tradeGroups.length ? p.tradeGroups.join(' · ') : '판별 안 됨'}
+                </li>
+              </ul>
+            </Card>
+
+            <Card title="카테고리 구성" subtitle={`가장 큰 업종이 ${p.topTradeShare}%`}>
+              <ul className="space-y-1.5">
+                {p.categories.map((c) => (
+                  <li key={c.name} className="flex items-center gap-2 text-[12.5px]">
+                    <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                    <span className="tnum muted">{c.count}편</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </div>
+
+          {data.exposureDetail && data.exposureDetail.length > 0 && (
+            <Card
+              title="노출력 표본"
+              subtitle="최근 글의 제목 앞부분을 검색어로 써서, 그 글이 30위 안에 있는지 확인한 결과입니다."
+            >
+              <ul className="space-y-1.5">
+                {data.exposureDetail.map((e) => (
+                  <li key={e.query} className="flex flex-wrap items-center gap-2 text-[12.5px]">
+                    <span className="min-w-0 flex-1 truncate">{e.query}</span>
+                    <Badge tone={e.rank === null ? 'default' : e.rank <= 10 ? 'good' : 'warn'}>
+                      {e.rank === null ? '30위 밖' : `${e.rank}위`}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          <Card title="최근 글" subtitle="무엇을 쓰는 블로그인지 직접 보는 게 가장 확실합니다">
+            <ul className="space-y-2">
+              {data.recent.map((r) => (
+                <li key={r.link} className="panel bd rounded-xl border px-3 py-2">
+                  <a
+                    href={r.link}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-[12.5px] leading-snug font-semibold hover:underline"
+                  >
+                    {r.title}
+                  </a>
+                  <p className="muted mt-0.5 text-[11px]">
+                    {r.date}
+                    {r.category && ` · ${r.category}`}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </>
+      )}
+
+      {!p && !busy && (
+        <Card>
+          <Empty>
+            상위노출 분석에서 만난 블로그 아이디를 넣어보세요. 업체 본인 블로그인지, 여러 업종을 돌며 리뷰를
+            쓰는 블로그(체험단·대행)인지 판정합니다.
+          </Empty>
+        </Card>
+      )}
+    </div>
+  )
+}

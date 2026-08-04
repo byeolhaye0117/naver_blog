@@ -43,6 +43,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     title: '성과·설정',
     items: [
       { href: '/rank', label: '순위 추적', short: '순위', icon: <IconTrend /> },
+      { href: '/blog', label: '블로그 진단', short: '블로그', icon: <IconSearch /> },
       { href: '/stores', label: '지점 정보', short: '지점', icon: <IconStore /> },
       { href: '/guide', label: '가이드', short: '가이드', icon: <IconBook /> },
       { href: '/deploy', label: '휴대폰에서 쓰기', short: '배포', icon: <IconPhone /> },
