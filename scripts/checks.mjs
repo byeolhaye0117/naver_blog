@@ -22,7 +22,7 @@ const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool, dedupeAdRows } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
-const { phaseOf, buildRankViews } = require(`${OUT}/analysis/rank.js`)
+const { phaseOf, buildRankViews, autoRankTargets } = require(`${OUT}/analysis/rank.js`)
 const { isPartialMonth, completedMonths, momentumOf } = require(`${OUT}/naver/datalab.js`)
 const { prescriptionKey, upsertPrescription, findPrescription, prescriptionAgeDays, isPrescriptionStale } = require(
   `${OUT}/analysis/prescription.js`
@@ -1057,7 +1057,23 @@ const LINE = cutlineLine(CUT)
 ok(LINE.includes('2,100자') && LINE.includes('2,400자'), '처방 문장에 실측값이 들어간다', LINE.slice(0, 60))
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[34] 상위 제목 단어 가르기')
+console.log('\n[34] 발행하면 순위 추적에 자동 등록')
+const PUBLISHED = {
+  id: 'p9', status: 'published', mainKeyword: '쌍용동 헬스장',
+  publishedUrl: 'https://blog.naver.com/me/224352038257', publishedAt: '2026-07-20T00:00:00.000Z',
+}
+ok(autoRankTargets(PUBLISHED, []).length === 1, '발행 주소가 있으면 등록한다')
+ok(autoRankTargets(PUBLISHED, [])[0].keyword === '쌍용동 헬스장', '메인 키워드로 등록')
+ok(autoRankTargets(PUBLISHED, [])[0].publishedAt === '2026-07-20', '발행일을 넘겨 첫날부터 구간 판정이 되게')
+ok(autoRankTargets({ ...PUBLISHED, status: 'draft' }, []).length === 0, '초안은 등록하지 않는다')
+ok(autoRankTargets({ ...PUBLISHED, publishedUrl: '' }, []).length === 0, '발행 주소가 없으면 등록하지 않는다')
+ok(autoRankTargets({ ...PUBLISHED, mainKeyword: '' }, []).length === 0, '메인 키워드가 없으면 등록하지 않는다')
+// 같은 글을 다시 저장해도 중복으로 쌓이지 않아야 한다
+const EXIST = [{ id: 'rt1', keyword: '쌍용동헬스장', url: 'https://m.blog.naver.com/me/224352038257', createdAt: '' }]
+ok(autoRankTargets(PUBLISHED, EXIST).length === 0, '띄어쓰기·모바일 주소만 달라도 중복으로 안 넣는다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[35] 상위 제목 단어 가르기')
 const { classifyToken, splitTokens } = require(`${OUT}/analysis/tokens.js`)
 
 // 실제 진단에서 나온 문제: "미녀와야수짐"·"필라테스" 를 소제목에 넣으라고 지시했다
@@ -1093,7 +1109,7 @@ ok(SPL.otherTrades[0].token === '필라테스', '다른 종목도 따로')
 ok(SPL.usable.length + SPL.rivals.length + SPL.otherTrades.length === 4, '문체 조각은 어디에도 안 들어간다')
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[35] 발행 후 실패 진단')
+console.log('\n[36] 발행 후 실패 진단')
 const { diagnose, diagnosisToPrescription, shouldDiagnose, fromAppPost, fromPublished, OUT_OF_RANGE, FIRST_PAGE, SETTLE_DAYS } =
   require(`${OUT}/analysis/diagnose.js`)
 
