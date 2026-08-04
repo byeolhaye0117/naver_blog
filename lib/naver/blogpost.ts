@@ -24,6 +24,19 @@ export interface PostMetrics {
 }
 
 /**
+ * 네이버에 이미 발행돼 있는 내 글. 앱에서 쓰지 않은 글도 진단할 수 있게 하려고
+ * 제목과 본문 텍스트까지 함께 읽는다.
+ *
+ * 소제목 수는 담지 않는다 — 스마트에디터가 소제목을 별도 표시 없이 굵은 글씨로만
+ * 쓰는 경우가 많아 세면 거짓이 된다. 진단에서도 그 항목은 건너뛴다.
+ */
+export interface PublishedPost extends PostMetrics {
+  title: string
+  /** 본문 평문 (상위권이 쓰는 말이 글에 있는지 볼 때 쓴다) */
+  text: string
+}
+
+/**
  * 어떤 형태의 블로그 글 주소든 본문이 실려 오는 주소로 바꾼다 (순수 함수 — 테스트 대상).
  * 못 알아보면 빈 문자열.
  */
@@ -56,7 +69,9 @@ export function postViewUrl(raw: string): string {
  * 소제목은 세지 않는다. 스마트에디터가 소제목을 별도 표시 없이 굵은 글씨로만 쓰는
  * 경우가 많아 세면 거짓이 된다 — 잴 수 있는 것만 잰다.
  */
-export function parsePostMetrics(html: string): Omit<PostMetrics, 'url'> | null {
+export function parsePostMetrics(
+  html: string
+): (Omit<PostMetrics, 'url'> & { text: string }) | null {
   const start = html.indexOf('se-main-container')
   if (start < 0) return null
   const from = html.indexOf('>', start)
@@ -79,7 +94,7 @@ export function parsePostMetrics(html: string): Omit<PostMetrics, 'url'> | null 
   const imageCount = (body.match(/se-component se-image/g) ?? []).length
   const videoCount = (body.match(/se-component se-video/g) ?? []).length
 
-  const text = body
+  const plain = body
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;|&#160;/gi, ' ')
     .replace(/&quot;/g, '"')
@@ -87,10 +102,30 @@ export function parsePostMetrics(html: string): Omit<PostMetrics, 'url'> | null 
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&#39;/g, "'")
-    // 제로폭 공백(​)을 넣는 편집기가 있어서 글자수가 부풀 수 있다
-    .replace(/[\s​ ]+/g, '')
+    // 제로폭 공백을 넣는 편집기가 있어서 글자수가 부풀 수 있다
+    .replace(/[\u200b\u00a0]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 
-  return { charCount: text.length, imageCount, videoCount }
+  // 글자수는 공백을 빼고 센다. 본문 평문은 따로 돌려준다 —
+  // "상위권이 쓰는 말이 이 글에 있나" 를 보려면 텍스트가 필요하다.
+  return { charCount: plain.replace(/\s/g, '').length, imageCount, videoCount, text: plain }
+}
+
+/** 제목은 본문 안이 아니라 og:title 에 들어 있다 (순수 함수 — 테스트 대상) */
+export function parsePostTitle(html: string): string {
+  const og = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]{1,200})"/i)
+  const raw = og?.[1] ?? html.match(/<title>([^<]{1,200})<\/title>/i)?.[1] ?? ''
+  return raw
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    // <title> 에는 " : 네이버 블로그" 가 붙어 온다
+    .replace(/\s*:\s*네이버 블로그\s*$/, '')
+    .trim()
 }
 
 /** 글 하나를 읽어 수치를 잰다. 실패하면 null — 한 글이 막혀도 나머지로 계속 간다 */
@@ -108,6 +143,28 @@ export async function fetchPostMetrics(url: string): Promise<PostMetrics | null>
     // 본문이 거의 없으면 못 읽은 것으로 본다 (프레임 껍데기·접근 제한 글)
     if (!m || m.charCount < 200) return null
     return { ...m, url }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 네이버에 이미 발행한 내 글을 읽는다 — 앱에서 쓰지 않은 글도 진단할 수 있게.
+ */
+export async function fetchPublishedPost(url: string): Promise<PublishedPost | null> {
+  const target = postViewUrl(url)
+  if (!target) return null
+  try {
+    const res = await fetch(target, {
+      headers: { 'User-Agent': UA, Referer: 'https://blog.naver.com/' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    })
+    if (!res.ok) return null
+    const html = await res.text()
+    const m = parsePostMetrics(html)
+    if (!m || m.charCount < 200) return null
+    return { ...m, title: parsePostTitle(html), url }
   } catch {
     return null
   }

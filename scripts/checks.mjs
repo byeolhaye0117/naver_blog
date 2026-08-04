@@ -973,7 +973,7 @@ ok(plan.sets.every((s) => !(s.area === '쌍용동' && s.subs.some((x) => x.metri
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[33] 상위 글 본문 실측 · 커트라인')
-const { postViewUrl, parsePostMetrics } = require(`${OUT}/naver/blogpost.js`)
+const { postViewUrl, parsePostMetrics, parsePostTitle } = require(`${OUT}/naver/blogpost.js`)
 const { buildCutline, cutlineLine, median, CUTLINE_MIN_SAMPLE } = require(`${OUT}/analysis/cutline.js`)
 
 // 본문은 PostView.naver 에만 실려 온다 (blog.naver.com/id/logNo 는 프레임 껍데기)
@@ -1013,6 +1013,19 @@ ok(PM.imageCount === 2, 'post_footer 뒤 이미지는 안 센다', String(PM.ima
 ok(PM.videoCount === 1, '영상 개수', String(PM.videoCount))
 ok(!/댓글/.test(String(PM.charCount)) && PM.charCount === 27, '본문 글자수만 센다(공백 제외)', String(PM.charCount))
 ok(parsePostMetrics('<html><body>본문 컨테이너가 없음</body></html>') === null, '못 읽으면 null')
+ok(PM.text.includes('두 번째 문단'), '본문 평문도 함께 돌려준다 (상위권 단어 대조용)')
+ok(!PM.text.includes('댓글'), '평문에도 댓글 영역은 없다')
+
+// 제목은 본문 안이 아니라 og:title 에 있다 — 이미 발행한 글을 진단하려면 이게 필요하다
+ok(
+  parsePostTitle('<meta property="og:title" content="쌍용동 헬스장 3개월 후기" />') === '쌍용동 헬스장 3개월 후기',
+  'og:title 에서 제목을 읽는다'
+)
+ok(
+  parsePostTitle('<title>쌍용동 헬스장 후기 : 네이버 블로그</title>') === '쌍용동 헬스장 후기',
+  'title 태그면 " : 네이버 블로그" 를 뗀다'
+)
+ok(parsePostTitle('<html></html>') === '', '제목이 없으면 빈 문자열')
 
 // 커트라인은 평균이 아니라 중간값 — 상위권에 이미지 40장짜리가 섞이면 평균이 망가진다
 ok(median([1, 2, 3]) === 2, '중간값 (홀수)')
@@ -1045,9 +1058,8 @@ ok(LINE.includes('2,100자') && LINE.includes('2,400자'), '처방 문장에 실
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[34] 발행 후 실패 진단')
-const { diagnose, diagnosisToPrescription, shouldDiagnose, OUT_OF_RANGE, SETTLE_DAYS } = require(
-  `${OUT}/analysis/diagnose.js`
-)
+const { diagnose, diagnosisToPrescription, shouldDiagnose, fromAppPost, fromPublished, OUT_OF_RANGE, SETTLE_DAYS } =
+  require(`${OUT}/analysis/diagnose.js`)
 
 // 발행 직후의 낮은 순위는 실패가 아니다
 ok(!shouldDiagnose(45, 3), '발행 3일째는 진단하지 않는다')
@@ -1073,7 +1085,10 @@ const SERP_FOR_DX = {
   },
   prescription: [], cutline: CUT, mock: false, source: 'section',
 }
-const DX = diagnose({ post: MY_POST, serp: SERP_FOR_DX, rank: null, daysSincePublish: 34 })
+const MINE = fromAppPost(MY_POST)
+ok(MINE.source === 'app' && MINE.headingCount === 1, '앱 글은 소제목을 셀 수 있다', String(MINE.headingCount))
+ok(MINE.imageCount === 1, '앱 글 이미지 수', String(MINE.imageCount))
+const DX = diagnose({ post: MINE, serp: SERP_FOR_DX, rank: null, daysSincePublish: 34 })
 const ids = DX.fixes.map((f) => f.id)
 ok(ids.includes('title-short'), '제목이 짧은 것을 잡는다')
 ok(ids.includes('title-no-keyword'), '제목에 메인 키워드가 없는 것을 잡는다')
@@ -1090,7 +1105,7 @@ ok(RXP[0].includes('지금') && RXP[0].includes('→'), '현재값과 할 일이
 
 // 커트라인이 없으면 본문 수치는 말하지 않는다 (상위가 얼마인지 모르는데 부족하다고 할 수 없다)
 const DX2 = diagnose({
-  post: MY_POST, serp: { ...SERP_FOR_DX, cutline: undefined }, rank: 33, daysSincePublish: 20,
+  post: MINE, serp: { ...SERP_FOR_DX, cutline: undefined }, rank: 33, daysSincePublish: 20,
 })
 ok(!DX2.fixes.some((f) => f.id === 'body-short'), '실측 없으면 글자수 지적을 안 한다')
 ok(DX2.verdict.includes('33위'), '순위를 그대로 말한다')
@@ -1104,9 +1119,23 @@ const GOOD_POST = {
     '## 소제목1\n' + '가'.repeat(700) + '\n## 소제목2\n' + '나'.repeat(700) +
     '\n## 소제목3\n' + '다'.repeat(700) + '\n## 소제목4\n' + '라'.repeat(500) + '\n[영상: 시설]\n',
 }
-const DX3 = diagnose({ post: GOOD_POST, serp: SERP_FOR_DX, rank: null, daysSincePublish: 40 })
+const DX3 = diagnose({ post: fromAppPost(GOOD_POST), serp: SERP_FOR_DX, rank: null, daysSincePublish: 40 })
 ok(!DX3.fixes.some((f) => ['title-short', 'body-short', 'body-images', 'headings'].includes(f.id)),
   '기준을 맞춘 글은 그 항목들을 지적하지 않는다', DX3.fixes.map((f) => f.id).join(','))
+
+// 네이버에 이미 발행한 글도 진단한다 (앱에 본문이 없어도 읽어온다)
+const PUB = fromPublished(
+  { title: '헬스장 등록했어요', charCount: 1400, imageCount: 5, videoCount: 0, text: '짧은 본문입니다', url: 'u' },
+  '쌍용동 헬스장'
+)
+ok(PUB.source === 'naver', '출처를 구분한다')
+ok(PUB.headingCount === null, '소제목은 못 잰다고 표시한다 (0 이 아니다)')
+const DX4 = diagnose({ post: PUB, serp: SERP_FOR_DX, rank: null, daysSincePublish: 30 })
+const ids4 = DX4.fixes.map((f) => f.id)
+ok(!ids4.includes('headings'), '못 잰 항목은 지적하지 않는다', ids4.join(','))
+ok(ids4.includes('body-short') && ids4.includes('body-images'), '읽어온 수치로도 본문·이미지를 지적한다')
+ok(ids4.includes('title-no-keyword'), '읽어온 제목으로 키워드 유무를 본다')
+ok(ids4.includes('tokens'), '읽어온 본문으로 상위권 단어를 대조한다')
 
 // 상위노출 처방이 글쓰기 화면까지 와야 분석이 글에 반영된다
 ok(prescriptionKey('쌍용동 헬스장') === '쌍용동헬스장', '띄어쓰기를 없앤 키로 찾는다')

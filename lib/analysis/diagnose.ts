@@ -1,4 +1,5 @@
 import type { Post, SerpAnalysis } from '@/lib/types'
+import type { PublishedPost } from '../naver/blogpost'
 import { parseBody } from '../writing/checker'
 import { looseIndexOf } from './serp'
 
@@ -23,6 +24,62 @@ export interface Fix {
   action: string
   /** high = 이것부터 고친다 */
   severity: 'high' | 'mid'
+}
+
+/**
+ * 진단할 글을 한 모양으로 맞춘다.
+ *
+ * 두 곳에서 온다 — 앱에서 쓴 글(본문이 앱에 있다)과 **네이버에 이미 발행한 글**
+ * (본문을 읽어 온다). 이미 올려둔 글도 진단해야 쓸모가 있으므로 둘을 같게 다룬다.
+ *
+ * headingCount 가 null 인 것은 "0개" 가 아니라 **못 쟀다** 는 뜻이다. 네이버에서
+ * 읽어온 글은 소제목을 구분할 표시가 없어서 셀 수 없다 — 그때는 그 항목을 아예
+ * 지적하지 않는다. 모르는 것을 0으로 바꿔 쓰면 없는 문제를 만들어낸다.
+ */
+export interface MyPost {
+  title: string
+  mainKeyword: string
+  charCount: number
+  imageCount: number
+  videoCount: number
+  headingCount: number | null
+  /** 본문 평문 — 상위권이 쓰는 말이 글에 있는지 볼 때 쓴다 */
+  text: string
+  /** 앱에서 쓴 글이면 그 id (「이 처방으로 고쳐 쓰기」 링크에 쓴다) */
+  postId?: string
+  source: 'app' | 'naver'
+}
+
+/** 앱에서 쓴 글 */
+export function fromAppPost(post: Post): MyPost {
+  const parsed = parseBody(post.body)
+  return {
+    title: post.title.trim(),
+    mainKeyword: post.mainKeyword.trim(),
+    charCount: parsed.prose.replace(/\s/g, '').length,
+    imageCount: parsed.images.length,
+    // 앱 본문은 [영상: …] 로 표시한다
+    videoCount: (post.body.match(/\[(영상|동영상)/g) ?? []).length,
+    headingCount: parsed.headings.length,
+    text: post.body,
+    postId: post.id,
+    source: 'app',
+  }
+}
+
+/** 네이버에 이미 발행한 글 */
+export function fromPublished(p: PublishedPost, mainKeyword: string): MyPost {
+  return {
+    title: p.title,
+    mainKeyword: mainKeyword.trim(),
+    charCount: p.charCount,
+    imageCount: p.imageCount,
+    videoCount: p.videoCount,
+    // 스마트에디터는 소제목을 표시 없이 굵은 글씨로만 쓰는 경우가 많아 셀 수 없다
+    headingCount: null,
+    text: p.text,
+    source: 'naver',
+  }
 }
 
 export interface Diagnosis {
@@ -54,15 +111,14 @@ function n(v: number): string {
 }
 
 export function diagnose(input: {
-  post: Post
+  post: MyPost
   serp: SerpAnalysis
   rank: number | null
   daysSincePublish: number
 }): Diagnosis {
   const { post, serp, rank } = input
   const fixes: Fix[] = []
-  const parsed = parseBody(post.body)
-  const charCount = parsed.prose.replace(/\s/g, '').length
+  const charCount = post.charCount
   const title = post.title.trim()
   const kw = post.mainKeyword.trim()
 
@@ -115,17 +171,17 @@ export function diagnose(input: {
         severity: 'high',
       })
     }
-    if (parsed.images.length < c.imageMedian) {
+    if (post.imageCount < c.imageMedian) {
       fixes.push({
         id: 'body-images',
         label: '이미지가 부족합니다',
-        mine: `${parsed.images.length}장`,
+        mine: `${post.imageCount}장`,
         theirs: `상위 중간값 ${c.imageMedian}장`,
         action: `직접 촬영한 이미지를 ${c.imageTarget}장 이상으로 늘리세요.`,
         severity: 'high',
       })
     }
-    if (c.videoExpected && !/\[영상|\[동영상/.test(post.body)) {
+    if (c.videoExpected && post.videoCount === 0) {
       fixes.push({
         id: 'body-video',
         label: '영상이 없습니다',
@@ -138,11 +194,12 @@ export function diagnose(input: {
   }
 
   // ── 소제목 ───────────────────────────────────────────
-  if (parsed.headings.length < 4) {
+  // 못 쟀으면(네이버에서 읽어온 글) 지적하지 않는다 — 0개로 취급하면 거짓이 된다
+  if (post.headingCount !== null && post.headingCount < 4) {
     fixes.push({
       id: 'headings',
       label: '소제목이 적습니다',
-      mine: `${parsed.headings.length}개`,
+      mine: `${post.headingCount}개`,
       theirs: '4~6개 권장',
       action: '소제목을 4개 이상으로 나누세요. 상위 제목에 반복되는 말을 소제목으로 쓰면 스마트블록에 걸릴 기회가 생깁니다.',
       severity: 'mid',
@@ -152,7 +209,7 @@ export function diagnose(input: {
   // ── 상위권이 쓰는 말 ─────────────────────────────────
   const missingTokens = serp.stats.commonTokens
     .slice(0, 6)
-    .filter((t) => !post.body.includes(t.token) && !title.includes(t.token))
+    .filter((t) => !post.text.includes(t.token) && !title.includes(t.token))
     .map((t) => t.token)
   if (missingTokens.length >= 2) {
     fixes.push({
@@ -186,7 +243,7 @@ export function diagnose(input: {
       label: '특정 블로그가 선점했습니다',
       mine: rank === null ? `${OUT_OF_RANGE}위 밖` : `${rank}위`,
       theirs: `"${worst.name}" 가 ${worst.count}칸`,
-      action: `이 키워드는 정면으로 이기기 어렵습니다. "${post.mainKeyword} 가격"·"${post.mainKeyword} 새벽" 처럼 세부 의도를 붙인 키워드로 우회하세요.`,
+      action: `이 키워드는 정면으로 이기기 어렵습니다. "${kw} 가격"·"${kw} 새벽" 처럼 세부 의도를 붙인 키워드로 우회하세요.`,
       severity: 'mid',
     })
   }
