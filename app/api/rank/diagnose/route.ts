@@ -83,7 +83,8 @@ export async function POST(req: Request) {
       recent.count ?? 0,
       15,
       'section',
-      buildCutline(measured)
+      buildCutline(measured),
+      db.stores.flatMap((st) => [st.name, st.legalName])
     )
 
     // 최신 순위와 발행 후 경과일

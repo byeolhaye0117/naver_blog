@@ -77,6 +77,8 @@ export default function RankTracker({
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
+      // 띄어쓰기만 다른 같은 글이 이미 있으면 알려준다 (등록은 됐다)
+      if (json.notice) setError(json.notice)
       setKeyword('')
       setUrl('')
       setPostId('')

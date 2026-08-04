@@ -27,6 +27,7 @@ const TARGETS = [
   'lib/analysis/synergy.ts',
   'lib/analysis/prescription.ts',
   'lib/analysis/cutline.ts',
+  'lib/analysis/tokens.ts',
   'lib/analysis/diagnose.ts',
   'lib/naver/blogpost.ts',
   'lib/analysis/serp.ts',

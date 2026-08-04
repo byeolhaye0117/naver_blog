@@ -244,8 +244,18 @@ export interface SerpAnalysis {
     datedCount: number
     /** 블로거명을 알아낸 항목 수 */
     bloggerKnownCount: number
-    /** 상위 노출 제목에서 함께 자주 등장하는 토큰 */
+    /** 상위 노출 제목에서 함께 자주 등장하는 토큰 (걸러내지 않은 관찰값) */
     commonTokens: { token: string; count: number }[]
+    /**
+     * commonTokens 를 쓸 수 있는 것과 못 쓰는 것으로 가른 결과.
+     *
+     * "미녀와야수짐"(다른 업체 상호)·"필라테스"(안 하는 종목) 를 소제목에 넣으라고
+     * 지시하면 남의 가게를 홍보하거나 거짓을 쓰는 글이 된다. 지시에는 usableTokens 만
+     * 쓰고, rivalTokens 는 "그 업체가 이 키워드를 먹고 있다" 는 정보로 쓴다.
+     */
+    usableTokens: { token: string; count: number }[]
+    rivalTokens: { token: string; count: number }[]
+    otherTradeTokens: { token: string; count: number }[]
     /** 같은 블로거가 여러 개 차지하는지 */
     repeatBloggers: { name: string; count: number }[]
   }

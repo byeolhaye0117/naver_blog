@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { analyzePastedSerp } from '@/lib/analysis/serp'
 import { recentBlogCount, topBlogPosts } from '@/lib/naver/blogsection'
 import { keepPrescription } from '@/lib/analysis/keep-prescription'
+import { readDB } from '@/lib/store'
 import { measureTopPosts } from '@/lib/naver/blogpost'
 import { buildCutline } from '@/lib/analysis/cutline'
 
@@ -61,13 +62,17 @@ export async function POST(req: Request) {
     ).catch(() => [])
     const cutline = buildCutline(measured)
 
+    // 우리 지점 이름을 넘겨야 "우리 상호" 와 "남의 상호" 를 가를 수 있다
+    const myNames = (await readDB()).stores.flatMap((st) => [st.name, st.legalName])
+
     const analysis = analyzePastedSerp(
       keyword,
       top.items,
       recent.count ?? 0,
       limit,
       'section',
-      cutline
+      cutline,
+      myNames
     )
     await keepPrescription(analysis)
     return NextResponse.json({ analysis })
