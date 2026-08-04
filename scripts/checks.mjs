@@ -1870,7 +1870,8 @@ ok(hb.role === 'main', '짝이 크지만 과열이면 이 줄을 메인으로 �
 // ─────────────────────────────────────────────────────────────
 console.log('\n[46] 사람들이 실제로 치는 검색어 (자동완성)')
 const { parseSuggest, hasRepeatedToken, suggestSeeds } = require(`${OUT}/naver/autocomplete.js`)
-const { cityTokens, suggestionDrop, hasForeignArea, NEGATIVE_WORDS } = require(`${OUT}/analysis/keyword.js`)
+const { cityTokens, suggestionDrop, hasForeignArea, isCleanWideKeyword, NEGATIVE_WORDS } =
+  require(`${OUT}/analysis/keyword.js`)
 
 // 실제 응답 모양 (2026-08 실측)
 const AC_REAL = JSON.stringify({
@@ -1964,6 +1965,33 @@ ok(isRelevantKeyword('천안두정동헬스장', scopedTokens), '범위를 안 �
 ok(
   suggestionDrop('천안두정동헬스장', scopedTokens, SCOPE).includes('그 동네 지점 글'),
   '어디로 가야 하는지 말해준다'
+)
+
+/*
+ * 동/읍/면 규칙으로 못 잡는 것 — 목천(읍)·불당(동)을 접미사 없이 쓴다.
+ * 실측에서 이 셋이 끝까지 남았다: 천안목천헬스장 · 천안불당헬스장 · 천안목천헬스.
+ * 광역 키워드는 「시 + 업종·의도」로만 이뤄져야 한다고 뒤집어 본다.
+ */
+const wideOk = (k) => isCleanWideKeyword(k, MY_CITIES)
+ok(wideOk('천안헬스장'), '시 + 업종은 깨끗하다')
+ok(wideOk('천안 헬스장 일일권'), '자동완성으로 배운 의도도 깨끗하다 (일일권)')
+ok(wideOk('천안 헬스장 사우나'), '사우나도 의도로 안다')
+ok(wideOk('천안24시헬스장'), '숫자가 섞여도 깨끗하다')
+ok(wideOk('천안다이어트') && wideOk('천안PT') && wideOk('천안피트니스'), '광역 업종 키워드들')
+ok(!wideOk('천안목천헬스장'), '동네 이름이 남으면 깨끗하지 않다 (목천)')
+ok(!wideOk('천안불당헬스장'), '동을 뗀 동네 이름도 잡는다 (불당)')
+ok(!wideOk('천안터미널헬스장'), '지형지물 이름도 잡는다')
+ok(!wideOk('천안헬스보이짐'), '남의 상호도 잡는다', String(wideOk('천안헬스보이짐')))
+// 내 동네가 든 키워드에는 이 규칙을 걸지 않는다 — 새 의도를 발견하는 통로를 막으면 안 된다
+ok(
+  isRelevantKeyword('쌍용동헬스장샤워시설', scopedTokens, SCOPE),
+  '내 동네 키워드는 모르는 말이 붙어도 통과'
+)
+ok(!isRelevantKeyword('천안목천헬스장', scopedTokens, SCOPE), '광역 + 남의 동네는 빠진다')
+ok(isRelevantKeyword('천안헬스장일일권', scopedTokens, SCOPE), '광역 + 아는 의도는 남는다')
+ok(
+  suggestionDrop('천안불당헬스장', scopedTokens, SCOPE).includes('업체 이름'),
+  '동네인지 업체인지 단정하지 않고 둘 다 말한다'
 )
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
