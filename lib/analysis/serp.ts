@@ -2,6 +2,7 @@ import type { SerpAnalysis, SerpItem } from '@/lib/types'
 import { stripTags, type RawBlogItem } from '../naver/search'
 import type { PastedItem } from './paste'
 import { cutlineLine, type Cutline } from './cutline'
+import { splitTokens } from './tokens'
 
 /** 조사·상투어 — 제목 공통 토큰 집계에서 뺀다 */
 const STOPWORDS = new Set([
@@ -112,7 +113,9 @@ export function analyzePastedSerp(
   limit = 30,
   source: 'paste' | 'section' = 'paste',
   /** 상위 글 본문을 실제로 재서 만든 커트라인 (있으면 일반 규격 대신 이걸 쓴다) */
-  cutline?: Cutline | null
+  cutline?: Cutline | null,
+  /** 우리 지점 이름·상호 — 남의 상호와 구분하려고 받는다 */
+  myNames: string[] = []
 ): SerpAnalysis {
   const items: SerpItem[] = pasted.slice(0, limit).map((p, i) => {
     const title = p.title.trim()
@@ -134,7 +137,7 @@ export function analyzePastedSerp(
   })
 
   // 붙여넣은 값도, 섹션 검색에서 읽어온 값도 실제 화면 기준이므로 샘플(mock)이 아니다
-  return buildAnalysis(keyword, items, total, false, source, cutline)
+  return buildAnalysis(keyword, items, total, false, source, cutline, myNames)
 }
 
 function buildAnalysis(
@@ -143,7 +146,8 @@ function buildAnalysis(
   total: number,
   mock: boolean,
   source: SerpAnalysis['source'],
-  cutline?: Cutline | null
+  cutline?: Cutline | null,
+  myNames: string[] = []
 ): SerpAnalysis {
   const n = items.length || 1
   const withKeyword = items.filter((i) => i.keywordPos >= 0)
@@ -190,6 +194,7 @@ function buildAnalysis(
     datedCount: dated.length,
     bloggerKnownCount: named.length,
     commonTokens,
+    ...splitTokensToStats(commonTokens, myNames),
     repeatBloggers,
   }
 
@@ -203,6 +208,14 @@ function buildAnalysis(
     mock,
     source,
   }
+}
+
+function splitTokensToStats(
+  tokens: { token: string; count: number }[],
+  myNames: string[]
+): Pick<SerpAnalysis['stats'], 'usableTokens' | 'rivalTokens' | 'otherTradeTokens'> {
+  const s = splitTokens(tokens, myNames)
+  return { usableTokens: s.usable, rivalTokens: s.rivals, otherTradeTokens: s.otherTrades }
 }
 
 /** 최신성을 말하려면 날짜를 아는 항목이 최소 이만큼은 있어야 한다 */
@@ -258,10 +271,26 @@ function prescribe(
     out.push(`상위 글 평균 나이 ${s.avgAgeDays}일 — 최신성 압박은 보통 수준입니다.`)
   }
 
-  if (s.commonTokens.length) {
-    const top = s.commonTokens.slice(0, 5).map((t) => t.token).join(', ')
+  // 지시에는 쓸 수 있는 말만 넣는다. 남의 상호·다른 종목을 "소제목에 넣으세요" 라고
+  // 하면 남의 가게를 홍보하거나 안 하는 걸 한다고 쓰는 글이 된다.
+  if (s.usableTokens.length) {
+    const top = s.usableTokens.slice(0, 5).map((t) => t.token).join(', ')
     out.push(
       `상위 제목에 반복되는 말: ${top}. 검색하는 사람이 실제로 알고 싶은 게 이쪽이라는 신호이니 소제목에 반영하세요.`
+    )
+  }
+
+  if (s.rivalTokens.length) {
+    const names = s.rivalTokens.slice(0, 3).map((t) => `"${t.token}"`).join(', ')
+    out.push(
+      `상위 제목에 다른 업체 이름(${names})이 반복됩니다 — 그 업체 후기 글이 이 키워드를 먹고 있다는 뜻입니다. 우리도 방문 후기 형태로 맞붙거나, 세부 의도를 붙여 우회하세요. (그 이름을 우리 글에 쓰면 남의 가게를 홍보하는 셈이니 쓰지 마세요.)`
+    )
+  }
+
+  if (s.otherTradeTokens.length) {
+    const names = s.otherTradeTokens.slice(0, 3).map((t) => t.token).join(', ')
+    out.push(
+      `상위 글에 ${names} 같은 다른 종목이 섞여 있습니다. 우리가 하지 않는 종목이니 글에 넣지 말고, 헬스·PT 쪽 의도로 좁히는 편이 낫습니다.`
     )
   }
 

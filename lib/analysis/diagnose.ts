@@ -212,7 +212,10 @@ export function diagnose(input: {
   }
 
   // ── 상위권이 쓰는 말 ─────────────────────────────────
-  const missingTokens = serp.stats.commonTokens
+  // **쓸 수 있는 말만** 본다. 예전에는 걸러내지 않아서 "미녀와야수짐"(다른 업체 상호)·
+  // "필라테스"(안 하는 종목) 를 소제목에 넣으라고 지시했다 — 남의 가게를 홍보하거나
+  // 거짓을 쓰게 만드는 지시였다.
+  const missingTokens = (serp.stats.usableTokens ?? [])
     .slice(0, 6)
     .filter((t) => !post.text.includes(t.token) && !title.includes(t.token))
     .map((t) => t.token)
@@ -223,6 +226,21 @@ export function diagnose(input: {
       mine: `${missingTokens.join(', ')} 없음`,
       theirs: '상위 제목에 반복 등장',
       action: `"${missingTokens.slice(0, 3).join('", "')}" 를 소제목이나 본문에 자연스럽게 넣으세요. 검색하는 사람이 실제로 알고 싶은 것입니다.`,
+      severity: 'mid',
+    })
+  }
+
+  // 다른 업체 상호가 상위를 먹고 있다 — 지시가 아니라 정보다.
+  // 그 이름을 우리 글에 쓰라고 하면 남의 가게를 홍보하는 셈이다.
+  const rivals = (serp.stats.rivalTokens ?? []).slice(0, 3)
+  if (rivals.length) {
+    fixes.push({
+      id: 'rival-brands',
+      label: '다른 업체 후기 글이 이 키워드를 먹고 있습니다',
+      mine: '우리 글은 1편',
+      theirs: `${rivals.map((t) => `"${t.token}"`).join(', ')} 가 상위 제목에 반복`,
+      action:
+        '같은 방식(방문 후기)으로 맞붙되, 그 업체 이름은 절대 쓰지 마세요 — 남의 가게를 홍보하는 글이 됩니다. 우리 지점 강점을 같은 자리에 놓고, 후기 편수를 늘리는 쪽이 실효가 있습니다.',
       severity: 'mid',
     })
   }

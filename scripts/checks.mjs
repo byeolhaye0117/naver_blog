@@ -1057,7 +1057,43 @@ const LINE = cutlineLine(CUT)
 ok(LINE.includes('2,100자') && LINE.includes('2,400자'), '처방 문장에 실측값이 들어간다', LINE.slice(0, 60))
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[34] 발행 후 실패 진단')
+console.log('\n[34] 상위 제목 단어 가르기')
+const { classifyToken, splitTokens } = require(`${OUT}/analysis/tokens.js`)
+
+// 실제 진단에서 나온 문제: "미녀와야수짐"·"필라테스" 를 소제목에 넣으라고 지시했다
+ok(classifyToken('미녀와야수짐') === 'rival', '다른 업체 상호는 지시로 쓰지 않는다', classifyToken('미녀와야수짐'))
+ok(classifyToken('피앤피짐') === 'rival', '짐으로 끝나면 상호로 본다')
+ok(classifyToken('필라테스') === 'otherTrade', '안 하는 종목', classifyToken('필라테스'))
+ok(classifyToken('요가') === 'otherTrade', '다른 종목 (요가)')
+ok(classifyToken('추천') === 'useful', '검색 의도는 쓸 수 있다')
+ok(classifyToken('가격') === 'useful', '가격')
+ok(classifyToken('24시') === 'useful', '운영시간')
+ok(classifyToken('PT') === 'useful', '서비스')
+ok(classifyToken('프리웨이트') === 'useful', '시설')
+ok(classifyToken('3개월') === 'useful', '숫자+단위는 소재가 된다')
+ok(classifyToken('5kg') === 'useful', 'kg 도 소재')
+ok(classifyToken('다녀본') === 'noise', '문체 조각은 지시로 못 쓴다')
+ok(classifyToken('솔직') === 'noise', '문체 조각 (솔직)')
+// 우리 상호는 남의 상호가 아니다
+ok(classifyToken('미라클짐', ['미라클짐 쌍용점']) === 'noise', '우리 상호는 남의 상호로 보지 않는다')
+
+const SPL = splitTokens(
+  [
+    { token: '미녀와야수짐', count: 5 },
+    { token: '추천', count: 4 },
+    { token: '필라테스', count: 3 },
+    { token: '가격', count: 2 },
+    { token: '다녀본', count: 2 },
+  ],
+  []
+)
+ok(SPL.usable.map((t) => t.token).join(',') === '추천,가격', '쓸 수 있는 말만 남긴다', SPL.usable.map((t) => t.token).join(','))
+ok(SPL.rivals[0].token === '미녀와야수짐', '남의 상호는 따로 모은다 (정보로 쓴다)')
+ok(SPL.otherTrades[0].token === '필라테스', '다른 종목도 따로')
+ok(SPL.usable.length + SPL.rivals.length + SPL.otherTrades.length === 4, '문체 조각은 어디에도 안 들어간다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[35] 발행 후 실패 진단')
 const { diagnose, diagnosisToPrescription, shouldDiagnose, fromAppPost, fromPublished, OUT_OF_RANGE, FIRST_PAGE, SETTLE_DAYS } =
   require(`${OUT}/analysis/diagnose.js`)
 
@@ -1085,6 +1121,9 @@ const SERP_FOR_DX = {
     avgTitleLength: 43, keywordInTitleRate: 90, keywordFrontRate: 67, avgAgeDays: 21,
     freshWithin30dRate: 70, datedCount: 12, bloggerKnownCount: 12,
     commonTokens: [{ token: '후기', count: 5 }, { token: '가격', count: 4 }, { token: 'PT', count: 3 }],
+    usableTokens: [{ token: '후기', count: 5 }, { token: '가격', count: 4 }, { token: 'PT', count: 3 }],
+    rivalTokens: [{ token: '미녀와야수짐', count: 4 }],
+    otherTradeTokens: [],
     repeatBloggers: [{ name: '천안 운동일기', count: 4 }],
   },
   prescription: [], cutline: CUT, mock: false, source: 'section',
@@ -1101,6 +1140,11 @@ ok(ids.includes('body-images'), '이미지 부족을 잡는다')
 ok(ids.includes('headings'), '소제목 부족을 잡는다')
 ok(ids.includes('tokens'), '상위권이 쓰는 말이 빠진 것을 잡는다')
 ok(ids.includes('dominated'), '선점 상태를 알려준다')
+ok(ids.includes('rival-brands'), '다른 업체가 먹고 있다는 사실을 알려준다')
+const rivalFix = DX.fixes.find((f) => f.id === 'rival-brands')
+ok(rivalFix.action.includes('이름은 절대 쓰지 마세요'), '남의 상호를 쓰라고 하지 않는다')
+const tokenFix = DX.fixes.find((f) => f.id === 'tokens')
+ok(!tokenFix.action.includes('미녀와야수짐'), '지시에 남의 상호가 안 들어간다', tokenFix.action.slice(0, 60))
 ok(DX.fixes[0].severity === 'high', '먼저 고칠 것을 앞에 둔다')
 ok(DX.verdict.includes(`${OUT_OF_RANGE}위 안에 안 잡힙니다`) && DX.verdict.includes('고칠 곳'), '한 줄 판정', DX.verdict)
 const RXP = diagnosisToPrescription(DX)
