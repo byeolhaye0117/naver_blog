@@ -1074,7 +1074,76 @@ const idxFallen = STUCK.findIndex((a) => a.id === 'fallen')
 ok(idxFallen === -1 || idxStuck < idxFallen, '답이 준비된 것을 먼저 보여준다')
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[34] 발행하면 순위 추적에 자동 등록')
+console.log('\n[34] 블로그 성격 판별 · 추정 힘')
+const { blogIdFromInput, parseBlogRss, rssDate } = require(`${OUT}/naver/blogrss.js`)
+const { buildBlogProfile, classifyBlogger, queryFromTitle, meaningForUs, KIND_LABEL } = require(
+  `${OUT}/analysis/blogscore.js`
+)
+
+// 아이디는 아무 형태로 넣어도 받는다
+ok(blogIdFromInput('jiyun0361') === 'jiyun0361', '아이디만')
+ok(blogIdFromInput('https://blog.naver.com/jiyun0361') === 'jiyun0361', '블로그 주소')
+ok(blogIdFromInput('https://m.blog.naver.com/jiyun0361/224352038257') === 'jiyun0361', '모바일 글 주소')
+ok(
+  blogIdFromInput('https://blog.naver.com/PostView.naver?blogId=jiyun0361&logNo=1') === 'jiyun0361',
+  'PostView 주소'
+)
+ok(blogIdFromInput('') === '', '빈 값')
+ok(blogIdFromInput('한글아이디') === '', '아이디 형식이 아니면 빈 값')
+
+ok(rssDate('Tue, 04 Aug 2026 01:04:53 +0900') === '2026-08-03', 'pubDate 를 날짜로 (UTC 기준)', rssDate('Tue, 04 Aug 2026 01:04:53 +0900'))
+ok(rssDate('없는날짜') === '', '못 읽으면 빈 값')
+
+const RSS = `<?xml version="1.0"?><rss><channel><title><![CDATA[해우소]]></title>
+<item><title><![CDATA[천안 쌍용동 헬스장 후기]]></title><link><![CDATA[https://blog.naver.com/me/1?fromRss=true]]></link><pubDate>Mon, 03 Aug 2026 10:00:00 +0900</pubDate><category><![CDATA[각종리뷰]]></category></item>
+<item><title><![CDATA[천안 맛집 파스타 추천]]></title><link><![CDATA[https://blog.naver.com/me/2]]></link><pubDate>Sun, 02 Aug 2026 10:00:00 +0900</pubDate><category><![CDATA[각종리뷰]]></category></item>
+<item><title><![CDATA[강릉 여행 숙소 후기]]></title><link><![CDATA[https://blog.naver.com/me/3]]></link><pubDate>Sat, 01 Aug 2026 10:00:00 +0900</pubDate><category><![CDATA[각종리뷰]]></category></item>
+<item><title><![CDATA[네일 뷰티 샵 다녀왔어요]]></title><link><![CDATA[https://blog.naver.com/me/4]]></link><pubDate>Fri, 31 Jul 2026 10:00:00 +0900</pubDate><category><![CDATA[각종리뷰]]></category></item>
+</channel></rss>`
+const FEED = parseBlogRss(RSS)
+ok(FEED.blogName === '해우소', '블로그 이름을 읽는다', FEED.blogName)
+ok(FEED.items.length === 4, '글 4편', String(FEED.items.length))
+ok(FEED.items[0].link === 'https://blog.naver.com/me/1', 'fromRss 꼬리를 뗀다', FEED.items[0].link)
+ok(parseBlogRss('<html>rss 아님</html>') === null, 'RSS 가 아니면 null')
+
+// 카테고리 이름 하나에 여러 업종을 몰아넣은 블로그에 속지 않아야 한다
+const PROF = buildBlogProfile({ ...FEED, blogId: 'me' }, '2026-08-04')
+ok(PROF.kind === 'mixed', '여러 업종이면 잡식 리뷰로 본다', PROF.kind)
+ok(PROF.topShare === 100, '카테고리 비율로는 100%')
+ok(PROF.topTradeShare < 100, '업종 비율로는 100% 가 아니다 (실측에서 이걸로 만점이 나왔다)', String(PROF.topTradeShare))
+ok(PROF.tradeGroups.length >= 3, '섞인 업종을 센다', PROF.tradeGroups.join(','))
+ok(PROF.kindReason.includes('업종'), '근거를 함께 준다')
+ok(meaningForUs(PROF).includes('편수'), '우리에게 무엇을 뜻하는지 알려준다')
+
+// 업체 본인 블로그
+const OWNER = classifyBlogger(
+  [{ name: '피앤피짐 ', count: 34 }, { name: '이벤트', count: 13 }, { name: '시설소개', count: 2 }],
+  { topShare: 68, tradeGroups: ['운동·건강'] }
+)
+ok(OWNER.kind === 'owner', '카테고리가 상호·이벤트·시설이면 업체 본인 블로그', OWNER.kind)
+ok(OWNER.reason.includes('경쟁 업체'), '경쟁 업체라고 밝힌다')
+ok(KIND_LABEL[OWNER.kind] === '업체 본인 블로그', '한국어 이름')
+
+// 한 주제에 집중된 블로그
+const TOPICAL = classifyBlogger([{ name: '운동일기', count: 45 }, { name: '식단', count: 5 }], {
+  topShare: 90,
+  tradeGroups: ['운동·건강'],
+})
+ok(TOPICAL.kind === 'topical', '한 주제면 주제 집중 블로그', TOPICAL.kind)
+
+// 노출력을 못 재면 그 항목을 빼고 환산한다 (0점으로 넣으면 점수가 거짓이 된다)
+ok(!PROF.scoreParts.some((s) => s.label === '노출력'), '안 재면 항목이 없다')
+const WITH = buildBlogProfile({ ...FEED, blogId: 'me' }, '2026-08-04', 100)
+ok(WITH.scoreParts.some((s) => s.label === '노출력'), '재면 항목이 붙는다')
+ok(WITH.score > PROF.score - 30, '환산이 무너지지 않는다', `${PROF.score} → ${WITH.score}`)
+
+// 제목에서 검색어 만들기
+ok(queryFromTitle('천안 쌍용동 헬스장 미녀와야수짐 봉명점 후기') === '천안 쌍용동 헬스장', '앞 세 낱말', queryFromTitle('천안 쌍용동 헬스장 미녀와야수짐 봉명점 후기'))
+ok(queryFromTitle('[협찬] 강릉, 여행!') === '협찬 강릉 여행', '기호를 털어낸다', queryFromTitle('[협찬] 강릉, 여행!'))
+ok(queryFromTitle('') === '', '빈 제목')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[35] 발행하면 순위 추적에 자동 등록')
 const PUBLISHED = {
   id: 'p9', status: 'published', mainKeyword: '쌍용동 헬스장',
   publishedUrl: 'https://blog.naver.com/me/224352038257', publishedAt: '2026-07-20T00:00:00.000Z',
@@ -1090,7 +1159,7 @@ const EXIST = [{ id: 'rt1', keyword: '쌍용동헬스장', url: 'https://m.blog.
 ok(autoRankTargets(PUBLISHED, EXIST).length === 0, '띄어쓰기·모바일 주소만 달라도 중복으로 안 넣는다')
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[35] 상위 제목 단어 가르기')
+console.log('\n[36] 상위 제목 단어 가르기')
 const { classifyToken, splitTokens } = require(`${OUT}/analysis/tokens.js`)
 
 // 실제 진단에서 나온 문제: "미녀와야수짐"·"필라테스" 를 소제목에 넣으라고 지시했다
@@ -1126,7 +1195,7 @@ ok(SPL.otherTrades[0].token === '필라테스', '다른 종목도 따로')
 ok(SPL.usable.length + SPL.rivals.length + SPL.otherTrades.length === 4, '문체 조각은 어디에도 안 들어간다')
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[36] 발행 후 실패 진단')
+console.log('\n[37] 발행 후 실패 진단')
 const { diagnose, diagnosisToPrescription, shouldDiagnose, fromAppPost, fromPublished, OUT_OF_RANGE, FIRST_PAGE, SETTLE_DAYS } =
   require(`${OUT}/analysis/diagnose.js`)
 

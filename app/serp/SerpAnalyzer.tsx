@@ -456,6 +456,15 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
                           <Badge tone="default">제목에 키워드 없음</Badge>
                         )}
                         {item.isOfficialBlog && <Badge tone="info">업체 블로그 추정</Badge>}
+                        {/* 이 블로그가 업체 본인인지 체험단인지 — 아이디를 넘겨 바로 진단한다 */}
+                        {item.link && (
+                          <Link
+                            href={`/blog?id=${encodeURIComponent(item.link)}`}
+                            className="text-brand-600 dark:text-brand-100 font-semibold"
+                          >
+                            블로그 진단 →
+                          </Link>
+                        )}
                       </div>
                     </div>
                   </div>
