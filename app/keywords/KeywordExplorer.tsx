@@ -857,6 +857,14 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                   입력되는 검색어라, 우리가 못 떠올린 의도가 여기서 나옵니다. 채점할 때 이 말들이 먼저
                   자리를 잡습니다.
                 </p>
+                {/*
+                  남의 상호는 자동으로 다 걸러낼 수 없다 (「소노벨 천안 헬스장」이 실제로 왔다).
+                  못 하는 것을 못 한다고 말해야 회원이 눈으로 걸러낼 수 있다.
+                */}
+                <p className="muted mt-1 text-[11px] leading-relaxed">
+                  남의 상호가 섞여 올 수 있습니다(예: 「소노벨 천안 헬스장」) — 업체 이름은 저희가 다
+                  알아볼 수 없으니 눈으로 걸러주세요. 남의 상호로 우리 글이 걸려도 도움이 되지 않습니다.
+                </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {suggested.map((c) => (
                     <button

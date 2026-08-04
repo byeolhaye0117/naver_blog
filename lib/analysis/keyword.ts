@@ -464,7 +464,41 @@ export const NEGATIVE_WORDS = [
  *
  * 회원이 직접 넣은 키워드는 이 검사를 거치지 않는다 — 본인이 판단해 넣은 것이다.
  */
-export function isRelevantKeyword(keyword: string, myTokens: Set<string>): boolean {
+/**
+ * 내 동네가 아닌 **다른 동네**가 든 키워드인지 (순수 함수 — 테스트 대상).
+ *
+ * 시 이름을 살려두자 「천안두정동헬스장」·「천안불당동헬스장」처럼 **천안이 붙은 남의
+ * 동네**가 전부 통과해 24칸을 먹었다 (실측: 24줄 중 8줄이 다른 동네였다). 시는 우리
+ * 것이지만 동네는 아니다.
+ *
+ * 판정법: 내 시·동네 이름을 지우고 남은 말에 아직 동/읍/면 이름이 있으면 남의 동네다.
+ *   천안쌍용동헬스장 → (천안·쌍용동 지움) → 헬스장        → 남의 동네 없음 ✓
+ *   천안두정동헬스장 → (천안 지움)        → 두정동헬스장  → 두정동 ✗
+ *
+ * 「운동」에 걸리지 않게 동 앞에 **두 글자 이상**을 요구한다 (운+동은 한 글자).
+ */
+const FOREIGN_AREA = /[가-힣]{2,4}(?:동|읍|면)/
+
+export function hasForeignArea(keyword: string, myAreas: string[], myCities: string[]): boolean {
+  let rest = keyword.replace(/\s+/g, '')
+  // 긴 것부터 지운다 ("천안쌍용동" 이 "쌍용동" 보다 먼저 지워지면 안 된다)
+  for (const w of [...myCities, ...myAreas].sort((a, b) => b.length - a.length)) {
+    if (w) rest = rest.split(w).join('')
+  }
+  return FOREIGN_AREA.test(rest)
+}
+
+export function isRelevantKeyword(
+  keyword: string,
+  myTokens: Set<string>,
+  /** 넘기면 「내 시 + 남의 동네」 꼴까지 걸러낸다 */
+  scope?: { areas: string[]; cities: string[] }
+): boolean {
+  if (scope && hasForeignArea(keyword, scope.areas, scope.cities)) return false
+  return isRelevantKeywordBase(keyword, myTokens)
+}
+
+function isRelevantKeywordBase(keyword: string, myTokens: Set<string>): boolean {
   const flat = keyword.replace(/\s+/g, '')
   const upper = flat.toUpperCase()
 
@@ -494,8 +528,16 @@ export function isRelevantKeyword(keyword: string, myTokens: Set<string>): boole
  * 그냥 걸러내면 회원은 네이버가 준 말이 몇 개였는지도 모른다. 무엇을 왜 뺐는지
  * 보여줘야 걸러내기가 지나친지 판단할 수 있다.
  */
-export function suggestionDrop(keyword: string, myTokens: Set<string>): string | null {
+export function suggestionDrop(
+  keyword: string,
+  myTokens: Set<string>,
+  scope?: { areas: string[]; cities: string[] }
+): string | null {
   const flat = keyword.replace(/\s+/g, '')
+
+  if (scope && hasForeignArea(keyword, scope.areas, scope.cities)) {
+    return '지금 조사하는 동네가 아닙니다 — 그 동네 지점 글로 따로 쓰세요.'
+  }
 
   const bad = NEGATIVE_WORDS.find((w) => flat.includes(w))
   if (bad) return `「${bad}」가 든 검색어 — 우리 글이 이 말로 걸리면 유입이 아니라 사고입니다.`

@@ -1870,7 +1870,7 @@ ok(hb.role === 'main', '짝이 크지만 과열이면 이 줄을 메인으로 �
 // ─────────────────────────────────────────────────────────────
 console.log('\n[46] 사람들이 실제로 치는 검색어 (자동완성)')
 const { parseSuggest, hasRepeatedToken, suggestSeeds } = require(`${OUT}/naver/autocomplete.js`)
-const { cityTokens, suggestionDrop, NEGATIVE_WORDS } = require(`${OUT}/analysis/keyword.js`)
+const { cityTokens, suggestionDrop, hasForeignArea, NEGATIVE_WORDS } = require(`${OUT}/analysis/keyword.js`)
 
 // 실제 응답 모양 (2026-08 실측)
 const AC_REAL = JSON.stringify({
@@ -1935,6 +1935,36 @@ ok(suggestionDrop('쌍용동 필라테스', scopedTokens).includes('필라테스
 ok(suggestionDrop('강남 헬스장', scopedTokens) !== null, '우리 지역이 아니면 뺀다')
 ok(suggestionDrop('쌍용동 맛집', scopedTokens) !== null, '업종 말이 없으면 뺀다')
 ok(NEGATIVE_WORDS.includes('먹튀') && NEGATIVE_WORDS.includes('환불'), '노리면 안 되는 말 목록')
+
+// ─────────────────────────────────────────────────────────────
+// 시는 우리 것이지만 동네는 아니다.
+// 시 이름을 살려두자 「천안두정동헬스장」이 전부 통과해 24칸을 먹었다 (실측: 24줄 중 8줄).
+const MY_AREAS = ['쌍용동', '봉명동']
+const MY_CITIES = ['천안']
+const foreign = (k) => hasForeignArea(k, MY_AREAS, MY_CITIES)
+ok(!foreign('천안쌍용동헬스장'), '내 시 + 내 동네는 통과')
+ok(!foreign('쌍용동 헬스장 일일권'), '내 동네만 있어도 통과')
+ok(!foreign('천안헬스장'), '동네가 없는 광역 키워드는 통과')
+ok(!foreign('천안PT'), '광역 + 업종도 통과')
+ok(foreign('천안두정동헬스장'), '내 시 + 남의 동네는 뺀다')
+ok(foreign('천안불당동헬스장'), '우리 지점이 아닌 동네도 뺀다')
+ok(foreign('천안성정동헬스장'), '다른 지점 동네도 이 조사에서는 뺀다')
+// 「운동」에 걸리면 안 된다 — 운+동은 한 글자라 동네로 보지 않는다
+ok(!foreign('천안운동'), '운동을 동네로 보지 않는다')
+ok(!foreign('쌍용동 운동'), '운동이 섞여도 통과')
+ok(!foreign('천안 다이어트'), '다이어트도 통과')
+// 겹치는 이름은 긴 것부터 지워야 한다
+ok(!foreign('천안쌍용동24시헬스장'), '긴 이름을 먼저 지운다')
+
+// 판정 함수에도 그대로 걸린다
+const SCOPE = { areas: MY_AREAS, cities: MY_CITIES }
+ok(isRelevantKeyword('천안쌍용동헬스장', scopedTokens, SCOPE), '내 동네 키워드는 남는다')
+ok(!isRelevantKeyword('천안두정동헬스장', scopedTokens, SCOPE), '남의 동네 키워드는 빠진다')
+ok(isRelevantKeyword('천안두정동헬스장', scopedTokens), '범위를 안 주면 예전처럼 통과')
+ok(
+  suggestionDrop('천안두정동헬스장', scopedTokens, SCOPE).includes('그 동네 지점 글'),
+  '어디로 가야 하는지 말해준다'
+)
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

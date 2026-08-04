@@ -42,10 +42,9 @@ export async function POST(req: Request) {
 
     // 시 이름은 전 지점에서 모은다 — 지점을 좁혀도 「천안」은 우리 도시다
     const cities = cityTokens(all)
-    const myTokens = new Set([
-      ...myRegionTokens(store ? [store] : all),
-      ...cities,
-    ])
+    const myTokens = new Set([...myRegionTokens(store ? [store] : all), ...cities])
+    // 시는 우리 것이지만 남의 동네는 아니다 (「천안두정동헬스장」은 두정점 글이다)
+    const scope = { areas: areaList, cities: Array.from(cities) }
 
     const seeds = suggestSeeds(areaList, Array.from(cities)[0])
     const { words, asked, answered } = await gatherSuggestions(seeds)
@@ -68,7 +67,7 @@ export async function POST(req: Request) {
         // 자동완성이 원본 질의를 덧붙여 만든 꼴 — 사람이 그렇게 치지는 않는다
         continue
       }
-      const why = suggestionDrop(w, myTokens)
+      const why = suggestionDrop(w, myTokens, scope)
       if (why) {
         dropped.push({ keyword: w, why })
         continue
