@@ -2031,20 +2031,59 @@ ok(
   '축에 얹을 말을 붙인다',
   JSON.stringify(SL.picked.filter((p) => p.role === 'sub').map((p) => [p.keyword, p.under]))
 )
-// 지역이 다른 것은 같은 축에 얹지 않는다
+// 지역이 다른 것은 같은 축에 얹지 않는다 (지역이 빈 값인 광역 묶음도 그 안에서만 묶인다)
+const areaOf = (k) => (SL.picked.find((p) => p.keyword === k) ?? {}).area
 ok(
-  SL.picked.every((p) => p.role === 'main' || p.area === '쌍용동' || p.area === '봉명동'),
-  '지역이 섞이지 않는다'
+  SL.picked.filter((p) => p.role === 'sub').every((p) => areaOf(p.under) === p.area),
+  '서브는 축과 같은 지역에서만 붙는다',
+  JSON.stringify(SL.picked.filter((p) => p.role === 'sub').map((p) => [p.keyword, p.area, p.under]))
+)
+ok(SL.picked.filter((p) => p.role === 'sub').every((p) => p.under), '서브는 어느 축에 얹는지 밝힌다')
+
+/*
+ * 운영 실측으로 잡은 결함 셋.
+ *  ① 「천안운동」이 동네 「천안운동」으로 읽혀 "천안운동에서 가장 많이 찾는 말" 이 나왔다
+ *  ② 월 120회짜리(쌍용동헬스)가 두 번째 축이 됐다 — 그걸로 글을 한 편 더 쓰라는 말이다
+ *  ③ 시를 안 넘기면 「천안헬스장」의 의도를 못 읽어 정보글 키워드가 홍보글에 붙었다
+ */
+ok(splitKeyword('천안운동').area === '', '운동을 동네로 읽지 않는다', splitKeyword('천안운동').area)
+ok(splitKeyword('천안활동비').area === '', '활동도 동네가 아니다')
+ok(splitKeyword('쌍용동헬스장').area === '쌍용동', '진짜 동네는 그대로 읽는다')
+ok(splitKeyword('두정동 PT').area === '두정동', '띄어쓴 동네도 읽는다')
+
+ok(!slKeys.includes('쌍용동헬스'), '월 120회짜리를 두 번째 축으로 세우지 않는다', slKeys.join(','))
+
+// 시를 넘기면 광역 키워드도 의도가 갈린다 — 정보글 키워드가 홍보글 서브로 붙지 않는다
+const SL4 = buildShortlist(
+  [
+    { keyword: '천안헬스장', monthlySearch: 3060, adDepth: 10 },
+    { keyword: '천안다이어트', monthlySearch: 880, adDepth: 10 },
+    { keyword: '천안PT', monthlySearch: 740, adDepth: 10 },
+  ],
+  { areas: ['쌍용동'], cities: ['천안'], limit: 6 }
+)
+const head4 = SL4.picked.find((p) => p.role === 'main')
+ok(head4.area === '천안', '시가 지역으로 잡힌다', head4.area)
+ok(head4.why.includes('천안에서'), '「천안에서 가장 많이 찾는 말」로 읽힌다', head4.why)
+ok(
+  !SL4.picked.some((p) => p.role === 'sub' && p.keyword === '천안다이어트'),
+  '정보글 키워드를 홍보글 서브로 붙이지 않는다',
+  JSON.stringify(SL4.picked.map((p) => [p.keyword, p.role]))
 )
 ok(
-  SL.picked.filter((p) => p.role === 'sub').every((p) => p.under && p.area),
-  '서브는 어느 축에 얹는지 밝힌다'
+  SL4.picked.some((p) => p.role === 'sub' && p.keyword === '천안PT'),
+  '같은 홍보글 키워드는 붙는다'
 )
 
 // 왜 뺐는지 말한다
 const why = (k) => (SL.skipped.find((x) => x.keyword === k) ?? {}).why ?? ''
 ok(why('쌍용동PT').includes('유입이 거의 없습니다'), '검색량이 작으면 이유를 밝히고 뺀다', why('쌍용동PT'))
 ok(SHORTLIST_MIN_SEARCH === 100, '추천 하한')
+ok(
+  why('쌍용동헬스').includes('밀렸습니다'),
+  '두 번째 축이 되지 못한 것은 자리에 밀렸다고 말한다',
+  why('쌍용동헬스')
+)
 ok(
   SL.skipped.some((x) => x.why.includes('밀렸습니다')),
   '자리에 밀린 것은 나쁜 키워드가 아니라고 밝힌다'
