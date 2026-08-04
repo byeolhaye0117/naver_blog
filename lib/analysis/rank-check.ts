@@ -27,9 +27,11 @@ export async function checkRank(target: RankTarget): Promise<RankSnapshot> {
    */
   const unified = await fetchUnifiedBlocks(target.keyword).catch(() => null)
   const hit = unified ? findUnifiedRank(unified, target.url) : null
-  const unifiedFields = hit
-    ? { unifiedBlock: hit.block, unifiedRank: hit.rank, unifiedBlockOrder: hit.blockOrder }
-    : {}
+  const unifiedFields = {
+    // 읽어봤다는 사실 자체를 남긴다 — "없음" 과 "안 재봄" 은 뜻이 다르다
+    ...(unified ? { unifiedChecked: true } : {}),
+    ...(hit ? { unifiedBlock: hit.block, unifiedRank: hit.rank, unifiedBlockOrder: hit.blockOrder } : {}),
+  }
 
   // ① 화면 순위와 같은 경로부터
   const section = await findBlogRank(target.keyword, target.url, RANK_DEPTH)
