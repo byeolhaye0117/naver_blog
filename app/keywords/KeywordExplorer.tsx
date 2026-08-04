@@ -202,6 +202,16 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   /** 조합을 만든 지점 — 세트 판정(24시·여성전용)과 글쓰기 링크에 쓴다 */
   const [comboStore, setComboStore] = useState<Store | null>(null)
 
+  /**
+   * 네이버 검색창 자동완성에서 가져온 말 — **사람들이 실제로 치는 검색어**.
+   * 우리가 만든 조합(가설)과 구분해서 표시하고, 채점은 함께 한다.
+   */
+  const [suggested, setSuggested] = useState<string[]>([])
+  const [suggestBusy, setSuggestBusy] = useState(false)
+  const [suggestNote, setSuggestNote] = useState<string | null>(null)
+  const [suggestDropped, setSuggestDropped] = useState<{ keyword: string; why: string }[]>([])
+  const [suggestDroppedCount, setSuggestDroppedCount] = useState(0)
+
   /** 연관 키워드도 함께 볼지 — 기본은 켬. 내 지역이 아닌 것은 서버에서 걸러진다 */
   const [withRelated, setWithRelated] = useState(true)
   /** 내가 넣은 키워드 (표에서 구분 표시) */
@@ -291,6 +301,42 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
   }
 
   /**
+   * 사람들이 실제로 치는 검색어를 가져와 후보 맨 앞에 얹는다.
+   *
+   * 조합 생성기는 우리가 만든 가설이다("이렇게 검색할 것 같다"). 자동완성은 실제로
+   * 입력되는 말이라, 우리가 못 떠올린 의도가 나온다 — 실측에서 「일일권」·「1일권」·
+   * 「사우나」가 나왔다. 우리 접미사 목록에는 없던 말이다.
+   *
+   * 조합 생성을 막지 않는다 — 이건 네트워크를 타므로 실패할 수 있고, 실패해도 조합은
+   * 그대로 쓸 수 있어야 한다.
+   */
+  async function loadSuggestions(areaList: string[], storeId?: string) {
+    if (!areaList.length) return
+    setSuggestBusy(true)
+    setSuggestNote(null)
+    try {
+      const res = await fetch('/api/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ areas: areaList, storeId }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? '검색어를 가져오지 못했습니다.')
+      const words: string[] = json.keywords ?? []
+      setSuggested(words)
+      setSuggestDropped(json.dropped ?? [])
+      setSuggestDroppedCount(json.droppedCount ?? 0)
+      // 실제 검색어를 앞에 둔다 — 채점 한도(24개)에서 먼저 자리를 잡아야 한다
+      setCombos((prev) => Array.from(new Set([...words, ...prev])))
+      if (!words.length) setSuggestNote('자동완성에서 쓸 만한 말이 나오지 않았습니다.')
+    } catch (e) {
+      setSuggestNote(e instanceof Error ? e.message : '검색어를 가져오지 못했습니다.')
+    } finally {
+      setSuggestBusy(false)
+    }
+  }
+
+  /**
    * 지점 정보에서 동네를 뽑아 조합까지 만들어 준다.
    * 인자가 없으면 전 지점을 합친다. 지점 성격(24시·여성전용)에 맞는 의도를 곱한다.
    */
@@ -308,6 +354,9 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
     setCombos(combineLocalKeywords(found, store ? suffixesForStore(store) : INTENT_SUFFIXES))
     setPicked([])
     setComboStore(store ?? null)
+    setSuggested([])
+    // 실제 검색어는 네트워크를 타므로 뒤따라 얹는다 — 조합은 기다리지 않고 바로 보인다
+    void loadSuggestions(found, store?.id)
   }
 
   /**
@@ -742,11 +791,23 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
             // 지역을 직접 적었으면 어느 지점 글인지 알 수 없다 — 지점 성격 판정을 끈다
             setComboStore(null)
             setPicked([])
+            setSuggested([])
+            void loadSuggestions(areas.split(',').map((s) => s.trim()).filter(Boolean))
           }}
           className="bd mt-3 rounded-xl border px-3.5 py-2 text-sm font-semibold hover:bg-slate-500/8"
         >
           조합 생성
         </button>
+
+        {/* 자동완성 조회는 뒤따라 도착한다 — 진행 중임을 알려야 사라진 것처럼 보이지 않는다 */}
+        {suggestBusy && (
+          <p className="muted mt-2 text-[11px]">네이버 검색창에서 실제 검색어를 가져오는 중…</p>
+        )}
+        {suggestNote && !suggestBusy && (
+          <p className="muted mt-2 text-[11px] leading-relaxed">
+            {suggestNote} 아래 조합은 그대로 쓸 수 있습니다.
+          </p>
+        )}
 
         {combos.length > 0 && (
           <>
@@ -779,21 +840,74 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
               전부 채점하면 <b>황금 키워드</b>가 자동으로 골라지고, <b>같이 쓰면 시너지 나는 세트</b>까지
               묶어 드립니다. 일부만 보려면 아래에서 고르세요.
             </p>
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {combos.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => togglePick(c)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
-                    picked.includes(c)
-                      ? 'bg-brand-600 border-brand-600 text-white'
-                      : 'bd hover:bg-slate-500/8'
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
+            {/*
+              실제 검색어를 우리 조합과 갈라서 보여준다. 둘은 성격이 다르다 —
+              우리 조합은 "이렇게 검색할 것 같다" 는 가설이고, 이건 실제로 입력되는 말이다.
+            */}
+            {suggested.length > 0 && (
+              <div
+                data-suggest="block"
+                className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2.5"
+              >
+                <p className="text-[12px] font-bold text-emerald-800 dark:text-emerald-200">
+                  사람들이 실제로 이렇게 검색합니다 {suggested.length}개
+                </p>
+                <p className="muted mt-1 text-[11px] leading-relaxed">
+                  네이버 검색창 자동완성에서 그대로 가져온 말입니다 — 우리가 만든 조합과 달리 실제로
+                  입력되는 검색어라, 우리가 못 떠올린 의도가 여기서 나옵니다. 채점할 때 이 말들이 먼저
+                  자리를 잡습니다.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {suggested.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => togglePick(c)}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                        picked.includes(c)
+                          ? 'bg-brand-600 border-brand-600 text-white'
+                          : 'border-emerald-500/40 bg-white/70 hover:bg-white dark:bg-white/10 dark:hover:bg-white/20'
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                {suggestDroppedCount > 0 && (
+                  <details className="mt-2">
+                    <summary className="muted cursor-pointer text-[11px] font-semibold select-none">
+                      걸러낸 검색어 {suggestDroppedCount}개 — 왜 뺐는지 보기
+                    </summary>
+                    <ul className="muted mt-1.5 space-y-1 text-[11px] leading-relaxed">
+                      {suggestDropped.map((d) => (
+                        <li key={d.keyword}>
+                          <b>{d.keyword}</b> — {d.why}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+
+            <p className="muted mt-3 text-[11px] font-semibold">우리가 만든 조합</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {combos
+                .filter((c) => !suggested.includes(c))
+                .map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => togglePick(c)}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+                      picked.includes(c)
+                        ? 'bg-brand-600 border-brand-600 text-white'
+                        : 'bd hover:bg-slate-500/8'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
             </div>
           </>
         )}

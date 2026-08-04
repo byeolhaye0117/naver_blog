@@ -1867,5 +1867,74 @@ const hardBig = [pairMk('쌍용동PT', 300, 100, 3), pairMk('쌍용동헬스장'
 const hb = bestPartner(hardBig[0], hardBig, wOpts)
 ok(hb.role === 'main', '짝이 크지만 과열이면 이 줄을 메인으로 남긴다', hb.role)
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[46] 사람들이 실제로 치는 검색어 (자동완성)')
+const { parseSuggest, hasRepeatedToken, suggestSeeds } = require(`${OUT}/naver/autocomplete.js`)
+const { cityTokens, suggestionDrop, NEGATIVE_WORDS } = require(`${OUT}/analysis/keyword.js`)
+
+// 실제 응답 모양 (2026-08 실측)
+const AC_REAL = JSON.stringify({
+  query: ['쌍용동 헬스장'],
+  answer: [],
+  items: [
+    [
+      ['쌍용동 헬스장', '0'],
+      ['천안 쌍용동 헬스장', '0'],
+      ['쌍용동 헬스장 24시', '0'],
+      ['쌍용동 헬스장 일일권', '0'],
+      ['서북 천안쌍용동헬스장', '0'],
+    ],
+  ],
+})
+const AC = parseSuggest(AC_REAL)
+ok(AC.length === 5, '자동완성 목록을 읽는다', String(AC.length))
+ok(AC[3] === '쌍용동 헬스장 일일권', '우리 접미사에 없던 말도 그대로 가져온다', AC[3])
+ok(parseSuggest('깨진 응답').length === 0, '깨진 응답은 빈 목록')
+ok(parseSuggest('{"items":null}').length === 0, 'items 가 없으면 빈 목록')
+ok(parseSuggest('{"items":[["문자열만"]]}')[0] === '문자열만', '문자열만 와도 읽는다')
+
+// 자동완성이 원본 질의를 덧붙여 만든 쓰레기값 (실측: 쌍용동 PT 로 물었을 때)
+ok(hasRepeatedToken('쌍용동 PT 쌍용동pt'), '같은 말이 두 번 든 것은 걸러낸다')
+ok(hasRepeatedToken('쌍용동 쌍용동pt'), '한쪽이 다른 쪽에 든 것도 걸러낸다')
+ok(!hasRepeatedToken('쌍용동 헬스장 일일권'), '정상 검색어는 통과')
+ok(!hasRepeatedToken('서북 천안쌍용동헬스장'), '동네가 겹쳐 보여도 토큰이 다르면 통과')
+
+// 씨앗은 의도를 짜 넣지 않는다 — 뿌리만 주고 뒤는 사람들이 치는 말로 채운다
+const SEEDS = suggestSeeds(['쌍용동', '봉명동'], '천안')
+ok(SEEDS.includes('쌍용동 헬스장') && SEEDS.includes('쌍용동 PT'), '동네 × 뿌리 2개')
+ok(SEEDS.includes('천안 쌍용동 헬스장'), '시 이름을 붙인 꼴도 물어본다')
+ok(SEEDS.includes('천안 헬스장'), '시 단독도 물어본다')
+ok(new Set(SEEDS).size === SEEDS.length, '씨앗이 겹치지 않는다')
+ok(!suggestSeeds(['쌍용동']).some((s) => s.includes('undefined')), '시 이름이 없어도 만든다')
+
+// 시 이름은 지점을 좁혀도 남아야 한다 — 좁히는 순간 「천안쌍용동헬스장」이 사라졌었다
+const STORES = [
+  { location: '쌍용동 먹자골목 인근 도보 5분', localKeywords: ['쌍용동 헬스장', '봉명동 헬스장'] },
+  { location: '성정동 뚜쥬르에서 도보 10분', localKeywords: ['천안 성정동 헬스장'] },
+]
+const CITIES = cityTokens(STORES)
+ok(CITIES.has('천안'), '전 지점에서 시 이름을 모은다', Array.from(CITIES).join(','))
+ok(!CITIES.has('대전'), '없는 도시는 넣지 않는다')
+const scopedTokens = new Set([...myRegionTokens([STORES[0]]), ...CITIES])
+ok(
+  suggestionDrop('천안쌍용동헬스장', scopedTokens) === null,
+  '쌍용점만 조사해도 천안 키워드는 살아남는다',
+  String(suggestionDrop('천안쌍용동헬스장', scopedTokens))
+)
+ok(
+  isRelevantKeyword('천안쌍용동헬스장', scopedTokens),
+  '연관 키워드 판정에서도 살아남는다'
+)
+
+// 무엇을 왜 뺐는지 말한다 (그냥 걸러내면 걸러내기가 지나친지 알 수 없다)
+ok(suggestionDrop('쌍용동 헬스장 일일권', scopedTokens) === null, '쓸 수 있는 말은 통과')
+ok(suggestionDrop('천안 헬스장 먹튀', scopedTokens).includes('먹튀'), '부정어는 이유를 밝히고 뺀다')
+ok(suggestionDrop('천안 헬스장 먹튀', scopedTokens).includes('사고'), '왜 위험한지 말한다')
+ok(suggestionDrop('청주 봉명동 헬스장', scopedTokens).includes('청주'), '다른 도시 같은 동 이름을 뺀다')
+ok(suggestionDrop('쌍용동 필라테스', scopedTokens).includes('필라테스'), '다른 업종을 뺀다')
+ok(suggestionDrop('강남 헬스장', scopedTokens) !== null, '우리 지역이 아니면 뺀다')
+ok(suggestionDrop('쌍용동 맛집', scopedTokens) !== null, '업종 말이 없으면 뺀다')
+ok(NEGATIVE_WORDS.includes('먹튀') && NEGATIVE_WORDS.includes('환불'), '노리면 안 되는 말 목록')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

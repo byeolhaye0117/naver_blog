@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { dedupeAdRows, keywordTool } from '@/lib/naver/searchad'
 import { recentBlogCount } from '@/lib/naver/blogsection'
-import { buildMetric, isRelevantKeyword, myRegionTokens } from '@/lib/analysis/keyword'
+import { buildMetric, cityTokens, isRelevantKeyword, myRegionTokens } from '@/lib/analysis/keyword'
 import { keyStatus, NaverApiError } from '@/lib/naver/client'
 import { readDB } from '@/lib/store'
 import type { KeywordMetric } from '@/lib/types'
@@ -108,7 +108,12 @@ export async function POST(req: Request) {
      */
     const allStores = (await readDB()).stores
     const scoped = body.storeId ? allStores.filter((s) => s.id === body.storeId) : allStores
-    const myTokens = myRegionTokens(scoped.length ? scoped : allStores)
+    // 시 이름은 전 지점에서 모은다 — 좁히는 순간 「천안쌍용동헬스장」이 남의 지역으로
+    // 판정돼 사라졌다 (실측: 월 260·170 두 줄이 통째로 빠졌다). cityTokens 주석 참고.
+    const myTokens = new Set([
+      ...myRegionTokens(scoped.length ? scoped : allStores),
+      ...cityTokens(allStores),
+    ])
 
     const related = adRows
       .filter((r) => !requested.has(r.keyword.replace(/\s+/g, '')))
