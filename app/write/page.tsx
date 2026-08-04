@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/AppShell'
 import Editor from './Editor'
 import type { PostType } from '@/lib/types'
 import StorageNotice from '@/components/StorageNotice'
+import { findPrescription } from '@/lib/analysis/prescription'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +46,16 @@ export default async function WritePage({
       : undefined
   const existing = sp.id ? db.posts.find((p) => p.id === sp.id) : latestDraft
 
+  /**
+   * 이 글의 메인 키워드로 분석해 둔 처방을 꺼낸다.
+   *
+   * 상위노출 분석 화면에서 본 처방("제목 31~39자", "이미지 8장 이상")이 여기까지
+   * 와야 글에 반영된다. 예전에는 /api/write 가 처방을 받을 준비는 돼 있는데 화면이
+   * 보내지 않아서, 분석 결과가 글에 반영되는 경로가 하나도 없었다.
+   */
+  const mainKeyword = existing?.mainKeyword || sp.main
+  const prescription = findPrescription(db.prescriptions, mainKeyword)
+
   return (
     <>
       <PageHeader
@@ -70,6 +81,7 @@ export default async function WritePage({
         initialLocal={sp.local}
         initialType={type}
         initialStoreId={sp.store}
+        prescription={prescription}
         autoOpened={Boolean(latestDraft)}
       />
     </>

@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Post, PostStatus, PostType, Sponsorship, Store } from '@/lib/types'
+import type { Post, PostStatus, PostType, Prescription, Sponsorship, Store } from '@/lib/types'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL, SPONSORSHIP_LABEL } from '@/lib/types'
 import { checkPost } from '@/lib/writing/checker'
 import { buildTemplate, hasGuides, stripGuides } from '@/lib/writing/templates'
 import { adviseRotation, ANGLES, INFO_FORMATS, INTRO_TYPES, REVIEW_INTRO_TYPES, TOPIC_GROUPS } from '@/lib/writing/rotation'
 import { buildCopyPackage, postLogLine } from '@/lib/writing/export'
+import { isPrescriptionStale, prescriptionAgeDays } from '@/lib/analysis/prescription'
 import { Badge, Card, Field, inputClass } from '@/components/ui'
 import { IconSpark } from '@/components/icons'
 import CheckPanel from '@/components/CheckPanel'
@@ -30,6 +31,7 @@ export default function Editor({
   initialLocal,
   initialType,
   initialStoreId,
+  prescription,
   autoOpened = false,
 }: {
   stores: Store[]
@@ -41,6 +43,8 @@ export default function Editor({
   initialLocal?: string
   initialType?: PostType
   initialStoreId?: string
+  /** 이 메인 키워드로 분석해 둔 상위노출 처방 (있으면 AI 지시문에 함께 보낸다) */
+  prescription?: Prescription
   /** 「글 작성」만 눌러 들어와 쓰던 초안을 자동으로 열어준 경우 */
   autoOpened?: boolean
 }) {
@@ -68,10 +72,15 @@ export default function Editor({
 
   const [view, setView] = useState<View>('write')
   const [saving, setSaving] = useState(false)
+  /** 처방을 이 글에 반영할지 — 오래된 처방은 회원이 끌 수 있어야 한다 */
+  const [useRx, setUseRx] = useState(true)
   /** AI 글쓰기 진행 상태·결과 안내 */
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMsg, setAiMsg] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
+
+  const rxAge = prescription ? prescriptionAgeDays(prescription.date) : 0
+  const rxStale = prescription ? isPrescriptionStale(prescription.date) : false
 
   const store = stores.find((s) => s.id === storeId)
   const subKeywords = [sub1, sub2].filter(Boolean)
@@ -201,6 +210,8 @@ export default function Editor({
           localKeyword: localKeyword || store.localKeywords[0],
           eventText,
           sponsorship,
+          // 상위노출 분석에서 나온 처방 — 이게 빠지면 분석이 글에 반영되지 않는다
+          prescription: useRx ? prescription?.items : undefined,
         }),
       })
       const json = await res.json()
@@ -598,6 +609,63 @@ export default function Editor({
                   >
                     {aiMsg}
                   </p>
+                )}
+
+                {/*
+                  상위노출 분석에서 나온 처방을 여기서 보여주고 AI 지시문에 함께 보낸다.
+                  예전에는 분석 화면에만 있어서 회원이 외워 옮겨 적어야 했다 — 즉 분석
+                  결과가 글에 반영되는 경로가 하나도 없었다.
+                */}
+                {prescription && (
+                  <div
+                    data-rx="card"
+                    className={`mb-3 rounded-[14px] border px-3.5 py-3 ${
+                      useRx
+                        ? 'border-brand-500/30 bg-brand-500/8'
+                        : 'bd surface opacity-70'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[12.5px] font-bold">
+                        「{prescription.keyword}」 상위노출 처방 {prescription.items.length}개
+                      </span>
+                      {rxStale ? (
+                        <Badge tone="warn">{rxAge}일 전 분석 — 다시 보는 게 좋습니다</Badge>
+                      ) : (
+                        <Badge tone="good">{rxAge === 0 ? '오늘' : `${rxAge}일 전`} 분석</Badge>
+                      )}
+                      <label className="ml-auto flex items-center gap-1.5 text-[11.5px] font-bold">
+                        <input
+                          type="checkbox"
+                          checked={useRx}
+                          onChange={(e) => setUseRx(e.target.checked)}
+                          className="size-4"
+                          aria-label="처방을 글에 반영"
+                        />
+                        글에 반영
+                      </label>
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {prescription.items.map((it, i) => (
+                        <li key={i} className="flex gap-1.5 text-[11.5px] leading-relaxed">
+                          <span className="muted shrink-0">·</span>
+                          <span>{it}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="muted mt-2 text-[11px] leading-relaxed">
+                      상위 {prescription.sampled}개 글을 분석한 결과입니다.{' '}
+                      {useRx
+                        ? '「AI로 본문 쓰기」를 누르면 이 내용을 지시문에 함께 넣습니다.'
+                        : '체크를 켜면 AI 지시문에 함께 넣습니다.'}{' '}
+                      <a
+                        href={`/serp?keyword=${encodeURIComponent(prescription.keyword)}`}
+                        className="text-brand-600 dark:text-brand-100 font-semibold underline"
+                      >
+                        다시 분석
+                      </a>
+                    </p>
+                  </div>
                 )}
                 <Field
                   label="제목"

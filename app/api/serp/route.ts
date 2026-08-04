@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { analyzePastedSerp } from '@/lib/analysis/serp'
 import { recentBlogCount, topBlogPosts } from '@/lib/naver/blogsection'
+import { keepPrescription } from '@/lib/analysis/keep-prescription'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
     }
 
     const analysis = analyzePastedSerp(keyword, top.items, recent.count ?? 0, limit, 'section')
+    await keepPrescription(analysis)
     return NextResponse.json({ analysis })
   } catch (e) {
     return NextResponse.json(

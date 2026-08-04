@@ -138,6 +138,29 @@ export interface DB {
   rankTargets: RankTarget[]
   rankSnapshots: RankSnapshot[]
   placeRanks: PlaceRank[]
+  /** 상위노출 분석 처방 — 글 쓸 때 자동으로 꺼내 쓴다 */
+  prescriptions: Prescription[]
+}
+
+/**
+ * 키워드별 상위노출 처방 보관.
+ *
+ * 분석 화면에서 본 처방이 글 쓰는 화면까지 오지 않으면, 회원이 그걸 외워서 옮겨
+ * 적어야 한다 — 실제로는 아무도 안 한다. 그래서 분석할 때 저장해 두고, 그 키워드로
+ * 글을 열면 자동으로 꺼내 AI 지시문에 넣는다.
+ *
+ * 키워드당 하나만 남긴다 (다시 분석하면 갱신). 오래된 처방은 상위권이 이미 바뀌었을
+ * 수 있으므로 화면에서 분석 날짜를 함께 보여준다.
+ */
+export interface Prescription {
+  /** 공백을 없앤 키워드 — 찾을 때 띄어쓰기 차이로 못 찾는 일을 막는다 */
+  key: string
+  keyword: string
+  items: string[]
+  /** 분석한 날 (YYYY-MM-DD) */
+  date: string
+  /** 그때 본 상위 글 수 */
+  sampled: number
 }
 
 // ─── 키워드 조사 ───────────────────────────────────────────────

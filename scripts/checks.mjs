@@ -24,6 +24,9 @@ const { mockKeywordTool, dedupeAdRows } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword } = require(`${OUT}/analysis/keyword.js`)
 const { phaseOf, buildRankViews } = require(`${OUT}/analysis/rank.js`)
 const { isPartialMonth, completedMonths, momentumOf } = require(`${OUT}/naver/datalab.js`)
+const { prescriptionKey, upsertPrescription, findPrescription, prescriptionAgeDays, isPrescriptionStale } = require(
+  `${OUT}/analysis/prescription.js`
+)
 let fails = 0
 const ok = (cond, label, extra = '') => {
   if (!cond) fails++
@@ -967,6 +970,33 @@ ok(s0.local === '쌍용동', '정보글 조연으로 쓸 지역 키워드')
 ok(plan.splits.some((x) => x.keyword === '쌍용동 헬스장 후기' && x.postType === 'review'), '후기는 따로 쓰라고 알려준다')
 ok(plan.sets.some((s) => s.main.keyword === '봉명동 헬스장'), '다른 지역은 별도 세트')
 ok(plan.sets.every((s) => !(s.area === '쌍용동' && s.subs.some((x) => x.metric.keyword.includes('봉명동')))), '지역이 섞이지 않는다')
+
+// 상위노출 처방이 글쓰기 화면까지 와야 분석이 글에 반영된다
+ok(prescriptionKey('쌍용동 헬스장') === '쌍용동헬스장', '띄어쓰기를 없앤 키로 찾는다')
+const RX1 = { key: prescriptionKey('쌍용동 헬스장'), keyword: '쌍용동 헬스장', items: ['제목 31~39자'], date: '2026-08-01', sampled: 15 }
+const RX2 = { key: prescriptionKey('두정동 헬스장'), keyword: '두정동 헬스장', items: ['이미지 8장'], date: '2026-08-02', sampled: 15 }
+let RXL = upsertPrescription([], RX1)
+RXL = upsertPrescription(RXL, RX2)
+ok(RXL.length === 2, '키워드마다 하나씩 쌓인다')
+ok(RXL[0].keyword === '두정동 헬스장', '새 것이 앞에 온다')
+const RX1b = { ...RX1, items: ['제목 31~39자', '이미지 8장 이상'], date: '2026-08-04' }
+RXL = upsertPrescription(RXL, RX1b)
+ok(RXL.length === 2, '같은 키워드는 갱신 (쌓이지 않는다)', String(RXL.length))
+ok(findPrescription(RXL, '쌍용동 헬스장').items.length === 2, '갱신된 내용이 나온다')
+ok(findPrescription(RXL, '쌍용동헬스장')?.keyword === '쌍용동 헬스장', '띄어쓰기가 달라도 찾는다')
+ok(findPrescription(RXL, '없는 키워드') === undefined, '없으면 undefined')
+ok(findPrescription(RXL, undefined) === undefined, '키워드가 비면 undefined')
+// 저장소가 JSON 한 덩어리라 무한정 쌓이면 안 된다
+let many = []
+for (let i = 0; i < 80; i++) many = upsertPrescription(many, { ...RX1, key: `k${i}`, keyword: `k${i}` })
+ok(many.length === 60, '상한을 넘지 않는다', String(many.length))
+ok(many[0].keyword === 'k79', '최근 것이 남는다')
+// 오래된 처방은 상위권이 이미 바뀌었을 수 있다
+const TODAY = new Date('2026-08-20T00:00:00Z')
+ok(prescriptionAgeDays('2026-08-20', TODAY) === 0, '오늘 분석은 0일')
+ok(prescriptionAgeDays('2026-08-01', TODAY) === 19, '19일 전', String(prescriptionAgeDays('2026-08-01', TODAY)))
+ok(isPrescriptionStale('2026-08-01', TODAY), '14일 넘으면 다시 보라고 한다')
+ok(!isPrescriptionStale('2026-08-10', TODAY), '10일 전은 아직 유효')
 
 // 진행 중인 이번 달은 모멘텀에서 빼야 한다 (실측: 8월 3일 조회에 8월이 5.7 로 찍혀 -23%)
 const NOW = new Date('2026-08-03T00:00:00Z')

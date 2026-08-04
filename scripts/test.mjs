@@ -25,6 +25,7 @@ const TARGETS = [
   'lib/naver/place.ts',
   'lib/analysis/keyword.ts',
   'lib/analysis/synergy.ts',
+  'lib/analysis/prescription.ts',
   'lib/analysis/serp.ts',
   'lib/analysis/paste.ts',
   'lib/analysis/rank.ts',
