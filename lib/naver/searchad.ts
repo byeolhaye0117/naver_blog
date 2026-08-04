@@ -145,6 +145,19 @@ export function dedupeAdRows(rows: AdKeywordRow[]): AdKeywordRow[] {
   return Array.from(seen.values())
 }
 
+/**
+ * 힌트가 5개를 넘으면 나눠서 순서대로 부른다.
+ *
+ * 키워드도구는 한 번에 5개까지만 받는다. 동시에 던지면 속도 제한에 걸리므로 순서대로 간다.
+ */
+export async function keywordToolMany(keywords: string[]): Promise<AdKeywordRow[]> {
+  const rows: AdKeywordRow[] = []
+  for (let i = 0; i < keywords.length; i += 5) {
+    rows.push(...(await keywordTool(keywords.slice(i, i + 5))))
+  }
+  return rows
+}
+
 /** 특정 키워드 하나의 검색량. 목록에서 정확히 일치하는 행을 찾고, 없으면 첫 행을 쓴다. */
 export async function keywordVolume(keyword: string): Promise<AdKeywordRow> {
   const rows = await keywordTool([keyword])

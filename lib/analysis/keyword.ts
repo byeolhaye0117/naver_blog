@@ -560,6 +560,26 @@ function isRelevantKeywordBase(keyword: string, myTokens: Set<string>): boolean 
 }
 
 /**
+ * 업종만 본다 — 지역은 보지 않는다.
+ *
+ * 추리기(shortlist)는 이미 지역별로 묶어 돌리므로 지역 판정이 필요 없다. 그런데 업종
+ * 판정을 빼먹었다가 테스트에서 **「쌍용동필라테스」가 추천 목록에 뽑혔다** — 검색량
+ * 500회에 궁합 판정이 「한 글에 함께 넣을 수 있음」으로 나와서 24시 키워드를 밀어냈다.
+ * 우리 업종이 아닌 말은 검색량이 얼마든 우리 글감이 아니다.
+ */
+export function tradeDrop(keyword: string): string | null {
+  const flat = keyword.replace(/\s+/g, '')
+  const other = OTHER_TRADES.find((w) => flat.includes(w))
+  if (other) return `${other} — 우리 업종이 아닙니다.`
+  const bad = NEGATIVE_WORDS.find((w) => flat.includes(w))
+  if (bad) return `「${bad}」가 든 말 — 우리 글이 이 말로 걸리면 유입이 아니라 사고입니다.`
+  if (!GYM_WORDS.some((w) => flat.toUpperCase().includes(w.toUpperCase()))) {
+    return '헬스·운동 업종 말이 없습니다.'
+  }
+  return null
+}
+
+/**
  * 자동완성으로 가져온 말을 쓸 수 있는지 — 못 쓰면 **왜 못 쓰는지**를 돌려준다.
  *
  * 그냥 걸러내면 회원은 네이버가 준 말이 몇 개였는지도 모른다. 무엇을 왜 뺐는지
