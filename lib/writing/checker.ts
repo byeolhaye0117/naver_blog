@@ -1,4 +1,5 @@
 import { contentBalance, INFO_MIN_BY_TYPE, PROMO_MAX_BY_TYPE } from '../analysis/content'
+import { TITLE_SHAPE_LABEL, titleAdvice, titleShape } from '../analysis/title'
 import { evidenceHeadline, itemEvidence } from './evidence'
 import type { PooledFactor } from '../analysis/factors'
 import type {
@@ -376,6 +377,26 @@ export function checkPost(input: CheckInput): CheckResult {
           ? '상위 글은 대부분 앞 6자 안에 키워드가 있었습니다. 앞으로 당기면 같은 글로 더 유리해집니다.'
           : undefined,
     weight: 4,
+  })
+
+  /*
+   * 제목 유형.
+   *
+   * 두 판의 상위 8편 제목을 열어보니 전국 정보 키워드는 6편이 질문형이었고 우리 지역
+   * 판은 0편이었다 (lib/analysis/title.ts 주석). 「전국이 그러니 우리도」로 단정하지 않고
+   * 관찰 신호(titleQuestion)로도 재고 있으므로, 여기서는 **낮은 비중으로 권하기만** 한다.
+   * 후기·추천형도 통과시킨다 — 우리 판 상위권의 기본형이라 틀렸다고 할 근거가 없다.
+   */
+  const shape = titleShape(title)
+  add({
+    id: 'titleShape',
+    group: '키워드',
+    label: '제목 유형',
+    level: shape === 'plain' ? 'warn' : 'pass',
+    value: TITLE_SHAPE_LABEL[shape],
+    target: '질문형·숫자형·후기형 (평서형만 주의)',
+    hint: shape === 'question' ? undefined : titleAdvice(title),
+    weight: 2,
   })
 
   const first100 = parsed.intro.replace(/\s+/g, '').slice(0, 100)

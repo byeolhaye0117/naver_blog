@@ -64,6 +64,13 @@ export interface FactorSample {
    * 재보니 아니었다 — 봉명동은 공감 81개가 4위, 49개가 6위였다 (reaction.ts 주석).
    */
   likes: number | null
+  /**
+   * 제목이 질문형인지 (1 = 질문형, 0 = 아님).
+   *
+   * 전국 정보 키워드 상위 8편 중 6편이 질문형이었고 우리 지역 판은 0편이었다
+   * (lib/analysis/title.ts 주석). 「전국이 그러니 우리도」로 정하지 않고 재본다.
+   */
+  titleQuestion: number | null
 }
 
 export type FactorKey =
@@ -77,6 +84,7 @@ export type FactorKey =
   | 'promo'
   | 'experience'
   | 'likes'
+  | 'titleQuestion'
 
 export const FACTOR_LABEL: Record<FactorKey, string> = {
   age: '최신성',
@@ -89,6 +97,7 @@ export const FACTOR_LABEL: Record<FactorKey, string> = {
   promo: '홍보 요소 (파는 말)',
   experience: '경험 요소 (겪은 사람만 쓰는 말)',
   likes: '공감 수',
+  titleQuestion: '제목 질문형',
 }
 
 /** 값이 클수록 상위여야 「유리」인지, 작을수록 상위여야 「유리」인지 */
@@ -105,6 +114,7 @@ const BIGGER_IS_BETTER: Record<FactorKey, boolean> = {
   promo: true,
   experience: true,
   likes: true,
+  titleQuestion: true,
 }
 
 function valueOf(s: FactorSample, key: FactorKey): number | null {
@@ -130,6 +140,8 @@ function valueOf(s: FactorSample, key: FactorKey): number | null {
       return s.experienceWords
     case 'likes':
       return s.likes
+    case 'titleQuestion':
+      return s.titleQuestion
   }
 }
 
@@ -228,6 +240,7 @@ function noteFor(key: FactorKey, advantage: number | null, n: number): string {
       promo: '홍보 표현이 많은 글이 위에 있습니다',
       experience: '경험을 쓴 글이 위에 있습니다',
       likes: '공감이 많은 글이 위에 있습니다',
+      titleQuestion: '질문형 제목(「왜 안 빠질까?」)을 쓴 글이 위에 있습니다',
     }
     return `${label} — ${how} ${what[key]} (${advantage}, 표본 ${n}편).`
   }
@@ -242,6 +255,7 @@ function noteFor(key: FactorKey, advantage: number | null, n: number): string {
     promo: '홍보 표현이 적은 글이 위에 있습니다 (많이 넣을수록 아래로 갑니다)',
     experience: '경험을 덜 쓴 글이 오히려 위에 있습니다',
     likes: '공감이 적은 글이 오히려 위에 있습니다 (공감 늘리기로는 순위가 안 올라갑니다)',
+    titleQuestion: '질문형이 아닌 제목이 오히려 위에 있습니다 (이 판에서는 질문형으로 바꿀 이유가 없습니다)',
   }
   return `${label} — ${how} ${dir} 갑니다: ${opposite[key]} (${advantage}, 표본 ${n}편).`
 }
@@ -257,6 +271,7 @@ export const FACTOR_KEYS: FactorKey[] = [
   'promo',
   'experience',
   'likes',
+  'titleQuestion',
 ]
 
 /** 상위 글 표본에서 신호별 관계를 잰다 (순수 함수 — 테스트 대상) */
@@ -289,12 +304,43 @@ export function measureFactors(samples: FactorSample[]): FactorResult[] {
   })
 }
 
+/**
+ * 관찰이 속한 **판**.
+ *
+ * 이걸 안 나누면 숫자가 섞여 망가진다. 실측(2026-08-05, 프로덕션)에서 두 판의 규칙이
+ * 정반대였다.
+ *
+ *                우리 지역        전국 정보
+ *   최신성        +0.63           +0.04
+ *   홍보 요소     -0.18           **+0.63**
+ *
+ * 이걸 한 통에 모으면 「최신성이 가장 센 신호」와 「홍보는 적을수록」이 둘 다 흐려진다.
+ * 그래서 참고용으로 재는 전국 키워드는 **따로 모은다** — 참고는 참고고, 우리 판의 근거는
+ * 우리 판에서만 나온다.
+ */
+export type Arena = 'local' | 'reference'
+
+export const ARENA_LABEL: Record<Arena, string> = {
+  local: '우리 판 (지점 지역 키워드)',
+  reference: '참고 판 (전국 키워드)',
+}
+
 export interface FactorObservation {
   keyword: string
   /** YYYY-MM-DD */
   date: string
   sampled: number
   results: FactorResult[]
+  /** 어느 판인지. 없으면 'local' — 예전 기록은 전부 지역 키워드였다 */
+  arena?: Arena
+}
+
+/** 관찰을 판별로 나눈다 (순수 함수 — 테스트 대상) */
+export function splitByArena(runs: FactorObservation[]): Record<Arena, FactorObservation[]> {
+  return {
+    local: runs.filter((r) => (r.arena ?? 'local') === 'local'),
+    reference: runs.filter((r) => r.arena === 'reference'),
+  }
 }
 
 export function buildObservation(

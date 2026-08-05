@@ -176,6 +176,14 @@ export interface DB {
    * 기준은 조용히 바뀌므로 오래된 관찰도 지우지 않고 날짜와 함께 남긴다.
    */
   factorRuns?: FactorRun[]
+  /**
+   * 참고용으로 계속 관찰할 **전국 키워드**.
+   *
+   * 회원 요청 — "전국 통틀어 인기 있고 상위노출되는 블로그를 찾아 그 톤에 맞추면 어떨까."
+   * 톤을 짐작으로 베끼지 않고 같은 지표로 재서 비교하려고 둔다. 우리 판 집계와는
+   * 섞지 않는다 (규칙이 정반대로 나온 실측이 있다).
+   */
+  benchmarkKeywords?: string[]
 }
 
 /** 한 번의 관찰 (lib/analysis/factors.ts 의 FactorObservation 을 그대로 저장한다) */
@@ -184,6 +192,13 @@ export interface FactorRun {
   /** YYYY-MM-DD */
   date: string
   sampled: number
+  /**
+   * 어느 판의 관찰인지 ('local' = 우리 지역 / 'reference' = 참고용 전국).
+   *
+   * 없으면 'local' 이다 — 이 항목을 만들기 전 기록은 전부 지역 키워드였다.
+   * 판을 섞으면 숫자가 망가진다 (lib/analysis/factors.ts 의 Arena 주석).
+   */
+  arena?: 'local' | 'reference'
   results: {
     key: string
     label: string

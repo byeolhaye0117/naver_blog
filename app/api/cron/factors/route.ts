@@ -5,6 +5,7 @@ import { measureTopPosts } from '@/lib/naver/blogpost'
 import { buildObservation, daysBetween, type FactorSample } from '@/lib/analysis/factors'
 import { areasFromStore } from '@/lib/analysis/keyword'
 import { countSignals } from '@/lib/analysis/content'
+import { isQuestionTitle } from '@/lib/analysis/title'
 import { fetchLikeCounts } from '@/lib/naver/reaction'
 import type { FactorRun } from '@/lib/types'
 
@@ -57,19 +58,37 @@ export async function GET(req: Request) {
     ])
   ).filter(Boolean)
 
+  /*
+   * 참고용 전국 키워드 — **우리 판 뒤에 붙인다.**
+   *
+   * 회원 요청("전국에서 잘 되는 블로그 톤을 참고하자")으로 만든 자리다. 다만 순서를
+   * 뒤로 둔다 — 하루에 도는 양이 정해져 있어서 앞에 두면 우리 판 관찰이 밀린다.
+   * 집계도 섞지 않는다 (arena: 'reference').
+   */
+  const benchmark = (db.benchmarkKeywords ?? []).filter(Boolean)
+
   // 오늘 이미 잰 것은 건너뛰고, 가장 오래 안 잰 것부터
   const lastSeen = new Map<string, string>()
   for (const r of runs) lastSeen.set(r.keyword, r.date)
-  const targets = pool
-    .filter((k) => lastSeen.get(k) !== today)
-    .sort((a, b) => (lastSeen.get(a) ?? '').localeCompare(lastSeen.get(b) ?? ''))
-    .slice(0, MAX_KEYWORDS)
+  const pick = (list: string[], n: number) =>
+    list
+      .filter((k) => lastSeen.get(k) !== today)
+      .sort((a, b) => (lastSeen.get(a) ?? '').localeCompare(lastSeen.get(b) ?? ''))
+      .slice(0, n)
 
-  const done: { keyword: string; sampled: number; measured: number }[] = []
+  const localTargets = pick(pool, MAX_KEYWORDS)
+  // 참고 판은 하루 1개만 — 남은 자리가 있을 때만 돈다
+  const refTargets = pick(benchmark, Math.max(0, MAX_KEYWORDS + 1 - localTargets.length))
+  const targets: { keyword: string; arena: 'local' | 'reference' }[] = [
+    ...localTargets.map((keyword) => ({ keyword, arena: 'local' as const })),
+    ...refTargets.map((keyword) => ({ keyword, arena: 'reference' as const })),
+  ]
+
+  const done: { keyword: string; sampled: number; measured: number; arena: string }[] = []
   const failed: { keyword: string; why: string }[] = []
   const fresh: FactorRun[] = []
 
-  for (const keyword of targets) {
+  for (const { keyword, arena } of targets) {
     try {
       const top = await topBlogPosts(keyword, TOP)
       if (!top.items.length) {
@@ -100,12 +119,13 @@ export async function GET(req: Request) {
           experienceWords: m ? countSignals(m.text).experience : null,
           likes: likes.has(it.url) ? (likes.get(it.url) as number) : null,
           titleLength: title.length,
+          titleQuestion: isQuestionTitle(title) ? 1 : 0,
           keywordPos: title.replace(/\s+/g, '').indexOf(flatKeyword),
         }
       })
 
-      fresh.push(buildObservation(keyword, today, samples) as FactorRun)
-      done.push({ keyword, sampled: samples.length, measured: measured.length })
+      fresh.push({ ...buildObservation(keyword, today, samples), arena } as FactorRun)
+      done.push({ keyword, sampled: samples.length, measured: measured.length, arena })
     } catch (e) {
       failed.push({ keyword, why: e instanceof Error ? e.message : '관찰 실패' })
     }
@@ -123,6 +143,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     date: today,
     pool: pool.length,
+    benchmark: benchmark.length,
     observed: done,
     failed,
     stored: (await readDB()).factorRuns?.length ?? 0,
