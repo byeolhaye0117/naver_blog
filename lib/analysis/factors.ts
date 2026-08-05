@@ -48,9 +48,27 @@ export interface FactorSample {
   titleLength: number
   /** 제목에서 메인 키워드가 시작되는 위치 (-1 = 없음) */
   keywordPos: number
+  /**
+   * 본문에 든 신호 종류 수 (lib/analysis/content.ts). null = 본문을 못 읽음.
+   *
+   * 회원 질문에서 나온 항목이다 — "시설·이벤트 안내만으로는 잘 안 띄어주는 것 같다."
+   * 한 번 세보고 검수 기준까지 만들었으니, 그 기준이 계속 맞는지 매일 다시 재야 한다.
+   */
+  infoWords: number | null
+  promoWords: number | null
+  experienceWords: number | null
 }
 
-export type FactorKey = 'age' | 'chars' | 'images' | 'videos' | 'titleLength' | 'keywordFront'
+export type FactorKey =
+  | 'age'
+  | 'chars'
+  | 'images'
+  | 'videos'
+  | 'titleLength'
+  | 'keywordFront'
+  | 'info'
+  | 'promo'
+  | 'experience'
 
 export const FACTOR_LABEL: Record<FactorKey, string> = {
   age: '최신성',
@@ -59,6 +77,9 @@ export const FACTOR_LABEL: Record<FactorKey, string> = {
   videos: '영상 수',
   titleLength: '제목 길이',
   keywordFront: '제목 앞쪽에 키워드',
+  info: '정보 요소 (읽는 사람이 가져갈 것)',
+  promo: '홍보 요소 (파는 말)',
+  experience: '경험 요소 (겪은 사람만 쓰는 말)',
 }
 
 /** 값이 클수록 상위여야 「유리」인지, 작을수록 상위여야 「유리」인지 */
@@ -69,6 +90,11 @@ const BIGGER_IS_BETTER: Record<FactorKey, boolean> = {
   videos: true,
   titleLength: true,
   keywordFront: false, // 위치 숫자가 작을수록(앞쪽) 상위이면 유리
+  info: true,
+  // 홍보 요소는 **적을수록** 유리하다는 게 실측 결과다. 그래도 부호를 뒤집지 않고
+  // 값이 클수록 유리한 것으로 두면, 화면에 음수로 나와 「많으면 불리」가 그대로 읽힌다.
+  promo: true,
+  experience: true,
 }
 
 function valueOf(s: FactorSample, key: FactorKey): number | null {
@@ -86,6 +112,12 @@ function valueOf(s: FactorSample, key: FactorKey): number | null {
     case 'keywordFront':
       // 제목에 아예 없으면 「맨 뒤보다 더 나쁨」으로 두지 않고 표본에서 뺀다
       return s.keywordPos < 0 ? null : s.keywordPos
+    case 'info':
+      return s.infoWords
+    case 'promo':
+      return s.promoWords
+    case 'experience':
+      return s.experienceWords
   }
 }
 
@@ -180,6 +212,9 @@ function noteFor(key: FactorKey, advantage: number | null, n: number): string {
       videos: '영상이 있는 글이 위에 있습니다',
       titleLength: '제목이 긴 글이 위에 있습니다',
       keywordFront: '제목 앞쪽에 키워드를 둔 글이 위에 있습니다',
+      info: '읽는 사람이 가져갈 정보가 많은 글이 위에 있습니다',
+      promo: '홍보 표현이 많은 글이 위에 있습니다',
+      experience: '경험을 쓴 글이 위에 있습니다',
     }
     return `${label} — ${how} ${what[key]} (${advantage}, 표본 ${n}편).`
   }
@@ -190,6 +225,9 @@ function noteFor(key: FactorKey, advantage: number | null, n: number): string {
     videos: '영상이 없는 글이 오히려 위에 있습니다',
     titleLength: '제목이 짧은 글이 오히려 위에 있습니다',
     keywordFront: '키워드를 뒤에 둔 글이 오히려 위에 있습니다',
+    info: '정보가 적은 글이 오히려 위에 있습니다',
+    promo: '홍보 표현이 적은 글이 위에 있습니다 (많이 넣을수록 아래로 갑니다)',
+    experience: '경험을 덜 쓴 글이 오히려 위에 있습니다',
   }
   return `${label} — ${how} ${dir} 갑니다: ${opposite[key]} (${advantage}, 표본 ${n}편).`
 }
@@ -201,6 +239,9 @@ export const FACTOR_KEYS: FactorKey[] = [
   'videos',
   'titleLength',
   'keywordFront',
+  'info',
+  'promo',
+  'experience',
 ]
 
 /** 상위 글 표본에서 신호별 관계를 잰다 (순수 함수 — 테스트 대상) */

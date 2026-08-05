@@ -358,7 +358,17 @@ export interface SerpAnalysis {
 
 export type CheckLevel = 'pass' | 'warn' | 'fail'
 
-export type CheckGroup = '분량·구조' | '키워드' | '이미지·태그' | '저품질 위험' | 'AI 티 제거'
+export type CheckGroup =
+  | '분량·구조'
+  | '키워드'
+  /**
+   * 내용 균형 — 「읽는 사람이 가져갈 게 있나」 vs 「홍보만 하고 있나」.
+   * 상위 글 실측에서 갈린 축이다 (lib/analysis/content.ts 주석).
+   */
+  | '내용 균형'
+  | '이미지·태그'
+  | '저품질 위험'
+  | 'AI 티 제거'
 
 export interface CheckItem {
   id: string

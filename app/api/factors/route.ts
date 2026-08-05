@@ -9,6 +9,7 @@ import {
   poolHeadline,
   type FactorSample,
 } from '@/lib/analysis/factors'
+import { countSignals } from '@/lib/analysis/content'
 import type { FactorRun } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -84,6 +85,10 @@ export async function POST(req: Request) {
         charCount: m ? m.charCount : null,
         imageCount: m ? m.imageCount : null,
         videoCount: m ? m.videoCount : null,
+        // 본문을 못 읽으면 null — 0 으로 두면 「정보가 하나도 없는 글」이라는 거짓이 된다
+        infoWords: m ? countSignals(m.text).info : null,
+        promoWords: m ? countSignals(m.text).promo : null,
+        experienceWords: m ? countSignals(m.text).experience : null,
         titleLength: title.length,
         keywordPos: pos,
       }

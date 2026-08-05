@@ -1,3 +1,4 @@
+import { contentBalance, INFO_MIN, PROMO_MAX } from '../analysis/content'
 import type {
   CheckItem,
   CheckLevel,
@@ -520,6 +521,37 @@ export function checkPost(input: CheckInput): CheckResult {
       })
     }
   }
+
+  /*
+   * ─── 내용 균형 ───────────────────────────────────────────────
+   *
+   * 상위 글 11편을 실제로 세보고 넣은 두 항목이다 (content.ts 주석).
+   *   1~3위 평균: 정보 5.2종류 · 홍보 2.0종류
+   *   4위 이하  : 정보 3.6종류 · 홍보 3.8종류
+   * 정보가 모자란 것과 홍보가 과한 것은 고칠 방법이 달라서(더하기 / 덜어내기)
+   * 한 항목으로 묶지 않고 따로 낸다.
+   */
+  const balance = contentBalance(scanText)
+  add({
+    id: 'info-substance',
+    group: '내용 균형',
+    label: '읽는 사람이 가져갈 정보',
+    level: level(balance.signals.info >= INFO_MIN, balance.signals.info >= INFO_MIN - 2),
+    value: `${balance.signals.info}종류`,
+    target: `${INFO_MIN}종류 이상 (상위 1~3위 평균 5.2)`,
+    hint: balance.level === 'thin' || balance.level === 'both' ? balance.infoNote : undefined,
+    weight: 4,
+  })
+  add({
+    id: 'promo-restraint',
+    group: '내용 균형',
+    label: '홍보 표현 절제',
+    level: level(balance.signals.promo <= PROMO_MAX, balance.signals.promo <= PROMO_MAX + 2),
+    value: `${balance.signals.promo}종류`,
+    target: `${PROMO_MAX}종류 이하 (상위 1~3위 평균 2.0)`,
+    hint: balance.level === 'pushy' || balance.level === 'both' ? balance.promoNote : undefined,
+    weight: 3,
+  })
 
   // ─── 저품질 위험 ─────────────────────────────────────────────
   add({
