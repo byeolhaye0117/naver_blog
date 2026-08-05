@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Post, PostStatus, PostType, Prescription, Sponsorship, Store } from '@/lib/types'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL, SPONSORSHIP_LABEL } from '@/lib/types'
@@ -9,6 +9,7 @@ import { buildTemplate, hasGuides, stripGuides } from '@/lib/writing/templates'
 import { adviseRotation, ANGLES, INFO_FORMATS, INTRO_TYPES, REVIEW_INTRO_TYPES, TOPIC_GROUPS } from '@/lib/writing/rotation'
 import { buildCopyPackage, postLogLine } from '@/lib/writing/export'
 import { isPrescriptionStale, prescriptionAgeDays } from '@/lib/analysis/prescription'
+import type { IntentSuggestion } from '@/lib/analysis/intent'
 import { Badge, Card, Field, inputClass } from '@/components/ui'
 import { IconSpark } from '@/components/icons'
 import CheckPanel from '@/components/CheckPanel'
@@ -58,6 +59,13 @@ export default function Editor({
   const [title, setTitle] = useState(existing?.title ?? '')
   const [body, setBody] = useState(existing?.body ?? '')
   const [mainKeyword, setMainKeyword] = useState(existing?.mainKeyword ?? initialMain ?? '')
+
+  /**
+   * 「이 키워드는 어떤 글이 유리한가」 제안.
+   * 결정은 회원이 한다 — 앱은 근거를 보여주고 바꿀 버튼만 준다.
+   */
+  const [intent, setIntent] = useState<IntentSuggestion | null>(null)
+  const [intentBusy, setIntentBusy] = useState(false)
   const [sub1, setSub1] = useState(existing?.subKeywords[0] ?? initialSubs?.[0] ?? '')
   const [sub2, setSub2] = useState(existing?.subKeywords[1] ?? initialSubs?.[1] ?? '')
   const [localKeyword, setLocalKeyword] = useState(existing?.localKeyword ?? initialLocal ?? '')
@@ -79,6 +87,34 @@ export default function Editor({
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMsg, setAiMsg] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
+
+  /*
+   * 메인 키워드가 정해지면 유리한 유형을 물어본다.
+   * 조회 1번(통합검색)뿐이고, 결과가 늦게 와도 글쓰기를 막지 않는다.
+   */
+  useEffect(() => {
+    const kw = mainKeyword.trim()
+    if (!kw) {
+      setIntent(null)
+      return
+    }
+    let alive = true
+    setIntentBusy(true)
+    fetch('/api/intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: kw }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (alive && !j.error) setIntent(j)
+      })
+      .catch(() => {})
+      .finally(() => alive && setIntentBusy(false))
+    return () => {
+      alive = false
+    }
+  }, [mainKeyword])
 
   const rxAge = prescription ? prescriptionAgeDays(prescription.date) : 0
   const rxStale = prescription ? isPrescriptionStale(prescription.date) : false
@@ -355,6 +391,42 @@ export default function Editor({
                       ))}
                     </div>
                   </Field>
+
+                  {/*
+                    「이 키워드는 어떤 글이 유리한가」 — 앱은 근거를 펼쳐 보이고 제안만 한다.
+                    실측에서 같은 업종인데 검색어에 따라 정반대였다 (쌍용동 PT 경험 +0.78 /
+                    천안 헬스장 -0.81). 그래도 관찰이 6회뿐이라 결정은 회원이 한다.
+                  */}
+                  {intent && (
+                    <div
+                      data-intent="card"
+                      className="bg-brand-500/8 border-brand-500/30 rounded-xl border px-3 py-2.5"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[12px] font-bold">
+                          이 키워드에 유리해 보이는 유형: {POST_TYPE_LABEL[intent.suggest]}
+                        </span>
+                        {intent.suggest !== type && (
+                          <button
+                            type="button"
+                            onClick={() => setType(intent.suggest)}
+                            className="bg-brand-600 rounded-full px-2.5 py-1 text-[11px] font-bold text-white"
+                          >
+                            {POST_TYPE_LABEL[intent.suggest]}으로 바꾸기
+                          </button>
+                        )}
+                      </div>
+                      {intent.reasons.length > 0 && (
+                        <ul className="muted mt-1.5 space-y-0.5 text-[11px] leading-relaxed">
+                          {intent.reasons.map((r, i) => (
+                            <li key={i}>· {r}</li>
+                          ))}
+                        </ul>
+                      )}
+                      <p className="muted mt-1.5 text-[11px] leading-relaxed">{intent.note}</p>
+                    </div>
+                  )}
+                  {intentBusy && <p className="muted text-[11px]">이 키워드에 유리한 유형을 보는 중…</p>}
 
                   <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                     <Field label="지점" hint={store?.womenOnly ? '여성전용 지점 — 남성 대상 표현을 검사합니다' : undefined}>
