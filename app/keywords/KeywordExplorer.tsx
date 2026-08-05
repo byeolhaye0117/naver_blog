@@ -107,26 +107,21 @@ function AdLine({
 }) {
   if (typeof r.adDepth !== 'number') return null
   const heavy = r.adDepth >= AD_HEAVY
+  /*
+   * 노란 경고를 걷어냈다. 「광고가 많으면 블로그가 밀린다」는 근거가 실측에서 무너졌고
+   * (모바일 통합검색에 파워링크 0건), 지역+업종은 거의 다 광고 8~10개라 모든 줄이
+   * 노란색이 되어 아무것도 알려주지 못했다. 이제 상업성 정보로만 담담하게 적는다.
+   */
   return (
-    <div
-      data-ad="line"
-      className={`mt-1.5 rounded-lg px-2 py-1.5 text-[11px] leading-relaxed ${
-        heavy
-          ? 'border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200'
-          : 'muted'
-      }`}
-    >
+    <div data-ad="line" className="muted mt-1.5 rounded-lg px-2 py-1.5 text-[11px] leading-relaxed">
       {r.adNote && <p>{r.adNote}</p>}
       {/* 클릭률은 광고 개수와 다른 것을 말한다 — 자리가 아니라 「살 마음의 세기」다 */}
       {ctrNote(r.ctrMobile) && <p className="mt-1">{ctrNote(r.ctrMobile)}</p>}
-      {/* 「광고가 적은 키워드도 함께 노리세요」로 끝내면 그게 무엇인지 알 수 없다 */}
+      {/* 상업성이 센 검색어라면 덜 센 짝을 함께 챙기는 편이 낫다 */}
       {heavy && partner?.adRelief && (
         <p className="mt-1">
-          이 판에서 함께 쓸 것 →{' '}
-          <PartnerLink r={r} partner={partner} storeId={storeId} />{' '}
-          <span className="opacity-80">
-            (광고 {partner.metric.adDepth}개라 블로그가 위에 옵니다)
-          </span>
+          함께 챙길 것 → <PartnerLink r={r} partner={partner} storeId={storeId} />{' '}
+          <span className="opacity-80">(광고 {partner.metric.adDepth}개로 덜 붐빕니다)</span>
         </p>
       )}
     </div>
@@ -1239,14 +1234,21 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
                 비어 있다는 뜻입니다. 1을 넘으면 검색보다 새 글이 더 많이 쏟아지는 포화입니다.
               </li>
               <li>
-                <b>광고 개수</b> — 그 키워드에 붙는 광고 수. <b>내 글이 아래로 밀리는 정도</b>입니다.
-                5개 이상이면 통합검색 위쪽을 광고가 차지합니다.
+                <b>파워링크 광고 개수</b> — 그 검색어에 <b>돈을 쓰는 업체가 몇 곳인지</b>입니다
+                (사이트검색광고. 스마트플레이스와는 다른 상품입니다). 상업성 세기로 읽으세요 —
+                <b>블로그 순위와는 무관합니다.</b>
               </li>
               <li>
-                <b>광고 클릭률</b> — 광고를 누르는 비율. <b>사는 마음의 세기</b>입니다(자리와는 다른
-                얘기입니다). 1%를 넘으면 돈 쓸 마음으로 검색하는 사람이 많아 걸리면 상담으로
-                이어지기 쉽습니다. 100명 중 99명은 광고를 누르지 않으니, 이 숫자가 유입을 깎는다는
-                뜻은 아닙니다.
+                <b>지역 키워드에서 블로그 위에 있는 것은 광고가 아니라 플레이스입니다.</b> 실측해
+                보니(2026-08) 「쌍용동 헬스장」·「봉명동 헬스장」 모바일 통합검색에는 파워링크가
+                아예 없었고, 플레이스 블록 다음에 블로그가 왔습니다. 광고를 끊어도 플레이스는 그대로
+                위에 있습니다 — 광고비 문제가 아니라 화면 구조입니다. 그래서 지역 키워드는{' '}
+                <b>블로그 글과 플레이스 순위를 함께</b> 챙겨야 합니다 (줄마다 「플레이스」 버튼).
+              </li>
+              <li>
+                <b>광고 클릭률</b> — 광고를 누르는 비율. <b>사는 마음의 세기</b>입니다. 1%를 넘으면
+                돈 쓸 마음으로 검색하는 사람이 많아 걸리면 상담으로 이어지기 쉽습니다. 100명 중
+                99명은 광고를 누르지 않으니, 이 숫자가 유입을 깎는다는 뜻은 아닙니다.
               </li>
             </ul>
           </details>

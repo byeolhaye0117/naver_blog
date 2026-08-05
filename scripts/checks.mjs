@@ -21,7 +21,7 @@ const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SE
 const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/naver/place.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool, dedupeAdRows, toRate } = require(`${OUT}/naver/searchad.js`)
-const { gradeKeyword, adNoteFor, adPressureOf, ctrNote, keywordVerdict, AD_HEAVY, AD_SOME } = require(`${OUT}/analysis/keyword.js`)
+const { gradeKeyword, adNoteFor, adPressureOf, ctrNote, keywordVerdict, PLACE_ABOVE_BLOG, AD_HEAVY, AD_SOME } = require(`${OUT}/analysis/keyword.js`)
 const { phaseOf, buildRankViews, autoRankTargets } = require(`${OUT}/analysis/rank.js`)
 const { isPartialMonth, completedMonths, momentumOf } = require(`${OUT}/naver/datalab.js`)
 const { prescriptionKey, upsertPrescription, findPrescription, prescriptionAgeDays, isPrescriptionStale } = require(
@@ -1584,16 +1584,20 @@ ok(toRate('0.85%') === 0.85, '단위가 붙어 와도 읽는다', String(toRate(
 
 // 광고가 많으면 통합검색 위쪽이 덮여 블로그가 밀린다 — 검색량만으로는 안 보이는 사실
 ok(adNoteFor(undefined) === undefined, '광고 지표가 없으면 아무 말도 하지 않는다')
-ok(adNoteFor(AD_HEAVY).includes('블로그보다 위에 놓입니다'), '광고가 많으면 블로그가 아래라고 말한다')
+// 실측으로 뒤집힌 문구 — 「광고가 많으면 블로그가 밀린다」는 근거가 없었다
+ok(adNoteFor(AD_HEAVY).includes('파워링크'), '파워링크 광고라고 이름을 밝힌다', adNoteFor(AD_HEAVY))
+ok(adNoteFor(AD_HEAVY).includes('상업성'), '상업성 세기로 읽으라고 말한다')
+ok(!adNoteFor(10).includes('밀'), '광고 때문에 블로그가 밀린다고 말하지 않는다', adNoteFor(10))
+ok(!adNoteFor(10).includes('플레이스'), '플레이스를 광고와 한 덩어리로 묶지 않는다')
 // 값이 곧 화면에 보이는 광고 개수는 아니다 (모바일은 몇 개만 펼친다)
 ok(!adNoteFor(10).includes('화면을 덮'), '화면을 덮는다고 단정하지 않는다')
 ok(adNoteFor(6.2).includes('6.2개'), '실제 광고 수를 밝힌다', adNoteFor(6.2))
-ok(adNoteFor(AD_SOME).includes('블로그 자리는 남아 있습니다'), '중간은 중간이라고 한다')
-ok(adNoteFor(0).includes('순위가 그대로 유입'), '광고가 없으면 유리하다고 말한다')
-ok(!adNoteFor(0).includes('상업성이 높습니다'), '광고 0 개에 경고를 붙이지 않는다')
+ok(adNoteFor(AD_SOME).includes('조금'), '중간은 중간이라고 한다')
+ok(adNoteFor(0).includes('거의 없는'), '광고가 없으면 없다고 말한다')
+ok(!adNoteFor(0).includes('상업성 높음'), '광고 0 개에 경고를 붙이지 않는다')
 // 실측 분포: 지역+업종은 8~10, 정보 키워드는 3 안쪽 — 이 둘이 갈려야 뜻이 있다
-ok(adNoteFor(10).includes('블로그보다 위에'), '지역+업종 실측값(10)은 광고 많음')
-ok(adNoteFor(3).includes('블로그 자리는 남아 있습니다'), '정보 키워드 실측값(3)은 중간', adNoteFor(3))
+ok(adNoteFor(10).includes('많습니다'), '지역+업종 실측값(10)은 광고 많음')
+ok(adNoteFor(3).includes('조금 있습니다'), '정보 키워드 실측값(3)은 중간', adNoteFor(3))
 
 // 설명문은 사실만 말한다 — 할 일은 판정 한 곳에서만 (두 곳에서 조언하면 같은 말이 두 번 나온다)
 ok(!adNoteFor(10).includes('쓰세요'), '광고 설명문은 할 일을 말하지 않는다', adNoteFor(10))
@@ -1610,10 +1614,22 @@ ok(!ctrNote(1.14).includes('유입이 오지 않'), '클릭률을 유입 손실�
 // 「그래서 써도 되나」 — 숫자를 읽을 줄 모르는 사람도 한 줄로 알 수 있어야 한다
 const vd = (grade, monthlySearch, adDepth) => keywordVerdict({ grade, monthlySearch, adDepth })
 ok(vd('gold', 1500, 2).level === 'go', '광고가 적은 황금 키워드는 바로 쓴다')
+// 지역 키워드에서 위를 차지하는 것은 광고가 아니라 플레이스다 (실측)
+ok(PLACE_ABOVE_BLOG.includes('플레이스가 차지'), '무엇이 위에 있는지 밝힌다')
+ok(PLACE_ABOVE_BLOG.includes('광고를 끊어도'), '광고비 문제가 아니라고 말한다')
+ok(PLACE_ABOVE_BLOG.includes('블로그탭 순위는 광고와 무관'), '블로그탭은 광고와 무관하다고 말한다')
 ok(vd('gold', 1500, 2).label === '바로 쓰세요', '배지 말이 짧고 분명하다', vd('gold', 1500, 2).label)
-ok(vd('gold', 1500, 10).level === 'conditional', '광고가 많으면 조건이 붙는다')
-ok(vd('gold', 1500, 10).line.includes('세부 의도'), '조건이 무엇인지 말한다')
-ok(vd('good', 840, 10).level === 'conditional', '노려볼 만함 + 광고 많음도 조건부')
+/*
+ * 광고가 많다고 등급을 내리지 않는다 — 실측에서 근거가 무너졌다.
+ * 모바일 통합검색에 파워링크가 아예 없었고(0건), 지역+업종은 거의 다 광고 8~10개라
+ * 그것으로 가르면 모든 지역 키워드가 조건부가 된다 (아무것도 못 가르는 판정).
+ */
+ok(vd('gold', 1500, 10).level === 'go', '광고가 많아도 황금 키워드는 바로 쓴다', vd('gold', 1500, 10).level)
+ok(vd('gold', 1500, 10).line.includes('플레이스 순위도'), '대신 플레이스를 함께 챙기라고 말한다', vd('gold', 1500, 10).line)
+ok(!vd('gold', 1500, 10).line.includes('광고 아래 자리'), '광고 아래로 밀린다는 말을 하지 않는다')
+ok(vd('good', 840, 10).level === 'go', '노려볼 만함 + 광고 많음도 그대로 쓴다')
+ok(vd('gold', 1500, 2).line.includes('가장 먼저 잡을 판'), '광고가 적으면 군더더기를 붙이지 않는다')
+ok(!vd('gold', 1500, 2).line.includes('플레이스'), '광고가 적을 때는 플레이스 얘기를 안 한다')
 ok(vd('good', 840, 2).level === 'go', '노려볼 만함 + 광고 적음은 바로 쓴다')
 ok(vd('toosmall', 140, 10).level === 'attach', '검색량 부족은 따로 쓰지 않는다')
 ok(vd('toosmall', 140, 10).label === '얹기만', '얹으라고 한 마디로 말한다')
