@@ -2432,5 +2432,87 @@ ok(infoItem.level !== 'pass', '시설·이벤트만 쓴 글은 정보 항목에�
 ok(promoItem.level !== 'pass', '홍보 표현이 많으면 걸린다', `${promoItem.value} ${promoItem.level}`)
 ok(infoItem.target.includes('5.2'), '목표에 상위권 실측값을 적는다', infoItem.target)
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[51] 유리한 글 유형 제안 — 앱이 보여주고 회원이 결정')
+const { suggestPostType, blockHint } = require(`${OUT}/analysis/intent.js`)
+
+// 블록 이름이 알려주는 것 (실측: 쌍용동 헬스장 → 「스포츠 인기글」)
+ok(blockHint(['스포츠 인기글']).includes('인기글'), '인기글 블록을 알아본다')
+ok(blockHint(['AI 브리핑', '네이버 클립']).includes('블로그 자리가 좁고'), '블로그 자리가 좁은 판을 알려준다')
+ok(blockHint([]) === null, '블록을 못 읽으면 null')
+
+const runFor = (keyword, expAdv, infoAdv, n = 8) => ({
+  keyword,
+  date: '2026-08-05',
+  sampled: 10,
+  results: [
+    { key: 'experience', label: '경험', rho: 0, advantage: expAdv, n, strength: 'weak', note: '' },
+    { key: 'info', label: '정보', rho: 0, advantage: infoAdv, n, strength: 'weak', note: '' },
+  ],
+})
+
+/*
+ * 실측에서 같은 업종인데 검색어에 따라 정반대였다.
+ *   쌍용동 PT  경험 +0.78 · 천안 헬스장 경험 -0.81
+ */
+const sPT = suggestPostType({ keyword: '쌍용동 PT', runs: [runFor('쌍용동 PT', 0.78, 0.4)] })
+ok(sPT.suggest === 'review', '경험이 유리한 키워드는 후기글을 제안', sPT.suggest)
+ok(sPT.confidence === 'measured', '관찰로 판정했다고 밝힌다')
+ok(sPT.reasons.some((r) => r.includes('겪은 이야기를 쓴 글이 위에')), '근거를 사람 말로 준다')
+
+const sCity = suggestPostType({ keyword: '천안 헬스장', runs: [runFor('천안 헬스장', -0.81, 0.01)] })
+ok(sCity.suggest === 'promo', '경험이 불리한 키워드는 홍보글을 유지', sCity.suggest)
+ok(sCity.reasons.some((r) => r.includes('경험을 덜 쓴 글이 오히려 위에')), '반대 방향도 말해준다')
+
+// 지역이 아닌 정보 키워드에서 정보 신호가 강하면 정보글
+const sInfo = suggestPostType({ keyword: '다이어트 정체기', runs: [runFor('다이어트 정체기', 0.05, 0.7)] })
+ok(sInfo.suggest === 'info', '지역이 없고 정보가 유리하면 정보글', sInfo.suggest)
+// 지역 키워드는 정보 신호가 강해도 정보글로 바꾸지 않는다 (지역 글이 우리 무기다)
+const sLocalInfo = suggestPostType({ keyword: '쌍용동 헬스장', runs: [runFor('쌍용동 헬스장', 0.05, 0.7)] })
+ok(sLocalInfo.suggest === 'promo', '지역 키워드는 정보 신호가 커도 홍보글', sLocalInfo.suggest)
+
+// 근거가 없으면 바꾸라고 하지 않는다
+const sNone = suggestPostType({ keyword: '쌍용동 헬스장' })
+ok(sNone.suggest === 'promo' && sNone.confidence === 'none', '근거가 없으면 기본값을 둔다')
+ok(sNone.note.includes('근거가 없어 제안하지 않습니다'), '제안하지 않는다고 말한다')
+
+const sBlock = suggestPostType({ keyword: '쌍용동 헬스장', blocks: ['스포츠 인기글'] })
+ok(sBlock.confidence === 'blockOnly', '블록만 있으면 그렇다고 밝힌다')
+ok(sBlock.note.includes('관찰한 기록이 없어'), '관찰이 없다고 말한다')
+ok(sBlock.note.includes('지금 관찰하기'), '어떻게 근거를 쌓는지 알려준다')
+
+// 결정권은 회원에게 있다고 말한다
+ok(sPT.note.includes('회원님 판단이 우선'), '결정은 회원이 한다고 밝힌다', sPT.note)
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[52] 홍보글 골격 개편 — 시설 스펙 대신 동작, 홍보는 한 곳')
+const promoSkeleton = buildTemplate('promo', {
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: ['쌍용동 24시 헬스장', '쌍용동 PT'],
+  store: {
+    id: 's',
+    name: '쌍용점',
+    legalName: 'MTO 피트니스 쌍용점',
+    womenOnly: false,
+    open24: true,
+    localKeywords: [],
+    location: '',
+    features: [],
+    strengths: [],
+    phone: '010-0000-0000',
+  },
+})
+ok(promoSkeleton.includes('시설 스펙을 나열하지 않는다'), '시설 나열을 금지한다')
+ok(promoSkeleton.includes('자극(어디에 오는지)'), '무엇을 쓰라고 짚어준다 (실측으로 갈린 말)')
+ok(promoSkeleton.includes('런닝머신 10대" (X)'), '나쁜 예와 좋은 예를 같이 준다')
+ok(promoSkeleton.includes('중간 CTA 를 넣지 않는다'), '중간 CTA 를 없앤다')
+ok(promoSkeleton.includes('이벤트 예고는 **한 줄로만**'), '후킹의 이벤트 예고를 한 줄로 줄인다')
+ok(promoSkeleton.includes('짧은 영상 1개'), '영상 자리를 넣는다')
+ok(promoSkeleton.includes('10~20초'), '영상 길이까지 알려준다')
+// 홍보를 없애지는 않는다 — 이 글의 목적은 상담이다
+ok(promoSkeleton.includes('7단계 CTA'), 'CTA 단계는 그대로 남긴다')
+ok(promoSkeleton.includes('6단계 이벤트 본공개'), '이벤트 단계도 그대로 남긴다')
+ok(promoSkeleton.includes('해결 (500~600자'), '해결 구간을 늘렸다 (450~550 → 500~600)')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
