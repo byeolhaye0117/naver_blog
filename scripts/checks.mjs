@@ -2226,7 +2226,7 @@ const REAL_SAMPLES = [
 ]
 const FACT = measureFactors(REAL_SAMPLES)
 const byKey = (k) => FACT.find((x) => x.key === k)
-ok(FACT.length === 10, '신호 10개를 잰다 (내용 균형 3개 + 공감 수)', String(FACT.length))
+ok(FACT.length === 11, '신호 11개를 잰다 (+ 공감 수 · 제목 질문형)', String(FACT.length))
 // 회원 질문에서 나온 항목이 관찰 대상에 들어갔는지 — 기준을 만들었으면 계속 검증해야 한다
 ok(FACT.some((x) => x.key === 'info'), '정보 요소도 매일 다시 잰다')
 ok(FACT.some((x) => x.key === 'promo'), '홍보 요소도 매일 다시 잰다')
@@ -3102,6 +3102,122 @@ const spPartial = spellHeadline([{ before: 'a', after: 'b', kind: '맞춤법' }]
 ok(spPartial.includes('2덩어리는'), '일부만 읽었으면 몇 개를 못 읽었는지 말한다', spPartial)
 ok(spPartial.includes('눈으로 한 번 보세요'), '그럼 어떻게 하라고 알려준다')
 ok(spellHeadline([{ before:'a', after:'b', kind:'맞춤법' },{ before:'c', after:'d', kind:'띄어쓰기' }], 2, 0).includes('맞춤법 1건 · 띄어쓰기 1건'), '종류별로 센다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[59] 제목 유형 — 전국 판에서 통하는 방식을 우리 판에서 재본다')
+const { titleShape, isQuestionTitle, shapeDistribution, titleAdvice, shapeCompareLine, TITLE_SHAPE_LABEL } =
+  require(`${OUT}/analysis/title.js`)
+
+/*
+ * 실측 제목 (2026-08-05 프로덕션).
+ * 전국 「다이어트 정체기」 상위 8편 중 7편이 질문형, 우리 판 「쌍용동 헬스장」은 0편이었다.
+ */
+const TS_REF = [
+  '다이어트 정체기 극복! 치팅데이 주기와 실패 없는 탄수화물 리피딩 방법',
+  '다이어트 정체기 극복 | 원인과 해결 방법!',
+  '열심히 하는데 왜 안 빠질까? 다이어트 정체기 원인과 과학적으로 탈출하는 확실한',
+  '다이어트 정체기 왜 올까? 원인 분석과 극복 방법과 팁',
+  '치팅데이 후 2kg 증가? 다이어트 정체기가 아닌 과학적 이유',
+  '여름인데 살이 안 빠진다면? 다이어트 정체기 때 바꾼 3가지 습관',
+  '먹는 양은 그대로인데살이 안 빠진다?다이어트 정체기 극복법',
+  '다이어트 정체기 극복 방법, 한 달째 몸무게 그대로?',
+]
+const TS_LOCAL = [
+  '천안 쌍용동 헬스장 미녀와야수짐 봉명점 1:1 PT 1주일 수업 후기 정상문 트',
+  "[천안 쌍용동헬스장] 운동과 재미 두마리 토끼를 잡을수 있는 안현섭TR 1:1피",
+  '신방동헬스장 고민 끝! 쌍용역 5분 거리 피앤피짐 소개',
+  '천안 쌍용동 헬스장 [미녀와 야수짐] 추천 !',
+  '천안 | 쌍용동 헬스장 추천!  PT 필라테스 3년째 다니고 있는 고위드짐 찐후기',
+  "쌍용동헬스장 필라테스  솔직후기 '고위드짐'",
+  '천안 쌍용동 PT 추천｜운동 초보도 부담 없는 쌍용동 헬스장 Gym Grow 후기',
+  '천안 쌍용동 헬스장 미녀와야수짐 ! 샤워실 개인 부스에 커피 무료에 PT까지 진',
+]
+
+const tsRefQ = TS_REF.filter(isQuestionTitle).length
+const tsLocQ = TS_LOCAL.filter(isQuestionTitle).length
+// 물음표가 있는 것은 6편이다 (앞서 7편이라고 센 것은 과다 집계였다 — 1·2위는 물음표가 없다)
+ok(tsRefQ === 6, '전국 판 실측 8편 중 6편을 질문형으로 읽는다', String(tsRefQ))
+ok(tsLocQ === 0, '우리 판 실측 8편은 질문형 0편', String(tsLocQ))
+
+ok(isQuestionTitle('왜 안 빠질까?'), '물음표를 알아본다')
+ok(isQuestionTitle('초보도 괜찮을까'), '물음표 없는 의문 어미도 알아본다')
+ok(!isQuestionTitle('쌍용동 헬스장 추천!'), '느낌표는 질문이 아니다')
+
+ok(titleShape('다이어트 정체기 왜 올까? 원인 분석') === 'question', '질문형')
+ok(titleShape('처음 3주에 바꾼 2가지 습관') === 'listicle', '숫자형')
+// 단위는 개수가 아니다 — 「1주일 수업 후기」가 숫자형으로 잡혀 분포가 틀렸던 자리
+ok(titleShape('1:1 PT 1주일 수업 후기') === 'review', '「1주일」은 숫자형이 아니다', titleShape('1:1 PT 1주일 수업 후기'))
+ok(titleShape('쌍용역 5분 거리 피앤피짐 소개') === 'plain', '「5분 거리」도 숫자형이 아니다')
+ok(titleShape('샤워실 개인 부스에 커피 무료') === 'plain', '「개인」의 개도 아니다')
+ok(titleShape('쌍용동 헬스장 솔직후기') === 'review', '후기형')
+ok(titleShape('쌍용동 헬스장 MTO 피트니스 쌍용점') === 'plain', '평서형')
+// 겹치면 앞선 것으로 센다 (질문형이 가장 강한 신호다)
+ok(titleShape('쌍용동 헬스장 추천! 3가지 이유는 뭘까?') === 'question', '겹치면 질문형이 먼저')
+ok(TITLE_SHAPE_LABEL.question === '질문형', '사람이 읽는 이름을 준다')
+
+const tsDist = shapeDistribution(TS_LOCAL)
+ok(tsDist.find((d) => d.shape === 'question').count === 0, '분포에서도 질문형 0')
+ok(tsDist.find((d) => d.shape === 'review').count >= 5, '우리 판은 후기형이 대부분')
+ok(tsDist.reduce((n, d) => n + d.count, 0) === TS_LOCAL.length, '분포 합계가 전체와 같다')
+ok(shapeDistribution([]).every((d) => d.share === 0), '빈 목록은 0%')
+
+// 조언은 「바꿔라」로 단정하지 않는다 — 판이 다르면 답도 다를 수 있다
+ok(titleAdvice('쌍용동 헬스장 추천!').includes('눈에 띄지 않습니다'), '후기형에 왜 아쉬운지 말한다')
+ok(titleAdvice('쌍용동 헬스장 추천!').includes('궁금증'), '무엇을 얹으라고 알려준다')
+ok(titleAdvice('왜 안 빠질까?').includes('6편'), '질문형에는 실측 근거를 붙인다')
+ok(titleAdvice('쌍용동 헬스장 MTO 피트니스').includes('클릭할 이유가 제목에 없습니다'), '평서형에 문제를 짚는다')
+
+const tsCmp = shapeCompareLine(TS_LOCAL, TS_REF)
+ok(tsCmp.includes('우리 판 0/8편') && tsCmp.includes('참고 판 6/8편'), '두 판을 나란히 보여준다', tsCmp)
+ok(tsCmp.includes('판마다 규칙이 달랐으므로'), '전국을 그대로 따르라고 하지 않는다')
+ok(shapeCompareLine([], TS_REF) === null, '한쪽이 비면 비교하지 않는다')
+
+// 검수 항목으로 들어갔는지
+const tsCheck = (title) =>
+  checkPost({ type:'promo', title, body:'[이미지: 대표]\n본문입니다.', mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
+    .items.find((i) => i.id === 'titleShape')
+ok(tsCheck('쌍용동 헬스장, 퇴근 늦어도 갈 수 있을까?').level === 'pass', '질문형 제목은 통과')
+ok(tsCheck('쌍용동 헬스장 솔직후기').level === 'pass', '후기형도 통과 (우리 판 기본형이다)')
+ok(tsCheck('쌍용동 헬스장 MTO 피트니스 쌍용점').level === 'warn', '평서형만 주의를 낸다')
+ok(tsCheck('쌍용동 헬스장 MTO 피트니스 쌍용점').hint.includes('클릭할 이유'), '왜 주의인지 알려준다')
+
+// 골격·AI 지시문에도 들어갔는지
+const tsSkel = buildTemplate('promo', { mainKeyword: '쌍용동 헬스장', subKeywords: [] })
+ok(tsSkel.includes('앞 7자 안에 두고'), '골격이 제목 규칙을 알려준다')
+ok(tsSkel.includes('8편 중 6편이 질문형'), '실측 근거를 붙인다')
+ok(tsSkel.includes('추천!」 (X)'), '나쁜 예와 좋은 예를 같이 준다')
+ok(stripGuides(tsSkel).includes('[이미지'), '제목 안내는 복사 본문에서 지워진다')
+ok(!stripGuides(tsSkel).includes('앞 7자 안에 두고'), '안내가 본문에 남지 않는다')
+ok(buildSystemPrompt('promo').includes('질문형이 0편'), 'AI 지시문에도 넣는다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[60] 판을 섞지 않는다 — 우리 판과 참고 판을 따로 모은다')
+const { splitByArena, ARENA_LABEL } = require(`${OUT}/analysis/factors.js`)
+
+/*
+ * 섞으면 숫자가 망가진다. 실측(2026-08-05 프로덕션):
+ *              최신성    홍보 요소
+ *   우리 판     +0.63     -0.18
+ *   전국 판     +0.04     **+0.63**
+ * 한 통에 모으면 둘 다 흐려진다.
+ */
+const AR_LOCAL = buildObservation('쌍용동 헬스장', '2026-08-05', REAL_SAMPLES)
+const AR_REF = { ...buildObservation('다이어트 정체기', '2026-08-05', REAL_SAMPLES), arena: 'reference' }
+const arSplit = splitByArena([AR_LOCAL, AR_REF])
+ok(arSplit.local.length === 1 && arSplit.reference.length === 1, '판별로 나눈다')
+ok(arSplit.local[0].keyword === '쌍용동 헬스장', '지역 키워드는 우리 판')
+// 예전 기록에는 arena 가 없다 — 전부 지역 키워드였으므로 local 로 읽는다
+ok(splitByArena([AR_LOCAL]).local.length === 1, 'arena 가 없으면 우리 판으로 읽는다')
+ok(splitByArena([AR_LOCAL]).reference.length === 0, '없는 것을 참고 판으로 세지 않는다')
+ok(ARENA_LABEL.reference.includes('참고'), '이름에 참고라고 박아둔다')
+// 섞였을 때와 나눴을 때가 다르다는 것을 확인 (섞으면 흐려진다)
+const arMixedPool = poolFactors([AR_LOCAL, AR_REF])
+const arLocalPool = poolFactors(arSplit.local)
+ok(
+  arMixedPool.find((p) => p.key === 'age').runs === 2 &&
+    arLocalPool.find((p) => p.key === 'age').runs === 1,
+  '나눠 모으면 우리 판 관찰만 센다'
+)
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

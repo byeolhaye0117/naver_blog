@@ -21,14 +21,45 @@ function guide(s: string): string {
 }
 
 export function buildTemplate(type: PostType, ctx: TemplateContext): string {
-  switch (type) {
-    case 'promo':
-      return promoTemplate(ctx)
-    case 'info':
-      return infoTemplate(ctx)
-    case 'review':
-      return reviewTemplate(ctx)
-  }
+  const body = (() => {
+    switch (type) {
+      case 'promo':
+        return promoTemplate(ctx)
+      case 'info':
+        return infoTemplate(ctx)
+      case 'review':
+        return reviewTemplate(ctx)
+    }
+  })()
+  return `${titleGuide(ctx)}\n${body}`
+}
+
+/**
+ * 제목 안내 — 골격 맨 위에 둔다.
+ *
+ * 두 판의 상위 8편 제목을 실제로 열어봤다 (lib/analysis/title.ts 주석).
+ *   전국 「다이어트 정체기」 — 8편 중 **6편이 질문형** (「왜 안 빠질까?」 「왜 올까?」)
+ *   우리 판 「쌍용동 헬스장」 — **질문형 0편.** 「추천」·「후기」 + 상호명이 전부
+ *
+ * 우리 판 제목이 서로 구별되지 않는다는 뜻이다. 그래서 궁금증을 하나 얹으라고 권한다.
+ * 다만 **강제하지 않는다** — 판마다 규칙이 달랐고(최신성·홍보 요소가 정반대), 우리 판에서
+ * 질문형이 실제로 유리한지는 관찰소가 재는 중이다 (factors.ts 의 titleQuestion).
+ */
+function titleGuide(ctx: TemplateContext): string {
+  const kw = ctx.mainKeyword || '메인 키워드'
+  return [
+    guide(
+      `제목: 28~40자. 「${kw}」를 앞 7자 안에 두고, 뒤에 **독자가 실제로 하는 질문**을 하나 얹는다.`
+    ),
+    guide(
+      '전국 정보 키워드 상위 8편 중 6편이 질문형이었다 (「왜 안 빠질까?」 「왜 올까?」). 반대로 우리 지역 키워드 상위 8편은 질문형이 0편이고 전부 「추천」·「후기」였다 — 서로 구별이 안 된다는 뜻이라, 궁금증 하나가 차이를 만든다.'
+    ),
+    guide(
+      `예) 「${kw} 추천!」 (X) → 「${kw}, 퇴근 늦어도 갈 수 있을까?」 · 「${kw} 처음인데 뭐부터 해야 할까」 (O)`
+    ),
+    guide('숫자로 묶어도 된다 — 「처음 3주에 바꾼 2가지」처럼. 무엇을 얻는지 세어 보여주는 방식이다.'),
+    '',
+  ].join('\n')
 }
 
 /**
