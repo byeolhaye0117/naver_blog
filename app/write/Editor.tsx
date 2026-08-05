@@ -15,6 +15,8 @@ import { Badge, Card, Field, inputClass } from '@/components/ui'
 import { IconSpark } from '@/components/icons'
 import CheckPanel from '@/components/CheckPanel'
 import SimilarityCard from '@/components/SimilarityCard'
+import MineOverlapCard from '@/components/MineOverlapCard'
+import SpellCard from '@/components/SpellCard'
 import CopyButton from '@/components/CopyButton'
 
 const TYPE_HINT: Record<PostType, string> = {
@@ -898,6 +900,18 @@ export default function Editor({
             <CheckPanel result={result} />
             {/* 검수기는 내 글만 본다. 남의 글과 겹치는지는 네이버를 읽어야 알 수 있다 */}
             <SimilarityCard keyword={mainKeyword} text={stripGuides(body)} />
+            {/*
+              내 글끼리 겹침 — 버튼 없이 즉시 잰다 (내 글은 이미 여기 있다).
+              지점만 바꿔 같은 글을 올리는 것을 아무도 안 잡고 있었다.
+            */}
+            <MineOverlapCard
+              text={stripGuides(body)}
+              posts={posts}
+              stores={stores}
+              storeId={storeId}
+              postId={id || undefined}
+            />
+            <SpellCard text={body} />
           </div>
         </div>
       </div>

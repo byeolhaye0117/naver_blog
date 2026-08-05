@@ -1,4 +1,4 @@
-import { contentBalance, INFO_MIN_BY_TYPE, PROMO_MAX } from '../analysis/content'
+import { contentBalance, INFO_MIN_BY_TYPE, PROMO_MAX_BY_TYPE } from '../analysis/content'
 import { evidenceHeadline, itemEvidence } from './evidence'
 import type { PooledFactor } from '../analysis/factors'
 import type {
@@ -603,6 +603,7 @@ export function checkPost(input: CheckInput): CheckResult {
    */
   const balance = contentBalance(scanText, input.type)
   const infoMin = INFO_MIN_BY_TYPE[input.type]
+  const promoMax = PROMO_MAX_BY_TYPE[input.type]
   add({
     id: 'info-substance',
     group: '내용 균형',
@@ -625,9 +626,9 @@ export function checkPost(input: CheckInput): CheckResult {
     id: 'promo-restraint',
     group: '내용 균형',
     label: '홍보 표현 절제',
-    level: level(balance.signals.promo <= PROMO_MAX, balance.signals.promo <= PROMO_MAX + 2),
+    level: level(balance.signals.promo <= promoMax, balance.signals.promo <= promoMax + 2),
     value: `${balance.signals.promo}종류`,
-    target: `${PROMO_MAX}종류 이하 (상위 1~3위 평균 2.0)`,
+    target: `${promoMax}종류 이하 (상위 1~3위 평균 2.0)`,
     hint: balance.level === 'pushy' || balance.level === 'both' ? balance.promoNote : undefined,
     weight: 3,
   })
