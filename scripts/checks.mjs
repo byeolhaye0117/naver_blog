@@ -2226,7 +2226,14 @@ const REAL_SAMPLES = [
 ]
 const FACT = measureFactors(REAL_SAMPLES)
 const byKey = (k) => FACT.find((x) => x.key === k)
-ok(FACT.length === 6, '신호 6개를 잰다', String(FACT.length))
+ok(FACT.length === 9, '신호 9개를 잰다 (내용 균형 3개를 더했다)', String(FACT.length))
+// 회원 질문에서 나온 항목이 관찰 대상에 들어갔는지 — 기준을 만들었으면 계속 검증해야 한다
+ok(FACT.some((x) => x.key === 'info'), '정보 요소도 매일 다시 잰다')
+ok(FACT.some((x) => x.key === 'promo'), '홍보 요소도 매일 다시 잰다')
+ok(
+  byKey('promo').n === 0 || byKey('promo').note.includes('홍보'),
+  '홍보 요소는 값이 없으면 못 잰다고 한다'
+)
 ok(byKey('age').advantage > 0.5, '실측 표본에서 최신성이 유리하게 나온다', String(byKey('age').advantage))
 ok(byKey('age').note.includes('최신 글이 위에 있습니다'), '사람 말로 적는다', byKey('age').note)
 ok(byKey('chars').advantage < 0, '같은 표본에서 본문 분량은 거꾸로 간다', String(byKey('chars').advantage))
@@ -2362,6 +2369,68 @@ for (const j of [AG_MARKED, AG_OWNER, AG_LIKE, AG_NONE]) {
 ok(AGENCY_CAVEAT.includes('단정할 수 없습니다'), '단정하지 말라고 적는다')
 ok(AGENCY_CAVEAT.includes('남에게 「돈 받은 글」이라고 말하지 마세요'), '밖으로 옮기지 말라고 적는다')
 ok(SPONSOR_LABEL.noMark === '표기 없음', '표기 없음을 그대로 부른다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[50] 내용 균형 — 시설·이벤트만으로는 위로 못 간다')
+const { countSignals, contentBalance, INFO_MIN, PROMO_MAX, INFO_WORDS, PROMO_WORDS } =
+  require(`${OUT}/analysis/content.js`)
+
+// 종류를 센다 — 횟수를 세면 같은 말을 반복해 점수를 올릴 수 있다
+const cbRep = countSignals('자세 자세 자세 자세 자세 자세 자세 자세')
+ok(cbRep.info === 1, '같은 말을 열 번 써도 1종류', String(cbRep.info))
+const cbMany = countSignals('자세와 루틴, 식단과 유산소, 스트레칭까지')
+ok(cbMany.info === 5, '다른 말은 각각 센다', String(cbMany.info))
+ok(cbMany.infoFound.includes('루틴'), '무엇이 들어 있었는지 담는다')
+
+// 실측한 4위 글 — 홍보 표현을 다 넣은 글
+const cbPushy = contentBalance('상담 예약 이벤트 할인 영업시간 문의 주세요. 시설이 넓습니다.')
+ok(cbPushy.signals.promo > PROMO_MAX, '홍보 표현이 많은 것을 잡는다', String(cbPushy.signals.promo))
+ok(cbPushy.level === 'both' || cbPushy.level === 'pushy', '판정', cbPushy.level)
+ok(cbPushy.promoNote.includes('한 곳에 모으고'), '무엇을 하라고 말한다')
+ok(cbPushy.promoNote.includes('1~3위 평균 2.0'), '실측 근거를 함께 준다')
+
+// 실측한 2위 글 모양 — 순수 소개글인데도 정보가 들어 있었다 (자세·식단·유산소·스트레칭)
+const cbOk = contentBalance(
+  '쌍용역 5분 거리입니다. 유산소는 이 시간대에, 자세는 이렇게 잡으세요. 식단은 단백질부터. 스트레칭도 함께. 궁금하면 문의 주세요.'
+)
+ok(cbOk.level === 'good', '정보가 있고 홍보가 절제되면 통과', cbOk.level)
+ok(cbOk.signals.info >= INFO_MIN, `정보 ${INFO_MIN}종류 이상`, String(cbOk.signals.info))
+ok(cbOk.infoNote.includes('상위권 수준'), '통과했다고 말해준다')
+
+// 시설·이벤트만 쓴 글 — 회원이 말한 그 글
+const cbThin = contentBalance(
+  '런닝머신 10대, 스미스머신 2대가 있습니다. 이번 달 신규 등록 이벤트 진행합니다. 문의 주세요.'
+)
+ok(cbThin.level === 'thin' || cbThin.level === 'both', '시설·이벤트만 쓰면 걸린다', cbThin.level)
+ok(cbThin.infoNote.includes('무엇을 어떻게 한다'), '고치는 방법을 말한다', cbThin.infoNote)
+ok(cbThin.infoNote.includes('5.2종류'), '상위권 실측값을 근거로 준다')
+
+// 홍보가 하나도 없으면 그것도 알려준다 (우리 글은 상담으로 이어져야 한다)
+const cbNoPromo = contentBalance('자세와 루틴, 식단과 유산소, 스트레칭을 다룹니다.')
+ok(cbNoPromo.level === 'good', '정보만 있어도 균형 자체는 통과')
+ok(cbNoPromo.promoNote.includes('마지막에 한 번은 넣으세요'), '홍보가 0이면 넣으라고 한다')
+
+ok(INFO_MIN === 4 && PROMO_MAX === 3, '실측으로 잡은 기준선')
+ok(INFO_WORDS.includes('식단') && INFO_WORDS.includes('자세'), '정보 어휘')
+ok(PROMO_WORDS.includes('선착순'), '홍보 어휘에 마감 압박도 넣는다')
+
+// 검수기에 두 항목이 실제로 붙었는지
+const balanceCheck = checkPost({
+  type: 'promo',
+  title: '쌍용동 헬스장 시설 안내',
+  body: '런닝머신 10대가 있습니다. 신규 등록 이벤트 진행 중입니다. 상담 문의 주세요. 예약도 받습니다. 영업시간은 24시간입니다.',
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: [],
+  tags: [],
+})
+const infoItem = balanceCheck.items.find((i) => i.id === 'info-substance')
+const promoItem = balanceCheck.items.find((i) => i.id === 'promo-restraint')
+ok(Boolean(infoItem), '검수에 정보 항목이 있다')
+ok(Boolean(promoItem), '검수에 홍보 절제 항목이 있다')
+ok(infoItem.group === '내용 균형' && promoItem.group === '내용 균형', '같은 묶음에 둔다')
+ok(infoItem.level !== 'pass', '시설·이벤트만 쓴 글은 정보 항목에서 걸린다', infoItem.level)
+ok(promoItem.level !== 'pass', '홍보 표현이 많으면 걸린다', `${promoItem.value} ${promoItem.level}`)
+ok(infoItem.target.includes('5.2'), '목표에 상위권 실측값을 적는다', infoItem.target)
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

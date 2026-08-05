@@ -3,11 +3,20 @@
 import type { CheckGroup, CheckResult } from '@/lib/types'
 import { Badge, Progress, levelLabel, levelTone } from '@/components/ui'
 
-const GROUP_ORDER: CheckGroup[] = ['키워드', '분량·구조', '이미지·태그', '저품질 위험', 'AI 티 제거']
+const GROUP_ORDER: CheckGroup[] = [
+  '키워드',
+  '내용 균형',
+  '분량·구조',
+  '이미지·태그',
+  '저품질 위험',
+  'AI 티 제거',
+]
 
 const GROUP_NOTE: Record<CheckGroup, string> = {
   키워드: '횟수보다 패턴이 중요합니다. 6회를 자연스럽게 쓰면 통과하고 4회를 어색하게 쓰면 걸립니다.',
   '분량·구조': '상위 글 평균이 2,000~3,000자입니다. 소제목은 체류시간을 만듭니다.',
+  '내용 균형':
+    '상위 글 11편을 세본 결과입니다 — 1~3위는 정보 5.2종류·홍보 2.0종류, 4위 이하는 정보 3.6·홍보 3.8이었습니다. 시설·이벤트 안내만으로는 위로 못 갑니다.',
   '이미지·태그': '직접 촬영 원본만 씁니다. 재사용 이미지는 중복 판정 위험이 있습니다.',
   '저품질 위험': '표현을 안전하게 바꾸는 것이지 홍보를 약하게 만드는 게 아닙니다.',
   'AI 티 제거': '문장이 고르면 기계가 쓴 글로 읽힙니다.',
