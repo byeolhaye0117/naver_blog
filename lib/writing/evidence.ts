@@ -78,8 +78,14 @@ export interface ItemEvidence {
 function verdictOf(p: PooledFactor): EvidenceVerdict {
   if (p.runs < MIN_RUNS || p.advantage === null) return 'none'
   if (p.advantage <= -WEAK) return 'against'
-  // 거꾸로 나온 관찰이 유리한 관찰만큼 있으면 평균이 커도 부딪히는 것이다
-  if (p.disagree > 0 && p.disagree >= p.agree) return 'mixed'
+  /*
+   * mixed 는 **양쪽이 실제로 부딪힐 때만** 쓴다.
+   *
+   * 프로덕션에서 잡혔다 — 「유리 0회 · 거꾸로 1회」(나머지 5회는 판정 불가)에
+   * 「방향이 갈립니다」가 붙어 있었다. 갈린 게 아니라 한쪽만 약하게 나온 것이다.
+   * 그래서 유리·거꾸로가 **둘 다** 있을 때만 갈렸다고 말한다.
+   */
+  if (p.agree > 0 && p.disagree > 0 && p.disagree >= p.agree) return 'mixed'
   if (Math.abs(p.advantage) < WEAK) return 'flat'
   return p.advantage >= STRONG && p.disagree === 0 ? 'supported' : 'weak'
 }
