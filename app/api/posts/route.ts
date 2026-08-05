@@ -33,6 +33,7 @@ export const POST = guard('글 저장에 실패했습니다.', async (req: Reque
     eventText: input.eventText,
     publishedAt: input.publishedAt,
     publishedUrl: input.publishedUrl,
+    revisedAt: input.revisedAt,
     createdAt: now,
     updatedAt: now,
   }

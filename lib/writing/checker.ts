@@ -330,8 +330,13 @@ export function checkPost(input: CheckInput): CheckResult {
     label: '제목 앞쪽에 메인 키워드',
     level: level(titlePos >= 0 && titlePos <= 6, titlePos >= 0),
     value: titlePos < 0 ? '제목에 없음' : `${titlePos + 1}번째 글자부터`,
-    target: '앞 7자 안',
-    hint: titlePos < 0 ? '제목에 메인 키워드가 없으면 그 키워드로는 거의 노출되지 않습니다.' : undefined,
+    target: '앞 7자 안 (관찰 4회에서 유리 1·거꾸로 0)',
+    hint:
+      titlePos < 0
+        ? '제목에 메인 키워드가 없으면 그 키워드로는 거의 노출되지 않습니다.'
+        : titlePos > 6
+          ? '상위 글은 대부분 앞 6자 안에 키워드가 있었습니다. 앞으로 당기면 같은 글로 더 유리해집니다.'
+          : undefined,
     weight: 4,
   })
 

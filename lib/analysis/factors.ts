@@ -57,6 +57,13 @@ export interface FactorSample {
   infoWords: number | null
   promoWords: number | null
   experienceWords: number | null
+  /**
+   * 공감 수. null = 못 읽음 (0 과 구별한다).
+   *
+   * 우리 지역 키워드는 「인기글」 블록으로 나오니 반응이 자리를 만든다고 짐작하기 쉽다.
+   * 재보니 아니었다 — 봉명동은 공감 81개가 4위, 49개가 6위였다 (reaction.ts 주석).
+   */
+  likes: number | null
 }
 
 export type FactorKey =
@@ -69,6 +76,7 @@ export type FactorKey =
   | 'info'
   | 'promo'
   | 'experience'
+  | 'likes'
 
 export const FACTOR_LABEL: Record<FactorKey, string> = {
   age: '최신성',
@@ -80,6 +88,7 @@ export const FACTOR_LABEL: Record<FactorKey, string> = {
   info: '정보 요소 (읽는 사람이 가져갈 것)',
   promo: '홍보 요소 (파는 말)',
   experience: '경험 요소 (겪은 사람만 쓰는 말)',
+  likes: '공감 수',
 }
 
 /** 값이 클수록 상위여야 「유리」인지, 작을수록 상위여야 「유리」인지 */
@@ -95,6 +104,7 @@ const BIGGER_IS_BETTER: Record<FactorKey, boolean> = {
   // 값이 클수록 유리한 것으로 두면, 화면에 음수로 나와 「많으면 불리」가 그대로 읽힌다.
   promo: true,
   experience: true,
+  likes: true,
 }
 
 function valueOf(s: FactorSample, key: FactorKey): number | null {
@@ -118,6 +128,8 @@ function valueOf(s: FactorSample, key: FactorKey): number | null {
       return s.promoWords
     case 'experience':
       return s.experienceWords
+    case 'likes':
+      return s.likes
   }
 }
 
@@ -215,6 +227,7 @@ function noteFor(key: FactorKey, advantage: number | null, n: number): string {
       info: '읽는 사람이 가져갈 정보가 많은 글이 위에 있습니다',
       promo: '홍보 표현이 많은 글이 위에 있습니다',
       experience: '경험을 쓴 글이 위에 있습니다',
+      likes: '공감이 많은 글이 위에 있습니다',
     }
     return `${label} — ${how} ${what[key]} (${advantage}, 표본 ${n}편).`
   }
@@ -228,6 +241,7 @@ function noteFor(key: FactorKey, advantage: number | null, n: number): string {
     info: '정보가 적은 글이 오히려 위에 있습니다',
     promo: '홍보 표현이 적은 글이 위에 있습니다 (많이 넣을수록 아래로 갑니다)',
     experience: '경험을 덜 쓴 글이 오히려 위에 있습니다',
+    likes: '공감이 적은 글이 오히려 위에 있습니다 (공감 늘리기로는 순위가 안 올라갑니다)',
   }
   return `${label} — ${how} ${dir} 갑니다: ${opposite[key]} (${advantage}, 표본 ${n}편).`
 }
@@ -242,6 +256,7 @@ export const FACTOR_KEYS: FactorKey[] = [
   'info',
   'promo',
   'experience',
+  'likes',
 ]
 
 /** 상위 글 표본에서 신호별 관계를 잰다 (순수 함수 — 테스트 대상) */

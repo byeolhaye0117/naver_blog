@@ -397,6 +397,40 @@ export default function RankTracker({
               )}
 
               {/* 통합검색 위치 — 사람이 실제로 보는 자리 (블로그탭 순위와 다르다) */}
+              {/*
+                고쳐서 다시 올린 실험 결과.
+                최신성이 관찰에서 가장 센 신호였으니(6회 중 5회 유리·거꾸로 0) 옛 글을 고치면
+                어떻게 되는지 재본다. 네이버가 수정일을 반영하는지는 공개돼 있지 않다.
+              */}
+              {v.revise && (
+                <div
+                  data-revise="box"
+                  className="bd panel mb-3 rounded-xl border px-3 py-2.5 text-[12px] leading-relaxed"
+                >
+                  <strong className="font-bold">
+                    {v.revisedAt} 고쳐서 다시 올림
+                    {v.revise.delta !== null && !v.revise.tooEarly && (
+                      <span
+                        className={
+                          v.revise.delta > 0
+                            ? 'ml-1.5 text-emerald-600 dark:text-emerald-400'
+                            : v.revise.delta < 0
+                              ? 'ml-1.5 text-rose-600 dark:text-rose-400'
+                              : 'muted ml-1.5'
+                        }
+                      >
+                        {v.revise.delta > 0
+                          ? `▲ ${v.revise.delta}칸`
+                          : v.revise.delta < 0
+                            ? `▼ ${-v.revise.delta}칸`
+                            : '변화 없음'}
+                      </span>
+                    )}
+                  </strong>
+                  <p className="muted mt-1 text-[11px] leading-relaxed">{v.revise.note}</p>
+                </div>
+              )}
+
               {(() => {
                 const last = v.history[v.history.length - 1]
                 /*

@@ -244,6 +244,56 @@ function countLeading<T>(arr: T[], pred: (x: T) => boolean): number {
 }
 
 /** 주 2~3회 발행 주기 점검 */
+/**
+ * 지점별 마지막 발행 — 최신성이 관찰에서 가장 센 신호였기 때문에 따로 본다.
+ *
+ * 실측 (관찰소 6회, 상위 글 60편): **최신성 +0.63, 6회 중 5회 유리, 거꾸로 0회.**
+ * 다른 어떤 신호보다 강했다 (정보 +0.36 · 영상 +0.26 · 이미지 0.00). 그래서 「무엇을
+ * 쓸까」보다 「언제 쓸까」가 먼저인 경우가 많다 — 완벽한 글 한 편보다 꾸준한 발행이 낫다.
+ *
+ * cadenceReport 와 다른 것을 본다. 그쪽은 회사 전체 페이스이고, 이쪽은 **지점별로
+ * 어느 블로그가 식었는지**다. 지점이 넷이면 전체 페이스가 좋아도 한 지점은 3주째
+ * 비어 있을 수 있다.
+ */
+export const STALE_DAYS = 10
+
+export interface StoreFreshness {
+  storeId: string
+  storeName: string
+  /** 마지막 발행일 (YYYY-MM-DD). null = 발행한 글이 없다 */
+  lastPublished: string | null
+  /** 며칠 지났나. null = 발행한 글이 없다 */
+  days: number | null
+  stale: boolean
+  message: string
+}
+
+export function freshnessReport(
+  posts: Post[],
+  stores: { id: string; name: string }[],
+  now = Date.now()
+): StoreFreshness[] {
+  return stores
+    .map((st) => {
+      const dates = posts
+        .filter((p) => p.storeId === st.id && p.status === 'published' && p.publishedAt)
+        .map((p) => p.publishedAt as string)
+        .sort()
+      const last = dates.length ? dates[dates.length - 1] : null
+      const days = last ? Math.floor((now - Date.parse(last)) / 86400000) : null
+      const stale = days === null || days >= STALE_DAYS
+      const message =
+        days === null
+          ? `${st.name}은 아직 발행한 글이 없습니다. 최신성이 관찰에서 가장 센 신호였으니(6회 중 5회 유리) 첫 글부터가 곧 순위입니다.`
+          : days >= STALE_DAYS
+            ? `${st.name} 마지막 발행이 ${days}일 전입니다. 최신성은 관찰 6회에서 거꾸로 나온 적이 한 번도 없는 신호입니다 — 완벽한 글을 기다리기보다 한 편 올리는 편이 낫습니다.`
+            : `${st.name} ${days}일 전 발행 — 최신성은 지금 괜찮습니다.`
+      return { storeId: st.id, storeName: st.name, lastPublished: last, days, stale, message }
+    })
+    // 오래 비어 있는 지점부터
+    .sort((a, b) => (b.days ?? 9999) - (a.days ?? 9999))
+}
+
 export function cadenceReport(posts: Post[]): { last14: number; message: string; level: 'good' | 'warn' | 'bad' } {
   const now = Date.now()
   const published = posts.filter((p) => p.status === 'published' && p.publishedAt)

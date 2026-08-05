@@ -1,4 +1,5 @@
 import type { Post, RankSnapshot, RankTarget } from '@/lib/types'
+import { reviseEffect, type ReviseEffect } from './revise'
 import { normalizeBlogUrl } from '../naver/blogsection'
 
 /**
@@ -190,6 +191,10 @@ export interface RankView {
   /** 발행 후 경과일 */
   ageDays: number | null
   phase: PhaseInfo | null
+  /** 고쳐서 다시 올린 날 (연결된 글에 적어둔 값) */
+  revisedAt?: string
+  /** 수정 앞뒤 순위 비교 — 실험 결과 (lib/analysis/revise.ts) */
+  revise: ReviseEffect | null
 }
 
 function daysSince(date: string): number | null {
@@ -218,6 +223,9 @@ export function buildRankViews(
     const linked = target.postId ? posts.find((p) => p.id === target.postId) : undefined
     const publishedAt = target.publishedAt || linked?.publishedAt
     const ageDays = publishedAt ? daysSince(publishedAt) : null
+    // 고쳐서 다시 올린 실험 — 그 앞뒤 순위를 비교한다
+    const revisedAt = linked?.revisedAt
+    const revise = revisedAt ? reviseEffect(history, revisedAt.slice(0, 10)) : null
 
     return {
       target,
@@ -229,6 +237,8 @@ export function buildRankViews(
       publishedAt,
       ageDays,
       phase: phaseOf(ageDays, current),
+      revisedAt,
+      revise,
     }
   })
 }
