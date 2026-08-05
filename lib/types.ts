@@ -206,18 +206,17 @@ export interface KeywordMetric {
   /** 검색광고 API가 주는 경쟁정도 (낮음/중간/높음) */
   compIdx?: string
   /**
-   * 이 키워드에 평균 몇 개의 광고가 붙는지 (검색광고 API `plAvgDepth`).
+   * 이 키워드에 붙는 **파워링크** 광고 개수 (검색광고 API `plAvgDepth`).
    *
-   * 검색량만 보면 놓치는 것을 잡는다 — 광고가 많이 붙은 키워드는 통합검색 첫 화면
-   * 위쪽을 파워링크·플레이스가 차지해서 **블로그가 아래로 밀린다.** 검색량이 같아도
-   * 광고 5개짜리 키워드에서 1위를 하는 것은 광고 0개짜리에서 1위를 하는 것보다
-   * 유입이 적다.
+   * 이 검색어에 돈을 쓰는 업체가 몇 곳인지 = 상업성 세기다. 블로그 순위와는 무관하다 —
+   * 처음에는 「블로그가 밀리는 정도」로 안내했지만 실측에서 근거가 무너졌다
+   * (lib/analysis/keyword.ts 의 PLACE_ABOVE_BLOG 주석).
    */
   adDepth?: number
   /** 광고 클릭률(%) — 검색광고 API 월평균 클릭률 */
   ctrPc?: number
   ctrMobile?: number
-  /** 광고가 블로그 자리를 얼마나 밀어내는지 한 줄 설명 (adDepth 로 만든다) */
+  /** 파워링크 광고 개수를 사람 말로 (adDepth 로 만든다) */
   adNote?: string
   grade: KeywordGrade
   gradeReason: string
