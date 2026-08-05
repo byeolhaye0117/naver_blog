@@ -358,6 +358,17 @@ export function poolFactors(runs: FactorObservation[]): PooledFactor[] {
 }
 
 /**
+ * 저장해 둔 관찰(DB 의 `factorRuns`)을 그대로 모은다.
+ *
+ * 저장 타입(`FactorRun`)은 문자열이 넓게 잡혀 있어(key·strength 가 string) 그대로는
+ * `FactorObservation` 으로 안 읽힌다. 화면마다 캐스팅을 흘리지 않으려고 여기서 한 번만
+ * 좁힌다 — 모르는 key 는 poolFactors 가 알아서 무시한다.
+ */
+export function poolStoredRuns(runs: unknown): PooledFactor[] {
+  return poolFactors(Array.isArray(runs) ? (runs as FactorObservation[]) : [])
+}
+
+/**
  * 모은 결과를 한 줄로.
  *
  * 「무엇이 순위를 만드는가」에 답하되, 관찰이 적으면 적다고 먼저 말한다.

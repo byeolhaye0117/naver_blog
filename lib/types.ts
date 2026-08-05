@@ -387,6 +387,17 @@ export interface CheckItem {
   target: string
   hint?: string
   weight: number
+  /**
+   * 관찰소 근거 (lib/writing/evidence.ts).
+   *
+   * 이 기준이 어디서 왔는지 항목마다 밝힌다 — 「관찰 4회 · 상위 글 38편: 유리 3회 ·
+   * 거꾸로 0회」처럼. 없으면 아직 재는 방법이 없는 항목이고, 그건 화면에서 통설 기준으로
+   * 표시한다.
+   */
+  evidence?: string
+  evidenceVerdict?: 'none' | 'supported' | 'weak' | 'mixed' | 'flat' | 'against'
+  /** 관찰로 가중치를 고치기 전 값 — 「내렸다」를 보여주려고 남긴다 */
+  baseWeight?: number
 }
 
 export interface RiskHit {
@@ -423,4 +434,6 @@ export interface CheckResult {
   items: CheckItem[]
   risks: RiskHit[]
   stats: CheckStats
+  /** 이 점수의 근거가 얼마나 되는지 한 줄로 (몇 개가 관찰로 확인됐나) */
+  evidenceNote: string
 }

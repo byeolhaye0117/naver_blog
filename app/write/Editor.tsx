@@ -9,6 +9,7 @@ import { buildTemplate, hasGuides, stripGuides } from '@/lib/writing/templates'
 import { adviseRotation, ANGLES, INFO_FORMATS, INTRO_TYPES, REVIEW_INTRO_TYPES, TOPIC_GROUPS } from '@/lib/writing/rotation'
 import { buildCopyPackage, postLogLine } from '@/lib/writing/export'
 import { isPrescriptionStale, prescriptionAgeDays } from '@/lib/analysis/prescription'
+import type { PooledFactor } from '@/lib/analysis/factors'
 import type { IntentSuggestion } from '@/lib/analysis/intent'
 import { Badge, Card, Field, inputClass } from '@/components/ui'
 import { IconSpark } from '@/components/icons'
@@ -34,6 +35,7 @@ export default function Editor({
   initialType,
   initialStoreId,
   prescription,
+  evidence,
   autoOpened = false,
 }: {
   stores: Store[]
@@ -47,6 +49,11 @@ export default function Editor({
   initialStoreId?: string
   /** 이 메인 키워드로 분석해 둔 상위노출 처방 (있으면 AI 지시문에 함께 보낸다) */
   prescription?: Prescription
+  /**
+   * 관찰소에 쌓인 근거. 검수 항목마다 「관찰 N회: 유리 x · 거꾸로 y」가 붙고,
+   * 근거가 갈리거나 거꾸로인 항목은 점수 비중이 내려간다 (lib/writing/evidence.ts).
+   */
+  evidence?: PooledFactor[]
   /** 「글 작성」만 눌러 들어와 쓰던 초안을 자동으로 열어준 경우 */
   autoOpened?: boolean
 }) {
@@ -145,6 +152,7 @@ export default function Editor({
         legalName: store?.legalName,
         womenOnly: store?.womenOnly,
         sponsorship: type === 'review' ? sponsorship : undefined,
+        evidence,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [type, title, body, mainKeyword, sub1, sub2, localKeyword, tagText, storeId, sponsorship]
