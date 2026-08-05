@@ -33,7 +33,7 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
   // 이미지 지시문과 소제목 마크업을 뺀 본문
   const body = cleaned
     .split(/\r?\n/)
-    .filter((l) => !/^\s*\[이미지\s*:?[^\]]*\]\s*$/.test(l))
+    .filter((l) => !/^\s*\[(?:이미지|영상)\s*:?[^\]]*\]\s*$/.test(l))
     .map((l) => l.replace(/^\s*##+\s*/, ''))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -58,7 +58,10 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     },
     { label: '이미지 파일명·대체텍스트에 지역 키워드 넣기', detail: '아래 이미지 배치표의 파일명을 그대로 쓰면 됩니다' },
     { label: '본문 붙여넣고 소제목에 스타일 적용', detail: '네이버 에디터의 소제목 서식을 쓰면 목차가 자동 생성됩니다' },
-    { label: '30초~3분 영상 1개 삽입', detail: 'D.I.A.+ 영상 가산점 · 체류시간 확보' },
+    {
+      label: '짧은 영상 1개 삽입 (10~20초)',
+      detail: '관찰 6회 중 영상이 있는 글이 위에 있었다 — 유리 2 · 거꾸로 0. 편집 없이 세로로 찍은 것도 된다',
+    },
     { label: `해시태그 ${post.tags.length}개 입력`, detail: '8~12개 권장' },
     {
       label: '네이버 지도 위치 첨부',

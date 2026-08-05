@@ -2510,7 +2510,7 @@ ok(SPONSOR_LABEL.noMark === '표기 없음', '표기 없음을 그대로 부른�
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[50] 내용 균형 — 시설·이벤트만으로는 위로 못 간다')
-const { countSignals, contentBalance, INFO_MIN, PROMO_MAX, INFO_WORDS, PROMO_WORDS } =
+const { countSignals, contentBalance, INFO_MIN, INFO_MIN_BY_TYPE, PROMO_MAX, INFO_WORDS, PROMO_WORDS } =
   require(`${OUT}/analysis/content.js`)
 
 // 종류를 센다 — 횟수를 세면 같은 말을 반복해 점수를 올릴 수 있다
@@ -2645,8 +2645,13 @@ ok(promoSkeleton.includes('자극(어디에 오는지)'), '무엇을 쓰라고 �
 ok(promoSkeleton.includes('런닝머신 10대" (X)'), '나쁜 예와 좋은 예를 같이 준다')
 ok(promoSkeleton.includes('중간 CTA 를 넣지 않는다'), '중간 CTA 를 없앤다')
 ok(promoSkeleton.includes('이벤트 예고는 **한 줄로만**'), '후킹의 이벤트 예고를 한 줄로 줄인다')
-ok(promoSkeleton.includes('짧은 영상 1개'), '영상 자리를 넣는다')
+/*
+ * 영상은 안내(`> `)가 아니라 **표기**로 넣는다 — 안내는 복사할 때 지워지므로,
+ * 안내로만 두면 네이버에 붙이는 순간 영상 자리가 사라진다.
+ */
+ok(promoSkeleton.includes('[영상:'), '영상 자리를 표기로 넣는다')
 ok(promoSkeleton.includes('10~20초'), '영상 길이까지 알려준다')
+ok(stripGuides(promoSkeleton).includes('[영상:'), '복사 본문에도 영상 자리가 남는다')
 // 홍보를 없애지는 않는다 — 이 글의 목적은 상담이다
 ok(promoSkeleton.includes('7단계 CTA'), 'CTA 단계는 그대로 남긴다')
 ok(promoSkeleton.includes('6단계 이벤트 본공개'), '이벤트 단계도 그대로 남긴다')
@@ -2823,6 +2828,133 @@ ok(
 
 // 근거가 붙은 항목이 점수를 흔드는 정도가 달라진다
 ok(evWired.score !== evPlain.score || wInfo.weight !== 4, '관찰이 점수 계산에 실제로 들어간다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[54] 글의 목적에 따라 기준이 다르다 — 후기에 정보를 욱여넣지 않는다')
+
+/*
+ * 회원 질문: "후기 블로그에 정보를 욱여넣으면 이상하지 않을까?"
+ * 실측도 같은 쪽이었다 — 경험 요소는 순위와 무관했고(-0.13) 4위 이하가 오히려 더
+ * 많았다(4.8 vs 3.7). 2위였던 글은 경험 요소 0개인 순수 소개글이었다.
+ * 그래서 후기의 정보 하한을 낮추고, 순위는 정보글·홍보글이 맡는다.
+ */
+ok(INFO_MIN_BY_TYPE.info === 5, '정보글은 정보가 주인공 (상위권 평균 5.2)')
+ok(INFO_MIN_BY_TYPE.promo === 4, '홍보글은 시설·이벤트 말고 실행 정보까지')
+ok(INFO_MIN_BY_TYPE.review === 2, '후기글은 들은 말을 옮기는 정도로 족하다')
+ok(INFO_MIN_BY_TYPE.review > 0, '그래도 0 은 아니다 — 가져갈 게 하나도 없으면 안 된다')
+
+// 같은 글이라도 유형에 따라 판정이 다르다
+const TB_TEXT = '상담 때 제 자세를 봐주시면서 어디에 자극이 오는지 짚어주셨어요. 다녀왔습니다.'
+const tbReview = contentBalance(TB_TEXT, 'review')
+const tbInfo = contentBalance(TB_TEXT, 'info')
+ok(tbReview.signals.info === 2, '자세·자극 두 종류', String(tbReview.signals.info))
+ok(tbReview.level === 'good', '후기로는 통과')
+ok(tbInfo.level === 'thin', '정보글로는 모자람 — 같은 글, 다른 목적')
+ok(tbInfo.infoNote.includes('5종류 이상'), '정보글에는 5종류를 요구한다', tbInfo.infoNote)
+
+// 후기에 「단락을 하나 더하세요」라고 하지 않는다 — 그러면 업체가 쓴 글이 된다
+const tbThinRev = contentBalance('등록했어요. 좋았습니다.', 'review')
+ok(tbThinRev.level === 'thin', '정보가 0~1종류면 후기도 모자람')
+ok(!tbThinRev.infoNote.includes('단락을 하나 더하세요'), '후기에 정보 단락을 만들라고 하지 않는다')
+ok(tbThinRev.infoNote.includes('정보 단락을 만들지 마세요'), '오히려 만들지 말라고 한다', tbThinRev.infoNote)
+ok(tbThinRev.infoNote.includes('들은 말을 한 줄로'), '어떻게 채우는지 알려준다')
+
+// 검수도 유형별로 다르게 본다
+const TB_BODY = [
+  '[이미지: 대표]',
+  '쌍용동 헬스장을 알아보다 상담만 받아보러 다녀왔습니다. 후기 남깁니다.',
+  '',
+  '[이미지: 입구]',
+  '## 등록만 하고 못 갈까 걱정했던 이야기',
+  '작년에 다른 곳에 등록했다가 두 달 만에 끊었어요. 그게 계속 마음에 걸렸습니다.',
+  '',
+  '[이미지: 시설]',
+  '[영상: 시설을 훑는 시선]',
+  '## 가서 본 것과 상담 때 들은 말',
+  '상담하시는 분이 제 자세를 보면서 어디에 자극이 와야 하는지 짚어주셨어요. 쌍용동 헬스장 중에 이렇게 봐주는 곳은 처음이었습니다.',
+  '',
+  '[이미지: 첫 운동]',
+  '## 등록하기로 한 이유',
+  '부담 없이 나올 수 있었던 게 컷어요. 아쉬운 점은 샤워실이 좀 좁다는 것 정도였습니다.',
+  '',
+  '[이미지: 안내물]',
+  '## 제가 받은 혜택',
+  '제가 등록할 때 마침 혜택이 있었어요. 쌍용동 24시 헬스장을 찾던 참이라 더 반가웠습니다.',
+  '',
+  '[이미지: 예약 화면]',
+  '## 저는 이렇게 예약했어요',
+  '전화로 시간만 말하고 갔습니다. 쌍용동 헬스장 고민 중이면 상담만 받아보셔도 됩니다.',
+].join('\n')
+const tbCheck = checkPost({
+  type: 'review',
+  title: '쌍용동 헬스장 상담만 받아본 솔직 후기, 등록까지 한 이유',
+  body: TB_BODY,
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: ['쌍용동 24시 헬스장'],
+  tags: ['쌍용동헬스장', '천안헬스장'],
+  sponsorship: 'own',
+})
+const tbItem = tbCheck.items.find((i) => i.id === 'info-substance')
+ok(tbItem.label === '가서 알게 된 것', '후기에서는 항목 이름도 바뀐다', tbItem.label)
+ok(tbItem.target.includes('신뢰를 만드는 글'), '이 글의 역할을 밝힌다', tbItem.target)
+ok(tbItem.level === 'pass', '들은 말 한 줄로 통과한다', `${tbItem.value} / ${tbItem.target}`)
+// 같은 본문을 정보글로 검수하면 걸린다
+const tbAsInfo = checkPost({
+  type: 'info',
+  title: '쌍용동 헬스장 상담만 받아본 솔직 후기, 등록까지 한 이유',
+  body: TB_BODY,
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: ['쌍용동 24시 헬스장'],
+  tags: ['쌍용동헬스장'],
+})
+ok(
+  tbAsInfo.items.find((i) => i.id === 'info-substance').level !== 'pass',
+  '같은 글을 정보글로 내면 정보가 모자란다'
+)
+
+// ─── 영상 자리 ───────────────────────────────────────────────
+const tbParsed = parseBody(TB_BODY)
+ok(tbParsed.videos.length === 1, '영상 표기를 센다', String(tbParsed.videos.length))
+ok(tbParsed.videos[0] === '시설을 훑는 시선', '무엇을 찍을지도 담는다')
+// 표기를 본문 글자로 세면 글은 그대로인데 분량이 늘어난 것처럼 보인다
+ok(!tbParsed.prose.includes('[영상'), '영상 표기는 본문 글자수에서 뺀다')
+ok(!tbParsed.prose.includes('[이미지'), '이미지 표기도 마찬가지')
+// 영상이 소제목 위 이미지 배치 판정을 깨뜨리지 않아야 한다 (이미지→영상→소제목 순서)
+ok(tbParsed.headingsWithImageAbove === 5, '이미지와 소제목 사이에 영상이 와도 배치는 유효', String(tbParsed.headingsWithImageAbove))
+
+const tbVideo = tbCheck.items.find((i) => i.id === 'video')
+ok(tbVideo && tbVideo.level === 'pass', '영상이 있으면 통과')
+const tbNoVideo = checkPost({
+  type: 'review',
+  title: '쌍용동 헬스장 상담만 받아본 솔직 후기, 등록까지 한 이유',
+  body: TB_BODY.replace('[영상: 시설을 훑는 시선]\n', ''),
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: ['쌍용동 24시 헬스장'],
+  tags: ['쌍용동헬스장'],
+  sponsorship: 'own',
+})
+const tbNV = tbNoVideo.items.find((i) => i.id === 'video')
+// 근거가 유리 2·거꾸로 0 뿐이라 발행을 막지는 않는다 — 촬영은 실제 부담이다
+ok(tbNV.level === 'warn', '영상이 없으면 주의까지만 (수정필요 아님)', tbNV.level)
+ok(tbNV.hint.includes('[영상:'), '어떻게 넣는지 알려준다')
+
+// ─── 골격이 목적에 맞게 바뀌었나 ─────────────────────────────
+const tbRevSkel = buildTemplate('review', {
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: ['쌍용동 24시 헬스장', '쌍용동 PT'],
+})
+ok(tbRevSkel.includes('운동 정보를 설명하기 시작하면'), '후기에 정보를 욱여넣지 말라고 한다')
+ok(tbRevSkel.includes('정보 단락을 만들지 않는다'), '정보 단락 금지')
+ok(tbRevSkel.includes('상담 때 들은 말'), '대신 무엇을 쓰라고 알려준다')
+ok(tbRevSkel.includes('6단계 이벤트 (180~220자)'), '이벤트 단락을 줄였다 (280~320 → 180~220)')
+ok(tbRevSkel.includes('한 대목만'), '혜택을 한 대목으로 모은다')
+ok(tbRevSkel.includes('[영상:'), '후기에도 영상 자리')
+
+const tbInfoSkel = buildTemplate('info', { mainKeyword: '다이어트 정체기 극복', subKeywords: ['정체기 식단'] })
+ok(tbInfoSkel.includes('정보 요소 5종류 이상'), '정보글은 5종류를 목표로 준다')
+ok(tbInfoSkel.includes('근력·부위·단백질'), '아래쪽에 더 많았던 말을 알려준다')
+ok(tbInfoSkel.includes('자극이 어디에 오는지'), '갈린 말을 알려준다')
+ok(tbInfoSkel.includes('[영상:'), '정보글에도 영상 자리')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

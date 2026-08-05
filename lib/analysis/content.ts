@@ -60,6 +60,30 @@ export const EXPERIENCE_WORDS = [
  * 실측 1~3위 평균 5.2개 · 4위 이하 3.6개 → 그 사이인 4를 기준선으로 둔다.
  */
 export const INFO_MIN = 4
+
+/**
+ * 정보 하한은 **글의 목적에 따라 다르다.**
+ *
+ * 회원이 물었다 — "후기 블로그에 정보를 욱여넣으면 이상하지 않을까?" 맞는 말이고,
+ * 실측도 같은 쪽을 가리킨다. 경험 요소는 순위와 관계가 없었고(-0.13) 오히려 4위 이하가
+ * 더 많았다 (경험 4.8 vs 1~3위 3.7). 결정적인 반례는 2위였던 「신방동헬스장 고민 끝!
+ * … 피앤피짐 소개」 — **경험 요소 0개인 순수 소개글**이 정보 4개·홍보 2개로 2위였다.
+ *
+ * 그래서 후기글에 정보를 밀어넣어 순위를 노리는 것은 두 번 틀린다. 후기의 유일한 무기인
+ * 「제3자가 실제로 겪은 말투」를 잃고, 그 대가로 얻는 순위 근거도 없다.
+ *
+ * 역할을 나눈다.
+ *   info   5 — 정보가 주인공이다. 상위권 평균(5.2)을 그대로 목표로 둔다.
+ *   promo  4 — 시설·이벤트만 쓰면 안 된다. 해결 단락에 실행 정보를 녹인다.
+ *   review 2 — 순위는 다른 글이 뚫는다. 후기는 상담 직전에 읽는 신뢰용이다.
+ *              그래도 0 은 아니다 — 「가서 뭘 알게 됐는지」가 하나도 없는 후기는
+ *              읽는 사람이 가져갈 게 없다. 다만 **들은 말을 옮기는 정도**로 족하다.
+ */
+export const INFO_MIN_BY_TYPE: Record<'promo' | 'info' | 'review', number> = {
+  promo: 4,
+  info: 5,
+  review: 2,
+}
 /**
  * 홍보 요소는 이만큼까지.
  * 실측 1~3위 평균 2.0개 · 4위 이하 3.8개 → 3까지는 상위권 범위 안이다.
@@ -116,16 +140,28 @@ export interface ContentBalance {
  * 판정은 두 축을 따로 낸다 — 정보가 모자란 것과 홍보가 과한 것은 고칠 방법이 다르다.
  * 정보가 모자라면 단락을 **더해야** 하고, 홍보가 과하면 **덜어내야** 한다.
  */
-export function contentBalance(text: string): ContentBalance {
+export function contentBalance(
+  text: string,
+  /** 글 유형 — 정보 하한이 목적에 따라 다르다 (INFO_MIN_BY_TYPE 주석) */
+  type: 'promo' | 'info' | 'review' = 'promo'
+): ContentBalance {
   const signals = countSignals(text)
-  const thin = signals.info < INFO_MIN
+  const infoMin = INFO_MIN_BY_TYPE[type] ?? INFO_MIN
+  const thin = signals.info < infoMin
   const pushy = signals.promo > PROMO_MAX
 
   const level: BalanceLevel = thin && pushy ? 'both' : thin ? 'thin' : pushy ? 'pushy' : 'good'
 
+  /*
+   * 후기글에는 다른 말을 한다.
+   * 「단락을 하나 더하세요」는 정보글·홍보글에 맞는 처방이고, 후기에 그렇게 하면
+   * 업체가 쓴 글이 된다. 후기는 들은 말을 옮기는 정도로 족하다.
+   */
   const infoNote = thin
-    ? `읽는 사람이 가져갈 정보가 ${signals.info}종류입니다 (상위권 1~3위 평균 5.2종류). 자세·루틴·식단·주의점 중 하나로 단락을 하나 더하세요 — 「기구가 있다」가 아니라 「그 기구로 무엇을 어떻게 한다」로 씁니다.`
-    : `정보가 ${signals.info}종류 들어 있습니다 (${signals.infoFound.slice(0, 5).join('·')}${signals.infoFound.length > 5 ? ' 등' : ''}) — 상위권 수준입니다.`
+    ? type === 'review'
+      ? `가서 알게 된 것이 ${signals.info}종류입니다 (${infoMin}종류면 충분). 정보 단락을 만들지 마세요 — 상담 때 들은 말을 한 줄로 옮기면 됩니다. 예) "제 자세를 보면서 어디에 자극이 와야 하는지 짚어주셨어요."`
+      : `읽는 사람이 가져갈 정보가 ${signals.info}종류입니다 (${infoMin}종류 이상 · 상위권 1~3위 평균 5.2종류). 자세·루틴·식단·주의점 중 하나로 단락을 하나 더하세요 — 「기구가 있다」가 아니라 「그 기구로 무엇을 어떻게 한다」로 씁니다.`
+    : `정보가 ${signals.info}종류 들어 있습니다 (${signals.infoFound.slice(0, 5).join('·')}${signals.infoFound.length > 5 ? ' 등' : ''}) — ${type === 'review' ? '후기로는 충분합니다.' : '상위권 수준입니다.'}`
 
   const promoNote = pushy
     ? `홍보 표현이 ${signals.promo}종류입니다 (${signals.promoFound.slice(0, 6).join('·')}). 실측에서 홍보 표현이 많은 글이 아래에 있었습니다 (1~3위 평균 2.0종류 / 4위 이하 3.8종류). 이벤트·상담 안내는 한 곳에 모으고 본문에 흩뿌리지 마세요.`

@@ -23,6 +23,7 @@ export const ITEM_FACTOR: Record<string, FactorKey> = {
   titleLength: 'titleLength',
   titleKeyword: 'keywordFront',
   images: 'images',
+  video: 'videos',
   'info-substance': 'info',
   'promo-restraint': 'promo',
 }
