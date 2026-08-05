@@ -2795,6 +2795,18 @@ ok(wTitle.evidenceVerdict === 'flat', '약한 신호를 「갈린다」고 하�
 ok(wTitle.evidence.includes('뚜렷하게 같이 움직이지 않았습니다'), '없는 갈등을 만들지 않는다', wTitle.evidence)
 ok(wTitle.weight === 4, '제목 키워드 항목은 근거가 약해도 비중을 내리지 않는다', String(wTitle.weight))
 
+/*
+ * 「방향이 갈립니다」는 양쪽이 실제로 부딪힐 때만 쓴다.
+ * 프로덕션에서 「유리 0회 · 거꾸로 1회」에 갈린다고 붙어 있던 것을 고쳤다 —
+ * 나머지 5회가 판정 불가였을 뿐 갈린 게 아니다.
+ */
+const evOneSided = evOne('images', { advantage: -0.18, runs: 6, agree: 0, disagree: 1 })
+ok(evOneSided.get('images').verdict === 'flat', '한쪽만 약하게 나온 것은 갈린 게 아니다', evOneSided.get('images').verdict)
+ok(!evOneSided.get('images').line.includes('방향이 갈립니다'), '없는 갈등을 만들지 않는다', evOneSided.get('images').line)
+ok(evOneSided.get('images').line.includes('거꾸로 1회'), '거꾸로 나온 횟수는 그대로 적는다')
+const evReal = evOne('images', { advantage: 0.5, runs: 6, agree: 2, disagree: 3 })
+ok(evReal.get('images').verdict === 'mixed', '양쪽이 다 있으면 갈린 것')
+
 // mixed 와 flat 은 다른 상황이다 — 같은 말로 덮지 않는다
 const evFlat = evOne('images', { advantage: 0.12, runs: 5, agree: 1, disagree: 0 })
 ok(evFlat.get('images').verdict === 'flat', '거꾸로가 없으면 flat')
