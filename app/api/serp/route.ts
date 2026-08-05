@@ -5,6 +5,7 @@ import { keepPrescription } from '@/lib/analysis/keep-prescription'
 import { readDB } from '@/lib/store'
 import { measureTopPosts } from '@/lib/naver/blogpost'
 import { buildCutline } from '@/lib/analysis/cutline'
+import { scanSponsorship } from '@/lib/analysis/agency'
 
 export const dynamic = 'force-dynamic'
 // 상위 글 본문까지 읽으므로(6개) 기본 10초로는 뒤쪽이 잘린다
@@ -75,7 +76,19 @@ export async function POST(req: Request) {
       myNames
     )
     await keepPrescription(analysis)
-    return NextResponse.json({ analysis })
+
+    /*
+     * 대가성 표기 훑기 — 조회가 더 늘지 않는다.
+     * 커트라인을 재려고 이미 읽어둔 본문을 그대로 쓴다. 표기가 있으면 그 자리는 업체가
+     * 비용을 들여 만든 자리라는 뜻이고, 우리 전략이 달라진다 (agency.ts 주석).
+     */
+    const titleOf = new Map(top.items.map((i) => [i.url, i.title]))
+    const sponsorScan = measured.map((m) => ({
+      url: m.url,
+      ...scanSponsorship(m.text, titleOf.get(m.url) ?? ''),
+    }))
+
+    return NextResponse.json({ analysis, sponsorScan })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : '상위노출 분석 중 오류가 발생했습니다.' },

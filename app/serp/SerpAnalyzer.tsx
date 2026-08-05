@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import type { SerpAnalysis } from '@/lib/types'
 import FactorObservatory from '@/components/FactorObservatory'
+import { AGENCY_CAVEAT, SPONSOR_LABEL, type SponsorLevel } from '@/lib/analysis/agency'
 import { Badge, Card, Empty, Field, MockNotice, Stat, inputClass } from '@/components/ui'
 import { IconDoc, IconPencil, IconTarget, IconTrend } from '@/components/icons'
 import { naverBlogTabUrl, naverSearchUrl } from '@/lib/analysis/rank'
@@ -11,11 +12,23 @@ import { parsePastedSerp, toEditableText } from '@/lib/analysis/paste'
 
 type Mode = 'auto' | 'paste'
 
+interface SponsorRow {
+  url: string
+  level: SponsorLevel
+  found: string[]
+  note: string
+}
+
 export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: string }) {
   const [mode, setMode] = useState<Mode>('auto')
   const [keyword, setKeyword] = useState(initialKeyword)
   const [limit, setLimit] = useState(15)
   const [data, setData] = useState<SerpAnalysis | null>(null)
+  /**
+   * 상위 글의 대가성 표기 — 「돈 주고 맡긴 글인가」를 보는 근거.
+   * 본문은 커트라인 계산에 이미 읽으므로 조회가 더 늘지 않는다.
+   */
+  const [sponsor, setSponsor] = useState<SponsorRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,6 +54,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? '분석에 실패했습니다.')
       setData(json.analysis)
+      setSponsor(json.sponsorScan ?? [])
     } catch (e) {
       setError(e instanceof Error ? e.message : '분석 중 오류가 발생했습니다.')
       // 자동이 막혔을 때 사용자가 손으로 탭을 찾아 옮겨가지 않게, 붙여넣기 칸을 바로 펼쳐 준다
@@ -81,6 +95,8 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? '분석에 실패했습니다.')
       setData(json.analysis)
+      // 붙여넣기 경로는 본문을 읽지 않으므로 대가성 표기를 알 수 없다 — 비워 둔다
+      setSponsor([])
     } catch (e) {
       setError(e instanceof Error ? e.message : '분석 중 오류가 발생했습니다.')
     } finally {
@@ -457,6 +473,36 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
               </div>
             }
           >
+            {/*
+              「돈 주고 맡긴 글이 상위에 있나」를 한 줄로.
+              표기가 있는 글만 센다 — 표기가 없는 글을 셈에 넣으면 없는 주장이 된다.
+            */}
+            {sponsor.length > 0 && (
+              <div className="bd panel mb-3 rounded-xl border px-3 py-2.5">
+                {(() => {
+                  const paid = sponsor.filter((x) => x.level === 'paidDisclosed').length
+                  const camp = sponsor.filter((x) => x.level === 'campaignDisclosed').length
+                  const own = sponsor.filter((x) => x.level === 'ownMoney').length
+                  const marked = paid + camp
+                  return (
+                    <>
+                      <p className="text-[12px] font-bold">
+                        {marked > 0
+                          ? `본문을 읽은 ${sponsor.length}편 중 ${marked}편에 대가성·체험단 표기가 있습니다`
+                          : `본문을 읽은 ${sponsor.length}편에는 대가성 표기가 없었습니다`}
+                      </p>
+                      <p className="muted mt-1 text-[11px] leading-relaxed">
+                        {marked > 0
+                          ? `협찬·원고료 ${paid}편 · 체험단 ${camp}편${own ? ` · 내돈내산 ${own}편` : ''}. 업체가 비용을 들여 만든 자리가 섞여 있다는 뜻입니다 — 우리 홍보글 한 편으로 정면에서 뒤집기는 어렵습니다. 대신 같은 방식(회원 후기)이 통하는 판이라는 신호이기도 합니다.`
+                          : '표기가 없다는 사실만 알 수 있습니다. 대가를 받았는지 안 받았는지는 알 수 없습니다.'}
+                      </p>
+                      <p className="muted mt-1 text-[11px] leading-relaxed">{AGENCY_CAVEAT}</p>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
+
             <ul className="space-y-3">
               {data.items.map((item) => (
                 <li key={item.rank} className="bd border-b pb-3 last:border-0 last:pb-0">
@@ -496,6 +542,28 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
                           <Badge tone="default">제목에 키워드 없음</Badge>
                         )}
                         {item.isOfficialBlog && <Badge tone="info">업체 블로그 추정</Badge>}
+                        {/*
+                          대가성 표기 — 본인이 밝힌 것만 배지로 띄운다.
+                          「표기 없음」은 배지로 만들지 않는다. 표기가 없다는 사실이
+                          「몰래 받았다」로 읽히면 없는 주장을 하는 셈이다.
+                        */}
+                        {(() => {
+                          const sp = sponsor.find((x) => x.url === item.link)
+                          if (!sp || sp.level === 'noMark') return null
+                          return (
+                            <Badge
+                              tone={
+                                sp.level === 'ownMoney'
+                                  ? 'good'
+                                  : sp.level === 'paidDisclosed'
+                                    ? 'warn'
+                                    : 'info'
+                              }
+                            >
+                              {SPONSOR_LABEL[sp.level]}
+                            </Badge>
+                          )
+                        })()}
                         {/* 이 블로그가 업체 본인인지 체험단인지 — 아이디를 넘겨 바로 진단한다 */}
                         {item.link && (
                           <Link

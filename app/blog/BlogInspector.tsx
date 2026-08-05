@@ -9,6 +9,12 @@ import {
   type IndexCheck,
   type IndexSummary,
 } from '@/lib/analysis/indexcheck'
+import {
+  AGENCY_LABEL,
+  SPONSOR_LABEL,
+  type AgencyJudgement,
+  type SponsorLevel,
+} from '@/lib/analysis/agency'
 import { Badge, Card, Empty, Field, Progress, inputClass } from '@/components/ui'
 
 interface Result {
@@ -20,6 +26,8 @@ interface Result {
   indexDetail?: IndexCheck[]
   indexSummary?: IndexSummary
   meaning: string
+  agency?: AgencyJudgement
+  sponsorScans?: { title: string; url: string; level: SponsorLevel; found: string[]; note: string }[]
   exposureDetail?: { query: string; rank: number | null }[]
   recent: { title: string; date: string; category: string; link: string }[]
 }
@@ -118,6 +126,89 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
               <p className="mt-1 text-[12.5px] leading-relaxed">{data.meaning}</p>
             </div>
           </Card>
+
+          {/*
+            「돈 주고 맡긴 블로그인가」.
+            본인이 밝힌 표기가 가장 확실한 근거다. 표기가 없으면 없다고만 말하고
+            추측하지 않는다 — 남이 대가를 받았다고 단정하는 것은 사실 주장이다.
+          */}
+          {data.agency && (
+            <Card
+              title="돈 주고 맡긴 글인가"
+              subtitle="밖에서 볼 수 있는 흔적만 모았습니다. 사실 확인은 당사자만 할 수 있습니다."
+              right={
+                <Badge
+                  tone={
+                    data.agency.level === 'confirmedByMark'
+                      ? 'warn'
+                      : data.agency.level === 'campaignLike'
+                        ? 'info'
+                        : data.agency.level === 'ownerLike'
+                          ? 'good'
+                          : 'default'
+                  }
+                >
+                  {AGENCY_LABEL[data.agency.level]}
+                </Badge>
+              }
+            >
+              <ul className="space-y-1.5">
+                {data.agency.signals.map((sig) => (
+                  <li key={sig.label} className="panel bd rounded-xl border px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12.5px] font-bold">{sig.label}</span>
+                      <span className="muted ml-auto text-[10.5px] font-semibold">
+                        {sig.toward === 'campaign'
+                          ? '체험단 쪽'
+                          : sig.toward === 'owner'
+                            ? '업체 본인 쪽'
+                            : '중립'}
+                      </span>
+                    </div>
+                    <p className="muted mt-1 text-[11px] leading-relaxed">{sig.detail}</p>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="surface mt-3 rounded-xl p-3.5">
+                <p className="text-[12px] font-bold">우리에게 뜻하는 것</p>
+                <p className="mt-1 text-[12.5px] leading-relaxed">{data.agency.meaning}</p>
+              </div>
+
+              {data.sponsorScans && data.sponsorScans.length > 0 && (
+                <details className="mt-3">
+                  <summary className="muted cursor-pointer text-[11.5px] font-semibold select-none">
+                    읽어본 글 {data.sponsorScans.length}편 — 무엇을 봤는지
+                  </summary>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {data.sponsorScans.map((sc) => (
+                      <li key={sc.url} className="panel bd rounded-lg border px-2.5 py-1.5">
+                        <div className="flex items-start gap-2">
+                          <a
+                            href={sc.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="min-w-0 flex-1 text-[11.5px] leading-snug hover:underline"
+                          >
+                            {sc.title}
+                          </a>
+                          <Badge tone={sc.level === 'noMark' ? 'default' : 'info'}>
+                            {SPONSOR_LABEL[sc.level]}
+                          </Badge>
+                        </div>
+                        <p className="muted mt-1 text-[11px] leading-relaxed">{sc.note}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+
+              {/* 이 문장은 어떤 경우에도 함께 나간다 */}
+              <p className="muted mt-3 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-[11.5px] leading-relaxed">
+                {data.agency.caveat}
+              </p>
+            </Card>
+          )}
 
           <Card
             title={`등급 추정 · ${GRADE_LABEL[data.grade.grade]}`}
