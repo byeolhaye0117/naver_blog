@@ -1,0 +1,121 @@
+import { NextResponse } from 'next/server'
+import { mutate, readDB } from '@/lib/store'
+import { topBlogPosts } from '@/lib/naver/blogsection'
+import { measureTopPosts } from '@/lib/naver/blogpost'
+import { buildObservation, daysBetween, type FactorSample } from '@/lib/analysis/factors'
+import { areasFromStore } from '@/lib/analysis/keyword'
+import type { FactorRun } from '@/lib/types'
+
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
+
+/** 한 번에 관찰할 키워드 수 (키워드마다 목록 1콜 + 본문 8콜) */
+const MAX_KEYWORDS = 3
+const TOP = 10
+const BODY = 8
+const KEEP = 200
+
+/**
+ * 랭킹 요인을 **주기적으로 다시 잰다.**
+ *
+ * 회원 요청 그대로다 — "네이버가 블로그 상위 노출 띄어주는 기준을 분석하고 매번 최신
+ * 업데이트 되게." 한 번 분석해 못 박으면 그 순간부터 낡는다. 기준은 공개되지 않고 조용히
+ * 바뀌므로, 같은 키워드를 계속 다시 재서 **방향이 유지되는지** 보는 게 유일하게 정직한
+ * 방법이다.
+ *
+ * 매일 키워드 3개씩 돌아가며 잰다. 지점 지역 키워드를 순서대로 쓰고, 이미 오늘 잰
+ * 키워드는 건너뛴다 — 그러면 며칠에 걸쳐 전 키워드를 한 바퀴 돈다.
+ */
+export async function GET(req: Request) {
+  const secret = process.env.CRON_SECRET?.trim()
+  if (secret) {
+    const auth = req.headers.get('authorization')
+    if (auth !== `Bearer ${secret}`) {
+      return NextResponse.json({ error: '권한이 없습니다.' }, { status: 401 })
+    }
+  }
+
+  const db = await readDB()
+  const today = new Date().toISOString().slice(0, 10)
+  const runs = db.factorRuns ?? []
+
+  /*
+   * 관찰할 키워드 고르기.
+   *
+   * 지점 지역 키워드 + 순위를 추적 중인 키워드를 합친다. 순위를 재고 있는 키워드는
+   * 우리가 실제로 싸우는 판이라 관찰 값이 가장 쓸모 있다.
+   */
+  const pool = Array.from(
+    new Set([
+      ...db.rankTargets.map((t) => t.keyword),
+      ...db.stores.flatMap((s) => {
+        const areas = areasFromStore(s)
+        return areas.map((a) => `${a} 헬스장`)
+      }),
+    ])
+  ).filter(Boolean)
+
+  // 오늘 이미 잰 것은 건너뛰고, 가장 오래 안 잰 것부터
+  const lastSeen = new Map<string, string>()
+  for (const r of runs) lastSeen.set(r.keyword, r.date)
+  const targets = pool
+    .filter((k) => lastSeen.get(k) !== today)
+    .sort((a, b) => (lastSeen.get(a) ?? '').localeCompare(lastSeen.get(b) ?? ''))
+    .slice(0, MAX_KEYWORDS)
+
+  const done: { keyword: string; sampled: number; measured: number }[] = []
+  const failed: { keyword: string; why: string }[] = []
+  const fresh: FactorRun[] = []
+
+  for (const keyword of targets) {
+    try {
+      const top = await topBlogPosts(keyword, TOP)
+      if (!top.items.length) {
+        failed.push({ keyword, why: '상위 글 목록을 읽지 못했습니다.' })
+        continue
+      }
+      const measured = await measureTopPosts(
+        top.items.map((i) => i.url),
+        BODY
+      ).catch(() => [])
+      const byUrl = new Map(measured.map((m) => [m.url, m]))
+      const flatKeyword = keyword.replace(/\s+/g, '')
+
+      const samples: FactorSample[] = top.items.map((it, i) => {
+        const m = byUrl.get(it.url)
+        const title = it.title ?? ''
+        return {
+          rank: i + 1,
+          ageDays: it.date ? daysBetween(it.date, today) : null,
+          charCount: m ? m.charCount : null,
+          imageCount: m ? m.imageCount : null,
+          videoCount: m ? m.videoCount : null,
+          titleLength: title.length,
+          keywordPos: title.replace(/\s+/g, '').indexOf(flatKeyword),
+        }
+      })
+
+      fresh.push(buildObservation(keyword, today, samples) as FactorRun)
+      done.push({ keyword, sampled: samples.length, measured: measured.length })
+    } catch (e) {
+      failed.push({ keyword, why: e instanceof Error ? e.message : '관찰 실패' })
+    }
+  }
+
+  if (fresh.length) {
+    await mutate((cur) => {
+      const keep = (cur.factorRuns ?? []).filter(
+        (r) => !fresh.some((f) => f.keyword === r.keyword && f.date === r.date)
+      )
+      return { ...cur, factorRuns: [...keep, ...fresh].slice(-KEEP) }
+    })
+  }
+
+  return NextResponse.json({
+    date: today,
+    pool: pool.length,
+    observed: done,
+    failed,
+    stored: (await readDB()).factorRuns?.length ?? 0,
+  })
+}

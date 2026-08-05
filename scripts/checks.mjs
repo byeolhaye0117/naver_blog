@@ -2185,5 +2185,104 @@ ok(shortlistHeadline({ picked: [], skipped: [], considered: 0 }).includes('찾�
 const lowAd = SL.picked.find((p) => p.keyword === '쌍용동24시헬스장')
 ok(!lowAd || lowAd.why.includes('광고') || lowAd.role === 'sub', '광고 사정을 곁들인다')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[48] 랭킹 요인 관찰소 — 무엇이 순위를 만드나')
+const {
+  spearman,
+  measureFactors,
+  buildObservation,
+  poolFactors,
+  poolHeadline,
+  daysBetween: fDaysBetween,
+  GRADE_NOTE,
+  MIN_SAMPLE: F_MIN,
+  WEAK: F_WEAK,
+} = require(`${OUT}/analysis/factors.js`)
+
+// 스피어만 — 순서만 본다
+ok(spearman([1, 2, 3, 4, 5], [10, 20, 30, 40, 50]) === 1, '완전히 같이 가면 +1')
+ok(spearman([1, 2, 3, 4, 5], [50, 40, 30, 20, 10]) === -1, '완전히 거꾸로면 -1')
+ok(spearman([1, 2], [1, 2]) === null, '표본이 3개 미만이면 판정 안 함')
+ok(spearman([1, 2, 3], [5, 5, 5]) === null, '한쪽이 전부 같은 값이면 판정 안 함 (0 이라고 하지 않는다)')
+// 값 하나가 튀어도 뒤집히지 않는다 (순서만 보기 때문)
+ok(spearman([1, 2, 3, 4], [10, 20, 30, 999999]) === 1, '튀는 값에 흔들리지 않는다')
+// 동점은 평균 순위로 (앞뒤로 몰면 상관이 거짓으로 커진다)
+const tie = spearman([1, 2, 3, 4], [10, 20, 20, 30])
+ok(tie !== null && tie > 0.9 && tie < 1, '동점은 평균 순위로 처리', String(tie))
+
+ok(fDaysBetween('2026-07-29', '2026-08-05') === 7, '경과일')
+ok(fDaysBetween('bad', '2026-08-05') === 0, '못 읽는 날짜는 0')
+
+/*
+ * 실제로 잰 표본 (2026-08-05 「쌍용동 헬스장」 상위 5편).
+ * 최신 글이 위에 있었고, 본문 분량은 순위와 반대로 갔다.
+ */
+const REAL_SAMPLES = [
+  { rank: 1, ageDays: 7, charCount: 2197, imageCount: 17, videoCount: 8, titleLength: 45, keywordPos: 3 },
+  { rank: 2, ageDays: 10, charCount: 1422, imageCount: 9, videoCount: 0, titleLength: 33, keywordPos: -1 },
+  { rank: 3, ageDays: 10, charCount: 1203, imageCount: 12, videoCount: 1, titleLength: 44, keywordPos: 4 },
+  { rank: 4, ageDays: 42, charCount: 2568, imageCount: 20, videoCount: 0, titleLength: 40, keywordPos: 6 },
+  { rank: 5, ageDays: 13, charCount: 2346, imageCount: 14, videoCount: 0, titleLength: 24, keywordPos: 0 },
+]
+const FACT = measureFactors(REAL_SAMPLES)
+const byKey = (k) => FACT.find((x) => x.key === k)
+ok(FACT.length === 6, '신호 6개를 잰다', String(FACT.length))
+ok(byKey('age').advantage > 0.5, '실측 표본에서 최신성이 유리하게 나온다', String(byKey('age').advantage))
+ok(byKey('age').note.includes('최신 글이 위에 있습니다'), '사람 말로 적는다', byKey('age').note)
+ok(byKey('chars').advantage < 0, '같은 표본에서 본문 분량은 거꾸로 간다', String(byKey('chars').advantage))
+ok(byKey('chars').note.includes('오히려'), '거꾸로 갈 때는 그렇게 말한다', byKey('chars').note)
+ok(byKey('age').n === 5, '표본 수를 함께 담는다')
+// 제목에 키워드가 없는 글은 「맨 뒤」로 취급하지 않고 표본에서 뺀다
+ok(byKey('keywordFront').n === 4, '키워드가 없는 글은 그 항목 표본에서 뺀다', String(byKey('keywordFront').n))
+// 부호는 항상 「유리한 방향」으로 담는다 (순위 숫자와의 상관을 그대로 두면 헷갈린다)
+ok(
+  byKey('chars').rho === -byKey('chars').advantage,
+  '값이 클수록 좋은 신호는 부호를 뒤집어 담는다 (순위 숫자와의 상관을 그대로 두면 헷갈린다)',
+  `rho=${byKey('chars').rho} advantage=${byKey('chars').advantage}`
+)
+ok(byKey('age').rho === byKey('age').advantage, '경과일은 작을수록 좋아서 그대로 담는다')
+
+// 표본이 적으면 판정하지 않는다
+const F_FEW = measureFactors(REAL_SAMPLES.slice(0, 3))
+ok(F_FEW.find((x) => x.key === 'age').strength === 'unknown', `표본 ${F_MIN}편 미만은 판정 안 함`)
+ok(F_FEW.find((x) => x.key === 'age').note.includes('표본이 3편뿐'), '몇 편인지 말한다')
+
+// 관찰을 모으면 방향이 유지되는지 본다
+const F_OBS1 = buildObservation('쌍용동 헬스장', '2026-08-05', REAL_SAMPLES)
+ok(F_OBS1.sampled === 5 && F_OBS1.keyword === '쌍용동 헬스장', '관찰 하나')
+const F_OBS2 = buildObservation('봉명동 헬스장', '2026-08-05', [
+  { rank: 1, ageDays: 3, charCount: 1800, imageCount: 10, videoCount: 1, titleLength: 30, keywordPos: 0 },
+  { rank: 2, ageDays: 8, charCount: 1700, imageCount: 9, videoCount: 0, titleLength: 31, keywordPos: 0 },
+  { rank: 3, ageDays: 15, charCount: 1600, imageCount: 8, videoCount: 0, titleLength: 32, keywordPos: 1 },
+  { rank: 4, ageDays: 20, charCount: 1500, imageCount: 7, videoCount: 0, titleLength: 33, keywordPos: 2 },
+  { rank: 5, ageDays: 30, charCount: 1400, imageCount: 6, videoCount: 0, titleLength: 34, keywordPos: 3 },
+])
+const F_POOL = poolFactors([F_OBS1, F_OBS2])
+const pAge = F_POOL.find((p) => p.key === 'age')
+ok(pAge.runs === 2 && pAge.samples === 10, '관찰 수와 표본 합계를 담는다', `${pAge.runs}/${pAge.samples}`)
+ok(pAge.advantage > 0.5, '두 관찰 모두 최신성이 유리 → 모아도 유리', String(pAge.advantage))
+ok(pAge.agree === 2 && pAge.disagree === 0, '몇 번 중 몇 번이 같은 방향인지 센다')
+ok(pAge.note.includes('관찰 2회 중 2회'), '몇 번 중 몇 번인지 말한다', pAge.note)
+
+// 방향이 갈리면 「요인으로 보기 어렵다」고 말한다 (평균만 보여주면 없는 확신이 생긴다)
+const pChars = F_POOL.find((p) => p.key === 'chars')
+ok(
+  pChars.note.includes('방향이 갈립니다') || Math.abs(pChars.advantage) < F_WEAK,
+  '방향이 갈리면 그렇게 말한다',
+  pChars.note
+)
+
+const F_HEAD = poolHeadline(F_POOL, [F_OBS1, F_OBS2])
+ok(F_HEAD.includes('관찰 2회'), '몇 번 관찰했는지 먼저 말한다', F_HEAD)
+ok(F_HEAD.includes('같이 움직이는 것과 원인은 다르므로'), '상관을 인과로 말하지 않는다')
+ok(poolHeadline(poolFactors([]), []).includes('아직 관찰한 기록이 없습니다'), '없으면 없다고 한다')
+// 신호별 표본을 더하면 같은 글을 여섯 번 세게 된다 (5편이 55편으로 나왔던 자리)
+ok(F_HEAD.includes('상위 글 10편'), '표본 합계는 글 수로 센다', F_HEAD.slice(0, 40))
+
+// 지수로는 순위가 설명되지 않았다는 실측 기록 — 업계 상식과 반대라 근거를 붙인다
+ok(GRADE_NOTE.includes('최적1'), '실측 근거를 적는다')
+ok(GRADE_NOTE.includes('입장권'), '등급의 역할을 밝힌다')
+ok(!GRADE_NOTE.includes('지수는 의미가 없'), '등급이 무의미하다고 단정하지 않는다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

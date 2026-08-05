@@ -161,6 +161,30 @@ export interface DB {
   placeRanks: PlaceRank[]
   /** 상위노출 분석 처방 — 글 쓸 때 자동으로 꺼내 쓴다 */
   prescriptions: Prescription[]
+  /**
+   * 랭킹 요인 관찰 기록 — 「네이버가 무엇을 보고 띄워주는가」를 우리 판에서 재서 쌓는다.
+   *
+   * 한 번의 관찰(키워드 1개 상위 5~10편)로는 우연을 걸러낼 수 없어서 계속 쌓는다.
+   * 기준은 조용히 바뀌므로 오래된 관찰도 지우지 않고 날짜와 함께 남긴다.
+   */
+  factorRuns?: FactorRun[]
+}
+
+/** 한 번의 관찰 (lib/analysis/factors.ts 의 FactorObservation 을 그대로 저장한다) */
+export interface FactorRun {
+  keyword: string
+  /** YYYY-MM-DD */
+  date: string
+  sampled: number
+  results: {
+    key: string
+    label: string
+    rho: number | null
+    advantage: number | null
+    n: number
+    strength: string
+    note: string
+  }[]
 }
 
 /**

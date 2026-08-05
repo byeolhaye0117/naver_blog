@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import type { SerpAnalysis } from '@/lib/types'
+import FactorObservatory from '@/components/FactorObservatory'
 import { Badge, Card, Empty, Field, MockNotice, Stat, inputClass } from '@/components/ui'
 import { IconDoc, IconPencil, IconTarget, IconTrend } from '@/components/icons'
 import { naverBlogTabUrl, naverSearchUrl } from '@/lib/analysis/rank'
@@ -513,6 +514,12 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
           </Card>
         </>
       )}
+
+      {/*
+        「무엇이 순위를 만드는가」는 이 화면에서 답할 질문이다.
+        분석한 키워드를 그대로 넘겨, 그 키워드로 바로 관찰할 수 있게 한다.
+      */}
+      <FactorObservatory keyword={data?.keyword ?? keyword} />
     </div>
   )
 }
