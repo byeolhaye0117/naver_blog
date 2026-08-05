@@ -6,7 +6,7 @@ if (!OUT) {
   console.error('직접 실행하지 말고 `npm test` 를 쓰세요.')
   process.exit(1)
 }
-const { checkPost, parseBody, PUBLISH_THRESHOLD } = require(`${OUT}/writing/checker.js`)
+const { checkPost, parseBody, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
 const { buildCopyPackage } = require(`${OUT}/writing/export.js`)
@@ -129,7 +129,8 @@ ok(c1.stats.imageCount === 6 && c1.stats.headings.length === 5, '이미지 6 / �
 ok(c1.score === PUBLISH_THRESHOLD - 6, '수정필요가 있으면 발행 구간 아래로 캡', `${c1.score} (캡 ${PUBLISH_THRESHOLD - 6})`)
 // 미달 항목을 정확히 지적하는지
 ok(c1.items.find(i => i.id === 'mainCount')?.level === 'warn', '메인KW 4회는 warn (하한 5회 미달)')
-ok(c1.items.find(i => i.id === 'charCount')?.level === 'fail', '1,558자는 fail (하한 1,900자 미달)')
+// 통과 하한을 1,750자로 내렸으므로 1,558자는 fail 이 아니라 warn 이다 (하한-250 = 1,500)
+ok(c1.items.find(i => i.id === 'charCount')?.level === 'warn', '1,558자는 warn (하한 1,750자에 조금 미달)', c1.items.find(i => i.id === 'charCount')?.value)
 ok(c1.items.find(i => i.id === 'titleKeyword')?.level === 'pass', '제목 앞쪽 키워드 pass')
 ok(c1.items.find(i => i.id === 'first100')?.level === 'pass', '첫 100자 키워드 pass')
 ok(c1.items.find(i => i.id === 'imagePlacement')?.level === 'pass', '이미지 배치 pass')
@@ -2226,7 +2227,7 @@ const REAL_SAMPLES = [
 ]
 const FACT = measureFactors(REAL_SAMPLES)
 const byKey = (k) => FACT.find((x) => x.key === k)
-ok(FACT.length === 11, '신호 11개를 잰다 (+ 공감 수 · 제목 질문형)', String(FACT.length))
+ok(FACT.length === 13, '신호 13개를 잰다 (+ 공감 · 제목 질문형 · 키워드 횟수 · 밀도)', String(FACT.length))
 // 회원 질문에서 나온 항목이 관찰 대상에 들어갔는지 — 기준을 만들었으면 계속 검증해야 한다
 ok(FACT.some((x) => x.key === 'info'), '정보 요소도 매일 다시 잰다')
 ok(FACT.some((x) => x.key === 'promo'), '홍보 요소도 매일 다시 잰다')
@@ -2655,7 +2656,7 @@ ok(stripGuides(promoSkeleton).includes('[영상:'), '복사 본문에도 영상 
 // 홍보를 없애지는 않는다 — 이 글의 목적은 상담이다
 ok(promoSkeleton.includes('7단계 CTA'), 'CTA 단계는 그대로 남긴다')
 ok(promoSkeleton.includes('6단계 이벤트 본공개'), '이벤트 단계도 그대로 남긴다')
-ok(promoSkeleton.includes('해결 (500~600자'), '해결 구간을 늘렸다 (450~550 → 500~600)')
+ok(promoSkeleton.includes('해결 (620~720자'), '해결 구간을 늘렸다 (450~550 → 620~720)')
 
 
 // ─────────────────────────────────────────────────────────────
@@ -3218,6 +3219,97 @@ ok(
     arLocalPool.find((p) => p.key === 'age').runs === 1,
   '나눠 모으면 우리 판 관찰만 센다'
 )
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[61] 홍보글 기준 재조정 — 서로 부딪히던 숫자를 맞췄다')
+
+/*
+ * ① 「메인 5~7회」와 「밀도 2%」가 부딪혔다.
+ *   밀도 = 키워드 글자수 × 본문 등장 횟수 ÷ 본문 글자수 이므로 키워드가 길면 못 쓴다.
+ *   전에는 이 상황에서 「메인 미달」과 「밀도 초과」가 동시에 떴다 — 둘을 같이 만족시킬 수
+ *   없는 조합인데 회원은 자기가 잘못 쓴 줄 알았다.
+ */
+const rk = (keyword, charCount, inTitle = 1) =>
+  reachableKeywordRange({ keyword, charCount, densityMax: 2, mainMin: 5, mainMax: 7, inTitle })
+
+const rk7at1750 = rk('쌍용동 헬스장', 1750)
+ok(rk7at1750.proseCap === 5, '6자 키워드 1,750자면 본문 5회까지', String(rk7at1750.proseCap))
+ok(rk7at1750.max === 6, '제목 1회를 더해 6회가 상한', String(rk7at1750.max))
+ok(rk7at1750.tight, '상한 7회에 못 미치므로 좁아졌다고 표시')
+ok(rk7at1750.min === 5, '하한 5회는 도달 가능하므로 그대로')
+
+const rk7at2100 = rk('쌍용동 헬스장', 2100)
+ok(rk7at2100.max === 7 && !rk7at2100.tight, '2,100자면 상한 7회까지 도달 가능')
+
+// 긴 키워드는 하한조차 못 채운다 — 그럴 때 하한도 내린다 (못 하는 것을 요구하지 않는다)
+const rkLong = rk('쌍용동 24시 헬스장', 1750)
+ok(rkLong.proseCap === 3, '9자 키워드 1,750자면 본문 3회까지', String(rkLong.proseCap))
+ok(rkLong.max === 4 && rkLong.min === 4, '하한 5회가 불가능하므로 하한도 4로 내린다', `${rkLong.min}~${rkLong.max}`)
+
+// 키워드가 없거나 본문이 비면 계산하지 않는다
+ok(rk('', 2000).max === 7 && !rk('', 2000).tight, '키워드가 없으면 원래 범위를 그대로')
+ok(rk('쌍용동 헬스장', 0).max === 7, '본문이 비면 원래 범위를 그대로')
+
+// 검수에 실제로 반영됐는지 — 좁아진 이유를 말해준다
+const RK_BODY = ['[이미지: 대표]', '가'.repeat(900), '', '[이미지: 2]', '## 소제목', '나'.repeat(880)].join('\n')
+const rkCheck = checkPost({
+  type: 'promo',
+  title: '쌍용동 헬스장, 퇴근 늦어도 갈 수 있을까?',
+  body: RK_BODY,
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: [],
+  tags: [],
+  legalName: 'MTO 피트니스 쌍용점',
+})
+const rkItem = rkCheck.items.find((i) => i.id === 'mainCount')
+ok(rkItem.target.includes('7회는 불가'), '왜 7회가 아닌지 목표에 적는다', rkItem.target)
+const rkDensity = rkCheck.items.find((i) => i.id === 'density')
+ok(rkDensity.level === 'pass', '밀도는 통과 상태 (본문에 키워드가 없다)')
+
+/*
+ * ② 골격 단락 예산과 통과 분량이 안 맞았다.
+ *   예전: 단락 합계 1,710~2,040자 vs 통과 1,900~2,100자
+ *        → 다 중간값으로 쓰면 1,875자로 미달, 상위 42% 구간으로만 써야 통과
+ */
+const PROMO_SECTIONS = [
+  ['후킹', 200, 250],
+  ['공감', 280, 330],
+  ['해결', 620, 720],
+  ['신뢰', 250, 300],
+  ['이벤트', 220, 260],
+  ['CTA', 180, 220],
+]
+const secLo = PROMO_SECTIONS.reduce((n, s) => n + s[1], 0)
+const secHi = PROMO_SECTIONS.reduce((n, s) => n + s[2], 0)
+const secMid = Math.round((secLo + secHi) / 2)
+ok(secLo === 1750 && secHi === 2080, '새 단락 예산 합계 1,750~2,080', `${secLo}~${secHi}`)
+ok(SPECS.promo.charMin === 1750, '통과 하한을 단락 예산 하한과 맞췄다', String(SPECS.promo.charMin))
+ok(
+  secMid >= SPECS.promo.charMin && secMid <= SPECS.promo.charMax,
+  '단락을 다 중간값으로 써도 통과한다 (예전에는 미달이었다)',
+  `중간 ${secMid} / 통과 ${SPECS.promo.charMin}~${SPECS.promo.charMax}`
+)
+ok(
+  secLo >= SPECS.promo.charMin,
+  '단락 예산 하한으로 써도 통과 구간 안이다',
+  `${secLo} >= ${SPECS.promo.charMin}`
+)
+// 위쪽은 넉넉히 — 실측에서 분량은 순위와 무관했다
+ok(SPECS.promo.charMax >= 2400, '상한은 넉넉하게 둔다', String(SPECS.promo.charMax))
+
+/*
+ * ③ 실측 방향대로 배분을 바꿨다 — 해결↑ 이벤트↓
+ */
+const rkSkel = buildTemplate('promo', {
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: ['쌍용동 24시 헬스장', '쌍용동 PT'],
+})
+ok(rkSkel.includes('해결 (620~720자'), '해결 구간을 늘렸다 (500~600 → 620~720)')
+ok(rkSkel.includes('이벤트 본공개 (220~260자'), '이벤트를 줄였다 (280~320 → 220~260)')
+ok(rkSkel.includes('공감 (280~330자'), '공감도 조금 줄였다')
+ok(rkSkel.includes('줄인 자리다'), '왜 줄였는지 적는다')
+ok(buildSystemPrompt('promo').includes('해결 620~720자'), 'AI 지시문도 같은 숫자')
+ok(buildSystemPrompt('promo').includes('이벤트 220~260자'), 'AI 지시문 이벤트도 같은 숫자')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

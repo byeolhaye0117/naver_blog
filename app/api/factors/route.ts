@@ -5,6 +5,7 @@ import { readDB, writeDB } from '@/lib/store'
 import {
   buildObservation,
   daysBetween,
+  countDistribution,
   poolFactors,
   poolHeadline,
   splitByArena,
@@ -12,6 +13,7 @@ import {
   type FactorSample,
 } from '@/lib/analysis/factors'
 import { countSignals } from '@/lib/analysis/content'
+import { countLoose } from '@/lib/writing/banned'
 import { isQuestionTitle } from '@/lib/analysis/title'
 import { fetchLikeCounts } from '@/lib/naver/reaction'
 import type { FactorRun } from '@/lib/types'
@@ -110,7 +112,13 @@ export async function PUT(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { keyword?: string; save?: boolean; arena?: 'local' | 'reference' }
+    const body = (await req.json().catch(() => ({}))) as {
+      keyword?: string
+      save?: boolean
+      arena?: 'local' | 'reference'
+      /** 함께 쓰는 키워드 — 상위 글이 이걸 몇 번 쓰는지도 세서 돌려준다 (저장하지 않음) */
+      subKeywords?: string[]
+    }
     const keyword = body.keyword?.trim()
     if (!keyword) {
       return NextResponse.json({ error: '관찰할 키워드를 넣어주세요.' }, { status: 400 })
@@ -136,6 +144,17 @@ export async function POST(req: Request) {
     const today = new Date().toISOString().slice(0, 10)
     const flatKeyword = keyword.replace(/\s+/g, '')
 
+    const subs = (body.subKeywords ?? []).map((k) => k.trim()).filter(Boolean).slice(0, 4)
+    /** 제목+본문에서 키워드 횟수 (띄어쓰기 무시 — 검수기와 같은 방식) */
+    const countIn = (haystack: string, needle: string) => countLoose(haystack, needle)
+    const raw: {
+      rank: number
+      keywordCount: number | null
+      density: number | null
+      chars: number | null
+      subCounts: { keyword: string; count: number }[] | null
+    }[] = []
+
     const samples: FactorSample[] = top.items.map((it, i) => {
       const m = byUrl.get(it.url)
       const title = it.title ?? ''
@@ -156,9 +175,31 @@ export async function POST(req: Request) {
         likes: likes.has(it.url) ? (likes.get(it.url) as number) : null,
         titleLength: title.length,
         titleQuestion: isQuestionTitle(title) ? 1 : 0,
+        keywordCount: m ? countIn(`${title}\n${m.text}`, keyword) : null,
+        density: m
+          ? Math.round(
+              ((keyword.replace(/\s+/g, '').length * countIn(m.text, keyword)) /
+                Math.max(1, m.charCount)) *
+                1000
+            ) / 10
+          : null,
         keywordPos: pos,
       }
     })
+
+    for (const [i, it] of top.items.entries()) {
+      const m = byUrl.get(it.url)
+      const title = it.title ?? ''
+      raw.push({
+        rank: i + 1,
+        keywordCount: m ? countIn(`${title}\n${m.text}`, keyword) : null,
+        density: samples[i].density,
+        chars: m ? m.charCount : null,
+        subCounts: m
+          ? subs.map((k) => ({ keyword: k, count: countIn(`${title}\n${m.text}`, k) }))
+          : null,
+      })
+    }
 
     const observation = {
       ...buildObservation(keyword, today, samples),
@@ -185,6 +226,15 @@ export async function POST(req: Request) {
       ...observation,
       saved,
       measured: measured.length,
+      /*
+       * 상위 글이 키워드를 실제로 몇 번 쓰는지 — 기준값을 정하려면 상관이 아니라
+       * 절대 숫자가 필요하다. 저장하지 않고 응답에만 담는다.
+       */
+      raw,
+      distribution: {
+        keywordCount: countDistribution(samples.map((s) => ({ rank: s.rank, value: s.keywordCount }))),
+        density: countDistribution(samples.map((s) => ({ rank: s.rank, value: s.density }))),
+      },
       note:
         measured.length < samples.length
           ? `상위 ${samples.length}편 중 ${measured.length}편만 본문을 읽었습니다 — 나머지는 접근이 막힌 글입니다. 본문 관련 항목은 읽은 편수로만 계산했습니다.`

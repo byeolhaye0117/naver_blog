@@ -56,13 +56,23 @@ interface Spec {
 }
 
 export const SPECS: Record<PostType, Spec> = {
-  // gym-blog-writer: 메인 5~7회, 밀도 1.5~2%, 상호명 3회, 2,000자 ±100
+  /*
+   * gym-blog-writer.
+   *
+   * **2026-08-05 재조정.** 예전 값(1,900~2,100자)은 골격의 단락 예산과 맞지 않았다 —
+   * 단락을 다 중간값으로 쓰면 1,875자가 나와 통과 구간에 못 들어갔고, 통과하려면 모든
+   * 단락을 상위 42% 로만 써야 했다. 즉 골격대로 써도 걸리는 기준이었다.
+   *
+   * 새 단락 예산 합계는 1,750~2,080자다 (해결을 늘리고 이벤트를 줄였다). 통과 구간을
+   * 거기에 맞췄고, 위쪽은 넉넉히 뒀다 — 실측에서 분량은 순위와 무관했으므로(방향이 갈렸다)
+   * 좁은 창을 유지할 근거가 없다.
+   */
   promo: {
     mainMin: 5,
     mainMax: 7,
     densityMax: 2,
-    charMin: 1900,
-    charMax: 2100,
+    charMin: 1750,
+    charMax: 2400,
     legalNameMin: 3,
     requireLocalKeyword: false,
     requireReviewWord: false,
@@ -169,6 +179,38 @@ export function parseBody(body: string): ParsedBody {
 
 function level(ok: boolean, near: boolean): CheckLevel {
   return ok ? 'pass' : near ? 'warn' : 'fail'
+}
+
+/**
+ * 밀도 상한 때문에 실제로 쓸 수 있는 메인 키워드 횟수 (순수 함수 — 테스트 대상).
+ *
+ * **왜 필요한가.** 「메인 5~7회」와 「밀도 2% 이내」가 서로 부딪힌다. 밀도는
+ * `키워드 글자수 × 본문 등장 횟수 ÷ 본문 글자수` 라서, 키워드가 길면 몇 번 못 쓴다.
+ *
+ *   「쌍용동 헬스장」(공백 뺀 6자) · 1,750자 → 본문 5회 + 제목 1 = 6회까지 (7회 불가)
+ *   「쌍용동 24시 헬스장」(9자) · 1,750자 → 본문 3회 + 제목 1 = 4회까지 (하한 5회조차 불가)
+ *
+ * 전에는 이 상황에서 「메인 키워드 미달」과 「밀도 초과」가 동시에 떴다. 회원은 자기가
+ * 잘못 쓴 줄 알지만 **애초에 둘을 같이 만족시킬 수 없는 조합**이었다. 그래서 도달 가능한
+ * 범위를 계산해 그걸 기준으로 삼고, 좁아진 이유를 말해준다.
+ */
+export function reachableKeywordRange(args: {
+  keyword: string
+  charCount: number
+  densityMax: number
+  mainMin: number
+  mainMax: number
+  inTitle: number
+}): { min: number; max: number; tight: boolean; proseCap: number } {
+  const flat = args.keyword.replace(/\s+/g, '')
+  if (!flat.length || args.charCount <= 0) {
+    return { min: args.mainMin, max: args.mainMax, tight: false, proseCap: args.mainMax }
+  }
+  const proseCap = Math.floor(((args.densityMax / 100) * args.charCount) / flat.length)
+  const max = Math.min(args.mainMax, proseCap + args.inTitle)
+  // 하한이 도달 불가면 하한도 내린다 — 못 하는 것을 요구하지 않는다
+  const min = Math.min(args.mainMin, max)
+  return { min, max, tight: max < args.mainMax, proseCap }
 }
 
 /** 메인 키워드 등장 위치가 등간격이면 D.I.A.+ 가 패턴으로 읽는다 */
@@ -332,22 +374,38 @@ export function checkPost(input: CheckInput): CheckResult {
   })
 
   // ─── 키워드 ─────────────────────────────────────────────────
+  /*
+   * 도달 가능한 범위로 판정한다 (reachableKeywordRange 주석).
+   * 「5~7회」와 「밀도 2%」가 부딪히는 조합에서 두 항목이 동시에 걸리던 자리다.
+   */
+  const reach = reachableKeywordRange({
+    keyword: main,
+    charCount,
+    densityMax: spec.densityMax,
+    mainMin: spec.mainMin,
+    mainMax: spec.mainMax,
+    inTitle: mainInTitle,
+  })
   add({
     id: 'mainCount',
     group: '키워드',
     label: `메인 키워드 "${main || '(미입력)'}" 노출 횟수`,
     level: level(
-      mainKeywordCount >= spec.mainMin && mainKeywordCount <= spec.mainMax,
-      mainKeywordCount >= spec.mainMin - 1 && mainKeywordCount <= spec.mainMax + 2
+      mainKeywordCount >= reach.min && mainKeywordCount <= reach.max,
+      mainKeywordCount >= reach.min - 1 && mainKeywordCount <= reach.max + 2
     ),
     value: `${mainKeywordCount}회 (제목 ${mainInTitle} + 본문 ${mainInProse})`,
-    target: `${spec.mainMin}~${spec.mainMax}회 · 해시태그는 계산 제외`,
+    target: reach.tight
+      ? `${reach.min}~${reach.max}회 · 해시태그 제외 (밀도 ${spec.densityMax}% 상한 때문에 ${spec.mainMax}회는 불가)`
+      : `${reach.min}~${reach.max}회 · 해시태그는 계산 제외`,
     hint:
-      mainKeywordCount < spec.mainMin
+      mainKeywordCount < reach.min
         ? '미달이 가장 자주 나는 항목입니다. 억지 문장을 만들지 말고 배치 슬롯(제목·첫100자·해결 구간·CTA) 안에서 채우세요.'
-        : mainKeywordCount > spec.mainMax
+        : mainKeywordCount > reach.max
           ? '초과분은 "저희 센터", "○○동에 있는 헬스장" 같은 변형 표현으로 돌리세요.'
-          : undefined,
+          : reach.tight
+            ? `키워드가 ${main.replace(/\s+/g, '').length}자라 본문에 ${reach.proseCap}회까지만 쓸 수 있습니다 (그 이상이면 밀도가 넘습니다). 회원님이 잘못 쓴 게 아니라 키워드가 길어서 좁아진 것입니다 — 변형 표현으로 채우세요.`
+            : undefined,
     weight: 5,
   })
 
@@ -358,7 +416,10 @@ export function checkPost(input: CheckInput): CheckResult {
     level: level(density <= spec.densityMax, density <= spec.densityMax + 0.5),
     value: `${density}%`,
     target: `${spec.densityMax}% 이내`,
-    hint: density > spec.densityMax ? '키워드 스터핑으로 읽힙니다. 변형 표현으로 분산하세요.' : undefined,
+    hint:
+      density > spec.densityMax
+        ? `키워드 스터핑으로 읽힙니다. 변형 표현으로 분산하세요 — 이 분량(${charCount.toLocaleString()}자)에서는 본문 ${reach.proseCap}회까지가 상한입니다.`
+        : undefined,
     weight: 3,
   })
 

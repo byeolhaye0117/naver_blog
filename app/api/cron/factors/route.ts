@@ -5,6 +5,7 @@ import { measureTopPosts } from '@/lib/naver/blogpost'
 import { buildObservation, daysBetween, type FactorSample } from '@/lib/analysis/factors'
 import { areasFromStore } from '@/lib/analysis/keyword'
 import { countSignals } from '@/lib/analysis/content'
+import { countLoose } from '@/lib/writing/banned'
 import { isQuestionTitle } from '@/lib/analysis/title'
 import { fetchLikeCounts } from '@/lib/naver/reaction'
 import type { FactorRun } from '@/lib/types'
@@ -120,6 +121,14 @@ export async function GET(req: Request) {
           likes: likes.has(it.url) ? (likes.get(it.url) as number) : null,
           titleLength: title.length,
           titleQuestion: isQuestionTitle(title) ? 1 : 0,
+          keywordCount: m ? countLoose(`${title}\n${m.text}`, keyword) : null,
+          density: m
+            ? Math.round(
+                ((keyword.replace(/\s+/g, '').length * countLoose(m.text, keyword)) /
+                  Math.max(1, m.charCount)) *
+                  1000
+              ) / 10
+            : null,
           keywordPos: title.replace(/\s+/g, '').indexOf(flatKeyword),
         }
       })
