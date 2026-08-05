@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { readDB } from '@/lib/store'
 import { keyStatus } from '@/lib/naver/client'
-import { balanceReport, cadenceReport } from '@/lib/writing/rotation'
+import { STALE_DAYS, balanceReport, cadenceReport, freshnessReport } from '@/lib/writing/rotation'
 import { buildRankViews, isFirstPage, rankLabel } from '@/lib/analysis/rank'
 import { checkPost } from '@/lib/writing/checker'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL } from '@/lib/types'
@@ -28,6 +28,9 @@ export default async function Dashboard() {
   const keys = keyStatus()
   const balance = balanceReport(db.posts)
   const cadence = cadenceReport(db.posts)
+  // 최신성은 관찰소에서 가장 센 신호였다 (6회 중 5회 유리, 거꾸로 0회) — 지점별로 따로 본다
+  const freshness = freshnessReport(db.posts, db.stores)
+  const staleStores = freshness.filter((f) => f.stale)
   const views = buildRankViews(db.rankTargets, db.rankSnapshots, db.posts)
 
   const published = db.posts.filter((p) => p.status === 'published')
@@ -455,6 +458,58 @@ export default async function Dashboard() {
                 </li>
               ))}
             </ul>
+          )}
+        </Card>
+
+        {/*
+          지점별 최신성.
+
+          관찰소 6회(상위 글 60편)에서 최신성이 +0.63 으로 가장 셌고 거꾸로 나온 적이
+          한 번도 없다. 그래서 「무엇을 쓸까」보다 「어느 지점이 비었나」가 먼저인 경우가
+          많다 — 발행 주기 카드는 회사 전체 페이스라 지점 하나가 3주째 비어 있어도 초록이다.
+        */}
+        <Card
+          title="지점별 최신성"
+          subtitle={`관찰 6회에서 최신성이 가장 센 신호였습니다 (유리 5회 · 거꾸로 0회). ${STALE_DAYS}일 넘게 빈 지점을 먼저 채우세요.`}
+          right={
+            <Link href="/stores" className="muted text-xs font-semibold hover:underline">
+              지점 관리
+            </Link>
+          }
+        >
+          {freshness.length === 0 ? (
+            <Empty>
+              등록된 지점이 없습니다.{' '}
+              <Link href="/stores" className="text-brand-600 dark:text-brand-100 font-semibold underline">
+                지점 등록
+              </Link>
+            </Empty>
+          ) : (
+            <>
+              <ul className="space-y-2.5">
+                {freshness.map((f) => (
+                  <li key={f.storeId} className="flex items-center justify-between gap-3">
+                    <Link
+                      href={`/write?store=${encodeURIComponent(f.storeId)}`}
+                      className="min-w-0 truncate text-[13px] font-semibold hover:underline"
+                    >
+                      {f.storeName}
+                    </Link>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span className="tnum muted text-[11px]">
+                        {f.lastPublished ?? '발행 없음'}
+                      </span>
+                      <Badge tone={f.stale ? (f.days === null ? 'bad' : 'warn') : 'good'}>
+                        {f.days === null ? '없음' : `${f.days}일 전`}
+                      </Badge>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-[12px] leading-relaxed">
+                {staleStores.length ? staleStores[0].message : freshness[0].message}
+              </p>
+            </>
           )}
         </Card>
       </div>

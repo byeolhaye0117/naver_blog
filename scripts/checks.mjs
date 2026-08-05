@@ -2226,7 +2226,7 @@ const REAL_SAMPLES = [
 ]
 const FACT = measureFactors(REAL_SAMPLES)
 const byKey = (k) => FACT.find((x) => x.key === k)
-ok(FACT.length === 9, '신호 9개를 잰다 (내용 균형 3개를 더했다)', String(FACT.length))
+ok(FACT.length === 10, '신호 10개를 잰다 (내용 균형 3개 + 공감 수)', String(FACT.length))
 // 회원 질문에서 나온 항목이 관찰 대상에 들어갔는지 — 기준을 만들었으면 계속 검증해야 한다
 ok(FACT.some((x) => x.key === 'info'), '정보 요소도 매일 다시 잰다')
 ok(FACT.some((x) => x.key === 'promo'), '홍보 요소도 매일 다시 잰다')
@@ -2234,6 +2234,144 @@ ok(
   byKey('promo').n === 0 || byKey('promo').note.includes('홍보'),
   '홍보 요소는 값이 없으면 못 잰다고 한다'
 )
+
+/*
+ * 공감 수도 관찰 대상이다.
+ *
+ * 우리 지역 키워드는 통합검색에서 「인기글」 블록으로 나오니 반응이 자리를 만든다고
+ * 짐작하기 쉽다. 실측(2026-08-05 봉명동 헬스장)에서는 공감이 가장 많은 글(81개)이
+ * 4위, 두 번째로 많은 글(49개)이 6위였다 — 순위가 공감으로 설명되지 않았다.
+ * 그래서 재기만 하고 「공감을 늘려라」라고 말하지 않는다.
+ */
+ok(FACT.some((x) => x.key === 'likes'), '공감 수도 매일 다시 잰다')
+ok(
+  byKey('likes').n === 0 && byKey('likes').strength === 'unknown',
+  '못 읽은 공감은 0 으로 세지 않는다 (표본에서 뺀다)',
+  `n=${byKey('likes').n}`
+)
+// 실측 순서(81개 4위 · 49개 6위)를 그대로 넣으면 공감이 거꾸로 나와야 한다
+const F_LIKE = measureFactors([
+  { rank: 1, ageDays: 5, charCount: 1500, imageCount: 9, videoCount: 0, titleLength: 30, keywordPos: 0, likes: 0 },
+  { rank: 2, ageDays: 6, charCount: 1500, imageCount: 9, videoCount: 0, titleLength: 30, keywordPos: 0, likes: 0 },
+  { rank: 3, ageDays: 7, charCount: 1500, imageCount: 9, videoCount: 0, titleLength: 30, keywordPos: 0, likes: 0 },
+  { rank: 4, ageDays: 8, charCount: 1500, imageCount: 9, videoCount: 0, titleLength: 30, keywordPos: 0, likes: 81 },
+  { rank: 5, ageDays: 9, charCount: 1500, imageCount: 9, videoCount: 0, titleLength: 30, keywordPos: 0, likes: 0 },
+  { rank: 6, ageDays: 10, charCount: 1500, imageCount: 9, videoCount: 0, titleLength: 30, keywordPos: 0, likes: 49 },
+])
+const fLikes = F_LIKE.find((x) => x.key === 'likes')
+ok(fLikes.n === 6 && fLikes.advantage < 0, '실측 순서에서 공감은 유리하게 나오지 않는다', String(fLikes.advantage))
+ok(
+  fLikes.note.includes('공감 늘리기로는 순위가 안 올라갑니다'),
+  '공감을 늘리라고 권하지 않는다',
+  fLikes.note
+)
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[48-1] 공감 수 읽기 — 0 과 「못 읽음」을 구별한다')
+const { likeKey, parseLikeCount } = require(`${OUT}/naver/reaction.js`)
+
+ok(likeKey('https://blog.naver.com/pnpgym/224012345678') === 'pnpgym_224012345678', '주소에서 열쇠를 뽑는다')
+ok(
+  likeKey('https://blog.naver.com/PostView.naver?blogId=euwoss&logNo=224000000001') ===
+    'euwoss_224000000001',
+  'PostView 주소도 읽는다'
+)
+ok(likeKey('https://blog.naver.com/PostView.naver?blogId=euwoss') === null, 'logNo 가 없으면 포기한다')
+ok(likeKey('https://cafe.naver.com/abc/123') === null, '블로그 글이 아니면 null')
+
+// 반응은 종류별로 쪼개져 오므로 다 더한다
+ok(
+  parseLikeCount(JSON.stringify({ contents: [{ reactions: [{ count: 20 }, { count: 3 }] }] })) === 23,
+  '반응 종류를 합쳐 센다'
+)
+// 실제로 공감이 없는 글은 0 이다 — 이건 「못 읽음」이 아니다
+ok(parseLikeCount(JSON.stringify({ contents: [{ reactions: [] }] })) === 0, '반응이 비면 0 이다')
+ok(parseLikeCount('<html>차단</html>') === null, '못 읽으면 null (0 으로 대신하지 않는다)')
+ok(parseLikeCount(JSON.stringify({ contents: [] })) === null, '내용이 비면 null')
+ok(parseLikeCount(JSON.stringify({ contents: [{}] })) === null, 'reactions 가 없으면 null')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[48-2] 고쳐서 다시 올린 글 — 실험이라고 밝히고 재기만 한다')
+const { reviseEffect, reviseSummary, SETTLE_DAYS: RV_SETTLE } = require(`${OUT}/analysis/revise.js`)
+
+const rvSnaps = [
+  { date: '2026-07-20', rank: 12 },
+  { date: '2026-07-25', rank: 11 },
+  { date: '2026-08-01', rank: 4 },
+  { date: '2026-08-04', rank: 3 },
+]
+const rvUp = reviseEffect(rvSnaps, '2026-07-28', '2026-08-05')
+ok(rvUp.before === 11 && rvUp.after === 3, '수정 앞뒤로 마지막 측정을 고른다', `${rvUp.before}→${rvUp.after}`)
+ok(rvUp.delta === 8, '오른 칸 수는 + 로 담는다', String(rvUp.delta))
+ok(!rvUp.tooEarly, '3일 넘게 지났으면 판정한다')
+ok(rvUp.note.includes('8칸 올랐습니다'), '몇 칸인지 말한다', rvUp.note)
+ok(rvUp.note.includes('단정할 수는 없습니다'), '수정이 원인이라고 단정하지 않는다')
+
+// 수정 당일 측정은 어느 쪽인지 알 수 없어 쓰지 않는다
+const rvSameDay = reviseEffect([{ date: '2026-08-01', rank: 9 }], '2026-08-01', '2026-08-05')
+ok(rvSameDay.before === null && rvSameDay.after === null, '수정 당일 측정은 어느 쪽으로도 세지 않는다')
+ok(rvSameDay.note.includes('수정 전 순위 기록이 없어'), '비교할 수 없다고 말한다', rvSameDay.note)
+
+// 색인이 다시 돌 시간을 준다
+const rvEarly = reviseEffect(
+  [{ date: '2026-08-01', rank: 9 }, { date: '2026-08-05', rank: 5 }],
+  '2026-08-04',
+  '2026-08-05'
+)
+ok(rvEarly.tooEarly && rvEarly.daysSince === 1, `수정 ${RV_SETTLE}일 안이면 판정하지 않는다`)
+ok(rvEarly.note.includes('아직 판정하지 않습니다'), '이르다고 말한다', rvEarly.note)
+
+// 순위 밖으로 사라진 경우 — 「도움이 됐다」로 읽지 않는다
+const rvGone = reviseEffect(
+  [{ date: '2026-07-20', rank: 8 }, { date: '2026-08-04', rank: null }],
+  '2026-07-28',
+  '2026-08-05'
+)
+ok(rvGone.delta === null && rvGone.note.includes('도움이 됐다고 볼 수 없습니다'), '사라졌으면 그렇게 말한다')
+
+ok(reviseEffect(rvSnaps, '') === null, '수정일이 없으면 아무 말도 만들지 않는다')
+
+const rvDown = reviseEffect(
+  [{ date: '2026-07-20', rank: 3 }, { date: '2026-08-04', rank: 7 }],
+  '2026-07-28',
+  '2026-08-05'
+)
+ok(rvDown.delta === -4 && rvDown.note.includes('4칸 내려갔습니다'), '내려간 것도 그대로 말한다')
+
+const rvSum = reviseSummary([rvUp, rvDown, rvEarly])
+ok(rvSum.includes('수정 기록 2건'), '판정할 수 있는 것만 센다 (이른 것은 빼고)', rvSum)
+ok(rvSum.includes('오름 1 · 내림 1'), '오름과 내림을 함께 보여준다')
+ok(rvSum.includes('공개돼 있지 않아'), '네이버가 반영하는지 모른다고 밝힌다')
+ok(reviseSummary([]).includes('아직 판정할 수 있는 수정 기록이 없습니다'), '없으면 없다고 한다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[48-3] 지점별 최신성 — 어느 지점이 식었나')
+const { freshnessReport, STALE_DAYS } = require(`${OUT}/writing/rotation.js`)
+
+const frNow = Date.parse('2026-08-05T00:00:00Z')
+const frStores = [
+  { id: 'a', name: '쌍용점' },
+  { id: 'b', name: '성정점' },
+  { id: 'c', name: '용곡점' },
+]
+const frPosts = [
+  { id: '1', storeId: 'a', status: 'published', publishedAt: '2026-08-03', type: 'promo', body: '', mainKeyword: '' },
+  { id: '2', storeId: 'a', status: 'published', publishedAt: '2026-07-10', type: 'info', body: '', mainKeyword: '' },
+  { id: '3', storeId: 'b', status: 'published', publishedAt: '2026-07-01', type: 'promo', body: '', mainKeyword: '' },
+  // 초안은 발행이 아니다 — 써두기만 한 글로 「최신」이 되면 안 된다
+  { id: '4', storeId: 'c', status: 'draft', publishedAt: '2026-08-04', type: 'promo', body: '', mainKeyword: '' },
+]
+const FR = freshnessReport(frPosts, frStores, frNow)
+ok(FR.length === 3, '지점을 모두 담는다')
+ok(FR[0].storeId === 'c', '가장 오래 빈 지점을 먼저 보여준다', FR[0].storeId)
+ok(FR[0].days === null && FR[0].lastPublished === null, '초안은 발행으로 세지 않는다')
+ok(FR[0].message.includes('아직 발행한 글이 없습니다'), '발행이 없으면 그렇게 말한다', FR[0].message)
+const frA = FR.find((f) => f.storeId === 'a')
+ok(frA.lastPublished === '2026-08-03' && frA.days === 2, '가장 최근 발행일을 고른다', String(frA.days))
+ok(!frA.stale && frA.message.includes('최신성은 지금 괜찮습니다'), `${STALE_DAYS}일 안이면 괜찮다고 한다`)
+const frB = FR.find((f) => f.storeId === 'b')
+ok(frB.days === 35 && frB.stale, '오래 비면 식었다고 표시한다', String(frB.days))
+ok(frB.message.includes('거꾸로 나온 적이 한 번도 없는'), '왜 급한지 근거를 붙인다', frB.message)
 ok(byKey('age').advantage > 0.5, '실측 표본에서 최신성이 유리하게 나온다', String(byKey('age').advantage))
 ok(byKey('age').note.includes('최신 글이 위에 있습니다'), '사람 말로 적는다', byKey('age').note)
 ok(byKey('chars').advantage < 0, '같은 표본에서 본문 분량은 거꾸로 간다', String(byKey('chars').advantage))

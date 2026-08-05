@@ -10,6 +10,7 @@ import {
   type FactorSample,
 } from '@/lib/analysis/factors'
 import { countSignals } from '@/lib/analysis/content'
+import { fetchLikeCounts } from '@/lib/naver/reaction'
 import type { FactorRun } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -68,6 +69,8 @@ export async function POST(req: Request) {
       BODY
     ).catch(() => [])
     const byUrl = new Map(measured.map((m) => [m.url, m]))
+    // 공감 수는 본문과 다른 경로다 (블로그 화면이 쓰는 반응 API)
+    const likes = await fetchLikeCounts(top.items.map((i) => i.url)).catch(() => new Map())
 
     const today = new Date().toISOString().slice(0, 10)
     const flatKeyword = keyword.replace(/\s+/g, '')
@@ -89,6 +92,7 @@ export async function POST(req: Request) {
         infoWords: m ? countSignals(m.text).info : null,
         promoWords: m ? countSignals(m.text).promo : null,
         experienceWords: m ? countSignals(m.text).experience : null,
+        likes: likes.has(it.url) ? (likes.get(it.url) as number) : null,
         titleLength: title.length,
         keywordPos: pos,
       }

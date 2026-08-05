@@ -77,6 +77,12 @@ export default function Editor({
   const [sponsorship, setSponsorship] = useState<Sponsorship>(existing?.sponsorship ?? 'unset')
   const [publishedUrl, setPublishedUrl] = useState(existing?.publishedUrl ?? '')
   const [publishedAt, setPublishedAt] = useState(existing?.publishedAt ?? '')
+  /**
+   * 고쳐서 다시 올린 날 — 실험 기록.
+   * 최신성이 관찰에서 가장 센 신호였으니(6회 중 5회 유리) 옛 글을 고치면 어떻게 되는지
+   * 재본다. 네이버가 수정일을 반영하는지는 확인된 바 없다 (lib/analysis/revise.ts).
+   */
+  const [revisedAt, setRevisedAt] = useState(existing?.revisedAt ?? '')
   const [eventText, setEventText] = useState(existing?.eventText ?? '')
 
   const [view, setView] = useState<View>('write')
@@ -170,6 +176,7 @@ export default function Editor({
     eventText: eventText.trim() || undefined,
     publishedUrl: publishedUrl || undefined,
     publishedAt: publishedAt || undefined,
+    revisedAt: revisedAt || undefined,
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }
@@ -827,6 +834,49 @@ export default function Editor({
                         placeholder="https://blog.naver.com/…"
                       />
                     </Field>
+                  </div>
+
+                  {/*
+                    고쳐서 다시 올린 날 — 실험 기록.
+                    최신성이 관찰에서 가장 센 신호였으니(6회 중 5회 유리·거꾸로 0) 옛 글을
+                    고치면 어떻게 되는지 재본다. 네이버가 수정일을 반영하는지는 확인된 바 없다.
+                  */}
+                  <div className="bd mt-3.5 border-t pt-3.5">
+                    <Field
+                      label="고쳐서 다시 올린 날 (실험)"
+                      hint="네이버에서 본문을 고쳐 저장한 날을 넣으면, 순위 추적 화면에서 수정 앞뒤 순위를 비교해 줍니다"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="date"
+                          value={revisedAt.slice(0, 10)}
+                          onChange={(e) => setRevisedAt(e.target.value)}
+                          className={inputClass}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setRevisedAt(new Date().toISOString().slice(0, 10))}
+                          className="bd shrink-0 rounded-xl border px-3 py-2 text-[12px] font-semibold hover:bg-slate-500/8"
+                        >
+                          오늘 고쳤음
+                        </button>
+                        {revisedAt && (
+                          <button
+                            type="button"
+                            onClick={() => setRevisedAt('')}
+                            className="muted shrink-0 px-1 text-[11.5px] font-semibold hover:underline"
+                          >
+                            지우기
+                          </button>
+                        )}
+                      </div>
+                    </Field>
+                    <p className="muted mt-1.5 text-[11px] leading-relaxed">
+                      최신성은 관찰 6회에서 <b>거꾸로 나온 적이 한 번도 없는</b> 신호입니다. 그래서 옛
+                      글을 고쳐 다시 올리는 게 통하는지 재봅니다 —{' '}
+                      <b>네이버가 수정일을 순위에 반영하는지는 공개돼 있지 않습니다.</b> 고치기 전에
+                      순위를 한 번 재두면 비교가 정확해집니다.
+                    </p>
                   </div>
                 </Card>
               )}

@@ -75,6 +75,14 @@ export interface Post {
   eventText?: string
   publishedAt?: string
   publishedUrl?: string
+  /**
+   * 본문을 고쳐서 네이버에 다시 올린 날 (YYYY-MM-DD).
+   *
+   * 최신성이 관찰에서 가장 센 신호였으므로(6회 중 5회 유리, 거꾸로 0회) 옛 글을 고쳐
+   * 다시 올리면 어떻게 되는지 재본다. 네이버가 수정일을 순위에 반영하는지는 공개돼
+   * 있지 않아서 **실험이다** — lib/analysis/revise.ts 주석 참고.
+   */
+  revisedAt?: string
   createdAt: string
   updatedAt: string
 }
