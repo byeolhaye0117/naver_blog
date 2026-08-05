@@ -1,4 +1,4 @@
-import { contentBalance, INFO_MIN, PROMO_MAX } from '../analysis/content'
+import { contentBalance, INFO_MIN_BY_TYPE, PROMO_MAX } from '../analysis/content'
 import { evidenceHeadline, itemEvidence } from './evidence'
 import type { PooledFactor } from '../analysis/factors'
 import type {
@@ -91,12 +91,22 @@ export const SPECS: Record<PostType, Spec> = {
 }
 
 const IMAGE_RE = /^\s*\[이미지\s*:?([^\]]*)\]\s*$/
+/**
+ * 영상 자리 표기.
+ *
+ * 이미지와 같은 방식으로 **본문 글자수에서 뺀다.** 표기를 그냥 두면 「[영상: 스쿼트 시범]」
+ * 이 본문 12자로 세어져, 글은 그대로인데 분량이 늘어난 것처럼 보인다.
+ * 관찰에서 영상이 있는 글이 위에 있었다 (6회 중 유리 2 · 거꾸로 0).
+ */
+const VIDEO_RE = /^\s*\[영상\s*:?([^\]]*)\]\s*$/
 const HEADING_RE = /^\s*(?:##+\s*|■\s*|▶\s*)(.+?)\s*$/
 
 export interface ParsedBody {
   prose: string
   headings: string[]
   images: string[]
+  /** 영상 자리 설명 */
+  videos: string[]
   /** 각 소제목 바로 위에 이미지가 있는지 */
   headingsWithImageAbove: number
   /** 소제목 없이 본문만 있는 도입부 */
@@ -107,6 +117,7 @@ export function parseBody(body: string): ParsedBody {
   const lines = body.split(/\r?\n/)
   const headings: string[] = []
   const images: string[] = []
+  const videos: string[] = []
   const proseLines: string[] = []
   let headingsWithImageAbove = 0
   let lastMeaningful: 'image' | 'heading' | 'prose' | null = null
@@ -121,6 +132,13 @@ export function parseBody(body: string): ParsedBody {
     if (img) {
       images.push(img[1].trim())
       lastMeaningful = 'image'
+      continue
+    }
+
+    const vid = VIDEO_RE.exec(trimmed)
+    if (vid) {
+      videos.push(vid[1].trim())
+      // 영상은 소제목 위 배치 규칙이 없다 — lastMeaningful 을 건드리지 않는다
       continue
     }
 
@@ -142,6 +160,7 @@ export function parseBody(body: string): ParsedBody {
     prose: proseLines.join('\n'),
     headings,
     images,
+    videos,
     headingsWithImageAbove,
     intro: introLines.join('\n'),
   }
@@ -235,6 +254,7 @@ export function checkPost(input: CheckInput): CheckResult {
     titleLength: title.length,
     headings: parsed.headings,
     imageCount: parsed.images.length,
+    videoCount: parsed.videos.length,
     tagCount: input.tags.length,
     mainKeywordCount,
     mainKeywordDensity: density,
@@ -467,6 +487,26 @@ export function checkPost(input: CheckInput): CheckResult {
     weight: 1,
   })
 
+  /*
+   * 영상 1개.
+   *
+   * 관찰 6회에서 유리 2 · 거꾸로 0 — 방향은 한 번도 뒤집히지 않았지만 세지도 않다.
+   * 그래서 없으면 「주의」까지만 낸다 (수정필요 아님). 촬영은 실제 부담이고, 근거가
+   * 이 정도인 항목이 발행을 막으면 안 된다. 관찰이 더 쌓이면 evidence.ts 가 비중을 올린다.
+   */
+  add({
+    id: 'video',
+    group: '이미지·태그',
+    label: '짧은 영상',
+    level: parsed.videos.length >= 1 ? 'pass' : 'warn',
+    value: parsed.videos.length ? `${parsed.videos.length}개` : '없음',
+    target: '1개 (10~20초)',
+    hint: parsed.videos.length
+      ? undefined
+      : '`[영상: 무엇을 찍을지]` 한 줄로 자리를 표시하세요. 편집 없이 세로로 찍은 10~20초면 됩니다 — 홍보글은 동작 시범, 후기글은 시설을 훑는 시선.',
+    weight: 2,
+  })
+
   if (parsed.headings.length) {
     const ratio = parsed.headingsWithImageAbove / parsed.headings.length
     add({
@@ -561,14 +601,23 @@ export function checkPost(input: CheckInput): CheckResult {
    * 정보가 모자란 것과 홍보가 과한 것은 고칠 방법이 달라서(더하기 / 덜어내기)
    * 한 항목으로 묶지 않고 따로 낸다.
    */
-  const balance = contentBalance(scanText)
+  const balance = contentBalance(scanText, input.type)
+  const infoMin = INFO_MIN_BY_TYPE[input.type]
   add({
     id: 'info-substance',
     group: '내용 균형',
-    label: '읽는 사람이 가져갈 정보',
-    level: level(balance.signals.info >= INFO_MIN, balance.signals.info >= INFO_MIN - 2),
+    label: input.type === 'review' ? '가서 알게 된 것' : '읽는 사람이 가져갈 정보',
+    level: level(balance.signals.info >= infoMin, balance.signals.info >= infoMin - 1),
     value: `${balance.signals.info}종류`,
-    target: `${INFO_MIN}종류 이상 (상위 1~3위 평균 5.2)`,
+    /*
+     * 하한이 유형마다 다르다 (INFO_MIN_BY_TYPE 주석).
+     * 후기에 정보를 욱여넣으면 업체가 쓴 글이 되고, 실측에도 그럴 근거가 없다 —
+     * 경험 요소는 순위와 무관했고(-0.13) 4위 이하가 오히려 더 많았다.
+     */
+    target:
+      input.type === 'review'
+        ? `${infoMin}종류면 충분 (후기는 순위보다 신뢰를 만드는 글)`
+        : `${infoMin}종류 이상 (상위 1~3위 평균 5.2)`,
     hint: balance.level === 'thin' || balance.level === 'both' ? balance.infoNote : undefined,
     weight: 4,
   })

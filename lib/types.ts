@@ -415,6 +415,8 @@ export interface CheckStats {
   titleLength: number
   headings: string[]
   imageCount: number
+  /** 영상 자리 개수 (`[영상: …]` 표기) */
+  videoCount: number
   tagCount: number
   mainKeywordCount: number
   mainKeywordDensity: number
