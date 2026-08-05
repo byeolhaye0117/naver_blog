@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { readDB } from '@/lib/store'
+import { poolStoredRuns } from '@/lib/analysis/factors'
 import { AiError, aiStatus, askLlm, extractJson } from '@/lib/ai/llm'
 import { buildFixPrompt, buildSystemPrompt, buildUserPrompt } from '@/lib/ai/prompt'
 import { PUBLISH_THRESHOLD, SPECS, checkPost, summarize } from '@/lib/writing/checker'
@@ -62,6 +63,7 @@ export async function POST(req: Request) {
     }
 
     const db = await readDB()
+    const evidence = poolStoredRuns(db.factorRuns)
     const store = db.stores.find((s) => s.id === body.storeId)
     if (!store) {
       return NextResponse.json({ error: '지점을 먼저 골라주세요.' }, { status: 400 })
@@ -109,6 +111,8 @@ export async function POST(req: Request) {
         legalName: store.legalName,
         womenOnly: store.womenOnly,
         sponsorship: body.sponsorship ?? 'unset',
+        // AI 가 스스로 고칠 때도 같은 근거로 채점한다 — 화면 점수와 다르면 안 된다
+        evidence,
       })
 
     let draft = asDraft(extractJson(await askLlm(system, messages)))

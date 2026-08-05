@@ -48,6 +48,7 @@ const TARGETS = [
   'lib/analysis/rank.ts',
   'lib/writing/banned.ts',
   'lib/writing/checker.ts',
+  'lib/writing/evidence.ts',
   'lib/writing/templates.ts',
   'lib/writing/rotation.ts',
   'lib/writing/next-action.ts',

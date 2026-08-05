@@ -1,4 +1,6 @@
 import { contentBalance, INFO_MIN, PROMO_MAX } from '../analysis/content'
+import { evidenceHeadline, itemEvidence } from './evidence'
+import type { PooledFactor } from '../analysis/factors'
 import type {
   CheckItem,
   CheckLevel,
@@ -27,6 +29,14 @@ export interface CheckInput {
   legalName?: string
   womenOnly?: boolean
   sponsorship?: Sponsorship
+  /**
+   * 관찰소에 쌓인 근거 (`poolFactors()` 결과).
+   *
+   * 넣으면 항목마다 「관찰 N회: 유리 x · 거꾸로 y」가 붙고, 거꾸로 나온 항목은 점수
+   * 비중이 내려간다 (lib/writing/evidence.ts). 안 넣으면 예전처럼 통설 기준으로 돈다 —
+   * 근거가 없는 것과 근거가 나쁜 것을 섞지 않으려고 선택 인자로 뒀다.
+   */
+  evidence?: PooledFactor[]
 }
 
 /** 이 점수 이상이면 "발행해도 좋은 상태" */
@@ -251,14 +261,22 @@ export function checkPost(input: CheckInput): CheckResult {
       charCount >= spec.charMin - 250 && charCount <= spec.charMax + 400
     ),
     value: `${charCount.toLocaleString()}자`,
-    target: `${spec.charMin.toLocaleString()}~${spec.charMax.toLocaleString()}자`,
+    target: `${spec.charMin.toLocaleString()}~${spec.charMax.toLocaleString()}자 (근거 약함)`,
     hint:
       charCount < spec.charMin
-        ? '상위 글 평균이 2,000~3,000자입니다. 정보 밀도가 모자라면 검색 의도 불충족으로 감점됩니다.'
+        ? '너무 짧으면 쓸 내용이 없다는 뜻이라 채우는 게 좋습니다. 다만 실측에서는 분량이 순위와 반대로 갔습니다 (1위 2,197자 · 2위 1,422자 · 4위 2,568자) — 늘리려고 말을 늘리지는 마세요.'
         : charCount > spec.charMax
-          ? '길다고 감점되지는 않지만, 늘어지면 체류시간이 오히려 떨어집니다.'
+          ? '길다고 감점되지는 않습니다. 실측에서도 분량은 순위를 가르지 않았습니다 — 늘어지는지만 보세요.'
           : undefined,
-    weight: 3,
+    /*
+     * 가중치를 3 → 1 로 내렸다.
+     *
+     * 「상위 글은 2,000~3,000자」는 업계 통설이고, 우리가 잰 것과 어긋난다 —
+     * 실측에서 분량의 유리 방향은 음수였고(1위 2,197 · 2위 1,422 · 4위 2,568),
+     * 관찰을 모아도 방향이 갈렸다. 근거가 없는 항목이 85점 문턱을 흔들면 안 된다.
+     * 관찰이 쌓여 유리하게 나오면 evidence.ts 가 다시 올린다.
+     */
+    weight: 1,
   })
 
   const titleOk = title.length >= 28 && title.length <= 40
@@ -437,9 +455,16 @@ export function checkPost(input: CheckInput): CheckResult {
       parsed.images.length >= 4 && parsed.images.length <= 12
     ),
     value: `${parsed.images.length}장`,
-    target: '5~10장 (직접 촬영 원본)',
-    hint: '`[이미지: 설명]` 형식으로 적으면 자동으로 셉니다. 재사용 이미지는 중복 판정 위험이 있습니다.',
-    weight: 3,
+    target: '5~10장 (직접 촬영 원본 · 개수는 근거 약함)',
+    hint: '`[이미지: 설명]` 형식으로 적으면 자동으로 셉니다. 실측에서 이미지 **개수**와 순위의 관계는 0.00 이었습니다 — 장수를 늘리는 것보다 직접 찍은 사진인지가 중요합니다 (재사용 이미지는 중복 판정 위험).',
+    /*
+     * 가중치를 3 → 1 로 내렸다.
+     *
+     * 실측 상관이 0.00 이다 — 관찰한 신호 중 가장 확실하게 「무관」으로 나온 항목이다.
+     * 사진이 필요 없다는 뜻이 아니라 **개수가 순위를 만들지 않는다**는 뜻이고,
+     * 검수는 개수밖에 셀 수 없으므로 그만큼만 점수에 반영한다.
+     */
+    weight: 1,
   })
 
   if (parsed.headings.length) {
@@ -652,6 +677,27 @@ export function checkPost(input: CheckInput): CheckResult {
     weight: 2,
   })
 
+  /*
+   * ─── 관찰 반영 ───────────────────────────────────────────────
+   *
+   * 점수를 내기 **전에** 가중치를 관찰에 맞춰 고친다. 근거가 갈리거나 거꾸로 나온 항목은
+   * 비중이 내려가고, 여러 관찰에서 뚜렷하게 유리했던 항목은 조금 올라간다.
+   * 목표 수치는 건드리지 않는다 (evidence.ts 주석).
+   */
+  const ev = itemEvidence(
+    input.evidence,
+    Object.fromEntries(items.map((i) => [i.id, i.weight]))
+  )
+  for (const it of items) {
+    const e = ev.get(it.id)
+    if (!e) continue
+    it.baseWeight = e.baseWeight
+    it.weight = e.weight
+    it.evidence = e.line
+    it.evidenceVerdict = e.verdict
+  }
+  const evidenceNote = evidenceHeadline(ev, items.length)
+
   // ─── 점수 ───────────────────────────────────────────────────
   const weightSum = items.reduce((s, i) => s + i.weight, 0)
   const earned = items.reduce(
@@ -664,7 +710,7 @@ export function checkPost(input: CheckInput): CheckResult {
   // 항목 하나가 가중치의 일부일 뿐이어서, 캡이 없으면 하한 미달인 글이 89점처럼 보인다.
   const score = items.some((i) => i.level === 'fail') ? Math.min(raw, PUBLISH_THRESHOLD - 6) : raw
 
-  return { score, items, risks, stats }
+  return { score, items, risks, stats, evidenceNote }
 }
 
 /** 요약 뱃지용 */

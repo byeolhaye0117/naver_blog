@@ -19,6 +19,7 @@ import {
 } from '@/components/icons'
 import { nextActions } from '@/lib/writing/next-action'
 import { shouldDiagnose } from '@/lib/analysis/diagnose'
+import { poolStoredRuns } from '@/lib/analysis/factors'
 import StorageNotice from '@/components/StorageNotice'
 
 export const dynamic = 'force-dynamic'
@@ -31,6 +32,8 @@ export default async function Dashboard() {
   // 최신성은 관찰소에서 가장 센 신호였다 (6회 중 5회 유리, 거꾸로 0회) — 지점별로 따로 본다
   const freshness = freshnessReport(db.posts, db.stores)
   const staleStores = freshness.filter((f) => f.stale)
+  // 검수 점수도 관찰을 반영한다 — 근거가 없거나 거꾸로인 항목은 비중이 내려간다
+  const evidence = poolStoredRuns(db.factorRuns)
   const views = buildRankViews(db.rankTargets, db.rankSnapshots, db.posts)
 
   const published = db.posts.filter((p) => p.status === 'published')
@@ -381,6 +384,7 @@ export default async function Dashboard() {
                   legalName: store?.legalName,
                   womenOnly: store?.womenOnly,
                   sponsorship: p.sponsorship ?? 'unset',
+                  evidence,
                 })
                 return (
                   <li key={p.id}>
@@ -517,7 +521,7 @@ export default async function Dashboard() {
       <Card
         className="mt-4"
         title="네이버 랭킹 로직 요약"
-        subtitle="이 앱의 모든 검수 기준이 여기서 나옵니다"
+        subtitle="네이버가 공개한 설명과 업계 통설입니다 — 우리가 직접 잰 것은 상위노출 분석 화면의 관찰소에 있고, 둘이 어긋나면 관찰 쪽을 따릅니다"
         right={
           <Link href="/guide" className="muted text-xs font-semibold hover:underline">
             전체 가이드

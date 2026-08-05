@@ -4,6 +4,7 @@ import Editor from './Editor'
 import type { PostType } from '@/lib/types'
 import StorageNotice from '@/components/StorageNotice'
 import { findPrescription } from '@/lib/analysis/prescription'
+import { poolStoredRuns } from '@/lib/analysis/factors'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,6 +83,7 @@ export default async function WritePage({
         initialType={type}
         initialStoreId={sp.store}
         prescription={prescription}
+        evidence={poolStoredRuns(db.factorRuns)}
         autoOpened={Boolean(latestDraft)}
       />
     </>

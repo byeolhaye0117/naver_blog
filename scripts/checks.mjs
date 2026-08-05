@@ -2652,5 +2652,165 @@ ok(promoSkeleton.includes('7단계 CTA'), 'CTA 단계는 그대로 남긴다')
 ok(promoSkeleton.includes('6단계 이벤트 본공개'), '이벤트 단계도 그대로 남긴다')
 ok(promoSkeleton.includes('해결 (500~600자'), '해결 구간을 늘렸다 (450~550 → 500~600)')
 
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[53] 검수 기준이 관찰을 읽는다 — 근거 없는 항목은 점수에서 물러난다')
+const { ITEM_FACTOR, itemEvidence, evidenceHeadline, MIN_WEIGHT, MIN_RUNS } =
+  require(`${OUT}/writing/evidence.js`)
+
+/** 관찰 묶음 하나 만들기 (poolFactors 결과 모양) */
+const evPool = (key, { advantage, runs, agree, disagree, samples = runs * 10 }) => [
+  { key, label: key, advantage, runs, samples, agree, disagree, note: '' },
+]
+const evOne = (key, opts, base = { charCount: 3, images: 3 }) =>
+  itemEvidence(evPool(key, opts), base)
+
+// 관찰이 없으면 손대지 않는다 — 「근거 없음」과 「근거 나쁨」은 다르다
+ok(itemEvidence(undefined, { charCount: 3 }).size === 0, '관찰이 없으면 아무것도 바꾸지 않는다')
+ok(itemEvidence([], { charCount: 3 }).size === 0, '빈 관찰도 마찬가지')
+
+// 관찰이 적으면 아직 반영하지 않는다 (한두 번은 우연이다)
+const evFew = evOne('chars', { advantage: -0.9, runs: MIN_RUNS - 1, agree: 0, disagree: 2 })
+ok(evFew.get('charCount').verdict === 'none', `관찰 ${MIN_RUNS}회 미만은 반영하지 않는다`)
+ok(evFew.get('charCount').weight === 3, '가중치를 건드리지 않는다')
+ok(evFew.get('charCount').line.includes('업계 통설'), '지금 기준이 통설이라고 밝힌다', evFew.get('charCount').line)
+
+// 거꾸로 나온 항목 — 비중을 최소로 내린다
+const evAgainst = evOne('chars', { advantage: -0.62, runs: 5, agree: 0, disagree: 4 })
+const evAg = evAgainst.get('charCount')
+ok(evAg.verdict === 'against', '거꾸로 나오면 그렇게 판정한다', evAg.verdict)
+ok(evAg.weight === MIN_WEIGHT && evAg.baseWeight === 3, `비중을 ${MIN_WEIGHT}로 내린다`, `${evAg.baseWeight}→${evAg.weight}`)
+ok(evAg.line.includes('오히려 아래에 있었습니다'), '무슨 일이 있었는지 사람 말로', evAg.line)
+// 0 으로 만들지는 않는다 — 항목이 사라진 것처럼 보이면 안 된다
+ok(evAg.weight > 0, '항목을 없애지는 않는다')
+
+// 방향이 갈리는 항목 — 요인으로 보기 어렵다
+const evMixed = evOne('images', { advantage: 0.0, runs: 6, agree: 2, disagree: 2 })
+ok(evMixed.get('images').verdict === 'mixed', '방향이 갈리면 mixed')
+ok(evMixed.get('images').weight === MIN_WEIGHT, '갈리는 항목도 비중을 내린다')
+ok(evMixed.get('images').line.includes('방향이 갈립니다'), '갈린다고 말한다')
+// 평균이 커도 거꾸로가 유리만큼 있으면 갈린 것이다 (평균 하나로 속지 않는다)
+const evSplit = evOne('images', { advantage: 0.55, runs: 6, agree: 2, disagree: 2 })
+ok(evSplit.get('images').verdict === 'mixed', '평균이 커도 거꾸로가 같은 수면 갈린 것')
+
+// 여러 관찰에서 뚜렷하게 유리했던 항목 — 조금 올린다
+const evUp = evOne('chars', { advantage: 0.78, runs: 4, agree: 4, disagree: 0 })
+ok(evUp.get('charCount').verdict === 'supported', '뚜렷하게 유리하면 supported')
+ok(evUp.get('charCount').weight === 4, '올리는 폭은 +1 로 제한한다', String(evUp.get('charCount').weight))
+// 올리는 폭이 내리는 폭보다 작다 — 상관이 인과라는 보장이 없다
+ok(
+  evUp.get('charCount').weight - 3 < 3 - evAg.weight,
+  '올리는 폭이 내리는 폭보다 작다'
+)
+const evCap = itemEvidence(evPool('chars', { advantage: 0.95, runs: 5, agree: 5, disagree: 0 }), {
+  charCount: 5,
+})
+ok(evCap.get('charCount').weight === 5, '한 항목이 점수를 지배하지 못하게 상한을 둔다')
+
+// 약하게 유리한 항목은 그대로 둔다
+const evWeak = evOne('chars', { advantage: 0.45, runs: 4, agree: 3, disagree: 0 })
+ok(evWeak.get('charCount').verdict === 'weak' && evWeak.get('charCount').weight === 3, '약하면 그대로')
+ok(evWeak.get('charCount').line.includes('방향은 맞지만 약합니다'), '약하다고 말한다')
+
+// 어느 검수 항목이 어느 관찰 신호에 걸려 있는지
+ok(ITEM_FACTOR.charCount === 'chars' && ITEM_FACTOR.images === 'images', '분량·이미지가 연결돼 있다')
+ok(ITEM_FACTOR.titleKeyword === 'keywordFront', '제목 키워드 위치도 연결')
+ok(ITEM_FACTOR['info-substance'] === 'info' && ITEM_FACTOR['promo-restraint'] === 'promo', '내용 균형도 연결')
+
+// 점수의 근거가 얼마나 되는지 한 줄로
+ok(
+  evidenceHeadline(new Map(), 26).includes('모두 업계 통설 기준'),
+  '관찰이 없으면 전부 통설이라고 밝힌다'
+)
+const evHead = evidenceHeadline(evAgainst, 26)
+ok(evHead.includes('26개 항목 중 1개'), '몇 개를 관찰과 맞춰봤는지 말한다', evHead)
+ok(evHead.includes('비중을 낮춘 항목 1개'), '비중을 낮춘 개수를 밝힌다')
+ok(evHead.includes('나머지 25개'), '나머지가 통설이라고 밝힌다')
+
+// ─── 실제 검수에 걸었을 때 ───────────────────────────────────
+const EV_BODY = [
+  '[이미지: 대표]',
+  '안녕하세요, 쌍용동 헬스장 MTO 피트니스 쌍용점입니다. 처음 오시는 분들이 가장 많이 묶는 것부터 정리했습니다.',
+  '',
+  '[이미지: 내부]',
+  '## 처음 오면 무엇부터 하나',
+  '유산소 15분으로 몸을 데우고 자극이 어디에 오는지 확인하는 순서로 시작합니다. 호흡은 내릴 때 마시고 올릴 때 내쉽니다.',
+  '',
+  '[이미지: 기구]',
+  '## 시간이 없을 때',
+  '30분만 있어도 방법은 있습니다. 하체 위주로 묶어 두 동작만 반복하면 충분합니다.',
+  '',
+  '[이미지: 상담]',
+  '## 쌍용동 헬스장 이용 안내',
+  '24시간 운영이라 교대근무자도 옵니다. 궁금한 점은 상담 때 물어보세요.',
+  '',
+  '[이미지: 외부]',
+  '## 정리',
+  '쌍용동 헬스장을 찾고 있다면 한 번 들러보세요. 자세와 호흡부터 잡아드립니다.',
+].join('\n')
+const EV_INPUT = {
+  type: 'promo',
+  title: '쌍용동 헬스장, 처음 오는 분들이 가장 많이 묶는 것 정리',
+  body: EV_BODY,
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: ['쌍용동 24시 헬스장'],
+  tags: ['쌍용동헬스장', '천안헬스장'],
+  legalName: 'MTO 피트니스 쌍용점',
+}
+const evPlain = checkPost(EV_INPUT)
+ok(evPlain.evidenceNote.includes('모두 업계 통설 기준'), '근거를 안 넘기면 통설이라고 밝힌다')
+ok(!evPlain.items.some((i) => i.evidence), '근거가 없으면 항목에 붙이지 않는다')
+
+// 통설로 박혀 있던 두 항목의 비중을 실측에 맞춰 내려뒀다
+const evChars = evPlain.items.find((i) => i.id === 'charCount')
+const evImages = evPlain.items.find((i) => i.id === 'images')
+ok(evChars.weight === 1, '분량 비중을 3 → 1 로 내렸다 (실측에서 순위와 반대로 갔다)', String(evChars.weight))
+ok(evChars.target.includes('근거 약함'), '근거가 약하다고 화면에 적는다', evChars.target)
+ok(evImages.weight === 1, '이미지 개수 비중도 1 로 내렸다 (실측 상관 0.00)', String(evImages.weight))
+ok(evImages.target.includes('근거 약함'), '이미지도 근거가 약하다고 적는다')
+ok(evImages.hint.includes('0.00'), '실측값을 그대로 보여준다')
+
+// 근거를 넘기면 항목에 붙고 점수가 달라진다
+const EV_POOLED = [
+  { key: 'age', label: '최신성', advantage: 0.63, runs: 6, samples: 60, agree: 5, disagree: 0, note: '' },
+  { key: 'chars', label: '본문 분량', advantage: -0.55, runs: 6, samples: 60, agree: 1, disagree: 4, note: '' },
+  { key: 'images', label: '이미지 수', advantage: 0.0, runs: 6, samples: 60, agree: 1, disagree: 1, note: '' },
+  { key: 'info', label: '정보 요소', advantage: 0.72, runs: 5, samples: 50, agree: 5, disagree: 0, note: '' },
+  { key: 'keywordFront', label: '제목 키워드 위치', advantage: 0.3, runs: 4, samples: 38, agree: 1, disagree: 0, note: '' },
+]
+const evWired = checkPost({ ...EV_INPUT, evidence: EV_POOLED })
+const wChars = evWired.items.find((i) => i.id === 'charCount')
+ok(wChars.evidence.includes('관찰 6회 · 상위 글 60편'), '항목에 관찰 횟수를 적는다', wChars.evidence)
+ok(wChars.evidenceVerdict === 'against', '거꾸로 나온 항목을 표시한다')
+const wInfo = evWired.items.find((i) => i.id === 'info-substance')
+ok(wInfo.evidenceVerdict === 'supported' && wInfo.weight === 5, '근거가 센 항목은 비중을 올린다', String(wInfo.weight))
+ok(wInfo.evidence.includes('상위권이 실제로 이렇게 쓰고 있습니다'), '왜 올렸는지 말한다')
+/*
+ * 「제목 앞쪽에 메인 키워드」는 근거만 붙이고 비중은 건드리지 않는다.
+ * 관찰이 재는 것은 제목 안 *위치*지만, 이 항목이 실제로 걸러내는 것은 제목에 키워드가
+ * 아예 없는 글이다 — 그건 상관이 아니라 조건이다.
+ */
+const wTitle = evWired.items.find((i) => i.id === 'titleKeyword')
+ok(wTitle.evidenceVerdict === 'flat', '약한 신호를 「갈린다」고 하지 않는다', wTitle.evidenceVerdict)
+ok(wTitle.evidence.includes('뚜렷하게 같이 움직이지 않았습니다'), '없는 갈등을 만들지 않는다', wTitle.evidence)
+ok(wTitle.weight === 4, '제목 키워드 항목은 근거가 약해도 비중을 내리지 않는다', String(wTitle.weight))
+
+// mixed 와 flat 은 다른 상황이다 — 같은 말로 덮지 않는다
+const evFlat = evOne('images', { advantage: 0.12, runs: 5, agree: 1, disagree: 0 })
+ok(evFlat.get('images').verdict === 'flat', '거꾸로가 없으면 flat')
+ok(!evFlat.get('images').line.includes('방향이 갈립니다'), 'flat 에는 갈린다고 쓰지 않는다')
+ok(evFlat.get('images').weight === MIN_WEIGHT, 'flat 도 비중은 내린다')
+ok(evWired.evidenceNote.includes('관찰과 맞춰봤습니다'), '요약 줄에 근거를 밝힌다', evWired.evidenceNote)
+
+// 목표 수치는 자동으로 바뀌지 않는다 (상관을 규격으로 바꾸지 않는다)
+ok(
+  wChars.target === evChars.target,
+  '관찰이 목표 수치를 갈아치우지는 않는다',
+  `${evChars.target} vs ${wChars.target}`
+)
+
+// 근거가 붙은 항목이 점수를 흔드는 정도가 달라진다
+ok(evWired.score !== evPlain.score || wInfo.weight !== 4, '관찰이 점수 계산에 실제로 들어간다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

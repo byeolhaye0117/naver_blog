@@ -1,5 +1,6 @@
 import { readDB } from '@/lib/store'
 import { balanceReport, cadenceReport } from '@/lib/writing/rotation'
+import { poolStoredRuns } from '@/lib/analysis/factors'
 import { PageHeader } from '@/components/AppShell'
 import { Stat } from '@/components/ui'
 import { IconBalance, IconCheck, IconDoc, IconTrend } from '@/components/icons'
@@ -53,7 +54,7 @@ export default async function PostsPage() {
       </div>
 
       <StorageNotice />
-      <PostList posts={db.posts} stores={db.stores} />
+      <PostList posts={db.posts} stores={db.stores} evidence={poolStoredRuns(db.factorRuns)} />
     </>
   )
 }

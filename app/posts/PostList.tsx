@@ -6,11 +6,21 @@ import { useMemo, useState } from 'react'
 import type { Post, PostStatus, PostType, Store } from '@/lib/types'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL } from '@/lib/types'
 import { checkPost } from '@/lib/writing/checker'
+import type { PooledFactor } from '@/lib/analysis/factors'
 import { postLogLine } from '@/lib/writing/export'
 import { Badge, Card, Empty, inputClass } from '@/components/ui'
 import CopyButton from '@/components/CopyButton'
 
-export default function PostList({ posts, stores }: { posts: Post[]; stores: Store[] }) {
+export default function PostList({
+  posts,
+  stores,
+  evidence,
+}: {
+  posts: Post[]
+  stores: Store[]
+  /** 관찰소 근거 — 점수 비중을 관찰에 맞추려고 함께 넘긴다 */
+  evidence?: PooledFactor[]
+}) {
   const router = useRouter()
   const [typeFilter, setTypeFilter] = useState<PostType | 'all'>('all')
   const [statusFilter, setStatusFilter] = useState<PostStatus | 'all'>('all')
@@ -130,6 +140,7 @@ export default function PostList({ posts, stores }: { posts: Post[]; stores: Sto
               legalName: store?.legalName,
               womenOnly: store?.womenOnly,
               sponsorship: p.sponsorship ?? 'unset',
+              evidence,
             })
             const scoreTone = result.score >= 85 ? 'good' : result.score >= 65 ? 'warn' : 'bad'
 
