@@ -69,9 +69,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '지점을 먼저 골라주세요.' }, { status: 400 })
     }
 
-    // 같은 지점의 최근 글 — 도입·앵글·키워드가 겹치지 않게 참고 자료로 넘긴다
+    /*
+     * 최근 글 — 도입·앵글·키워드가 겹치지 않게 참고 자료로 넘긴다.
+     *
+     * 예전에는 **같은 지점 것만** 봤다. 그래서 지점만 바꿔 같은 글을 쓰면 AI 도 그 사실을
+     * 몰랐다 (실측 90.4% 겹침). 이제 다른 지점 글도 함께 넘긴다 — 우리 블로그에서 이미
+     * 쓴 도입·앵글이면 지점이 달라도 다시 쓰면 안 된다.
+     */
     const recent = db.posts
-      .filter((p) => p.storeId === store.id)
+      .filter((p) => p.body.trim())
       .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
       .slice(0, 5)
       .map((p) => ({
@@ -80,6 +86,7 @@ export async function POST(req: Request) {
         mainKeyword: p.mainKeyword,
         introType: p.introType,
         angle: p.angle,
+        storeName: db.stores.find((s) => s.id === p.storeId)?.name,
       }))
 
     const request = {

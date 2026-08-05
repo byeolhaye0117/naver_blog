@@ -2510,7 +2510,7 @@ ok(SPONSOR_LABEL.noMark === '표기 없음', '표기 없음을 그대로 부른�
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[50] 내용 균형 — 시설·이벤트만으로는 위로 못 간다')
-const { countSignals, contentBalance, INFO_MIN, INFO_MIN_BY_TYPE, PROMO_MAX, INFO_WORDS, PROMO_WORDS } =
+const { countSignals, contentBalance, INFO_MIN, INFO_MIN_BY_TYPE, PROMO_MAX, PROMO_MAX_BY_TYPE, INFO_WORDS, PROMO_WORDS } =
   require(`${OUT}/analysis/content.js`)
 
 // 종류를 센다 — 횟수를 세면 같은 말을 반복해 점수를 올릴 수 있다
@@ -2955,6 +2955,153 @@ ok(tbInfoSkel.includes('정보 요소 5종류 이상'), '정보글은 5종류를
 ok(tbInfoSkel.includes('근력·부위·단백질'), '아래쪽에 더 많았던 말을 알려준다')
 ok(tbInfoSkel.includes('자극이 어디에 오는지'), '갈린 말을 알려준다')
 ok(tbInfoSkel.includes('[영상:'), '정보글에도 영상 자리')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[55] 지점 간 유사문서 — 지점만 바꿔 같은 글을 올리는 것을 잡는다')
+const { compareWithMine, MINE_CAVEAT } = require(`${OUT}/analysis/similarity.js`)
+
+/*
+ * 실측 재현 (2026-08-05). 홍보글 1편을 지점명·지역명·전화만 바꿔 4벌 만들고
+ * compareOne 으로 재보니 90.4% 겹쳤고 876자가 연속으로 같았다. 그런데 경고는 0건이었다 —
+ * adviseRotation 은 같은 지점만, compareWithTop 은 경쟁 글만 봤기 때문이다.
+ */
+const MO_BASE = [
+  '퇴근이 밤 열한 시인데 헬스장은 열 시에 닫습니다. 쌍용동 헬스장을 찾다가 여기까지 오신 분이라면 시간 때문일 겁니다.',
+  '등록은 했는데 왜 못 가게 되는지부터 이야기하겠습니다. 게으름 때문이 아니고 시간이 안 맞으면 의지는 셋째 주에 소진됩니다.',
+  '출근 전 삼십 분이면 경사 오 도에 속도는 대화가 되는 정도로 십오 분. 숨이 차면 속도가 아니라 경사를 먼저 낮춥니다.',
+  '스쿼트는 무게보다 앉는 깊이가 먼저입니다. 자극은 허벅지 앞이 아니라 엉덩이와 뒤쪽에 와야 정상입니다.',
+  '호흡은 앉을 때 마시고 일어설 때 내쉽니다. 열 번씩 세 세트, 마지막 두 번이 버거운 무게가 지금 맞는 무게입니다.',
+  '밤에 오시는 분들은 순서를 뒤집습니다. 근력을 먼저 하고 유산소는 십 분만 붙이는 편이 잠에 낫습니다.',
+  '새벽에도 상주 인원을 두고 있습니다. 여성 회원이 많은 시간대는 데스크에서 따로 봅니다.',
+].join(' ')
+// 지점명·지역명만 바꾼 글
+const MO_SWAPPED = MO_BASE.replace(/쌍용동/g, '용곡동')
+
+const moPosts = [
+  { id: 'other1', title: '용곡동 헬스장 24시간 안내', body: MO_SWAPPED, storeId: 'yonggok', storeName: '용곡점' },
+]
+const moCross = compareWithMine(MO_BASE, moPosts, 'ssangyong')
+ok(moCross !== null, '내 글끼리 비교가 돌아간다')
+ok(moCross.worst.overlap > 80, '지점명만 바꾼 글은 크게 겹친다', String(moCross.worst.overlap))
+ok(moCross.worst.otherStore === true, '다른 지점 글임을 표시한다')
+ok(moCross.needsWork, '고쳐야 한다고 판정한다')
+ok(moCross.headline.includes('지점만 바꿔 같은 글'), '무슨 일인지 정확히 말한다', moCross.headline)
+ok(moCross.headline.includes('검색 의도에 답하지 못'), '왜 문제인지도 말한다')
+
+// 같은 지점 안에서 겹치면 다른 말을 한다 (자기잠식) — 처방이 다르다
+const moSame = compareWithMine(MO_BASE, [{ ...moPosts[0], storeId: 'ssangyong', storeName: '쌍용점' }], 'ssangyong')
+ok(moSame.worst.otherStore === false, '같은 지점이면 다른 지점으로 세지 않는다')
+ok(moSame.headline.includes('자기잠식'), '같은 지점이면 자기잠식이라고 말한다', moSame.headline)
+ok(!moSame.headline.includes('지점만 바꿔'), '같은 지점에 엉뚱한 말을 하지 않는다')
+
+// 서로 다른 글은 통과해야 한다 (없는 문제를 만들면 경고를 아무도 안 본다)
+const MO_DIFF = [
+  '다이어트 정체기는 대개 넉 주쯤에 옵니다. 몸이 적응했다는 뜻이라 나쁜 신호가 아닙니다.',
+  '식단을 더 줄이는 대신 단백질을 유지하고 유산소 시간을 바꿔보는 편을 권합니다.',
+  '주 삼회 이상 같은 루틴을 반복했다면 종목을 두 개만 바꿔도 다시 반응이 옵니다.',
+  '인바디는 같은 시간대에 재야 비교가 됩니다. 아침 공복에 재는 것을 기준으로 잡으세요.',
+  '체지방이 그대로인데 허리가 줄었다면 그것도 변화입니다. 숫자 하나만 보지 않는 것이 중요합니다.',
+  '잠을 여섯 시간 아래로 줄이면 식욕 조절이 먼저 무너집니다. 수면을 먼저 챙기는 편을 권합니다.',
+  '물은 하루에 얼마를 마셨는지 세보는 것으로 시작합니다. 갈증을 느낀 뒤에 마시면 이미 늦습니다.',
+].join(' ')
+const moFar = compareWithMine(MO_DIFF, moPosts, 'ssangyong')
+ok(moFar === null || moFar.worst.overlap < 10, '다른 내용은 겹침이 낮다', String(moFar?.worst.overlap))
+
+// 자기 자신과 비교하지 않는다 / 짧은 글은 재지 않는다
+ok(compareWithMine('짧은 글', moPosts, 'ssangyong') === null, '짧은 글은 판정하지 않는다')
+ok(compareWithMine(MO_BASE, [], 'ssangyong') === null, '견줄 글이 없으면 null')
+
+// 부분 수정으로는 안 내려간다는 사실을 회원에게 알려준다
+ok(MINE_CAVEAT.includes('90.4%') && MINE_CAVEAT.includes('54.6%'), '실측 두 값을 그대로 적는다')
+ok(MINE_CAVEAT.includes('부분 수정으로는'), '조금 고치면 된다는 오해를 먼저 깬다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[56] 「낫습니다」 오탐 — 의료 문맥일 때만 잡는다')
+/*
+ * 실전 검수에서 잡혔다. 「교정받고 가시는 편이 낫습니다」(= 더 좋다)가 의료 표현으로
+ * 걸려 수정필요가 되고, fail 이라 점수 상한(79점)까지 맞았다.
+ */
+const fpOk = scanRisks('처음 오신 분들은 이 한 번으로 자세를 교정받고 가시는 편이 낫습니다.')
+ok(!fpOk.some((r) => r.category.startsWith('C.')), '「편이 낫습니다」는 의료로 잡지 않는다', JSON.stringify(fpOk.map(r=>r.term)))
+ok(!scanRisks('그냥 쉬는 게 낫습니다.').some((r) => r.category.startsWith('C.')), '「게 낫습니다」도 통과')
+ok(!scanRisks('오전에 오시는 쪽이 낫습니다.').some((r) => r.category.startsWith('C.')), '「쪽이 낫습니다」도 통과')
+
+// 진짜 의료 주장은 그대로 잡는다
+const fpBad = scanRisks('무릎 통증이 낫습니다.')
+ok(fpBad.some((r) => r.category.startsWith('C.') && r.level === 'fail'), '「통증이 낫습니다」는 잡는다')
+ok(scanRisks('허리 디스크가 낫는다고 하십니다.').some((r) => r.category.startsWith('C.')), '「디스크가 낫는다」도 잡는다')
+ok(scanRisks('치료해 드립니다').some((r) => r.category.startsWith('C.')), '「치료」는 그대로 잡는다')
+ok(scanRisks('완치 사례가 있습니다').some((r) => r.category.startsWith('C.')), '「완치」도 그대로')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[57] 홍보 상한도 목적에 따라 다르다')
+/*
+ * 홍보글에서 CTA 수단을 쓰면 상담·전화로 2종류가 필연적으로 소진된다. 상한 3 은
+ * 홍보글에 「혜택 이름 하나만 쓰라」는 뜻이 되어, 정상 글이 주의를 맞았다.
+ * 대신 정보글은 2 로 조인다 — 전체 압력은 그대로 두고 배분만 바꿨다.
+ */
+ok(PROMO_MAX_BY_TYPE.promo === 4, '홍보글은 4종류까지 (CTA 수단이 2종류를 쓴다)')
+ok(PROMO_MAX_BY_TYPE.info === 2, '정보글은 2종류로 조인다')
+ok(PROMO_MAX_BY_TYPE.review === 3, '후기글은 3종류')
+const PM_TEXT = '상담은 전화로 받습니다. 신규 등록 혜택이 있습니다.'
+ok(countSignals(PM_TEXT).promo === 4, '상담·전화·신규·혜택 = 4종류', String(countSignals(PM_TEXT).promo))
+ok(contentBalance(PM_TEXT, 'promo').level !== 'pushy', '홍보글에서는 통과한다')
+// 이 짧은 예문은 정보도 0종류라 정보글에서는 두 축이 같이 걸린다 ('both')
+const pmInfo = contentBalance(PM_TEXT, 'info')
+ok(pmInfo.level === 'both', '정보글에서는 홍보 과다 + 정보 부족이 같이 걸린다', pmInfo.level)
+ok(contentBalance(PM_TEXT, 'info').promoNote.includes('상한은 2종류'), '유형 상한을 밝힌다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[58] 맞춤법 검사 — 0건과 「못 읽음」을 섞지 않는다')
+const { parsePassportKey, parseSpellResult, chunkForSpell, spellHeadline, CHUNK_MAX } =
+  require(`${OUT}/naver/speller.js`)
+
+ok(
+  parsePassportKey('<a href="/SpellerProxy?passportKey=e440aa75760f04db35d65dafcda62bc4">') ===
+    'e440aa75760f04db35d65dafcda62bc4',
+  '검색 페이지에서 키를 뽑는다'
+)
+ok(parsePassportKey('<html>키 없음</html>') === null, '키가 없으면 null')
+
+// 실제 응답 모양 그대로 (2026-08-05 측정)
+const SP_REAL = JSON.stringify({
+  message: {
+    result: {
+      errata_count: 2,
+      origin_html:
+        "오늘 날씨가 <span class='result_underline'>조으네요</span> <span class='result_underline'>밥먹었어요</span>",
+      html: "오늘 날씨가 <em class='red_text'>좋네요</em> <em class='green_text'>밥 먹었어요</em>",
+    },
+  },
+})
+const spRes = parseSpellResult(SP_REAL)
+ok(spRes.count === 2 && spRes.fixes.length === 2, '교정 2건을 읽는다')
+ok(spRes.fixes[0].before === '조으네요' && spRes.fixes[0].after === '좋네요', '원문과 제안을 짝짓는다')
+ok(spRes.fixes[0].kind === '맞춤법', '빨간색은 맞춤법')
+ok(spRes.fixes[1].kind === '띄어쓰기', '초록색은 띄어쓰기')
+
+// 막혔을 때 — 500 HTML 이 온다. 0건으로 읽으면 거짓이 된다
+ok(parseSpellResult('<html><title>500</title></html>') === null, '500 응답은 null (0건이 아니다)')
+ok(parseSpellResult(JSON.stringify({ message: { error: '유효한 키가 아닙니다.' } })) === null, '키 오류도 null')
+
+// 문장 경계에서 자른다 — 중간에서 끊으면 없는 오류가 생긴다
+const spChunks = chunkForSpell('가. '.repeat(10) + '나'.repeat(500), 60)
+ok(spChunks.every((c) => c.length <= 60 || !c.includes(' ')), '상한을 넘기지 않거나 한 문장이다')
+ok(chunkForSpell('짧은 문장입니다.')[0] === '짧은 문장입니다.', '짧으면 그대로 한 덩어리')
+ok(chunkForSpell('').length === 0, '빈 글은 덩어리가 없다')
+ok(CHUNK_MAX > 100, '덩어리 상한이 있다')
+
+// 못 읽은 것을 숨기지 않는다
+ok(
+  spellHeadline([], 0, 3).includes('맞춤법이 깨끗하다는 뜻이 아닙니다'),
+  '전부 실패면 깨끗한 게 아니라고 못 박는다',
+  spellHeadline([], 0, 3)
+)
+ok(spellHeadline([], 5, 0).includes('교정할 곳이 없습니다'), '다 읽고 0건이면 그렇게 말한다')
+const spPartial = spellHeadline([{ before: 'a', after: 'b', kind: '맞춤법' }], 3, 2)
+ok(spPartial.includes('2덩어리는'), '일부만 읽었으면 몇 개를 못 읽었는지 말한다', spPartial)
+ok(spPartial.includes('눈으로 한 번 보세요'), '그럼 어떻게 하라고 알려준다')
+ok(spellHeadline([{ before:'a', after:'b', kind:'맞춤법' },{ before:'c', after:'d', kind:'띄어쓰기' }], 2, 0).includes('맞춤법 1건 · 띄어쓰기 1건'), '종류별로 센다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

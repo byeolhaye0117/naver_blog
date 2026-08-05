@@ -167,6 +167,103 @@ export function compareWithTop(
   return { hits, worst, compared: hits.length, headline, needsWork }
 }
 
+// ─── 내 글끼리 (지점 간) ────────────────────────────────────────
+
+/**
+ * **내 글끼리 겹치는지 본다 — 특히 지점이 다른 글끼리.**
+ *
+ * 이걸 안 보고 있었다. 유사문서 방어 장치가 셋 다 딴 곳을 보고 있었다 —
+ * `compareWithTop` 은 **경쟁 상위 글**만, `adviseRotation` 과 AI 지시문의 참고 글은
+ * **같은 지점** 것만 봤다. 그래서 지점 4곳에 같은 글을 지점명만 바꿔 올리면 경고가
+ * 하나도 뜨지 않았다.
+ *
+ * 실측(2026-08-05, 홍보글 1편을 지점명·지역명·전화만 바꿔 4벌 만들어 이 파일의
+ * `compareOne` 으로 재봄):
+ *   지점명만 바꿈                 → **90.4%** 겹침, 876자 연속 동일
+ *   + 가장 긴 「해결」 단락 새로 씀 → **54.6%** (그래도 기준 초과)
+ *
+ * 즉 부분 수정으로는 안 내려간다. 그래서 **초안을 쓰는 동안** 알려줘야 한다 —
+ * 다 쓰고 나서 「대부분 다시 쓰세요」는 조치가 아니다.
+ *
+ * 네트워크를 쓰지 않는다. 내 글은 이미 화면에 있으므로 즉시 잰다.
+ */
+export interface MineHit extends SimilarityHit {
+  postId: string
+  title: string
+  /** 그 글이 어느 지점 것인지 (없으면 지점 미지정) */
+  storeName?: string
+  /** 지점이 다른 글인지 — 다르면 더 위험하다 (같은 내용을 여러 지점에 돌린 신호) */
+  otherStore: boolean
+}
+
+export interface MineReport {
+  hits: MineHit[]
+  worst: MineHit
+  compared: number
+  headline: string
+  needsWork: boolean
+}
+
+/**
+ * 내 초안을 내가 쓴 다른 글들과 견준다 (순수 함수 — 테스트 대상).
+ *
+ * `myStoreId` 를 주면 「지점이 다른 글」을 따로 표시한다. 같은 지점 안에서 겹치는 것은
+ * 자기잠식이고, 지점이 달라도 겹치는 것은 **같은 글을 돌려 쓴 것**이다 — 후자가 더
+ * 위험하니 말도 다르게 한다.
+ */
+export function compareWithMine(
+  mine: string,
+  others: { id: string; title: string; body: string; storeId?: string; storeName?: string }[],
+  myStoreId?: string
+): MineReport | null {
+  const clean = normalizeForCompare(mine).clean
+  if (clean.length < MIN_LENGTH) return null
+
+  const hits = others
+    .map((o) => {
+      const h = compareOne(mine, o.body, o.id)
+      if (!h) return null
+      return {
+        ...h,
+        postId: o.id,
+        title: o.title,
+        storeName: o.storeName,
+        otherStore: Boolean(myStoreId && o.storeId && o.storeId !== myStoreId),
+      } as MineHit
+    })
+    .filter((h): h is MineHit => h !== null)
+    .sort((a, b) => b.overlap - a.overlap)
+
+  if (!hits.length) return null
+  const worst = hits[0]
+  const needsWork = worst.overlap >= OVERLAP_HIGH
+  const where = worst.storeName ? `${worst.storeName} 글` : '내 다른 글'
+
+  let headline: string
+  if (needsWork && worst.otherStore) {
+    headline =
+      `${where}과 ${worst.overlap}% 가 글자 그대로 같습니다 — 지점만 바꿔 같은 글을 올리는 형태입니다. ` +
+      '지역 키워드가 다른데 본문이 같으면 그 검색 의도에 답하지 못하고, 네이버가 같은 문서로 묶을 위험도 있습니다.'
+  } else if (needsWork) {
+    headline = `같은 지점의 「${worst.title || '제목 없음'}」과 ${worst.overlap}% 가 글자 그대로 같습니다 — 자기잠식입니다. 도입·소제목·앵글을 바꾸세요.`
+  } else if (worst.overlap >= OVERLAP_SOME) {
+    headline = `${where}과 ${worst.overlap}% 겹칩니다. 상호명·주소처럼 어차피 같아야 하는 문구라면 그대로 둬도 됩니다.`
+  } else {
+    headline = `내 글 ${hits.length}편과 견줬고 가장 많이 겹치는 것도 ${worst.overlap}% 입니다 — 서로 다른 글입니다.`
+  }
+
+  return { hits, worst, compared: hits.length, headline, needsWork }
+}
+
+/**
+ * 부분 수정으로는 안 내려간다는 것을 숫자로 알려준다.
+ *
+ * 「조금 고치면 되겠지」가 가장 흔한 오해다. 실측에서 가장 긴 단락을 통째로 새로 써도
+ * 54.6% 였다 — 90.4% 에서 그만큼밖에 안 내려갔다.
+ */
+export const MINE_CAVEAT =
+  '지점명·지역명만 바꾼 글은 실측에서 90.4% 겹쳤고, 가장 긴 단락을 통째로 새로 써도 54.6% 였습니다. 부분 수정으로는 기준 아래로 내려가지 않으니, 겹침이 크면 도입·소제목·앵글부터 다시 잡으세요.'
+
 /** 숫자를 어떻게 읽어야 하는지 — 화면에 함께 띄운다 */
 export const SIMILARITY_CAVEAT =
   '네이버가 유사문서로 판정하는 기준값은 공개돼 있지 않습니다. 이 숫자는 「내 글의 어느 만큼이 상위 글에도 글자 그대로 있는지」일 뿐이며, 몇 % 를 넘으면 걸린다는 뜻이 아닙니다. 지점 주소·전화번호처럼 사실이라서 같아야 하는 문구는 겹쳐도 괜찮습니다.'

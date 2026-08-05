@@ -90,6 +90,27 @@ export const INFO_MIN_BY_TYPE: Record<'promo' | 'info' | 'review', number> = {
  */
 export const PROMO_MAX = 3
 
+/**
+ * 홍보 상한도 **목적에 따라 다르다.**
+ *
+ * 실전 검수에서 걸렸다 — 홍보글 하나가 상담·혜택·신규·전화 4종류로 주의를 맞았는데,
+ * 그중 「상담」과 「전화」는 **이 글이 존재하는 이유**다. 홍보글에서 CTA 수단을 쓰면
+ * 필연적으로 2종류가 소진되므로, 상한 3 은 홍보글에 사실상 「혜택 이름 하나만 쓰라」는
+ * 뜻이 된다.
+ *
+ * 대신 정보글은 조여 놓는다 — 마무리에 문의 한 줄이면 1~2종류로 끝나고, 그 이상은
+ * 정보글의 목적(신뢰 축적)을 깨는 신호다. 전체 압력은 그대로 두고 배분만 바꿨다.
+ *
+ * 방향의 근거는 그대로다: 홍보 표현이 많은 글이 아래에 있었다 (1~3위 평균 2.0종류 /
+ * 4위 이하 3.8종류). 이 신호는 관찰에서 거꾸로 나온 적이 있는 유일한 항목이라
+ * 조이는 쪽으로 기울인다.
+ */
+export const PROMO_MAX_BY_TYPE: Record<'promo' | 'info' | 'review', number> = {
+  promo: 4,
+  info: 2,
+  review: 3,
+}
+
 export interface ContentSignals {
   /** 몇 종류가 들어 있는지 (같은 말을 여러 번 써도 1로 센다) */
   info: number
@@ -147,8 +168,9 @@ export function contentBalance(
 ): ContentBalance {
   const signals = countSignals(text)
   const infoMin = INFO_MIN_BY_TYPE[type] ?? INFO_MIN
+  const promoMax = PROMO_MAX_BY_TYPE[type] ?? PROMO_MAX
   const thin = signals.info < infoMin
-  const pushy = signals.promo > PROMO_MAX
+  const pushy = signals.promo > promoMax
 
   const level: BalanceLevel = thin && pushy ? 'both' : thin ? 'thin' : pushy ? 'pushy' : 'good'
 
@@ -164,8 +186,8 @@ export function contentBalance(
     : `정보가 ${signals.info}종류 들어 있습니다 (${signals.infoFound.slice(0, 5).join('·')}${signals.infoFound.length > 5 ? ' 등' : ''}) — ${type === 'review' ? '후기로는 충분합니다.' : '상위권 수준입니다.'}`
 
   const promoNote = pushy
-    ? `홍보 표현이 ${signals.promo}종류입니다 (${signals.promoFound.slice(0, 6).join('·')}). 실측에서 홍보 표현이 많은 글이 아래에 있었습니다 (1~3위 평균 2.0종류 / 4위 이하 3.8종류). 이벤트·상담 안내는 한 곳에 모으고 본문에 흩뿌리지 마세요.`
-    : `홍보 표현이 ${signals.promo}종류입니다 — 상위권 범위(3종류 이하) 안입니다.${
+    ? `홍보 표현이 ${signals.promo}종류입니다 (${signals.promoFound.slice(0, 6).join('·')}) — 이 유형 상한은 ${promoMax}종류입니다. 실측에서 홍보 표현이 많은 글이 아래에 있었습니다 (1~3위 평균 2.0종류 / 4위 이하 3.8종류). 이벤트·상담 안내는 한 곳에 모으고 본문에 흩뿌리지 마세요.`
+    : `홍보 표현이 ${signals.promo}종류입니다 — 이 글 유형의 범위(${promoMax}종류 이하) 안입니다.${
         signals.promo === 0 ? ' 다만 하나도 없으면 상담으로 이어지지 않습니다 — 마지막에 한 번은 넣으세요.' : ''
       }`
 

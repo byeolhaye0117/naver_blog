@@ -23,8 +23,15 @@ export interface WriteRequest {
   eventText?: string
   /** 후기글 대가성 — 'sponsored' 면 첫 화면에 표기해야 한다 */
   sponsorship?: 'own' | 'sponsored' | 'unset'
-  /** 유사문서를 피하기 위해 참고하는 같은 지점의 최근 글 */
-  recent?: Pick<Post, 'type' | 'title' | 'mainKeyword' | 'introType' | 'angle'>[]
+  /**
+   * 유사문서를 피하려고 참고하는 **우리 블로그의** 최근 글.
+   *
+   * 예전에는 같은 지점 것만 넘겼다. 그래서 지점만 바꿔 같은 글을 쓰면 AI 도 몰랐다
+   * (실측 90.4% 겹침). 지점이 달라도 이미 쓴 도입·앵글이면 다시 쓰면 안 된다.
+   */
+  recent?: (Pick<Post, 'type' | 'title' | 'mainKeyword' | 'introType' | 'angle'> & {
+    storeName?: string
+  })[]
   /** 상위노출 분석에서 나온 처방 (있으면 제목·소재에 반영) */
   prescription?: string[]
 }
@@ -196,12 +203,16 @@ export function buildUserPrompt(req: WriteRequest): string {
   }
 
   if (req.recent?.length) {
-    lines.push('', '## 같은 지점 최근 글 (겹치지 않게 각도를 바꾼다)')
+    lines.push('', '## 우리 블로그 최근 글 (지점이 달라도 겹치지 않게 각도를 바꾼다)')
     for (const r of req.recent.slice(0, 5)) {
       const bits = [POST_TYPE_LABEL[r.type], r.mainKeyword, r.introType, r.angle].filter(Boolean)
-      lines.push(`- ${r.title || '(제목 없음)'} — ${bits.join(' / ')}`)
+      const where = r.storeName ? `[${r.storeName}] ` : ''
+      lines.push(`- ${where}${r.title || '(제목 없음)'} — ${bits.join(' / ')}`)
     }
-    lines.push('도입 방식·주력 앵글·소제목이 위 글들과 겹치면 유사문서로 묶인다. 다르게 잡는다.')
+    lines.push(
+      '도입 방식·주력 앵글·소제목이 위 글들과 겹치면 유사문서로 묶인다. 다르게 잡는다.',
+      '**지점이 다르다는 것은 이유가 되지 않는다.** 지점명·지역명만 바꾼 글은 실측에서 90.4% 가 글자 그대로 같았다 — 같은 사업자의 복제 문서로 묶일 수 있고, 지역 키워드가 다른데 본문이 같으면 그 검색 의도에 답하지 못한다.'
+    )
   }
 
   lines.push('', 'JSON 객체 하나만 출력한다.')
