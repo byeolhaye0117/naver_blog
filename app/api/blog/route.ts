@@ -4,10 +4,12 @@ import { buildBlogProfile, gradeBlog, meaningForUs, queryFromTitle } from '@/lib
 import { findBlogRank } from '@/lib/naver/blogsection'
 import { checkUnifiedIndexed } from '@/lib/naver/unified'
 import { buildIndexCheck, summarizeIndex, type IndexCheck } from '@/lib/analysis/indexcheck'
+import { judgeAgency, scanSponsorship, type SponsorScan } from '@/lib/analysis/agency'
+import { fetchPublishedPost } from '@/lib/naver/blogpost'
 
 export const dynamic = 'force-dynamic'
-// RSS 1회 + 색인 검사 3회 × 2곳 + 노출력 표본 10회
-export const maxDuration = 120
+// RSS 1회 + 색인 검사 3회 × 2곳 + 노출력 표본 10회 + 본문 3편
+export const maxDuration = 150
 
 /**
  * 노출력을 잴 표본 수.
@@ -20,6 +22,13 @@ const SAMPLE = 10
 const SAMPLE_DEPTH = 30
 /** 색인 검사(제목 완전일치)는 이만큼만 — 이건 표본이 적어도 신호가 분명하다 */
 const INDEX_SAMPLE = 3
+/**
+ * 대가성 표기를 찾을 글 수.
+ *
+ * 표기는 보통 글 맨 위나 맨 아래에 한 번 나오므로 본문을 읽어야 한다. 3편이면 캠페인
+ * 블로그인지 가늠하기에 충분하고(표기하는 블로거는 매 글에 넣는다), 조회도 3번뿐이다.
+ */
+const SPONSOR_SAMPLE = 3
 
 export async function POST(req: Request) {
   try {
@@ -108,7 +117,31 @@ export async function POST(req: Request) {
       }
     }
 
+    /*
+     * 「돈 주고 맡긴 블로그인가」 판단 보조.
+     *
+     * 최근 글 본문에서 대가성·체험단 표기를 찾는다. 표기는 본인이 밝힌 것이라 가장
+     * 확실한 근거다. 표기가 없으면 「없다」고만 말하고 추측하지 않는다 (agency.ts 주석).
+     */
+    const scans: (SponsorScan & { title: string; url: string })[] = []
+    for (const it of feed.items.slice(0, SPONSOR_SAMPLE)) {
+      try {
+        const post = await fetchPublishedPost(it.link)
+        if (!post) continue
+        scans.push({ ...scanSponsorship(post.text, post.title || it.title), title: it.title, url: it.link })
+      } catch {
+        /* 한 편이 막혀도 나머지로 본다 */
+      }
+    }
+
     const profile = buildBlogProfile(feed, undefined, exposureRate)
+    const agency = judgeAgency({
+      scans,
+      tradeGroups: profile.tradeGroups.length,
+      topTradeShare: profile.topTradeShare,
+      gymShare: profile.gymShare,
+      last30: profile.last30,
+    })
     const grade = gradeBlog({
       indexedRate,
       exposureRate,
@@ -125,6 +158,8 @@ export async function POST(req: Request) {
       indexDetail,
       indexSummary,
       meaning: meaningForUs(profile),
+      agency,
+      sponsorScans: scans,
       exposureDetail,
       recent: feed.items.slice(0, 8).map((i) => ({ title: i.title, date: i.date, category: i.category, link: i.link })),
     })

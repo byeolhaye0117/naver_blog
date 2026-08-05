@@ -32,6 +32,7 @@ const TARGETS = [
   'lib/analysis/similarity.ts',
   'lib/analysis/shortlist.ts',
   'lib/analysis/factors.ts',
+  'lib/analysis/agency.ts',
   'lib/naver/blogrss.ts',
   'lib/naver/unified.ts',
   'lib/naver/autocomplete.ts',

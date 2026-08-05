@@ -2284,5 +2284,84 @@ ok(GRADE_NOTE.includes('최적1'), '실측 근거를 적는다')
 ok(GRADE_NOTE.includes('입장권'), '등급의 역할을 밝힌다')
 ok(!GRADE_NOTE.includes('지수는 의미가 없'), '등급이 무의미하다고 단정하지 않는다')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[49] 돈 주고 맡긴 글인가 — 단정하지 않고 근거만')
+const { scanSponsorship, judgeAgency, AGENCY_CAVEAT, SPONSOR_LABEL, AGENCY_LABEL } =
+  require(`${OUT}/analysis/agency.js`)
+
+// 본인이 밝힌 표기가 가장 확실한 근거다
+const ag1 = scanSponsorship('본 포스팅은 업체로부터 소정의 원고료를 받아 작성되었습니다.')
+ok(ag1.level === 'paidDisclosed', '대가성 표기를 찾는다', ag1.level)
+ok(ag1.found.includes('원고료'), '찾은 문구를 그대로 담는다', ag1.found.join(','))
+ok(ag1.note.includes('직접 밝힌'), '본인 진술이라고 밝힌다')
+
+const ag2 = scanSponsorship('체험단으로 방문했습니다. 정말 좋았어요.')
+ok(ag2.level === 'campaignDisclosed', '체험단 표기를 가른다', ag2.level)
+
+const ag3 = scanSponsorship('내돈내산 후기입니다. 3개월 등록했습니다.')
+ok(ag3.level === 'ownMoney', '내돈내산도 본인 표기로 읽는다')
+
+const agNo = scanSponsorship('운동 시작한 지 3주 됐습니다. 기구가 넉넉해서 좋아요.')
+ok(agNo.level === 'noMark', '표기가 없으면 없다고 한다')
+/*
+ * 가장 중요한 검사. 표기가 없는 것을 「몰래 받았다」로도, 「안 받았다」로도 읽으면 안 된다.
+ * 남이 대가를 받았다고 단정하는 것은 사실 주장이고, 틀리면 명예훼손이다.
+ */
+ok(agNo.note.includes('알 수 없습니다'), '표기 없음을 추측으로 채우지 않는다', agNo.note)
+ok(!agNo.note.includes('받지 않'), '안 받았다고도 하지 않는다')
+ok(!agNo.note.includes('숨기'), '숨겼다고도 하지 않는다')
+
+// 제목에 있는 표기도 잡는다
+ok(scanSponsorship('', '[협찬] 쌍용동 헬스장 후기').level === 'paidDisclosed', '제목의 표기도 잡는다')
+
+// ── 블로그 단위 판단 ──
+const AG_MARKED = judgeAgency({
+  scans: [ag1, ag2, agNo],
+  tradeGroups: 5,
+  topTradeShare: 30,
+  gymShare: 20,
+  last30: 30,
+})
+ok(AG_MARKED.level === 'confirmedByMark', '표기를 봤으면 확인으로 올린다', AG_MARKED.level)
+ok(AG_MARKED.signals.some((s) => s.toward === 'campaign'), '체험단 쪽 신호를 담는다')
+ok(AG_MARKED.meaning.includes('비용을 들여 만든 자리'), '우리에게 뜻하는 것을 말한다')
+ok(AG_MARKED.meaning.includes('후기'), '그럼 무엇을 하라고까지 말한다')
+
+// 업체 본인 블로그 — 우리도 직접 써서 이길 수 있는 판이다
+const AG_OWNER = judgeAgency({
+  scans: [agNo, agNo],
+  tradeGroups: 1,
+  topTradeShare: 95,
+  gymShare: 90,
+  last30: 3,
+})
+ok(AG_OWNER.level === 'ownerLike', '업종 집중 + 적은 발행량은 업체 본인 쪽', AG_OWNER.level)
+ok(AG_OWNER.meaning.includes('직접 써서 이길 수 있는'), '이길 수 있는 판이라고 말한다')
+
+// 표기는 못 봤지만 캠페인 패턴이 여럿
+const AG_LIKE = judgeAgency({
+  scans: [agNo, agNo, agNo],
+  tradeGroups: 6,
+  topTradeShare: 25,
+  gymShare: 10,
+  last30: 40,
+})
+ok(AG_LIKE.level === 'campaignLike', '패턴만 있으면 「…로 보임」까지', AG_LIKE.level)
+ok(AG_LIKE.meaning.includes('단정할 수는 없습니다'), '단정하지 않는다고 본문에 적는다', AG_LIKE.meaning)
+ok(AGENCY_LABEL.campaignLike.includes('보임'), '배지 말도 단정하지 않는다', AGENCY_LABEL.campaignLike)
+
+// 근거가 모자라면 모자라다고 한다
+const AG_NONE = judgeAgency({ scans: [], tradeGroups: 2, topTradeShare: 50, gymShare: 40, last30: 8 })
+ok(AG_NONE.level === 'unclear', '근거가 없으면 판단하지 않는다', AG_NONE.level)
+ok(AG_NONE.meaning.includes('근거가 모자랍니다'), '모자라다고 말한다')
+
+// 이 문장은 어떤 판정에도 함께 나간다
+for (const j of [AG_MARKED, AG_OWNER, AG_LIKE, AG_NONE]) {
+  ok(j.caveat === AGENCY_CAVEAT, '단서가 항상 함께 나간다')
+}
+ok(AGENCY_CAVEAT.includes('단정할 수 없습니다'), '단정하지 말라고 적는다')
+ok(AGENCY_CAVEAT.includes('남에게 「돈 받은 글」이라고 말하지 마세요'), '밖으로 옮기지 말라고 적는다')
+ok(SPONSOR_LABEL.noMark === '표기 없음', '표기 없음을 그대로 부른다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
