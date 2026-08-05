@@ -2227,7 +2227,7 @@ const REAL_SAMPLES = [
 ]
 const FACT = measureFactors(REAL_SAMPLES)
 const byKey = (k) => FACT.find((x) => x.key === k)
-ok(FACT.length === 11, '신호 11개를 잰다 (+ 공감 수 · 제목 질문형)', String(FACT.length))
+ok(FACT.length === 13, '신호 13개를 잰다 (+ 공감 · 제목 질문형 · 키워드 횟수 · 밀도)', String(FACT.length))
 // 회원 질문에서 나온 항목이 관찰 대상에 들어갔는지 — 기준을 만들었으면 계속 검증해야 한다
 ok(FACT.some((x) => x.key === 'info'), '정보 요소도 매일 다시 잰다')
 ok(FACT.some((x) => x.key === 'promo'), '홍보 요소도 매일 다시 잰다')

@@ -71,6 +71,15 @@ export interface FactorSample {
    * (lib/analysis/title.ts 주석). 「전국이 그러니 우리도」로 정하지 않고 재본다.
    */
   titleQuestion: number | null
+  /**
+   * 메인 키워드가 제목+본문에 몇 번 나오는지 (띄어쓰기 무시). null = 본문을 못 읽음.
+   *
+   * 「5~7회」는 업계 통설이고 우리가 잰 적이 없다. 가중치는 5(최고)인데 근거가 없었다.
+   * 그래서 상위 글이 **실제로 몇 번 쓰는지**를 재서 기준을 다시 잡는다.
+   */
+  keywordCount: number | null
+  /** 메인 키워드 밀도(%). null = 본문을 못 읽음 */
+  density: number | null
 }
 
 export type FactorKey =
@@ -85,6 +94,8 @@ export type FactorKey =
   | 'experience'
   | 'likes'
   | 'titleQuestion'
+  | 'keywordCount'
+  | 'density'
 
 export const FACTOR_LABEL: Record<FactorKey, string> = {
   age: '최신성',
@@ -98,6 +109,8 @@ export const FACTOR_LABEL: Record<FactorKey, string> = {
   experience: '경험 요소 (겪은 사람만 쓰는 말)',
   likes: '공감 수',
   titleQuestion: '제목 질문형',
+  keywordCount: '메인 키워드 횟수',
+  density: '메인 키워드 밀도',
 }
 
 /** 값이 클수록 상위여야 「유리」인지, 작을수록 상위여야 「유리」인지 */
@@ -115,6 +128,8 @@ const BIGGER_IS_BETTER: Record<FactorKey, boolean> = {
   experience: true,
   likes: true,
   titleQuestion: true,
+  keywordCount: true,
+  density: true,
 }
 
 function valueOf(s: FactorSample, key: FactorKey): number | null {
@@ -142,6 +157,10 @@ function valueOf(s: FactorSample, key: FactorKey): number | null {
       return s.likes
     case 'titleQuestion':
       return s.titleQuestion
+    case 'keywordCount':
+      return s.keywordCount
+    case 'density':
+      return s.density
   }
 }
 
@@ -241,6 +260,8 @@ function noteFor(key: FactorKey, advantage: number | null, n: number): string {
       experience: '경험을 쓴 글이 위에 있습니다',
       likes: '공감이 많은 글이 위에 있습니다',
       titleQuestion: '질문형 제목(「왜 안 빠질까?」)을 쓴 글이 위에 있습니다',
+      keywordCount: '메인 키워드를 많이 쓴 글이 위에 있습니다',
+      density: '키워드 밀도가 높은 글이 위에 있습니다',
     }
     return `${label} — ${how} ${what[key]} (${advantage}, 표본 ${n}편).`
   }
@@ -256,6 +277,8 @@ function noteFor(key: FactorKey, advantage: number | null, n: number): string {
     experience: '경험을 덜 쓴 글이 오히려 위에 있습니다',
     likes: '공감이 적은 글이 오히려 위에 있습니다 (공감 늘리기로는 순위가 안 올라갑니다)',
     titleQuestion: '질문형이 아닌 제목이 오히려 위에 있습니다 (이 판에서는 질문형으로 바꿀 이유가 없습니다)',
+    keywordCount: '키워드를 적게 쓴 글이 오히려 위에 있습니다 (많이 넣을 이유가 없습니다)',
+    density: '밀도가 낮은 글이 오히려 위에 있습니다',
   }
   return `${label} — ${how} ${dir} 갑니다: ${opposite[key]} (${advantage}, 표본 ${n}편).`
 }
@@ -272,6 +295,8 @@ export const FACTOR_KEYS: FactorKey[] = [
   'experience',
   'likes',
   'titleQuestion',
+  'keywordCount',
+  'density',
 ]
 
 /** 상위 글 표본에서 신호별 관계를 잰다 (순수 함수 — 테스트 대상) */
@@ -401,6 +426,34 @@ export function poolFactors(runs: FactorObservation[]): PooledFactor[] {
 
     return { key, label: FACTOR_LABEL[key], advantage, runs: got.length, samples, agree, disagree, note }
   })
+}
+
+/**
+ * 상위권이 키워드를 몇 번 쓰는지 — **분포**를 낸다 (순수 함수 — 테스트 대상).
+ *
+ * 상관만 보면 「많을수록 유리/불리」밖에 못 말한다. 기준값(몇 회로 정할까)을 잡으려면
+ * **상위권이 실제로 쓰는 숫자**가 필요하다. 그래서 1~3위와 4위 이하를 나눠 중간값을 낸다.
+ *
+ * 평균이 아니라 중간값을 쓴다 — 한 편이 20번 쓰면 평균이 끌려간다.
+ */
+export function countDistribution(
+  samples: { rank: number; value: number | null }[]
+): { topMedian: number | null; restMedian: number | null; topMax: number | null; n: number } {
+  const has = samples.filter((s) => typeof s.value === 'number') as { rank: number; value: number }[]
+  const med = (list: number[]): number | null => {
+    if (!list.length) return null
+    const a = [...list].sort((x, y) => x - y)
+    const m = Math.floor(a.length / 2)
+    return a.length % 2 ? a[m] : Math.round(((a[m - 1] + a[m]) / 2) * 10) / 10
+  }
+  const top = has.filter((s) => s.rank <= 3).map((s) => s.value)
+  const rest = has.filter((s) => s.rank > 3).map((s) => s.value)
+  return {
+    topMedian: med(top),
+    restMedian: med(rest),
+    topMax: top.length ? Math.max(...top) : null,
+    n: has.length,
+  }
 }
 
 /**
