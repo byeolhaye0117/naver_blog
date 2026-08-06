@@ -12,11 +12,15 @@ export const maxDuration = 300
 /**
  * 출력 토큰 한도.
  *
- * 기본값(8192)으로는 잘릴 수 있다 — 본문 2,000자 + 문단 12개 이상 + 이미지 표기 + JSON
- * escape 가 겹치면 한도에 닿는다. 잘리면 회원 화면에는 2~3분 기다린 뒤 「글 형식을 읽지
- * 못했습니다」로만 보인다.
+ * **16,000 에서 8,192 로 되돌렸다.** 잘림을 줄이려고 올렸는데(#92), 올린 직후부터
+ * 「글 생성 응답을 읽지 못했습니다」가 났다. 모델·게이트웨이마다 출력 한도가 다르고
+ * 한도를 넘겨 요청하면 200 에 빈 내용으로 돌아오는 경우가 있어, 시점이 겹치는 값을
+ * 먼저 원복한다. 잘림 자체는 repairJson·salvageFields 가 이미 건져낸다.
+ *
+ * 환경변수로 올릴 수 있게 뒀다 — 모델이 더 긴 출력을 지원하는 걸 확인했으면
+ * AI_MAX_TOKENS 로 올리면 된다.
  */
-const WRITE_MAX_TOKENS = 16_000
+const WRITE_MAX_TOKENS = Number(process.env.AI_MAX_TOKENS ?? 8192) || 8192
 
 const TYPES: PostType[] = ['promo', 'info', 'review']
 

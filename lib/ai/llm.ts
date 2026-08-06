@@ -179,7 +179,25 @@ function errorText(raw: string): string {
  * 한 번 호출하고 텍스트만 돌려준다.
  * 회사별로 요청 모양이 달라서 여기서만 갈라진다.
  */
+/**
+ * 글 생성 한 번. **빈 응답이면 한 번만 다시 부른다.**
+ *
+ * 200 인데 내용이 없는 경우는 일시적일 때가 많다 (모델이 생각만 하다 끊기는 등).
+ * 회원은 1분을 기다린 뒤 오류를 보므로, 여기서 한 번 더 시도하는 값이 크다.
+ * 두 번째도 비면 그때는 증거를 담아 던진다 — describeEmpty 참고.
+ */
 export async function askLlm(system: string, messages: AiMessage[], maxTokens = 8192): Promise<string> {
+  try {
+    return await askOnce(system, messages, maxTokens)
+  } catch (e) {
+    const empty = e instanceof AiError && e.status === 502
+    if (!empty) throw e
+    console.warn('[ai] 빈 응답 — 한 번 다시 부른다:', e instanceof Error ? e.message : e)
+    return await askOnce(system, messages, maxTokens)
+  }
+}
+
+async function askOnce(system: string, messages: AiMessage[], maxTokens: number): Promise<string> {
   const c = detectProvider()
   if (!c) throw new AiError('AI 키가 설정되지 않았습니다.', 400)
   const model = await resolveModel(c)
@@ -238,8 +256,51 @@ export async function askLlm(system: string, messages: AiMessage[], maxTokens = 
   }
 
   const out = extractText(raw)
-  if (!out) throw new AiError('글 생성 응답을 읽지 못했습니다.', 502)
+  if (!out) {
+    /*
+     * **왜 증거를 담나.** 예전에는 「글 생성 응답을 읽지 못했습니다」만 던졌다. 회원 화면에
+     * 그 문구만 뜨니 원인을 알 수 없어 세 번을 추측으로 고쳤다.
+     *
+     * 200 인데 글이 없는 경우는 실제로 몇 가지다 — 모델이 생각 블록만 내고 끊겼거나
+     * (stop_reason: max_tokens), 응답 모양이 우리가 아는 회사 형식이 아니거나, 거부(refusal)
+     * 했을 때다. 셋은 대응이 다르므로 **무엇이었는지 그대로 적어 보낸다.**
+     */
+    throw new AiError(`글 생성 응답을 읽지 못했습니다. ${describeEmpty(raw, c.provider, model)}`, 502)
+  }
   return out
+}
+
+/** 200 인데 글이 없을 때, 응답에서 확인 가능한 사실만 뽑아 적는다 (순수 함수 — 테스트 대상) */
+export function describeEmpty(raw: string, provider: Provider, model: string): string {
+  const head = `(${PROVIDER_LABEL[provider]} · ${model})`
+  let json: unknown
+  try {
+    json = JSON.parse(raw)
+  } catch {
+    const snippet = raw.replace(/\s+/g, ' ').trim().slice(0, 120)
+    return `${head} 응답이 JSON 이 아니었습니다: "${snippet || '(비어 있음)'}"`
+  }
+  const j = json as {
+    stop_reason?: string
+    stop_sequence?: string
+    content?: { type?: string }[]
+    usage?: { input_tokens?: number; output_tokens?: number }
+    error?: { message?: string; type?: string }
+  }
+  const bits: string[] = [head]
+  if (j.error?.message) bits.push(`오류: ${j.error.message}`)
+  if (j.stop_reason) bits.push(`중단 이유: ${j.stop_reason}`)
+  if (Array.isArray(j.content)) {
+    const types = j.content.map((c) => c.type ?? '?')
+    bits.push(types.length ? `받은 블록: ${types.join(', ')}` : '내용 블록이 비어 있었습니다')
+  } else {
+    bits.push(`아는 응답 모양이 아닙니다 (키: ${Object.keys(j as object).slice(0, 6).join(', ')})`)
+  }
+  if (j.usage) bits.push(`토큰 입력 ${j.usage.input_tokens ?? '?'} · 출력 ${j.usage.output_tokens ?? '?'}`)
+  if (j.stop_reason === 'max_tokens') {
+    bits.push('출력 한도에 먼저 걸렸습니다 — 글이 나오기 전에 끊긴 것이니 한도를 줄이거나 분량을 낮춰야 합니다')
+  }
+  return bits.join(' · ')
 }
 
 /** 회사별 응답 모양에서 본문 텍스트만 뽑는다 (순수 함수 — 테스트 대상) */
