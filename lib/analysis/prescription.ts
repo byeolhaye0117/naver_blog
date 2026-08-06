@@ -1,4 +1,4 @@
-import type { Prescription } from '@/lib/types'
+import type { Prescription, PostType } from '@/lib/types'
 import { cutlineLine, isCutlineLine, refreshCutline } from './cutline'
 import type { Cutline } from './cutline'
 
@@ -97,4 +97,60 @@ export const PRESCRIPTION_STALE_DAYS = 14
 
 export function isPrescriptionStale(date: string, today = new Date()): boolean {
   return prescriptionAgeDays(date, today) > PRESCRIPTION_STALE_DAYS
+}
+
+/**
+ * 처방을 **글 유형에 맞게 걸러낸다** (순수 함수 — 테스트 대상).
+ *
+ * **왜 필요한가.** 처방은 키워드 단위로 저장되고 글 유형을 모른다. 그런데 어떤 처방은
+ * 유형과 정면으로 부딪힌다. 실제로 회원이 홍보글을 요청했는데 후기 톤 글이 나왔고,
+ * 원인은 처방의 이 줄이었다.
+ *
+ *   「상위 제목에 다른 업체 이름이 반복됩니다 … **우리도 방문 후기 형태로 맞붙거나**,
+ *    세부 의도를 붙여 우회하세요.」
+ *
+ * 「글에 반영」을 켜면 이 문장이 AI 지시문으로 가고, 모델은 그대로 따른다 — 홍보글인데
+ * 제목에 「후기」가 박히고 본문이 방문자 말투가 된다. 처방 자체는 맞는 조언이지만
+ * **그건 후기글(gym-review-writer)에게 할 말**이다.
+ *
+ * 같은 이유로 「상위 제목에 반복되는 말: PT, 후기, 추천」에서 방문자 어휘를 뺀다 —
+ * 홍보글에 「후기」를 반영하라고 하면 거짓 제목이 된다 (센터가 쓴 글이다).
+ *
+ * 저장된 문장을 고치지 않고 **꺼내 쓸 때** 거른다. 같은 처방이 후기글에는 그대로 쓸모가 있다.
+ */
+export function prescriptionForType(items: string[], type: PostType): string[] {
+  if (type === 'review') return items
+  /** 방문자만 쓸 수 있는 말 — 센터가 쓰는 글에 반영하면 거짓이 된다 */
+  const VISITOR_WORDS = ['후기', '내돈내산', '체험', '리뷰']
+  const out: string[] = []
+  for (const line of items) {
+    // 「방문 후기 형태로 맞붙어라」는 후기글에게 할 말이다
+    if (line.includes('방문 후기 형태로 맞붙') || line.includes('후기글로 맞붙')) {
+      out.push(
+        line
+          .replace(
+            '우리도 방문 후기 형태로 맞붙거나, 세부 의도를 붙여 우회하세요.',
+            '이 유형(홍보·정보글)에서는 후기로 맞붙지 않습니다 — 세부 의도를 붙여 우회하세요. 후기로 붙으려면 후기글로 따로 쓰는 것이 맞습니다.'
+          )
+          .replace(
+            '**후기글로 맞붙거나**, 홍보·정보글이라면 세부 의도를 붙여 우회하세요.',
+            '이 유형(홍보·정보글)에서는 후기로 맞붙지 않습니다 — 세부 의도를 붙여 우회하세요. 후기로 붙으려면 후기글로 따로 쓰는 것이 맞습니다.'
+          )
+      )
+      continue
+    }
+    // 반영하라는 낱말 목록에서 방문자 어휘만 뺀다 (줄 전체를 버리지 않는다)
+    const m = line.match(/^(상위 (?:제목에 반복되는 말|1~5위가 모두 쓴 말): )([^.]+)(\..*)$/)
+    if (m) {
+      const kept = m[2]
+        .split(',')
+        .map((w) => w.trim())
+        .filter((w) => w && !VISITOR_WORDS.some((v) => w.includes(v)))
+      if (!kept.length) continue
+      out.push(`${m[1]}${kept.join(', ')}${m[3]}`)
+      continue
+    }
+    out.push(line)
+  }
+  return out
 }

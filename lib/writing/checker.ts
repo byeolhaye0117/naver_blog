@@ -1030,6 +1030,60 @@ export function checkPost(input: CheckInput): CheckResult {
     weight: 2,
   })
 
+  /*
+   * ─── 화자 검사 ───────────────────────────────────────────────
+   *
+   * **없어서 놓쳤다.** 회원이 홍보글을 요청했는데 제목에 「후기」가 박히고 본문이 방문자
+   * 말투로 나왔다. 검수에는 화자를 보는 항목이 아예 없어서 통과했다.
+   *
+   * 유형별로 화자가 정반대다.
+   *   홍보글·정보글 — 센터가 1인칭으로 쓴다. 「후기」·「다녀왔다」·「괜찮더라고요」는 거짓이다.
+   *   후기글        — 방문자가 1인칭으로 쓴다. 「저희 센터」 같은 소속 1인칭이 거짓이다.
+   *
+   * 문체 문제가 아니라 **누가 썼는지를 속이는** 문제이므로 무겁게 본다.
+   */
+  const VISITOR_TONE = [
+    { p: /다녀왔|다녀온|가봤더니|가보니|갔는데/, label: '「다녀왔다」류 방문 서술' },
+    { p: /괜찮더라고요|좋더라고요|만족했어요|추천드려요/, label: '방문자 감상 말투' },
+    { p: /내돈내산|제 돈으로|직접 결제/, label: '「내돈내산」류' },
+    { p: /등록했어요|등록하게 됐|상담받아보니/, label: '방문자 등록 서술' },
+  ]
+  const OWNER_TONE = [
+    { p: /저희 (센터|지점|짐|헬스장)|우리 센터|우리 지점/, label: '소속 1인칭(「저희 센터」)' },
+    { p: /오시면|방문해 주시|등록하시면|안내드립니다/, label: '센터가 손님을 부르는 말투' },
+  ]
+  if (input.type === 'review') {
+    const hits = OWNER_TONE.filter((t) => t.p.test(prose)).map((t) => t.label)
+    add({
+      id: 'voice',
+      group: '저품질 위험',
+      label: '화자 (방문객이어야 합니다)',
+      level: hits.length ? 'fail' : 'pass',
+      value: hits.length ? hits.join(', ') : '방문객 1인칭 유지',
+      target: '센터 소속 1인칭을 쓰지 않습니다',
+      hint: hits.length
+        ? '후기글의 화자는 방문객입니다. 센터 말투로 새면 후기가 아니라 홍보글이 됩니다 — 그건 gym-blog-writer 로 쓰세요.'
+        : undefined,
+      weight: 5,
+    })
+  } else {
+    const titleHit = /후기|내돈내산|체험단?/.test(title)
+    const bodyHits = VISITOR_TONE.filter((t) => t.p.test(prose)).map((t) => t.label)
+    const hits = [...(titleHit ? ['제목에 「후기」류'] : []), ...bodyHits]
+    add({
+      id: 'voice',
+      group: '저품질 위험',
+      label: '화자 (센터여야 합니다)',
+      level: hits.length ? 'fail' : 'pass',
+      value: hits.length ? hits.join(', ') : '센터 1인칭 유지',
+      target: '방문자 말투·「후기」 표기를 쓰지 않습니다',
+      hint: hits.length
+        ? '이 글은 센터가 쓰는 글입니다. 제목의 「후기」나 「다녀왔다」·「괜찮더라고요」는 겪지 않은 일을 겪은 것처럼 말하는 것이라 사실이 아닙니다. 방문객 시점으로 쓰려면 글 유형을 「후기글」로 바꾸세요.'
+        : undefined,
+      weight: 5,
+    })
+  }
+
   const clichePatterns = [
     { p: /첫째[,.]|둘째[,.]|셋째[,.]/, label: '"첫째, 둘째" 나열' },
     { p: /바쁜\s*현대인|현대\s*사회에서|일상\s*속에서/, label: '상투적 도입' },
