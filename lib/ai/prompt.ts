@@ -128,7 +128,7 @@ export function buildSystemPrompt(type: PostType): string {
      * 그래서 하한 5회는 지키고, 넘겼으면 더 넣지 않게 한다.
      */
     `- 메인 키워드 **정확히 ${spec.mainTarget ?? spec.mainMin}회** (제목 1회 포함), 밀도 ${spec.densityMax}% 이내(스터핑 안전선). ${spec.mainMax}회까지는 통과하지만 **더 넣지 않는다** — 실측에서 횟수와 순위의 관계가 키워드마다 정반대였고(1위가 17회인 판도, 0회인 판도 있었다) 더 넣어서 오르지는 않았다. 억지 문장을 만들지 말고 배치 슬롯 안에서 채운다.`,
-    `- 함께 찾는 키워드는 **각 ${spec.subTarget ?? 2}회**. 자연스럽게 안 들어가면 억지로 끼우지 말고 그 문단을 비워라 — 실측에서 상위 3위권 절반은 0회였다. 밀도로는 안전하다(메인 ${spec.mainTarget ?? spec.mainMin}회 + 서브 2개×${spec.subTarget ?? 2}회 = 합산 2.3%).`,
+    `- 함께 찾는 키워드는 **${spec.subTarget ?? 2}회** (해결 구간 1회 + 이벤트 구간 1회). 자연스럽게 안 들어가면 억지로 끼우지 말고 그 문단을 비워라 — 실측에서 상위 3위권 절반은 0회였다. **함께 찾는 키워드는 하나만 쓴다** — 밀도로도 그게 낫다(메인 ${spec.mainTarget ?? spec.mainMin}회 + 서브 ${spec.subTarget ?? 2}회 = 합산 1.8%).`,
     `- 메인 키워드를 등간격으로 흩지 않는다. 한두 구간은 아예 비우고, 대신 다른 구간에서 가깝게 두 번 쓴다.`,
     spec.legalNameMin > 0
       ? `- 정식 상호명을 정확히 ${spec.legalNameMin}회 이상 쓴다 (후킹·본문 중반·마무리).`

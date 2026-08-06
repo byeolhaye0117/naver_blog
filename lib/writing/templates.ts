@@ -83,8 +83,8 @@ function titleGuide(ctx: TemplateContext): string {
 function promoTemplate(ctx: TemplateContext): string {
   const name = ctx.store?.legalName ?? '○○ 피트니스 ○○점'
   const kw = ctx.mainKeyword || '○○동 헬스장'
-  const sub1 = ctx.subKeywords[0] ?? '함께 찾는 키워드 ①'
-  const sub2 = ctx.subKeywords[1] ?? '함께 찾는 키워드 ②'
+  // 함께 찾는 키워드는 하나만 쓴다 — 해결 구간과 이벤트 구간에 각 1회씩, 합쳐서 목표 2회
+  const sub = ctx.subKeywords[0] ?? '함께 찾는 키워드'
   const phone = ctx.store?.phone ?? '010-0000-0000'
   const reserve = ctx.store?.reserveUrl
 
@@ -110,7 +110,7 @@ function promoTemplate(ctx: TemplateContext): string {
         '예) "런닝머신 10대" (X) → "출근 전이면 유산소 15분부터, 경사 5도에 속도는 대화가 되는 정도. 숨이 차면 경사를 먼저 낮춥니다" (O)'
     ),
     guide('겪은 사람만 쓸 수 있는 구체성으로 쓴다 — 안 해본 운동, 없는 기구, 확인 안 된 수치는 쓰지 않는다.'),
-    guide(`메인 키워드 "${kw}" 1~2회 + 함께 찾는 키워드 ① "${sub1}" 1회. 정식 상호명 2회차를 이 구간이나 5단계에.`),
+    guide(`메인 키워드 "${kw}" 1~2회 + 함께 찾는 키워드 "${sub}" 1회차. 정식 상호명 2회차를 이 구간이나 5단계에.`),
     `[영상: 위에서 설명한 동작을 실제로 하는 장면 — 10~20초, 편집 없이 세로로]`,
     guide('영상이 있는 글이 위에 있었다 (관찰 6회 중 유리 2 · 거꾸로 0). 잘 찍을 필요는 없다.'),
     '',
@@ -124,7 +124,7 @@ function promoTemplate(ctx: TemplateContext): string {
     `[이미지: 이벤트 안내 이미지]`,
     `## (이벤트 소제목 — 두 번째 비중)`,
     guide(`6단계 이벤트 본공개 (220~260자). 후킹에서 한 줄로 흘린 혜택의 조건·기간을 여기서 공개한다. **줄인 자리다** — 홍보 표현이 많은 글이 아래에 있었다 (1~3위 평균 2.0종류 / 4위 이하 3.8종류). 조건을 항목별로 늘어놓지 말고 받은 그대로 짧게.`),
-    guide(`함께 찾는 키워드 ② "${sub2}" 1회. 주어진 정보 범위 안에서만 긴급성 표현 — 없는 마감일·인원 창작 금지. 가격 숫자 나열 금지.`),
+    guide(`함께 찾는 키워드 "${sub}" 2회차 (여기까지 2회 — 더 넣지 않는다). 주어진 정보 범위 안에서만 긴급성 표현 — 없는 마감일·인원 창작 금지. 가격 숫자 나열 금지.`),
     ctx.eventText ? guide(`입력된 이벤트 정보: ${ctx.eventText}`) : guide('이벤트 정보를 여기 반영하세요.'),
     '',
     '',
@@ -210,8 +210,8 @@ function infoTemplate(ctx: TemplateContext): string {
  */
 function reviewTemplate(ctx: TemplateContext): string {
   const kw = ctx.mainKeyword || '○○동 헬스장'
-  const sub1 = ctx.subKeywords[0] ?? '함께 찾는 키워드 ①'
-  const sub2 = ctx.subKeywords[1] ?? '함께 찾는 키워드 ②'
+  // 서브 키워드는 하나만 받는다 (예전엔 ②가 비면 자리표시자가 그대로 나갔다)
+  const sub = ctx.subKeywords[0] ?? '함께 찾는 키워드'
   const name = ctx.store?.legalName ?? '○○ 피트니스 ○○점'
 
   return [
@@ -229,7 +229,7 @@ function reviewTemplate(ctx: TemplateContext): string {
     `[이미지: 실제 방문해서 찍은 시설 사진]`,
     `## (방문·상담 소제목)`,
     guide(`4단계 방문·상담 후기 (450~550자, 최대 비중). 가서 본 것을 순서대로. 구체적 사실·수치가 신뢰를 만든다.`),
-    guide(`메인 키워드 "${kw}" 1~2회 + 함께 찾는 키워드 ① "${sub1}" 1회. 상호명(${name})도 자연스럽게 등장.`),
+    guide(`메인 키워드 "${kw}" 1~2회 + 함께 찾는 키워드 "${sub}" 1회. 상호명(${name})도 자연스럽게 등장.`),
     guide(
       '상담 때 들은 말 한두 줄을 그대로 옮긴다 — 예) "제 자세를 보면서 어디에 자극이 와야 하는지 짚어주셨어요." 이게 이 글에 필요한 정보의 전부다. **운동 정보를 설명하기 시작하면 업체가 쓴 글로 읽힌다** — 정보 단락을 만들지 않는다 (검수도 후기에는 2종류만 본다).'
     ),
@@ -245,7 +245,7 @@ function reviewTemplate(ctx: TemplateContext): string {
     '',
     `[이미지: 이벤트 안내를 실제로 본 화면·안내물]`,
     `## (혜택 소제목)`,
-    guide(`6단계 이벤트 (180~220자). 내가 받은 혜택을 방문객 시점으로 **한 대목만**. 함께 찾는 키워드 ② "${sub2}" 1회.`),
+    guide(`6단계 이벤트 (180~220자). 내가 받은 혜택을 방문객 시점으로 **한 대목만**. 함께 찾는 키워드 "${sub}" 1회.`),
     guide(
       '조건을 항목별로 나열하지 않는다 — 「제가 등록할 때 이런 혜택이 있었어요」 한 문장이면 된다. 홍보 표현(상담·예약·할인·혜택·마감…)의 종류가 늘어날수록 순위가 내려갔다 (1~3위 평균 2.0종류 / 4위 이하 3.8종류).'
     ),
