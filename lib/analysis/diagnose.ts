@@ -2,6 +2,7 @@ import type { Post, SerpAnalysis } from '@/lib/types'
 import type { PublishedPost } from '../naver/blogpost'
 import { parseBody } from '../writing/checker'
 import { looseIndexOf } from './serp'
+import { IMAGE_BEST_MAX, IMAGE_BEST_MIN } from './cutline'
 
 /**
  * 발행 후 실패 진단 — 순위가 안 나올 때 무엇을 고쳐야 하는지.
@@ -193,21 +194,35 @@ export function diagnose(input: {
         label: '본문이 상위 글보다 짧습니다',
         mine: `${n(charCount)}자`,
         theirs: `상위 중간값 ${n(c.charMedian)}자`,
-        action: `본문을 ${n(c.charTarget)}자 이상으로 늘리세요. 분량만 채우지 말고 구체 수치(가격·운영시간·기구 수·거리)와 직접 겪은 장면을 더하세요.`,
-        severity: 'high',
+        action: `본문을 ${n(c.charTarget)}자쯤으로 맞추세요. 분량만 채우지 말고 구체 수치(가격·운영시간·기구 수·거리)와 직접 겪은 장면을 더하세요. 그 이상 늘리는 것은 도움이 안 됩니다 — 실측에서 3,000자를 넘긴 글은 평균 7.5위였습니다.`,
+        // 분량은 순위를 가르는 항목이 아니다 (홍보글에서는 무관했다) — 급을 낮춘다
+        severity: 'mid',
       })
     }
-    if (post.imageCount >= c.imageMedian) {
-      passed.push(`이미지 수 (${post.imageCount}장 · 상위 중간값 ${c.imageMedian}장)`)
-    }
-    if (post.imageCount < c.imageMedian) {
+    /*
+     * **상위 글 장수를 기준으로 삼지 않는다** (2026-08-06 실측으로 고쳤다).
+     * 6~10장이 1~3위 54%, 11~15장 18%, 16장 이상 25%다. 상위 글이 18장을 써도
+     * 우리가 18장을 따라가면 가장 나쁜 구간으로 들어간다.
+     */
+    if (post.imageCount >= IMAGE_BEST_MIN && post.imageCount <= IMAGE_BEST_MAX) {
+      passed.push(`이미지 수 (${post.imageCount}장 · 실측 최적 구간 ${IMAGE_BEST_MIN}~${IMAGE_BEST_MAX}장)`)
+    } else if (post.imageCount < IMAGE_BEST_MIN) {
       fixes.push({
         id: 'body-images',
         label: '이미지가 부족합니다',
         mine: `${post.imageCount}장`,
-        theirs: `상위 중간값 ${c.imageMedian}장`,
-        action: `직접 촬영한 이미지를 ${c.imageTarget}장 이상으로 늘리세요.`,
+        theirs: `실측 최적 ${IMAGE_BEST_MIN}~${IMAGE_BEST_MAX}장`,
+        action: `직접 촬영한 이미지를 ${c.imageTarget}장으로 맞추세요.`,
         severity: 'high',
+      })
+    } else {
+      fixes.push({
+        id: 'body-images-many',
+        label: '이미지가 너무 많습니다',
+        mine: `${post.imageCount}장`,
+        theirs: `실측 최적 ${IMAGE_BEST_MIN}~${IMAGE_BEST_MAX}장`,
+        action: `${IMAGE_BEST_MIN}~${IMAGE_BEST_MAX}장으로 줄이세요. 실측에서 11장 이상은 1~3위 비율이 18%로 떨어졌습니다 (6~10장은 54%). 사진을 늘려 채우는 것은 도움이 안 됩니다.`,
+        severity: 'mid',
       })
     }
     if (!c.videoExpected) passed.push('영상 — 상위권도 절반 미만이라 필수가 아닙니다')

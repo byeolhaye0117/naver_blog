@@ -7,8 +7,19 @@ import type { PostMetrics } from '../naver/blogpost'
  * 일이 흔해서, 평균을 쓰면 목표가 비현실적으로 올라간다. 중간값은 "절반이 이보다
  * 많다" 는 뜻이라 목표로 삼기에 정직하다.
  *
- * 목표값은 중간값보다 살짝 높게 잡는다 — 같은 수준으로 맞추는 것은 이기는 조건이
- * 아니라 겨우 붙는 조건이다.
+ * **목표를 중간값보다 올리지 않는다** (2026-08-06 실측으로 고쳤다).
+ *
+ * 예전에는 「같은 수준은 겨우 붙는 조건이니 조금 더 얹자」로 본문 +10%, 이미지 +1장을
+ * 목표로 줬다. 상위 글 161편을 재보니 그 논리가 반대로 갔다.
+ *
+ *   이미지  ~5장 4.79위(1~3위 38%) · **6~10장 4.27위(54%)** · 11~15장 5.82위(18%) ·
+ *          16장 이상 6.35위(25%)
+ *   분량    홍보글은 순위와 무관했고, 후기글은 1,700~2,200자가 가장 좋았으며
+ *          3,000자 이상은 7.50위로 떨어졌다
+ *
+ * 즉 **더 많이 쓰는 것이 이기는 조건이 아니다.** 이미지 18장인 판에서 19장을 목표로 주면
+ * 가장 나쁜 구간으로 밀어넣는 셈이었다. 그래서 이미지 목표는 6~10장으로 묶고, 분량은
+ * 중간값에 맞추게 한다 (검수 기준과 부딪히지 않도록 구간 안으로 눌러 담는다).
  */
 
 export interface Cutline {
@@ -19,7 +30,10 @@ export interface Cutline {
   videoMedian: number
   /** 이 키워드에서 노려야 하는 값 */
   charTarget: number
+  /** 이미지 목표 — 실측 최적 구간(6~10장) 안으로 눌러 담은 값 */
   imageTarget: number
+  /** 상위 글이 우리 권장(10장)보다 많이 쓰고 있다 — 굳이 맞추지 말라고 설명해야 한다 */
+  imageOvershoot: boolean
   /** 영상을 넣은 글이 절반을 넘는지 — 중간값이 아니라 "몇 편이 넣었나" 로 센다 */
   videoExpected: boolean
 }
@@ -42,6 +56,14 @@ function roundUpTo(n: number, step: number): number {
  */
 export const CUTLINE_MIN_SAMPLE = 3
 
+/**
+ * 이미지 최적 구간 — 실측 161편.
+ *   ~5장 1~3위 38% · **6~10장 54%** · 11~15장 18% · 16장 이상 25%
+ * 1~3위가 실제로 쓴 장수는 중간값 8장, 7~10위는 12장이었다. 늘려서 이기는 항목이 아니다.
+ */
+export const IMAGE_BEST_MIN = 6
+export const IMAGE_BEST_MAX = 10
+
 export function buildCutline(metrics: PostMetrics[]): Cutline | null {
   if (metrics.length < CUTLINE_MIN_SAMPLE) return null
 
@@ -54,9 +76,16 @@ export function buildCutline(metrics: PostMetrics[]): Cutline | null {
     charMedian,
     imageMedian,
     videoMedian,
-    // 중간값보다 10% 위, 100자 단위로 올림
-    charTarget: roundUpTo(Math.round(charMedian * 1.1), 100),
-    imageTarget: imageMedian + 1,
+    /*
+     * 중간값에 맞춘다 (예전에는 ×1.1 이었다). 검수 기준과 부딪히지 않게 구간 안으로
+     * 눌러 담는다 — 홍보글 1,750~2,400 · 후기글 1,700~2,800 이라 1,700~2,400 이 공통이다.
+     * 처방이 「1,200자」라고 하는데 검수가 「1,750자 이상」이라고 하면 회원이 둘 사이에서
+     * 헤맨다.
+     */
+    charTarget: Math.min(Math.max(roundUpTo(charMedian, 100), 1700), 2400),
+    // 6~10장이 실측 최적 구간이다. 중간값이 그 밖이면 구간 쪽으로 당긴다
+    imageTarget: Math.min(Math.max(imageMedian, IMAGE_BEST_MIN), IMAGE_BEST_MAX),
+    imageOvershoot: imageMedian > IMAGE_BEST_MAX,
     // 중간값으로 판단하면 0,0,1,8 이 1 로 반올림돼 "절반 이상" 이 된다.
     // 물어야 하는 것은 "몇 편이 영상을 넣었나" 이므로 그대로 센다.
     videoExpected: metrics.filter((m) => m.videoCount >= 1).length / metrics.length > 0.5,
@@ -67,8 +96,17 @@ export function buildCutline(metrics: PostMetrics[]): Cutline | null {
 export function cutlineLine(c: Cutline): string {
   const parts = [
     `상위 글 ${c.sampled}개를 실제로 읽어 재보니 본문 중간값이 ${c.charMedian.toLocaleString()}자, 이미지 ${c.imageMedian}장입니다`,
-    `이 키워드의 목표는 본문 ${c.charTarget.toLocaleString()}자 이상, 이미지 ${c.imageTarget}장 이상입니다`,
+    `본문은 ${c.charTarget.toLocaleString()}자쯤 맞추면 충분합니다 — 늘려서 이기는 항목이 아닙니다`,
   ]
+  /*
+   * 상위 글이 10장을 넘겨 쓰고 있으면 **맞추지 말라고** 분명히 말한다.
+   * 「상위가 18장인데 왜 6~10장이냐」가 당연한 의문이므로 이유를 같이 준다.
+   */
+  parts.push(
+    c.imageOvershoot
+      ? `이미지는 ${IMAGE_BEST_MIN}~${IMAGE_BEST_MAX}장으로 쓰세요 — 상위 글이 ${c.imageMedian}장을 쓰지만 실측에서 11장 이상은 오히려 순위가 낮았습니다(6~10장 1~3위 54% / 16장 이상 25%). 장수를 맞추려 하지 마세요`
+      : `이미지는 ${IMAGE_BEST_MIN}~${IMAGE_BEST_MAX}장으로 쓰세요 (실측 최적 구간)`
+  )
   if (c.videoExpected) {
     parts.push(`상위 글 절반 이상이 영상을 넣었으니 영상 ${Math.max(1, c.videoMedian)}개도 넣으세요`)
   }
