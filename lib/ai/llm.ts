@@ -281,10 +281,106 @@ export function extractText(raw: string): string {
 }
 
 /**
+ * 모델이 낸 JSON 을 고쳐 쓴다 (순수 함수 — 테스트 대상).
+ *
+ * **왜 필요한가.** 본문을 JSON 문자열 하나에 담게 하면 모델이 두 가지로 자주 어긋난다.
+ *
+ *   ① 문자열 안에 **진짜 줄바꿈**을 넣는다 (`\n` 으로 escape 하지 않는다). JSON 규격
+ *      위반이라 JSON.parse 가 바로 던진다. 2026-08-06 에 「문단을 12개 이상으로 쪼개라」를
+ *      지시에 넣은 뒤로 본문의 줄바꿈이 크게 늘어 이 실패가 잦아졌다.
+ *   ② 출력 토큰 한계에 걸려 **중간에 잘린다.** 닫는 괄호가 없어 균형 세기가 끝나지 않는다.
+ *
+ * 둘 다 회원 화면에는 「글 형식을 읽지 못했습니다」로만 보이고, 2~3분 기다린 뒤에 나온다.
+ * 그래서 버리지 않고 고쳐 쓴다 — 글 내용은 멀쩡한데 따옴표 하나 때문에 날리는 건 아깝다.
+ *
+ * 하는 일: 문자열 안의 제어문자를 escape 하고, 끝나지 않은 문자열·괄호를 닫고,
+ * 닫기 직전의 쉼표를 지운다.
+ */
+export function repairJson(src: string): string {
+  let out = ''
+  let inStr = false
+  let esc = false
+  const stack: string[] = []
+  for (const ch of src) {
+    if (esc) {
+      out += ch
+      esc = false
+      continue
+    }
+    if (ch === '\\') {
+      out += ch
+      esc = true
+      continue
+    }
+    if (ch === '"') {
+      inStr = !inStr
+      out += ch
+      continue
+    }
+    if (inStr) {
+      // 문자열 안의 제어문자는 escape 해야 규격에 맞는다
+      if (ch === '\n') out += '\\n'
+      else if (ch === '\r') out += '\\r'
+      else if (ch === '\t') out += '\\t'
+      else if (ch < ' ') out += ''
+      else out += ch
+      continue
+    }
+    if (ch === '{' || ch === '[') stack.push(ch)
+    else if (ch === '}' || ch === ']') stack.pop()
+    out += ch
+  }
+  // 잘린 경우를 닫아준다
+  if (inStr) out += '"'
+  out = out.replace(/,\s*$/, '')
+  while (stack.length) out += stack.pop() === '{' ? '}' : ']'
+  return out
+}
+
+/**
+ * 고쳐도 안 되면 필드만 건져낸다 (순수 함수 — 테스트 대상).
+ *
+ * 앱이 실제로 쓰는 건 title·body·tags 셋뿐이다. 구조가 망가졌어도 이 셋이 남아 있으면
+ * 글은 살린다 — 2~3분 기다린 결과를 「형식을 읽지 못했습니다」로 버리는 것보다 낫다.
+ */
+export function salvageFields(raw: string): { title: string; body: string; tags: string[] } | null {
+  const pull = (key: string): string | null => {
+    const at = raw.indexOf(`"${key}"`)
+    if (at < 0) return null
+    const q = raw.indexOf('"', raw.indexOf(':', at) + 1)
+    if (q < 0) return null
+    let out = ''
+    for (let i = q + 1; i < raw.length; i++) {
+      const ch = raw[i]
+      if (ch === '\\') {
+        const next = raw[i + 1]
+        out += next === 'n' ? '\n' : next === 't' ? '\t' : next === '"' ? '"' : next === '\\' ? '\\' : ''
+        i++
+        continue
+      }
+      if (ch === '"') break
+      out += ch
+    }
+    return out
+  }
+  const title = pull('title')
+  const body = pull('body')
+  if (!title || !body) return null
+  const tagBlock = raw.match(/"tags"\s*:\s*\[([^\]]*)\]/)
+  const tags = tagBlock
+    ? [...tagBlock[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]).filter(Boolean)
+    : []
+  return { title, body, tags }
+}
+
+/**
  * 응답에서 JSON 객체만 뽑는다.
  *
  * 모델이 ```json 코드펜스나 앞뒤 설명을 붙여 보내는 경우가 있어서, 중괄호 균형을 세어
  * 첫 완결 객체를 잘라낸다 (순수 함수 — 테스트 대상).
+ *
+ * 그대로 안 되면 **고쳐서 다시 시도하고, 그래도 안 되면 필드만 건진다** —
+ * repairJson·salvageFields 주석 참고.
  */
 export function extractJson(raw: string): unknown {
   const start = raw.indexOf('{')
@@ -308,13 +404,24 @@ export function extractJson(raw: string): unknown {
     else if (ch === '}') {
       depth--
       if (depth === 0) {
+        const slice = raw.slice(start, i + 1)
         try {
-          return JSON.parse(raw.slice(start, i + 1))
+          return JSON.parse(slice)
         } catch {
-          return null
+          try {
+            return JSON.parse(repairJson(slice))
+          } catch {
+            return salvageFields(slice)
+          }
         }
       }
     }
   }
-  return null
+  // 여기까지 왔으면 닫히지 않았다 = 잘린 응답이다
+  const rest = raw.slice(start)
+  try {
+    return JSON.parse(repairJson(rest))
+  } catch {
+    return salvageFields(rest)
+  }
 }

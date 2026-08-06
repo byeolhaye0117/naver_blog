@@ -112,3 +112,27 @@ export function cutlineLine(c: Cutline): string {
   }
   return `${parts.join('. ')}.`
 }
+
+/**
+ * 저장된 커트라인의 목표값을 **지금 규칙으로 다시 계산한다** (순수 함수 — 테스트 대상).
+ *
+ * **왜 필요한가.** 처방은 분석할 때 문장으로 저장된다. 그래서 목표 규칙을 고쳐도 이미
+ * 저장된 처방은 옛 문장을 그대로 들고 있다 — 회원이 키워드마다 「다시 분석」을 눌러야
+ * 새 값이 나온다. 실제로는 아무도 안 누른다.
+ *
+ * 중간값(charMedian·imageMedian)은 **관측된 사실**이라 그대로 쓸 수 있다. 목표값만
+ * 지금 규칙으로 다시 뽑으면, 옛 처방도 꺼낼 때 고쳐진다.
+ */
+export function refreshCutline(c: Cutline): Cutline {
+  return {
+    ...c,
+    charTarget: Math.min(Math.max(roundUpTo(c.charMedian, 100), 1700), 2400),
+    imageTarget: Math.min(Math.max(c.imageMedian, IMAGE_BEST_MIN), IMAGE_BEST_MAX),
+    imageOvershoot: c.imageMedian > IMAGE_BEST_MAX,
+  }
+}
+
+/** 커트라인 문장인지 — 저장된 옛 문장을 갈아끼울 때 쓴다 */
+export function isCutlineLine(line: string): boolean {
+  return line.includes('실제로 읽어 재보니') || line.includes('이 키워드의 목표는')
+}
