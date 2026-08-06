@@ -190,14 +190,39 @@ export async function askLlm(system: string, messages: AiMessage[], maxTokens = 
   try {
     return await askOnce(system, messages, maxTokens)
   } catch (e) {
+    /*
+     * 모델이 「생각하기 끄기」를 거부하면(회사·모델마다 규칙이 다르다) 그 필드만 빼고
+     * 한 번 다시 부른다 — 이름으로 걸러낸 목록이 최신이 아닐 수 있으므로 실패로 배운다.
+     */
+    if (e instanceof AiError && e.status === 400 && /thinking/i.test(e.message)) {
+      console.warn('[ai] 이 모델은 생각하기를 끌 수 없다 — 그 설정을 빼고 다시 부른다')
+      return await askOnce(system, messages, maxTokens, true)
+    }
     const empty = e instanceof AiError && e.status === 502
     if (!empty) throw e
+    /*
+     * **똑같이 실패할 게 뻔한 경우에는 다시 부르지 않는다.**
+     *
+     * 한도(max_tokens)에 먼저 걸려 빈 응답이 온 것은 일시적인 일이 아니라 설정 문제다.
+     * 그런데도 재시도하면 입력·출력 토큰을 그대로 한 번 더 태운다 — 회원이 「계속 안 되는데
+     * 돈은 나가는 거 아니냐」고 물었고, 실제로 이 재시도가 실패 비용을 두 배로 만들고 있었다.
+     */
+    if (/max_tokens/.test(e.message)) {
+      console.warn('[ai] 한도에 걸린 빈 응답 — 재시도해도 같으므로 하지 않는다')
+      throw e
+    }
     console.warn('[ai] 빈 응답 — 한 번 다시 부른다:', e instanceof Error ? e.message : e)
     return await askOnce(system, messages, maxTokens)
   }
 }
 
-async function askOnce(system: string, messages: AiMessage[], maxTokens: number): Promise<string> {
+async function askOnce(
+  system: string,
+  messages: AiMessage[],
+  maxTokens: number,
+  /** 400 이 「thinking」을 문제 삼으면 이 필드만 빼고 한 번 더 부른다 */
+  omitThinking = false
+): Promise<string> {
   const c = detectProvider()
   if (!c) throw new AiError('AI 키가 설정되지 않았습니다.', 400)
   const model = await resolveModel(c)
@@ -209,7 +234,32 @@ async function askOnce(system: string, messages: AiMessage[], maxTokens: number)
   if (c.provider === 'anthropic') {
     url = `${c.base}/v1/messages`
     headers = { ...headers, 'x-api-key': c.key, 'anthropic-version': '2023-06-01' }
-    body = { model, max_tokens: maxTokens, system, messages }
+    /*
+     * **생각하기를 끈다. 이게 회원이 막혀 있던 원인이었다.**
+     *
+     * claude-sonnet-5 는 `thinking` 을 안 보내면 생각하기가 **켜진 상태로** 돈다
+     * (claude-sonnet-4-6 은 꺼진 상태였다 — 기본값이 뒤집혔다). 그리고 max_tokens 는
+     * 생각 + 본문을 **합쳐서** 세는 한도다. 그래서 실제로 이렇게 실패했다.
+     *
+     *   중단 이유: max_tokens · 받은 블록: thinking · 토큰 입력 5142 · 출력 8192
+     *
+     * 8,192 토큰을 전부 생각에 쓰고 글은 한 글자도 못 쓴 것이다. 우리 지시문은 길고
+     * (형식 규칙·문체·문단·위험 표현) 요구도 많아서 생각이 길어진다.
+     *
+     * 이 작업에는 생각하기가 필요 없다 — 우리는 정해진 골격에 맞춰 JSON 하나를 받는다.
+     * 끄면 8,192 전부가 본문 몫이 되고, 응답도 빨라지고, 출력 토큰 값도 절반 이하로 준다.
+     *
+     * **예외를 둔다.** `thinking: {type:'disabled'}` 는 fable·mythos 계열에서 400 이고
+     * opus-5 는 effort 가 xhigh/max 일 때만 400 이다(우리는 effort 를 안 보내므로 기본 high
+     * → 허용). 이름으로 걸러내고, 그래도 400 이 나면 이 필드만 빼고 한 번 다시 부른다.
+     */
+    body = {
+      model,
+      max_tokens: maxTokens,
+      system,
+      messages,
+      ...(!omitThinking && supportsDisabledThinking(model) ? { thinking: { type: 'disabled' } } : {}),
+    }
   } else if (c.provider === 'gemini') {
     url = `${c.base}/models/${model}:generateContent?key=${c.key}`
     body = {
@@ -268,6 +318,17 @@ async function askOnce(system: string, messages: AiMessage[], maxTokens: number)
     throw new AiError(`글 생성 응답을 읽지 못했습니다. ${describeEmpty(raw, c.provider, model)}`, 502)
   }
   return out
+}
+
+/**
+ * 이 모델에 `thinking: {type:'disabled'}` 를 보내도 되는지 (순수 함수 — 테스트 대상).
+ *
+ * fable·mythos 계열은 생각하기가 항상 켜져 있어 끄려고 하면 400 이다.
+ * 그 외 Anthropic 모델은 끌 수 있다 (opus-5 는 effort 를 xhigh/max 로 올렸을 때만 400 인데
+ * 우리는 effort 를 보내지 않으므로 해당 없다).
+ */
+export function supportsDisabledThinking(model: string): boolean {
+  return !/fable|mythos/i.test(model)
 }
 
 /** 200 인데 글이 없을 때, 응답에서 확인 가능한 사실만 뽑아 적는다 (순수 함수 — 테스트 대상) */
