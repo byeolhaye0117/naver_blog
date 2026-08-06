@@ -128,7 +128,8 @@ ok(c1.stats.phoneCount === 1, '전화번호 1회 인식')
 ok(c1.stats.imageCount === 6 && c1.stats.headings.length === 5, '이미지 6 / 소제목 5')
 ok(c1.score === PUBLISH_THRESHOLD - 6, '수정필요가 있으면 발행 구간 아래로 캡', `${c1.score} (캡 ${PUBLISH_THRESHOLD - 6})`)
 // 미달 항목을 정확히 지적하는지
-ok(c1.items.find(i => i.id === 'mainCount')?.level === 'warn', '메인KW 4회는 warn (하한 5회 미달)')
+// 하한을 실측에 맞춰 3회로 내렸으므로 4회는 통과다 (예전 5회 하한에서는 warn 이었다)
+ok(c1.items.find(i => i.id === 'mainCount')?.level === 'pass', '메인KW 4회는 통과 (하한 3회)', c1.items.find(i => i.id === 'mainCount')?.value)
 // 통과 하한을 1,750자로 내렸으므로 1,558자는 fail 이 아니라 warn 이다 (하한-250 = 1,500)
 ok(c1.items.find(i => i.id === 'charCount')?.level === 'warn', '1,558자는 warn (하한 1,750자에 조금 미달)', c1.items.find(i => i.id === 'charCount')?.value)
 ok(c1.items.find(i => i.id === 'titleKeyword')?.level === 'pass', '제목 앞쪽 키워드 pass')
@@ -861,7 +862,7 @@ ok(sysReview.includes('1,900') && sysReview.includes('2,100'), '후기글 글자
 ok(sysReview.includes('3~5회'), '후기글 메인 키워드 3~5회')
 const sysPromo = buildSystemPrompt('promo')
 ok(sysPromo.includes('센터'), '홍보글 화자는 센터')
-ok(sysPromo.includes('5~7회'), '홍보글 메인 키워드 5~7회')
+ok(sysPromo.includes('3~6회'), '홍보글 메인 키워드 3~6회 (실측으로 5~7에서 내렸다)')
 ok(sysPromo.includes('3회 이상'), '홍보글은 상호명 3회 이상 지시')
 const sysInfo = buildSystemPrompt('info')
 ok(sysInfo.includes('지역 키워드'), '정보글은 지역 키워드 조연 지시')
@@ -3262,7 +3263,19 @@ const rkCheck = checkPost({
   legalName: 'MTO 피트니스 쌍용점',
 })
 const rkItem = rkCheck.items.find((i) => i.id === 'mainCount')
-ok(rkItem.target.includes('7회는 불가'), '왜 7회가 아닌지 목표에 적는다', rkItem.target)
+ok(rkItem.target.includes('3~6회'), '도달 가능한 범위를 목표로 준다', rkItem.target)
+// 긴 키워드는 밀도 때문에 상한이 좁아진다 — 그 사정을 목표에 적는다
+const rkTight = checkPost({
+  type: 'promo',
+  title: '쌍용동 24시 헬스장, 퇴근 늦어도 갈 수 있을까?',
+  body: RK_BODY,
+  mainKeyword: '쌍용동 24시 헬스장',
+  subKeywords: [],
+  tags: [],
+  legalName: 'MTO 피트니스 쌍용점',
+})
+const rkTightItem = rkTight.items.find((i) => i.id === 'mainCount')
+ok(rkTightItem.target.includes('불가'), '좁아진 사정을 목표에 적는다', rkTightItem.target)
 const rkDensity = rkCheck.items.find((i) => i.id === 'density')
 ok(rkDensity.level === 'pass', '밀도는 통과 상태 (본문에 키워드가 없다)')
 
@@ -3310,6 +3323,77 @@ ok(rkSkel.includes('공감 (280~330자'), '공감도 조금 줄였다')
 ok(rkSkel.includes('줄인 자리다'), '왜 줄였는지 적는다')
 ok(buildSystemPrompt('promo').includes('해결 620~720자'), 'AI 지시문도 같은 숫자')
 ok(buildSystemPrompt('promo').includes('이벤트 220~260자'), 'AI 지시문 이벤트도 같은 숫자')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[62] 키워드 횟수 — 실측으로 기준을 다시 잡았다')
+const { countDistribution } = require(`${OUT}/analysis/factors.js`)
+
+/*
+ * 실측 (2026-08-06 프로덕션, 우리 지역 키워드 4개 상위 32편).
+ *
+ *   횟수 상관   쌍용동 +0.04 · 봉명동 -0.17 · 두정동 -0.39 · 성정동 +0.75
+ *   1~3위 중간값 4.5회 / 4위 이하 3.5회  (차이 1회뿐)
+ *   반례: 쌍용동 1위 17회(4.4%) · 봉명동 7위 12회(5.5%) · 두정동 1위 0회 · 쌍용동 2위 1회
+ *
+ * 방향이 키워드마다 정반대이므로 「많이 넣어야 오른다」는 근거가 없다.
+ */
+const KC_REAL = [
+  { rank: 1, value: 17 }, { rank: 2, value: 1 }, { rank: 3, value: 4 },
+  { rank: 4, value: 1 }, { rank: 5, value: 6 }, { rank: 6, value: 2 },
+  { rank: 7, value: 2 }, { rank: 8, value: 5 },
+]
+const kcDist = countDistribution(KC_REAL)
+ok(kcDist.topMedian === 4, '1~3위 중간값을 낸다 (17·1·4 → 4)', String(kcDist.topMedian))
+// 이 픽스처(쌍용동 8편)의 4위 이하는 1·6·2·2·5 → 중간값 2. (32편 전체 합계로는 3.5였다)
+ok(kcDist.restMedian === 2, '4위 이하 중간값도 따로', String(kcDist.restMedian))
+ok(kcDist.topMax === 17, '상위권 최댓값도 담는다 — 반례를 숨기지 않는다')
+ok(kcDist.n === 8, '값을 읽은 편수를 센다')
+// 중간값을 쓰는 이유 — 평균은 17회 한 편에 끌려간다
+const kcMean = KC_REAL.filter((x) => x.rank <= 3).reduce((n, x) => n + x.value, 0) / 3
+ok(kcMean > 7 && kcDist.topMedian === 4, '평균(7.3)은 튀는 값에 끌려간다 — 그래서 중간값을 쓴다', String(Math.round(kcMean * 10) / 10))
+// 못 읽은 글은 0 으로 세지 않는다
+ok(countDistribution([{ rank: 1, value: null }, { rank: 2, value: 4 }]).n === 1, '못 읽은 글은 표본에서 뺀다')
+ok(countDistribution([]).topMedian === null, '표본이 없으면 null (0 이라고 하지 않는다)')
+
+// 하한을 5 → 3 으로 내렸다 (상위권 중간값 4.5보다 높은 하한은 억지로 채우게 만든다)
+ok(SPECS.promo.mainMin === 3, '홍보글 하한 3회 (제목 1 + 본문 2)', String(SPECS.promo.mainMin))
+ok(SPECS.promo.mainMax === 6, '상한은 6 — 실질 상한은 밀도가 정한다', String(SPECS.promo.mainMax))
+const kcCheck = checkPost({
+  type: 'promo',
+  title: '쌍용동 헬스장, 퇴근 늦어도 갈 수 있을까?',
+  body: ['[이미지: 대표]', '쌍용동 헬스장을 찾고 있다면 시간 때문일 겁니다.', '', '[이미지: 2]', '## 소제목', '가'.repeat(1800), '쌍용동 헬스장 상담만 받아보셔도 됩니다.'].join('\n'),
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: [],
+  tags: [],
+  legalName: 'MTO 피트니스 쌍용점',
+})
+ok(kcCheck.items.find((i) => i.id === 'mainCount').level === 'pass', '3회면 통과한다 (예전 하한 5회에서는 걸렸다)', kcCheck.items.find((i) => i.id === 'mainCount').value)
+
+// ─── 함께 쓰는 키워드 — 0회를 수정필요로 걸지 않는다 ───
+/*
+ * 실측에서 상위 3위권 12편 중 6편이 「○○동 PT」를 0회 썼다. 「천안 헬스장」도 대부분
+ * 0회였다. 그런데 검수는 이걸 fail 로 걸어 점수 상한까지 내리고 있었다.
+ */
+const subCheck = (count) => {
+  const body = ['[이미지: 대표]', '쌍용동 헬스장 이야기입니다.', '', '[이미지: 2]', '## 소제목',
+    '가'.repeat(1800), Array(count).fill('쌍용동 PT 도 함께 봅니다.').join(' ')].join('\n')
+  return checkPost({ type:'promo', title:'쌍용동 헬스장, 갈 수 있을까?', body,
+    mainKeyword:'쌍용동 헬스장', subKeywords:['쌍용동 PT'], tags:[], legalName:'MTO 피트니스 쌍용점' })
+    .items.find((i) => i.id === 'sub0')
+}
+const sub0 = subCheck(0)
+ok(sub0.level === 'warn', '0회는 주의까지만 (수정필요 아님)', sub0.level)
+ok(sub0.target.includes('없어도 됩니다'), '없어도 된다고 목표에 적는다', sub0.target)
+ok(sub0.target.includes('12편 중 6편이 0회'), '실측 근거를 붙인다')
+ok(sub0.hint.includes('억지로 끼워 넣지 마세요'), '억지로 넣지 말라고 한다')
+ok(subCheck(1).level === 'pass', '1회면 통과')
+ok(subCheck(2).level === 'pass', '2회도 통과')
+ok(subCheck(4).level === 'warn', '많으면 주의')
+ok(subCheck(4).hint.includes('메인 키워드 자리를 잡아먹습니다'), '왜 줄이라는지 말한다')
+
+// 밀도는 순위 규칙이 아니라 안전선이라고 밝힌다
+const dnItem = kcCheck.items.find((i) => i.id === 'density')
+ok(dnItem.target.includes('스터핑 안전선'), '밀도의 성격을 밝힌다', dnItem.target)
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
