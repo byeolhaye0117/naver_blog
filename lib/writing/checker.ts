@@ -67,9 +67,25 @@ export const SPECS: Record<PostType, Spec> = {
    * 거기에 맞췄고, 위쪽은 넉넉히 뒀다 — 실측에서 분량은 순위와 무관했으므로(방향이 갈렸다)
    * 좁은 창을 유지할 근거가 없다.
    */
+  /*
+   * 메인 키워드 3~6회 — **2026-08-05 실측으로 5~7회에서 내렸다.**
+   *
+   * 우리 지역 키워드 4개(쌍용동·봉명동·두정동·성정동 헬스장) 상위 32편을 재봤다.
+   *
+   *   횟수 상관   쌍용동 +0.04 · 봉명동 -0.17 · 두정동 -0.39 · 성정동 +0.75
+   *   1~3위 중간값 4.5회 / 4위 이하 3.5회  (차이 1회)
+   *
+   * 방향이 키워드마다 정반대다. 그리고 반례가 분명하다 — 쌍용동 1위는 17회(밀도 4.4%),
+   * 봉명동 7위는 12회(5.5%), **두정동 1위는 0회**, 쌍용동 2위는 1회였다.
+   * 즉 **많이 넣어서 오르는 게 아니다.**
+   *
+   * 그래서 하한을 3회(제목 1 + 본문 2)로 내렸다. 예전 5회는 상위권 중간값(4.5)보다
+   * 높아서 억지로 채우게 만들었다. 상한은 밀도가 실질적으로 정한다
+   * (reachableKeywordRange) — 6은 이름값이다.
+   */
   promo: {
-    mainMin: 5,
-    mainMax: 7,
+    mainMin: 3,
+    mainMax: 6,
     densityMax: 2,
     charMin: 1750,
     charMax: 2400,
@@ -415,7 +431,7 @@ export function checkPost(input: CheckInput): CheckResult {
     label: '메인 키워드 밀도',
     level: level(density <= spec.densityMax, density <= spec.densityMax + 0.5),
     value: `${density}%`,
-    target: `${spec.densityMax}% 이내`,
+    target: `${spec.densityMax}% 이내 (순위 규칙이 아니라 스터핑 안전선)`,
     hint:
       density > spec.densityMax
         ? `키워드 스터핑으로 읽힙니다. 변형 표현으로 분산하세요 — 이 분량(${charCount.toLocaleString()}자)에서는 본문 ${reach.proseCap}회까지가 상한입니다.`
@@ -486,15 +502,31 @@ export function checkPost(input: CheckInput): CheckResult {
     weight: 2,
   })
 
+  /*
+   * 함께 쓰는 키워드 — **0회를 「수정필요」로 걸지 않는다.**
+   *
+   * 실측(2026-08-05, 상위 32편)에서 상위 3위권 12편 중 **6편이 「○○동 PT」를 0회**
+   * 썼다. 「천안 헬스장」도 대부분 0회였다. 즉 상위권은 함께 쓰는 키워드를 거의 쓰지
+   * 않는다 — 그런데 검수는 이걸 수정필요로 걸어 점수 상한까지 내리고 있었다.
+   *
+   * 넣으면 그 키워드로도 걸릴 가능성이 생기니 권하기는 한다. 다만 **없다고 틀린 건
+   * 아니다** — 그래서 최대 「주의」까지만 낸다.
+   */
   subKeywordCounts.forEach((s, idx) => {
     add({
       id: `sub${idx}`,
       group: '키워드',
       label: `${input.type === 'info' ? '보조' : '함께 찾는'} 키워드 ${idx + 1} "${s.keyword}"`,
-      level: level(s.count >= 1 && s.count <= 2, s.count >= 1 && s.count <= 3),
+      // 0회 = 주의 (수정필요 아님) · 1~2회 = 통과 · 3회 초과 = 주의
+      level: s.count >= 1 && s.count <= 2 ? 'pass' : 'warn',
       value: `${s.count}회`,
-      target: '1~2회',
-      hint: s.count === 0 ? '본문에 최소 1회는 자연스럽게 넣으세요.' : undefined,
+      target: '1~2회 (없어도 됩니다 — 상위 3위권 12편 중 6편이 0회)',
+      hint:
+        s.count === 0
+          ? '넣으면 이 키워드로도 걸릴 수 있어 권하지만, 실측에서 상위권 절반은 아예 쓰지 않았습니다. 억지로 끼워 넣지 마세요.'
+          : s.count > 2
+            ? '메인 키워드 자리를 잡아먹습니다. 2회까지로 줄이세요.'
+            : undefined,
       weight: 2,
     })
   })
