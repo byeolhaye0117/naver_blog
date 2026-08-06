@@ -941,6 +941,20 @@ ok(sysReview.includes('내돈내산'), '「내돈내산」을 쓰지 말라고 �
  * 200 인데 글이 없을 때 — 무엇이었는지 증거를 담아야 한다.
  * 회원이 「글 생성 응답을 읽지 못했습니다」만 세 번 보고 원인을 알 수 없었다.
  */
+/*
+ * **회원이 막혀 있던 실제 원인**: claude-sonnet-5 는 thinking 을 안 보내면 생각하기가
+ * 켜진 상태로 돌고, max_tokens 는 생각 + 본문을 합쳐서 센다. 8,192 를 전부 생각에 쓰고
+ * 글은 한 글자도 못 썼다 (중단 이유 max_tokens · 받은 블록 thinking · 출력 8192).
+ */
+{
+  const { supportsDisabledThinking } = require(`${OUT}/ai/llm.js`)
+  ok(supportsDisabledThinking('claude-sonnet-5'), 'sonnet-5 는 생각하기를 끌 수 있다')
+  ok(supportsDisabledThinking('claude-opus-5'), 'opus-5 도 끌 수 있다 (effort 를 올리지 않으므로)')
+  ok(supportsDisabledThinking('claude-haiku-4-5'), 'haiku 도 끌 수 있다')
+  ok(!supportsDisabledThinking('claude-fable-5'), 'fable 은 끄면 400 이므로 보내지 않는다')
+  ok(!supportsDisabledThinking('claude-mythos-5'), 'mythos 도 보내지 않는다')
+}
+
 {
   const { describeEmpty } = require(`${OUT}/ai/llm.js`)
   const cut = describeEmpty(JSON.stringify({ stop_reason: 'max_tokens', content: [{ type: 'thinking' }], usage: { input_tokens: 3200, output_tokens: 8192 } }), 'anthropic', 'claude-sonnet-5')
