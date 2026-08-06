@@ -75,8 +75,17 @@ export default function Editor({
    */
   const [intent, setIntent] = useState<IntentSuggestion | null>(null)
   const [intentBusy, setIntentBusy] = useState(false)
+  /*
+   * 함께 찾는 키워드는 **하나만** 받는다.
+   *
+   * 예전에는 두 칸이었는데, 회원이 하나만 쓰기로 정했다. 밀도로도 그게 낫다 —
+   * 메인 5회 + 서브 1개×2회면 합산 1.8%(1,915자)로, 두 개일 때(2.3%)보다 여유가 있다.
+   *
+   * 다만 **예전에 두 개를 넣어둔 글은 두 번째를 지우지 않는다.** 값이 있을 때만 칸을
+   * 하나 더 보여줘서, 회원이 직접 비울지 말지 정하게 한다 (모르는 사이에 사라지지 않게).
+   */
   const [sub1, setSub1] = useState(existing?.subKeywords[0] ?? initialSubs?.[0] ?? '')
-  const [sub2, setSub2] = useState(existing?.subKeywords[1] ?? initialSubs?.[1] ?? '')
+  const [legacySub, setLegacySub] = useState(existing?.subKeywords[1] ?? '')
   const [localKeyword, setLocalKeyword] = useState(existing?.localKeyword ?? initialLocal ?? '')
   const [tagText, setTagText] = useState((existing?.tags ?? []).join(', '))
   const [introType, setIntroType] = useState(existing?.introType ?? '')
@@ -135,7 +144,7 @@ export default function Editor({
   const rxStale = prescription ? isPrescriptionStale(prescription.date) : false
 
   const store = stores.find((s) => s.id === storeId)
-  const subKeywords = [sub1, sub2].filter(Boolean)
+  const subKeywords = [sub1, legacySub].filter(Boolean)
   const tags = tagText
     .split(/[,\n#]/)
     .map((t) => t.trim())
@@ -157,7 +166,7 @@ export default function Editor({
         evidence,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [type, title, body, mainKeyword, sub1, sub2, localKeyword, tagText, storeId, sponsorship]
+    [type, title, body, mainKeyword, sub1, legacySub, localKeyword, tagText, storeId, sponsorship]
   )
 
   const advice = useMemo(
@@ -501,12 +510,22 @@ export default function Editor({
                   )}
 
                   <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                    <Field label={type === 'info' ? '정보 보조 키워드' : '함께 찾는 키워드 ①'}>
+                    <Field
+                      label={type === 'info' ? '정보 보조 키워드' : '함께 찾는 키워드'}
+                      hint={type === 'promo' ? '본문 2회. 자연스럽게 안 들어가면 비워도 됩니다.' : undefined}
+                    >
                       <input value={sub1} onChange={(e) => setSub1(e.target.value)} className={inputClass} />
                     </Field>
-                    <Field label={type === 'info' ? '(선택) 추가 보조 키워드' : '함께 찾는 키워드 ②'}>
-                      <input value={sub2} onChange={(e) => setSub2(e.target.value)} className={inputClass} />
-                    </Field>
+                    {/* 예전에 두 개를 넣어둔 글에서만 보인다 — 비우면 칸도 사라진다 */}
+                    {legacySub && (
+                      <Field label="예전 서브 키워드" hint="지금은 하나만 씁니다. 비우면 이 칸이 사라집니다.">
+                        <input
+                          value={legacySub}
+                          onChange={(e) => setLegacySub(e.target.value)}
+                          className={inputClass}
+                        />
+                      </Field>
+                    )}
                   </div>
 
                   {type === 'info' && (
