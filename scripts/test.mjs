@@ -26,6 +26,7 @@ const TARGETS = [
   'lib/analysis/keyword.ts',
   'lib/analysis/synergy.ts',
   'lib/analysis/prescription.ts',
+  'lib/ai/httperror.ts',
   'lib/analysis/cutline.ts',
   'lib/analysis/tokens.ts',
   'lib/analysis/indexcheck.ts',
