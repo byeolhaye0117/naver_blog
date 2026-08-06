@@ -923,6 +923,30 @@ ok(sysReview.includes('방문·상담 후기 구간'), '후기글 단계 이름�
   ok(prT.includes('근거 약함'), '홍보글 분량은 여전히 근거가 약하다', prT)
 }
 ok(sysReview.includes('내돈내산'), '「내돈내산」을 쓰지 말라고 지시한다')
+/*
+ * 지시문이 서로 반대말을 하지 않는지 — 실제로 이 모순 때문에 모델이 해시태그에
+ * #내돈내산 을 넣었다. 화자 지시는 「쓰지 마라」인데 대가성 줄은 「대가성: 내돈내산」이었다.
+ */
+{
+  const { buildUserPrompt } = require(`${OUT}/ai/prompt.js`)
+  const own = buildUserPrompt({ type: 'review', mainKeyword: '쌍용동 헬스장', subKeywords: [], sponsorship: 'own', store: null })
+  ok(!/대가성: 내돈내산/.test(own), '모델에게 「내돈내산」을 상태값으로 주지 않는다')
+  ok(own.includes('대가를 받지 않은 글이다'), '대가 없음을 사실대로만 말한다')
+  ok(own.includes('해시태그에 쓰지 않는다'), '해시태그에도 쓰지 말라고 막는다')
+  const spon = buildUserPrompt({ type: 'review', mainKeyword: '쌍용동 헬스장', subKeywords: [], sponsorship: 'sponsored', store: null })
+  ok(spon.includes('#협찬후기'), '협찬이면 표기를 지시한다')
+}
+
+/*
+ * 고쳐 쓰기 지시문은 한 번의 호출로 끝나야 한다 — 쓰기와 고치기를 한 요청에 합치면
+ * 1~3분이 걸려 배포 환경의 함수 실행 한도를 넘긴다 (회원 화면에 응답이 아예 안 왔다).
+ */
+{
+  const { buildFixPrompt } = require(`${OUT}/ai/prompt.js`)
+  const fx = buildFixPrompt(['문단 쪼개기: 지금 6개 / 기준 12개 이상'], 1800, { charMin: 1750, charMax: 2400 })
+  ok(fx.includes('문단 쪼개기'), '걸린 항목을 그대로 알려준다')
+  ok(fx.includes('JSON'), '같은 출력 형식을 다시 요구한다')
+}
 ok(sysReview.includes('없는 상담 대화'), '없는 체험을 만들지 말라고 구체적으로 막는다')
 ok(sysReview.includes('한 어미가 55%를 넘지 않게'), '후기글에도 어미 배합 지시가 간다')
 ok(sysReview.includes('12개 문단 이상'), '후기글에도 문단 쪼개기 지시가 간다')

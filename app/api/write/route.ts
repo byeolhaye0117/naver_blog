@@ -63,6 +63,16 @@ export async function POST(req: Request) {
       eventText?: string
       sponsorship?: 'own' | 'sponsored' | 'unset'
       prescription?: string[]
+      /**
+       * 이미 받은 초안 — 있으면 **고쳐 쓰기만** 한다.
+       *
+       * 예전에는 한 요청에서 두 번 썼다 (쓰고 → 검수해서 85점 미만이면 다시 쓰기).
+       * 2,000자 글 하나에 40~90초가 걸리니 합치면 1~3분인데, Vercel 함수 실행 한도를
+       * 넘기면 응답이 아예 안 온다 — 회원 화면에는 2~3분 기다린 뒤 정체불명의 오류만
+       * 뜬다. 그래서 **두 번을 두 요청으로 나눴다.** 각 호출이 짧아 한도에 안 걸린다.
+       */
+      draft?: { title?: unknown; body?: unknown; tags?: unknown }
+      issues?: string[]
     }
 
     const type = TYPES.includes(body.type as PostType) ? (body.type as PostType) : 'promo'
@@ -131,40 +141,62 @@ export async function POST(req: Request) {
         evidence,
       })
 
+    /*
+     * 고쳐 쓰기 요청이면 여기서 끝난다 — 한 번만 부르고 돌려준다.
+     * 나빠졌으면 받은 초안을 그대로 유지한다 (고치라고 불렀다가 더 나빠지면 손해다).
+     */
+    const prior = asDraft(body.draft)
+    if (prior) {
+      const priorResult = check(prior)
+      messages.push({ role: 'assistant', content: JSON.stringify(prior) })
+      messages.push({
+        role: 'user',
+        content: buildFixPrompt(
+          (body.issues ?? []).slice(0, 20),
+          priorResult.stats.charCount,
+          SPECS[type]
+        ),
+      })
+      const fixed = asDraft(extractJson(await askLlm(system, messages, WRITE_MAX_TOKENS)))
+      const fixedResult = fixed ? check(fixed) : null
+      const better = fixed && fixedResult && fixedResult.score > priorResult.score
+      const out = better ? fixed : prior
+      const outResult = better ? fixedResult! : priorResult
+      return NextResponse.json({
+        draft: out,
+        revised: Boolean(better),
+        improved: better ? outResult.score - priorResult.score : 0,
+        provider: ai.label,
+        check: {
+          score: outResult.score,
+          ...summarize(outResult),
+          issues: outResult.items
+            .filter((i) => i.level !== 'pass')
+            .map((i) => ({ level: i.level, label: i.label, value: i.value, target: i.target })),
+        },
+        fixIssues: outResult.items
+          .filter((i) => i.level !== 'pass')
+          .map((i) => `${i.label}: 지금 ${i.value} / 기준 ${i.target}`)
+          .concat(outResult.risks.map((r) => `위험 표현 "${r.term}" (${r.category}) — ${r.fix}`)),
+      })
+    }
+
     // 문단을 12개 이상으로 쪼개게 한 뒤 본문이 길어졌다 — 기본 8192 로는 잘릴 수 있다
-    let draft = asDraft(extractJson(await askLlm(system, messages, WRITE_MAX_TOKENS)))
+    const draft = asDraft(extractJson(await askLlm(system, messages, WRITE_MAX_TOKENS)))
     if (!draft) {
       return NextResponse.json({ error: '글 형식을 읽지 못했습니다. 다시 시도해 주세요.' }, { status: 502 })
     }
-    let result = check(draft)
-    let revised = false
-
-    if (result.score < PUBLISH_THRESHOLD) {
-      // 걸린 항목을 그대로 알려주고 한 번만 다시 쓰게 한다
-      const issues = result.items
-        .filter((i) => i.level !== 'pass')
-        .map((i) => `${i.label}: 지금 ${i.value} / 기준 ${i.target}`)
-        .concat(result.risks.map((r) => `위험 표현 "${r.term}" (${r.category}) — ${r.fix}`))
-      messages.push({ role: 'assistant', content: JSON.stringify(draft) })
-      messages.push({
-        role: 'user',
-        content: buildFixPrompt(issues, result.stats.charCount, SPECS[type]),
-      })
-      const second = asDraft(extractJson(await askLlm(system, messages, WRITE_MAX_TOKENS)))
-      if (second) {
-        const secondResult = check(second)
-        // 나빠졌으면 첫 글을 유지한다
-        if (secondResult.score > result.score) {
-          draft = second
-          result = secondResult
-          revised = true
-        }
-      }
-    }
+    const result = check(draft)
 
     return NextResponse.json({
       draft,
-      revised,
+      revised: false,
+      /** 85점 미만이면 앱이 「고쳐 쓰기」 버튼을 띄운다 (두 번째 호출) */
+      needsRevise: result.score < PUBLISH_THRESHOLD,
+      fixIssues: result.items
+        .filter((i) => i.level !== 'pass')
+        .map((i) => `${i.label}: 지금 ${i.value} / 기준 ${i.target}`)
+        .concat(result.risks.map((r) => `위험 표현 "${r.term}" (${r.category}) — ${r.fix}`)),
       provider: ai.label,
       check: {
         score: result.score,
