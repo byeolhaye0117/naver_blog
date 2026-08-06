@@ -3385,6 +3385,20 @@ ok(countDistribution([]).topMedian === null, '표본이 없으면 null (0 이라
   ok(t.weight > m.weight, '제목이 횟수보다 무겁다', `${t.weight} > ${m.weight}`)
 }
 
+/*
+ * 상호명은 순위 근거가 없다 — 실측 161편에서 상호명 있는 글(5.33위)과 없는 글(5.38위)의
+ * 순위가 같았다. 하한 3회는 남기되 가중치는 밀도보다 가볍게 둔다.
+ */
+{
+  const c = checkPost({ type:'promo', title:'쌍용동 헬스장 후기', body:'가'.repeat(1900), mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[], legalName:'천안점' })
+  const ln = c.items.find((i) => i.id === 'legalName')
+  const ti = c.items.find((i) => i.id === 'titleKeyword')
+  ok(ln.weight === 2, '상호명 = 가중치 2 (순위 근거가 없다)', String(ln.weight))
+  ok(ln.weight < ti.weight, '상호명이 제목보다 가볍다', `${ln.weight} < ${ti.weight}`)
+  ok(!ln.target.includes('플레이스'), '측정한 적 없는 「플레이스 재검색」을 근거로 대지 않는다', ln.target)
+  ok(ln.target.includes('순위 항목이 아니라'), '순위 항목이 아니라고 밝힌다', ln.target)
+}
+
 ok(SPECS.promo.mainMin === 5, '홍보글 하한 5회 (안전성을 따로 확인했다)', String(SPECS.promo.mainMin))
 ok(SPECS.promo.mainMax === 7, '상한은 7 — 실질 상한은 밀도가 정한다', String(SPECS.promo.mainMax))
 // 겨냥할 값은 하한 5회다 (더 넣어서 오르지는 않으므로)
