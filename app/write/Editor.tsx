@@ -7,9 +7,11 @@ import { POST_STATUS_LABEL, POST_TYPE_LABEL, SPONSORSHIP_LABEL } from '@/lib/typ
 import { checkPost } from '@/lib/writing/checker'
 import { buildTemplate, hasGuides, stripGuides } from '@/lib/writing/templates'
 import { PUBLISH_THRESHOLD } from '@/lib/writing/checker'
+import { explainNonJson } from '@/lib/ai/httperror'
 
 /** AI 가 돌려주는 초안 — 고쳐 쓰기 요청에 그대로 되돌려 보낸다 */
 type Draft = { title: string; body: string; tags?: string[] }
+
 import { adviseRotation, ANGLES, INFO_FORMATS, INTRO_TYPES, REVIEW_INTRO_TYPES, TOPIC_GROUPS } from '@/lib/writing/rotation'
 import { buildCopyPackage, postLogLine } from '@/lib/writing/export'
 import { isPrescriptionStale, prescriptionAgeDays } from '@/lib/analysis/prescription'
@@ -287,7 +289,14 @@ export default function Editor({
     setAiBusy(true)
     setAiMsg(fixing ? '검수에서 걸린 항목을 고치는 중입니다… 1분쯤 걸립니다.' : '글을 쓰는 중입니다… 1분쯤 걸립니다.')
     try {
+      /*
+       * 브라우저가 무한정 매달려 있지 않게 스스로 끊는다. 한 번 호출이 1분 안팎이라
+       * 넉넉히 4분을 준다 — 플랫폼이 먼저 끊으면 위의 explainNonJson 이 이름을 찍어준다.
+       */
+      const ctl = new AbortController()
+      const bell = setTimeout(() => ctl.abort(), 240_000)
       const res = await fetch('/api/write', {
+        signal: ctl.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -302,7 +311,7 @@ export default function Editor({
           prescription: useRx ? prescription?.items : undefined,
           ...extra,
         }),
-      })
+      }).finally(() => clearTimeout(bell))
       const raw = await res.text()
       let json: {
         draft?: Draft
@@ -317,12 +326,12 @@ export default function Editor({
       try {
         json = JSON.parse(raw)
       } catch {
-        // 서버가 JSON 을 안 준 경우 — 시간초과 페이지일 때가 많다
-        throw new Error(
-          res.status === 504 || res.status === 502
-            ? '서버가 제 시간에 답하지 못했습니다. 글쓰기는 한 번에 1분 안팎이 걸리는데, 배포 환경의 함수 실행 제한을 넘긴 것으로 보입니다. 다시 눌러보시고 계속 같으면 알려주세요.'
-            : `서버 응답을 읽지 못했습니다 (상태 ${res.status}).`
-        )
+        /*
+         * JSON 이 아니면 **우리 코드가 아니라 플랫폼이 끊은 것**이다 — 라우트는 오류도
+         * 전부 JSON 으로 내보낸다. 그래서 무엇이 끊었는지 이름을 찍어준다.
+         * 예전에는 「응답을 읽지 못했습니다」만 떠서 원인을 알 수 없었다.
+         */
+        throw new Error(explainNonJson(res, raw))
       }
       if (!res.ok || !json.draft) throw new Error(json.error ?? '글 생성에 실패했습니다.')
       setTitle(json.draft.title)
@@ -342,7 +351,14 @@ export default function Editor({
           (json.provider ? ` · ${json.provider}` : '')
       )
     } catch (e) {
-      setAiMsg(e instanceof Error ? e.message : '글 생성 중 오류가 발생했습니다.')
+      const aborted = e instanceof DOMException && e.name === 'AbortError'
+      setAiMsg(
+        aborted
+          ? '4분을 기다렸는데 답이 오지 않아 끊었습니다. 「골격만 넣기」로 직접 쓰거나, 잠시 뒤 다시 시도해 주세요.'
+          : e instanceof Error
+            ? e.message
+            : '글 생성 중 오류가 발생했습니다.'
+      )
     } finally {
       setAiBusy(false)
     }

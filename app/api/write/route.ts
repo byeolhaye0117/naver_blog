@@ -41,6 +41,30 @@ function asDraft(v: unknown): Draft | null {
  * 그대로 내려주되 무엇이 남았는지 함께 보낸다 (사용자가 손으로 마무리할 수 있게).
  */
 export async function POST(req: Request) {
+  /*
+   * **어떤 실패도 JSON 으로 나가야 한다.**
+   *
+   * 예전에는 키 확인이 try 밖에 있어서 그 단계에서 던지면 플랫폼의 HTML 오류 페이지가
+   * 나갔고, 화면에는 「응답을 읽지 못했습니다」만 떴다. 이제 전 구간을 감싼다 —
+   * JSON 이 아닌 응답은 「플랫폼이 끊었다」는 뜻으로만 남게 해서 원인 구별이 되게 한다.
+   *
+   * 단계마다 로그를 남긴다. Vercel Logs 에서 어디까지 갔는지 바로 보인다.
+   */
+  const t0 = Date.now()
+  const ms = () => `${Date.now() - t0}ms`
+  try {
+    return await handle(req, ms)
+  } catch (e) {
+    console.error('[write] 처리하지 못한 오류', ms(), e)
+    const status = e instanceof AiError ? e.status : 500
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : '글 생성 중 오류가 발생했습니다.', at: ms() },
+      { status }
+    )
+  }
+}
+
+async function handle(req: Request, ms: () => string) {
   const ai = aiStatus()
   if (!ai.ready) {
     return NextResponse.json(
@@ -157,7 +181,9 @@ export async function POST(req: Request) {
           SPECS[type]
         ),
       })
+      console.log('[write] 고쳐 쓰기 시작', ms())
       const fixed = asDraft(extractJson(await askLlm(system, messages, WRITE_MAX_TOKENS)))
+      console.log('[write] 고쳐 쓰기 끝', ms(), fixed ? '성공' : '파싱 실패')
       const fixedResult = fixed ? check(fixed) : null
       const better = fixed && fixedResult && fixedResult.score > priorResult.score
       const out = better ? fixed : prior
@@ -182,7 +208,9 @@ export async function POST(req: Request) {
     }
 
     // 문단을 12개 이상으로 쪼개게 한 뒤 본문이 길어졌다 — 기본 8192 로는 잘릴 수 있다
+    console.log('[write] 초안 생성 시작', ms())
     const draft = asDraft(extractJson(await askLlm(system, messages, WRITE_MAX_TOKENS)))
+    console.log('[write] 초안 생성 끝', ms(), draft ? `본문 ${draft.body.length}자` : '파싱 실패')
     if (!draft) {
       return NextResponse.json({ error: '글 형식을 읽지 못했습니다. 다시 시도해 주세요.' }, { status: 502 })
     }

@@ -938,6 +938,30 @@ ok(sysReview.includes('내돈내산'), '「내돈내산」을 쓰지 말라고 �
 }
 
 /*
+ * JSON 이 아닌 응답의 원인을 이름으로 찍어준다.
+ * 회원이 두 번 연달아 「응답을 읽지 못했습니다」만 보고 원인을 알 수 없었다 —
+ * 라우트는 오류도 전부 JSON 으로 내므로, JSON 이 아니면 플랫폼이 끊은 것이다.
+ */
+{
+  const { explainNonJson } = require(`${OUT}/ai/httperror.js`)
+  const res = (status, code) => ({ status, headers: { get: (k) => (k === 'x-vercel-error' ? code : null) } })
+  const t = explainNonJson(res(504, 'FUNCTION_INVOCATION_TIMEOUT'), '')
+  ok(t.includes('시간 초과') && t.includes('Max Duration'), '시간초과면 그렇게 말하고 어디를 고칠지 알려준다', t.slice(0, 40))
+  ok(t.includes('FUNCTION_INVOCATION_TIMEOUT'), '원인 코드를 그대로 남긴다 (다음에 검색할 수 있게)')
+  const f = explainNonJson(res(500, 'FUNCTION_INVOCATION_FAILED'), '')
+  ok(f.includes('Logs'), '함수가 죽었으면 어디를 볼지 알려준다')
+  const big = explainNonJson(res(413, 'FUNCTION_PAYLOAD_TOO_LARGE'), '')
+  ok(big.includes('글에 반영'), '요청이 크면 처방을 끄라고 안내한다')
+  // 헤더가 없으면 추측하지 않고 사실만 보여준다
+  const raw = explainNonJson(res(500, null), '<html><body>An error occurred: 무언가 잘못됐습니다</body></html>')
+  ok(raw.includes('상태 500'), '헤더가 없으면 상태코드를 보여준다', raw)
+  ok(raw.includes('무언가 잘못됐습니다'), '응답 본문 앞부분을 보여준다 — 추측하지 않는다')
+  ok(!raw.includes('<html>'), 'HTML 태그는 걷어낸다')
+  const empty = explainNonJson(res(502, null), '')
+  ok(empty.includes('비어 있었습니다'), '본문이 비면 비었다고 말한다', empty)
+}
+
+/*
  * 고쳐 쓰기 지시문은 한 번의 호출로 끝나야 한다 — 쓰기와 고치기를 한 요청에 합치면
  * 1~3분이 걸려 배포 환경의 함수 실행 한도를 넘긴다 (회원 화면에 응답이 아예 안 왔다).
  */
