@@ -858,6 +858,51 @@ ok(pickModel('openai', []) === null, '목록이 비면 null (기본값으로 넘
 
 // 지시문에 검수 기준이 그대로 들어가야 한다 (기준이 바뀌면 지시도 바뀐다)
 const sysReview = buildSystemPrompt('review')
+/*
+ * AI 응답 파싱 — 모델이 JSON 규격을 어기는 두 경우를 고쳐 쓴다.
+ * 실제로 회원 화면에 「글 형식을 읽지 못했습니다」가 떴고, 원인은 본문 안의 진짜 줄바꿈이었다.
+ * 「문단을 12개 이상으로 쪼개라」를 지시에 넣은 뒤 줄바꿈이 늘어 더 잦아졌다.
+ */
+{
+  const j = (raw) => extractJson(raw)
+  const good = j('{"title":"제목","body":"본문\\n둘째","tags":["가","나"]}')
+  ok(good?.title === '제목' && good?.tags.length === 2, '정상 JSON 은 그대로 읽는다')
+  const nl = j('{"title":"쌍용동 헬스장 후기","body":"첫 문단.\n둘째 문단.\n\n셋째 문단.","tags":["쌍용동 헬스장"]}')
+  ok(nl?.title === '쌍용동 헬스장 후기', '본문에 진짜 줄바꿈이 와도 살린다', nl ? '살림' : '실패')
+  ok(nl?.body.includes('\n'), '줄바꿈을 문단 경계로 보존한다')
+  const cut = j('{"title":"쌍용동 헬스장","body":"문단 하나\n문단 둘\n문단 셋')
+  ok(cut?.title === '쌍용동 헬스장' && cut?.body.length > 0, '토큰 한계로 잘려도 건진다', cut ? '살림' : '실패')
+  const cutTag = j('{"title":"제목","body":"본문","tags":["쌍용동 헬스장","쌍용동 PT"')
+  ok(cutTag?.tags?.length === 2, '태그 배열에서 잘려도 태그를 건진다', String(cutTag?.tags?.length))
+  const quoted = j('{"title":"제목","body":"상담에서 \\"자세를 봐드립니다\\" 라고 하셨어요.\n다음 문단.","tags":[]}')
+  ok(quoted?.body.includes('"자세를 봐드립니다"'), '본문 안 인용부호를 망가뜨리지 않는다', quoted?.body?.slice(0, 24))
+  ok(j('설명입니다.\n```json\n{"title":"제목","body":"본문","tags":[]}\n```')?.title === '제목', '코드펜스·앞말은 예전처럼 건너뛴다')
+  ok(j('JSON 이 아예 없는 응답') === null, 'JSON 이 없으면 null 이다')
+}
+
+/*
+ * 저장된 처방의 커트라인 문장을 꺼낼 때 다시 계산한다.
+ * 목표 규칙을 고쳐도 이미 저장된 처방은 옛 문장을 들고 있어서, 「글에 반영」을 켜면
+ * 「이미지 19장 이상」(실측 최악 구간)이 AI 지시문으로 갔다.
+ */
+{
+  const stored = {
+    key: '쌍용동헬스장', keyword: '쌍용동 헬스장', date: '2026-08-01', sampled: 15,
+    items: [
+      '제목은 38~40자로 맞추세요.',
+      '상위 글 15개를 실제로 읽어 재보니 본문 중간값이 1,933자, 이미지 18장입니다. 이 키워드의 목표는 본문 2,200자 이상, 이미지 19장 이상입니다.',
+    ],
+  }
+  const fresh = findPrescription([stored], '쌍용동헬스장')
+  const line = fresh.items.find((l) => l.includes('중간값'))
+  ok(!line.includes('19장 이상'), '옛 이미지 목표(19장)를 더 이상 내보내지 않는다', line.slice(-70))
+  ok(line.includes('6~10장'), '지금 규칙(6~10장)으로 갈아끼운다')
+  ok(line.includes('1,933자'), '관측값은 그대로 둔다 — 사실이다')
+  ok(fresh.items[0] === '제목은 38~40자로 맞추세요.', '커트라인이 아닌 처방은 건드리지 않는다')
+  const noCut = findPrescription([{ ...stored, items: ['제목은 38~40자로 맞추세요.'] }], '쌍용동헬스장')
+  ok(noCut.items.length === 1, '커트라인 문장이 없으면 그대로 돌려준다')
+}
+
 ok(sysReview.includes('방문객'), '후기글 화자는 방문객')
 /*
  * 작성 주체는 운영자다 — 화자(방문객)와 작성자(센터)가 다르다는 것을 지시문이 밝혀야 한다.

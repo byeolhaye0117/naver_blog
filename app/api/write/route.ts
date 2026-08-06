@@ -9,6 +9,15 @@ import type { PostType } from '@/lib/types'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
+/**
+ * 출력 토큰 한도.
+ *
+ * 기본값(8192)으로는 잘릴 수 있다 — 본문 2,000자 + 문단 12개 이상 + 이미지 표기 + JSON
+ * escape 가 겹치면 한도에 닿는다. 잘리면 회원 화면에는 2~3분 기다린 뒤 「글 형식을 읽지
+ * 못했습니다」로만 보인다.
+ */
+const WRITE_MAX_TOKENS = 16_000
+
 const TYPES: PostType[] = ['promo', 'info', 'review']
 
 interface Draft {
@@ -122,7 +131,8 @@ export async function POST(req: Request) {
         evidence,
       })
 
-    let draft = asDraft(extractJson(await askLlm(system, messages)))
+    // 문단을 12개 이상으로 쪼개게 한 뒤 본문이 길어졌다 — 기본 8192 로는 잘릴 수 있다
+    let draft = asDraft(extractJson(await askLlm(system, messages, WRITE_MAX_TOKENS)))
     if (!draft) {
       return NextResponse.json({ error: '글 형식을 읽지 못했습니다. 다시 시도해 주세요.' }, { status: 502 })
     }
@@ -140,7 +150,7 @@ export async function POST(req: Request) {
         role: 'user',
         content: buildFixPrompt(issues, result.stats.charCount, SPECS[type]),
       })
-      const second = asDraft(extractJson(await askLlm(system, messages)))
+      const second = asDraft(extractJson(await askLlm(system, messages, WRITE_MAX_TOKENS)))
       if (second) {
         const secondResult = check(second)
         // 나빠졌으면 첫 글을 유지한다
