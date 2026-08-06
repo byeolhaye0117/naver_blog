@@ -47,6 +47,25 @@ export const PUBLISH_THRESHOLD = 85
 interface Spec {
   mainMin: number
   mainMax: number
+  /**
+   * 메인 키워드 **권장 횟수** (없으면 하한이 곧 목표다).
+   *
+   * 범위가 5~7회인데 실측에서 「더 넣어서 오르지는 않는다」가 나왔으므로, 글을 쓸 때
+   * 겨냥할 값은 하한인 5회다. 6~7회도 통과는 하지만 굳이 채울 이유가 없다.
+   */
+  mainTarget?: number
+  /**
+   * 함께 쓰는 키워드 **고정 목표 횟수** (없으면 1~2회 통과).
+   *
+   * 회원 지시로 2회를 목표로 잡았다. 밀도로는 안전하다 — 메인 5회 + 서브 2개×2회 =
+   * 합산 2.1~2.5%(1,915자에서 2.3%)로 스터핑 구간이 아니다.
+   *
+   * **다만 못 채워도 「수정필요」로 걸지 않는다.** 실측에서 서브를 2회 쓴 상위권이
+   * 절반뿐이었다 — 성정동·쌍용동 PT 는 1~3위 중간값이 2회였지만, 봉명동 PT 는
+   * **1~3위 3편이 전부 0회**였고 천안 헬스장은 32편 중 18편이 0회였다.
+   * 목표는 목표로 두고, 못 지킨 글을 1위와 똑같이 썼다는 이유로 감점하지는 않는다.
+   */
+  subTarget?: number
   densityMax: number
   charMin: number
   charMax: number
@@ -97,6 +116,8 @@ export const SPECS: Record<PostType, Spec> = {
   promo: {
     mainMin: 5,
     mainMax: 7,
+    mainTarget: 5,
+    subTarget: 2,
     densityMax: 2,
     charMin: 1750,
     charMax: 2400,
@@ -413,6 +434,8 @@ export function checkPost(input: CheckInput): CheckResult {
     mainMax: spec.mainMax,
     inTitle: mainInTitle,
   })
+  // 겨냥할 값 — 도달 가능한 범위 안으로 눌러 담는다 (긴 키워드면 권장치도 같이 내려간다)
+  const mainGoal = Math.min(Math.max(spec.mainTarget ?? reach.min, reach.min), reach.max)
   add({
     id: 'mainCount',
     group: '키워드',
@@ -424,10 +447,10 @@ export function checkPost(input: CheckInput): CheckResult {
     value: `${mainKeywordCount}회 (제목 ${mainInTitle} + 본문 ${mainInProse})`,
     target: reach.tight
       ? `${reach.min}~${reach.max}회 · 해시태그 제외 (밀도 ${spec.densityMax}% 상한 때문에 ${spec.mainMax}회는 불가)`
-      : `${reach.min}~${reach.max}회 · 해시태그는 계산 제외`,
+      : `${mainGoal}회 권장 · ${reach.min}~${reach.max}회 허용 · 해시태그는 계산 제외`,
     hint:
       mainKeywordCount < reach.min
-        ? '미달이 가장 자주 나는 항목입니다. 억지 문장을 만들지 말고 배치 슬롯(제목·첫100자·해결 구간·CTA) 안에서 채우세요.'
+        ? `미달이 가장 자주 나는 항목입니다. 억지 문장을 만들지 말고 배치 슬롯(제목·첫100자·해결 구간·이벤트·CTA) 안에서 ${mainGoal}회를 채우세요.`
         : mainKeywordCount > reach.max
           ? '초과분은 "저희 센터", "○○동에 있는 헬스장" 같은 변형 표현으로 돌리세요.'
           : reach.tight
@@ -528,14 +551,27 @@ export function checkPost(input: CheckInput): CheckResult {
       id: `sub${idx}`,
       group: '키워드',
       label: `${input.type === 'info' ? '보조' : '함께 찾는'} 키워드 ${idx + 1} "${s.keyword}"`,
-      // 0회 = 주의 (수정필요 아님) · 1~2회 = 통과 · 3회 초과 = 주의
-      level: s.count >= 1 && s.count <= 2 ? 'pass' : 'warn',
+      /*
+       * 목표(2회)를 맞히면 통과, 아니면 **최대 「주의」까지만** 낸다.
+       * 못 채운 글을 수정필요로 걸면 1위와 똑같이 쓴 글이 감점된다 (Spec.subTarget 주석).
+       */
+      level: spec.subTarget
+        ? s.count === spec.subTarget
+          ? 'pass'
+          : 'warn'
+        : s.count >= 1 && s.count <= 2
+          ? 'pass'
+          : 'warn',
       value: `${s.count}회`,
-      target: '1~2회 (없어도 됩니다 — 상위 3위권 12편 중 6편이 0회)',
+      target: spec.subTarget
+        ? `${spec.subTarget}회 (못 채워도 수정필요는 아닙니다)`
+        : '1~2회 (없어도 됩니다 — 상위 3위권 12편 중 6편이 0회)',
       hint:
-        s.count === 0
-          ? '넣으면 이 키워드로도 걸릴 수 있어 권하지만, 실측에서 상위권 절반은 아예 쓰지 않았습니다. 억지로 끼워 넣지 마세요.'
-          : s.count > 2
+        spec.subTarget && s.count < spec.subTarget
+          ? s.count === 0
+            ? `목표는 ${spec.subTarget}회입니다. 넣으면 이 키워드로도 걸릴 수 있습니다 — 다만 실측에서 상위 3위권 절반은 0회였으니 억지 문장을 만들지는 마세요.`
+            : `${spec.subTarget - s.count}회 더 넣을 수 있습니다. 해결 구간이나 이벤트 문단에 자연스럽게 얹으세요.`
+          : s.count > (spec.subTarget ?? 2)
             ? '메인 키워드 자리를 잡아먹습니다. 2회까지로 줄이세요.'
             : undefined,
       weight: 2,
