@@ -938,6 +938,28 @@ ok(sysReview.includes('내돈내산'), '「내돈내산」을 쓰지 말라고 �
 }
 
 /*
+ * 200 인데 글이 없을 때 — 무엇이었는지 증거를 담아야 한다.
+ * 회원이 「글 생성 응답을 읽지 못했습니다」만 세 번 보고 원인을 알 수 없었다.
+ */
+{
+  const { describeEmpty } = require(`${OUT}/ai/llm.js`)
+  const cut = describeEmpty(JSON.stringify({ stop_reason: 'max_tokens', content: [{ type: 'thinking' }], usage: { input_tokens: 3200, output_tokens: 8192 } }), 'anthropic', 'claude-sonnet-5')
+  ok(cut.includes('max_tokens'), '중단 이유를 적는다', cut.slice(0, 60))
+  ok(cut.includes('thinking'), '어떤 블록을 받았는지 적는다')
+  ok(cut.includes('출력 8192'), '토큰 사용량을 적는다')
+  ok(cut.includes('출력 한도에 먼저 걸렸습니다'), '한도 문제면 그렇게 해석해 준다')
+  ok(cut.includes('claude-sonnet-5'), '어느 모델이었는지 적는다')
+  const empty = describeEmpty(JSON.stringify({ content: [] }), 'anthropic', 'claude-sonnet-5')
+  ok(empty.includes('비어 있었습니다'), '블록이 없으면 없다고 적는다', empty)
+  const odd = describeEmpty(JSON.stringify({ id: 'x', object: 'y' }), 'openai', 'gpt-4o')
+  ok(odd.includes('아는 응답 모양이 아닙니다'), '모르는 모양이면 키를 보여준다', odd)
+  const notJson = describeEmpty('<html>Gateway Timeout</html>', 'anthropic', 'claude-sonnet-5')
+  ok(notJson.includes('JSON 이 아니었습니다'), 'JSON 이 아니면 그렇게 적는다', notJson)
+  const err = describeEmpty(JSON.stringify({ error: { message: '한도 초과' } }), 'anthropic', 'claude-sonnet-5')
+  ok(err.includes('한도 초과'), '오류 메시지가 있으면 그대로 보여준다')
+}
+
+/*
  * JSON 이 아닌 응답의 원인을 이름으로 찍어준다.
  * 회원이 두 번 연달아 「응답을 읽지 못했습니다」만 보고 원인을 알 수 없었다 —
  * 라우트는 오류도 전부 JSON 으로 내므로, JSON 이 아니면 플랫폼이 끊은 것이다.
