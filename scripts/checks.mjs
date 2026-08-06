@@ -1093,8 +1093,33 @@ const MET = [
 const CUT = buildCutline(MET)
 ok(CUT.charMedian === 2100, '글자수 중간값', String(CUT.charMedian))
 ok(CUT.imageMedian === 14, '이미지 중간값', String(CUT.imageMedian))
-ok(CUT.charTarget === 2400, '목표는 중간값보다 위 + 100자 단위', String(CUT.charTarget))
-ok(CUT.imageTarget === 15, '이미지 목표는 중간값 +1', String(CUT.imageTarget))
+/*
+ * **목표를 중간값보다 올리지 않는다** (2026-08-06 실측으로 고쳤다).
+ * 예전에는 본문 +10% · 이미지 +1장이었는데, 그 논리가 반대로 갔다.
+ *   이미지  6~10장 1~3위 54% / 11~15장 18% / 16장 이상 25%
+ *   분량    홍보글은 무관, 후기글은 3,000자 이상에서 7.50위
+ * 이미지 14장인 판에서 15장을 목표로 주면 가장 나쁜 구간으로 밀어넣는 셈이었다.
+ */
+ok(CUT.charTarget === 2100, '본문 목표는 중간값에 맞춘다 (예전엔 ×1.1)', String(CUT.charTarget))
+ok(CUT.imageTarget === 10, '이미지 목표는 6~10장으로 묶는다', String(CUT.imageTarget))
+ok(CUT.imageOvershoot === true, '상위 글이 10장을 넘기면 맞추지 말라고 표시한다')
+{
+  // 상위 글이 적게 쓰면 하한(6장)으로 올린다
+  const few = buildCutline([
+    { url: 'a', charCount: 1800, imageCount: 3, videoCount: 0 },
+    { url: 'b', charCount: 1900, imageCount: 4, videoCount: 0 },
+    { url: 'c', charCount: 2000, imageCount: 2, videoCount: 0 },
+  ])
+  ok(few.imageTarget === 6, '상위 글이 적게 써도 6장은 채운다', String(few.imageTarget))
+  ok(few.imageOvershoot === false, '넘치지 않으면 표시하지 않는다')
+  // 중간값이 검수 구간보다 짧아도 처방이 검수와 부딪히지 않게 눌러 담는다
+  const short = buildCutline([
+    { url: 'a', charCount: 900, imageCount: 8, videoCount: 0 },
+    { url: 'b', charCount: 1000, imageCount: 8, videoCount: 0 },
+    { url: 'c', charCount: 1100, imageCount: 8, videoCount: 0 },
+  ])
+  ok(short.charTarget === 1700, '중간값이 짧아도 1,700자 아래로는 안 내려간다', String(short.charTarget))
+}
 ok(CUT.charMedian < 9000, '이미지 40장짜리 특이값에 끌려가지 않는다')
 ok(CUT.videoExpected === false, '영상 넣은 글이 절반뿐이면 기대 안 함 (중간값 반올림에 속지 않는다)')
 ok(
@@ -1107,7 +1132,10 @@ ok(
 )
 ok(buildCutline(MET.slice(0, 2)) === null, `${CUTLINE_MIN_SAMPLE}개 미만이면 커트라인을 만들지 않는다`)
 const LINE = cutlineLine(CUT)
-ok(LINE.includes('2,100자') && LINE.includes('2,400자'), '처방 문장에 실측값이 들어간다', LINE.slice(0, 60))
+ok(LINE.includes('2,100자'), '처방 문장에 실측값이 들어간다', LINE.slice(0, 60))
+ok(LINE.includes('늘려서 이기는 항목이 아닙니다'), '분량을 늘리라고 하지 않는다')
+ok(LINE.includes('6~10장'), '이미지는 6~10장으로 지시한다')
+ok(LINE.includes('상위 글이 14장을 쓰지만'), '상위 글보다 적게 쓰는 이유를 설명한다', LINE.slice(-120))
 
 // 크론이 밤에 진단해 처방을 만들어 두면, 순위 화면에 안 들어가도 알려줘야 한다
 const STUCK = nextActions({
@@ -1461,7 +1489,16 @@ const BIG_POST = {
 }
 const DX_OK = diagnose({ post: fromAppPost(BIG_POST), serp: SERP_FOR_DX, rank: 9, daysSincePublish: 30 })
 ok(DX_OK.passed.some((t) => t.includes('본문 분량')), '맞춘 분량을 통과로 알려준다', DX_OK.passed.join(' | '))
-ok(DX_OK.passed.some((t) => t.includes('이미지')), '맞춘 이미지 수도 통과로 알려준다')
+// 이미지는 상위 글 장수가 아니라 실측 최적 구간(6~10장)으로 판단한다
+{
+  const many = diagnose({ post: { ...fromAppPost(BIG_POST), imageCount: 18 }, serp: SERP_FOR_DX, rank: 9, daysSincePublish: 30 })
+  const f = many.fixes.find((x) => x.id === 'body-images-many')
+  ok(!!f, '이미지가 너무 많으면 줄이라고 한다', f?.mine)
+  ok(f?.action.includes('6~10장으로 줄이세요'), '몇 장으로 줄일지 알려준다')
+  const ok6 = diagnose({ post: { ...fromAppPost(BIG_POST), imageCount: 8 }, serp: SERP_FOR_DX, rank: 9, daysSincePublish: 30 })
+  ok(ok6.passed.some((t) => t.includes('이미지')), '6~10장이면 통과로 알려준다', ok6.passed.find((t) => t.includes('이미지')))
+  ok(!ok6.fixes.some((x) => x.id.startsWith('body-images')), '최적 구간이면 이미지 지적을 하지 않는다')
+}
 
 const RXP = diagnosisToPrescription(DX)
 ok(RXP.length === DX.fixes.length, '처방 문장으로 바뀐다')
