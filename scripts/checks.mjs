@@ -919,6 +919,22 @@ const sysReview = buildSystemPrompt('review')
   const v1 = t1.items.find((i) => i.id === 'voice')
   ok(v1.level === 'fail', '홍보글 제목에 「후기」가 있으면 걸린다', v1.value)
   ok(v1.weight === 5, '화자는 무겁게 본다 (겪지 않은 일을 겪은 척하는 문제다)', String(v1.weight))
+  /*
+   * 낱말만 보면 안 된다 — 홍보글의 공감 구간은 **독자의 경험을 대신 말해주는 자리**다.
+   * 「새벽에 운동하러 갔는데 문이 닫혀 있으면」은 센터가 독자 사정을 말하는 문장이고
+   * 방문자 후기가 아니다. 실제로 잘 쓴 홍보글이 이것 때문에 걸렸다.
+   */
+  const empathy = checkPost({
+    ...base, type: 'promo', title: '쌍용동 헬스장 어디가 좋을까요',
+    body: `${paras}\n\n남들 다 자는 새벽에 운동하러 갔는데 문이 닫혀 있으면 그날 하루가 꼬여버리니까요.`,
+  })
+  ok(empathy.items.find((i) => i.id === 'voice').level === 'pass', '독자 경험을 대신 말하는 문장은 걸리지 않는다', empathy.items.find((i) => i.id === 'voice').value)
+  const firstPerson = checkPost({
+    ...base, type: 'promo', title: '쌍용동 헬스장 어디가 좋을까요',
+    body: `${paras}\n\n제가 직접 가봤는데 시설이 좋았습니다.`,
+  })
+  ok(firstPerson.items.find((i) => i.id === 'voice').level === 'fail', '1인칭이 붙으면 방문자 서술로 잡는다', firstPerson.items.find((i) => i.id === 'voice').value)
+
   // 홍보글인데 본문이 방문자 말투
   const t2 = checkPost({ ...base, type: 'promo', title: '쌍용동 헬스장 어디가 좋을까요', body: `${paras}\n\n직접 가봤더니 시설이 괜찮더라고요.` })
   ok(t2.items.find((i) => i.id === 'voice').level === 'fail', '홍보글 본문의 방문자 말투도 걸린다', t2.items.find((i) => i.id === 'voice').value)
