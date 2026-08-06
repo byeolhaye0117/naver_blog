@@ -859,8 +859,48 @@ ok(pickModel('openai', []) === null, '목록이 비면 null (기본값으로 넘
 // 지시문에 검수 기준이 그대로 들어가야 한다 (기준이 바뀌면 지시도 바뀐다)
 const sysReview = buildSystemPrompt('review')
 ok(sysReview.includes('방문객'), '후기글 화자는 방문객')
+/*
+ * 작성 주체는 운영자다 — 화자(방문객)와 작성자(센터)가 다르다는 것을 지시문이 밝혀야 한다.
+ * 밝히지 않으면 모델이 없는 체험을 지어내고, 그건 문체 문제가 아니라 기만적 광고가 된다.
+ */
+ok(sysReview.includes('센터 운영자가 쓴다'), '작성 주체가 운영자임을 밝힌다')
+// 홍보글 단계 이름이 후기글 지시문으로 새지 않는다
+ok(!sysReview.includes('해결 구간 1회 + 이벤트 구간 1회'), '후기글에 홍보글 단계 이름을 쓰지 않는다')
+ok(sysReview.includes('방문·상담 후기 구간'), '후기글 단계 이름으로 말한다')
+{
+  // 분량 근거의 세기가 유형마다 다르다 — 후기글에서는 가장 뚜렷한 신호였다
+  const rv = checkPost({ type:'review', title:'쌍용동 헬스장 후기', body:'가'.repeat(1200), mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
+  const pr = checkPost({ type:'promo', title:'쌍용동 헬스장 어디', body:'가'.repeat(1200), mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
+  const rvT = rv.items.find((i) => i.id === 'charCount').target
+  const prT = pr.items.find((i) => i.id === 'charCount').target
+  ok(!rvT.includes('근거 약함'), '후기글 분량은 「근거 약함」이 아니다', rvT.slice(0, 46))
+  ok(rvT.includes('69%'), '후기글 분량 근거를 숫자로 보여준다')
+  ok(prT.includes('근거 약함'), '홍보글 분량은 여전히 근거가 약하다', prT)
+}
+ok(sysReview.includes('내돈내산'), '「내돈내산」을 쓰지 말라고 지시한다')
+ok(sysReview.includes('없는 상담 대화'), '없는 체험을 만들지 말라고 구체적으로 막는다')
+ok(sysReview.includes('한 어미가 55%를 넘지 않게'), '후기글에도 어미 배합 지시가 간다')
+ok(sysReview.includes('12개 문단 이상'), '후기글에도 문단 쪼개기 지시가 간다')
 ok(sysReview.includes('"후기"'), '후기글은 제목에 후기 명시 지시')
-ok(sysReview.includes('1,900') && sysReview.includes('2,100'), '후기글 글자수 기준이 지시문에 있다')
+/*
+ * 후기글 기준을 실측으로 다시 잡았다 (2026-08-06, 방문자 화자 글 88편).
+ *   분량   1,700~2,200 이 1~3위 69% · 2,200~3,000 이 54% · 1,200~1,700 은 28%
+ *   횟수   0~1회 28% · 2회 36% · 3~4회 33% · 5회 30% · 6~8회 15% → 무관
+ *   밀도   1~3위 중간값 0.39% (「1~1.5%」 구간은 1~3위 11%로 오히려 나빴다)
+ */
+ok(sysReview.includes('1,700') && sysReview.includes('2,800'), '후기글 글자수 기준이 지시문에 있다')
+ok(SPECS.review.charMin === 1700 && SPECS.review.charMax === 2800, '후기 분량 1,700~2,800자', `${SPECS.review.charMin}~${SPECS.review.charMax}`)
+ok(SPECS.review.mainMin === 2, '후기 키워드 하한 2회 (1~3위 중간값이 2회였다)', String(SPECS.review.mainMin))
+ok(SPECS.review.mainTarget === 3, '후기 키워드 목표 3회', String(SPECS.review.mainTarget))
+ok(SPECS.review.densityMax === 1.5, '후기 밀도 상한 1.5% — 안전선으로 남긴다', String(SPECS.review.densityMax))
+ok(SPECS.review.requireReviewWord === true, '제목에 「후기」 유지 (있음 4.77위 / 없음 5.81위)')
+{
+  // 1,835자(1~3위 중간값) 글이 통과해야 한다 — 예전 창(1,900~2,100)에서는 걸렸다
+  const r = checkPost({ type:'review', title:'쌍용동 헬스장 등록 후기', body:'가'.repeat(1835), mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
+  ok(r.items.find((i) => i.id === 'charCount').level === 'pass', '1,835자가 통과한다 (상위권 중간값)', r.items.find((i) => i.id === 'charCount').value)
+  const r2 = checkPost({ type:'review', title:'쌍용동 헬스장 등록 후기', body:'가'.repeat(2500), mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
+  ok(r2.items.find((i) => i.id === 'charCount').level === 'pass', '2,500자도 통과한다 (2,200~3,000 구간 1~3위 54%)', r2.items.find((i) => i.id === 'charCount').value)
+}
 ok(sysReview.includes('정확히 3회'), '후기글 메인 키워드 3회 지시')
 const sysPromo = buildSystemPrompt('promo')
 ok(sysPromo.includes('센터'), '홍보글 화자는 센터')
