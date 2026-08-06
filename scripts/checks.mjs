@@ -2801,14 +2801,16 @@ const wInfo = evWired.items.find((i) => i.id === 'info-substance')
 ok(wInfo.evidenceVerdict === 'supported' && wInfo.weight === 5, '근거가 센 항목은 비중을 올린다', String(wInfo.weight))
 ok(wInfo.evidence.includes('상위권이 실제로 이렇게 쓰고 있습니다'), '왜 올렸는지 말한다')
 /*
- * 「제목 앞쪽에 메인 키워드」는 근거만 붙이고 비중은 건드리지 않는다.
+ * 「제목 앞쪽에 메인 키워드」는 관찰 근거만 붙이고 비중은 건드리지 않는다.
  * 관찰이 재는 것은 제목 안 *위치*지만, 이 항목이 실제로 걸러내는 것은 제목에 키워드가
- * 아예 없는 글이다 — 그건 상관이 아니라 조건이다.
+ * 아예 없는 글이다 — 그건 상관이 아니라 조건이다. 실측 219편에서 제목에 있는 글은
+ * 77.3%가 상위 10에 들었고 없는 글은 22.6%였다. 그래서 관찰이 「무관」으로 나와도
+ * 가중치 5를 유지한다.
  */
 const wTitle = evWired.items.find((i) => i.id === 'titleKeyword')
 ok(wTitle.evidenceVerdict === 'flat', '약한 신호를 「갈린다」고 하지 않는다', wTitle.evidenceVerdict)
 ok(wTitle.evidence.includes('뚜렷하게 같이 움직이지 않았습니다'), '없는 갈등을 만들지 않는다', wTitle.evidence)
-ok(wTitle.weight === 4, '제목 키워드 항목은 근거가 약해도 비중을 내리지 않는다', String(wTitle.weight))
+ok(wTitle.weight === 5, '제목 키워드 항목은 근거가 약해도 비중을 내리지 않는다', String(wTitle.weight))
 
 /*
  * 「방향이 갈립니다」는 양쪽이 실제로 부딪힐 때만 쓴다.
@@ -3370,6 +3372,19 @@ ok(countDistribution([]).topMedian === null, '표본이 없으면 null (0 이라
  * 5회 이상이 오히려 평균 순위가 약간 좋았고, 5~6회 쓴 글에 1위(성정동 5회/1.3%)와
  * 2위(두정동 5회/1.9%)가 있었다.
  */
+/*
+ * 제목 항목이 횟수 항목보다 무겁다 — 실측 219편에서 걸리느냐를 가른 건 제목이었다
+ * (제목 있음 77.3% / 없음 22.6%). 제목에 있으면 본문 0회도 61.5% 걸렸다.
+ */
+{
+  const c = checkPost({ type:'promo', title:'쌍용동 헬스장 후기', body:'가'.repeat(1900), mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
+  const t = c.items.find((i) => i.id === 'titleKeyword')
+  const m = c.items.find((i) => i.id === 'mainCount')
+  ok(t.weight === 5, '제목에 키워드 = 가중치 5 (가장 무겁다)', String(t.weight))
+  ok(m.weight === 4, '메인 키워드 횟수 = 가중치 4 (제목보다 가볍다)', String(m.weight))
+  ok(t.weight > m.weight, '제목이 횟수보다 무겁다', `${t.weight} > ${m.weight}`)
+}
+
 ok(SPECS.promo.mainMin === 5, '홍보글 하한 5회 (안전성을 따로 확인했다)', String(SPECS.promo.mainMin))
 ok(SPECS.promo.mainMax === 7, '상한은 7 — 실질 상한은 밀도가 정한다', String(SPECS.promo.mainMax))
 // 겨냥할 값은 하한 5회다 (더 넣어서 오르지는 않으므로)
