@@ -6,6 +6,10 @@ import type { Post, PostStatus, PostType, Prescription, Sponsorship, Store } fro
 import { POST_STATUS_LABEL, POST_TYPE_LABEL, SPONSORSHIP_LABEL } from '@/lib/types'
 import { checkPost } from '@/lib/writing/checker'
 import { buildTemplate, hasGuides, stripGuides } from '@/lib/writing/templates'
+import { PUBLISH_THRESHOLD } from '@/lib/writing/checker'
+
+/** AI 가 돌려주는 초안 — 고쳐 쓰기 요청에 그대로 되돌려 보낸다 */
+type Draft = { title: string; body: string; tags?: string[] }
 import { adviseRotation, ANGLES, INFO_FORMATS, INTRO_TYPES, REVIEW_INTRO_TYPES, TOPIC_GROUPS } from '@/lib/writing/rotation'
 import { buildCopyPackage, postLogLine } from '@/lib/writing/export'
 import { isPrescriptionStale, prescriptionAgeDays } from '@/lib/analysis/prescription'
@@ -110,6 +114,14 @@ export default function Editor({
   /** AI 글쓰기 진행 상태·결과 안내 */
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMsg, setAiMsg] = useState<string | null>(null)
+  /**
+   * 고쳐 쓰기에 필요한 것 — 초안 생성이 85점 미만이면 채워진다.
+   *
+   * 예전에는 한 요청에서 쓰고 고치기를 다 했다. 2,000자 글 하나에 40~90초라 합치면
+   * 1~3분이고, Vercel 함수 한도를 넘기면 응답이 아예 오지 않았다. 그래서 두 번으로
+   * 나눴고, 두 번째는 회원이 눌러서 시작한다.
+   */
+  const [fixIssues, setFixIssues] = useState<string[] | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
 
   /*
@@ -259,8 +271,21 @@ export default function Editor({
     }
     if (body.trim() && !confirm('현재 제목·본문을 새로 쓴 글로 덮어씁니다. 계속할까요?')) return
 
+    await callWrite({})
+  }
+
+  /**
+   * `/api/write` 호출 한 번.
+   *
+   * `draft`·`issues` 를 함께 보내면 서버가 **고쳐 쓰기만** 한다. 응답이 JSON 이 아닌
+   * 경우(게이트웨이 시간초과 페이지 등)를 따로 잡아 쓸 수 있는 안내로 바꾼다 —
+   * 예전에는 그 상황에서 정체불명의 오류 문구만 떴다.
+   */
+  async function callWrite(extra: { draft?: Draft; issues?: string[] }) {
+    if (!store) return
+    const fixing = Boolean(extra.draft)
     setAiBusy(true)
-    setAiMsg('글을 쓰는 중입니다… 1~2분 걸립니다.')
+    setAiMsg(fixing ? '검수에서 걸린 항목을 고치는 중입니다… 1분쯤 걸립니다.' : '글을 쓰는 중입니다… 1분쯤 걸립니다.')
     try {
       const res = await fetch('/api/write', {
         method: 'POST',
@@ -275,19 +300,45 @@ export default function Editor({
           sponsorship,
           // 상위노출 분석에서 나온 처방 — 이게 빠지면 분석이 글에 반영되지 않는다
           prescription: useRx ? prescription?.items : undefined,
+          ...extra,
         }),
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? '글 생성에 실패했습니다.')
+      const raw = await res.text()
+      let json: {
+        draft?: Draft
+        revised?: boolean
+        improved?: number
+        needsRevise?: boolean
+        fixIssues?: string[]
+        provider?: string
+        error?: string
+        check?: { score?: number; issues?: unknown[] }
+      }
+      try {
+        json = JSON.parse(raw)
+      } catch {
+        // 서버가 JSON 을 안 준 경우 — 시간초과 페이지일 때가 많다
+        throw new Error(
+          res.status === 504 || res.status === 502
+            ? '서버가 제 시간에 답하지 못했습니다. 글쓰기는 한 번에 1분 안팎이 걸리는데, 배포 환경의 함수 실행 제한을 넘긴 것으로 보입니다. 다시 눌러보시고 계속 같으면 알려주세요.'
+            : `서버 응답을 읽지 못했습니다 (상태 ${res.status}).`
+        )
+      }
+      if (!res.ok || !json.draft) throw new Error(json.error ?? '글 생성에 실패했습니다.')
       setTitle(json.draft.title)
       setBody(json.draft.body)
       if (Array.isArray(json.draft.tags) && json.draft.tags.length) {
         setTagText(json.draft.tags.join(', '))
       }
+      const score = json.check?.score ?? 0
       const left = (json.check?.issues ?? []).length
+      // 고칠 거리가 남아 있으면 버튼을 띄운다 (두 번째 호출은 회원이 시작한다)
+      setFixIssues(score < PUBLISH_THRESHOLD && json.fixIssues?.length ? json.fixIssues : null)
       setAiMsg(
-        `${json.check?.score ?? 0}점으로 나왔습니다${json.revised ? ' (한 번 고쳐 쓴 결과)' : ''}. ` +
-          (left ? `아직 ${left}개 항목이 남았으니 오른쪽 검수를 보고 손보세요.` : '검수 항목을 모두 통과했습니다.') +
+        `${score}점으로 나왔습니다` +
+          (fixing ? (json.revised ? ` (고쳐서 ${json.improved}점 올랐습니다)` : ' (고쳐 써도 나아지지 않아 원래 글을 두었습니다)') : '') +
+          '. ' +
+          (left ? `아직 ${left}개 항목이 남았습니다.` : '검수 항목을 모두 통과했습니다.') +
           (json.provider ? ` · ${json.provider}` : '')
       )
     } catch (e) {
@@ -698,6 +749,17 @@ export default function Editor({
                       </span>
                       {aiBusy ? '쓰는 중…' : 'AI로 본문 쓰기'}
                     </button>
+                    {/* 두 번째 호출 — 초안이 85점 미만일 때만 보인다 */}
+                    {fixIssues && (
+                      <button
+                        type="button"
+                        onClick={() => callWrite({ draft: { title, body, tags }, issues: fixIssues })}
+                        disabled={aiBusy}
+                        className="bd rounded-full border px-3 py-2 text-xs font-bold hover:bg-slate-500/8 disabled:opacity-50"
+                      >
+                        {aiBusy ? '고치는 중…' : `검수 항목 고쳐 쓰기 (${fixIssues.length}개)`}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={insertTemplate}
