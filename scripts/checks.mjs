@@ -129,7 +129,7 @@ ok(c1.stats.imageCount === 6 && c1.stats.headings.length === 5, '이미지 6 / �
 ok(c1.score === PUBLISH_THRESHOLD - 6, '수정필요가 있으면 발행 구간 아래로 캡', `${c1.score} (캡 ${PUBLISH_THRESHOLD - 6})`)
 // 미달 항목을 정확히 지적하는지
 // 하한을 실측에 맞춰 3회로 내렸으므로 4회는 통과다 (예전 5회 하한에서는 warn 이었다)
-ok(c1.items.find(i => i.id === 'mainCount')?.level === 'pass', '메인KW 4회는 통과 (하한 3회)', c1.items.find(i => i.id === 'mainCount')?.value)
+ok(c1.items.find(i => i.id === 'mainCount')?.level === 'warn', '메인KW 4회는 warn (하한 5회에 1회 미달)', c1.items.find(i => i.id === 'mainCount')?.value)
 // 통과 하한을 1,750자로 내렸으므로 1,558자는 fail 이 아니라 warn 이다 (하한-250 = 1,500)
 ok(c1.items.find(i => i.id === 'charCount')?.level === 'warn', '1,558자는 warn (하한 1,750자에 조금 미달)', c1.items.find(i => i.id === 'charCount')?.value)
 ok(c1.items.find(i => i.id === 'titleKeyword')?.level === 'pass', '제목 앞쪽 키워드 pass')
@@ -862,7 +862,7 @@ ok(sysReview.includes('1,900') && sysReview.includes('2,100'), '후기글 글자
 ok(sysReview.includes('3~5회'), '후기글 메인 키워드 3~5회')
 const sysPromo = buildSystemPrompt('promo')
 ok(sysPromo.includes('센터'), '홍보글 화자는 센터')
-ok(sysPromo.includes('3~6회'), '홍보글 메인 키워드 3~6회 (실측으로 5~7에서 내렸다)')
+ok(sysPromo.includes('5~7회'), '홍보글 메인 키워드 5~7회 (안전성 확인 후 유지)')
 ok(sysPromo.includes('3회 이상'), '홍보글은 상호명 3회 이상 지시')
 const sysInfo = buildSystemPrompt('info')
 ok(sysInfo.includes('지역 키워드'), '정보글은 지역 키워드 조연 지시')
@@ -3263,7 +3263,7 @@ const rkCheck = checkPost({
   legalName: 'MTO 피트니스 쌍용점',
 })
 const rkItem = rkCheck.items.find((i) => i.id === 'mainCount')
-ok(rkItem.target.includes('3~6회'), '도달 가능한 범위를 목표로 준다', rkItem.target)
+ok(rkItem.target.includes('5~'), '도달 가능한 범위를 목표로 준다', rkItem.target)
 // 긴 키워드는 밀도 때문에 상한이 좁아진다 — 그 사정을 목표에 적는다
 const rkTight = checkPost({
   type: 'promo',
@@ -3355,9 +3355,22 @@ ok(kcMean > 7 && kcDist.topMedian === 4, '평균(7.3)은 튀는 값에 끌려간
 ok(countDistribution([{ rank: 1, value: null }, { rank: 2, value: 4 }]).n === 1, '못 읽은 글은 표본에서 뺀다')
 ok(countDistribution([]).topMedian === null, '표본이 없으면 null (0 이라고 하지 않는다)')
 
-// 하한을 5 → 3 으로 내렸다 (상위권 중간값 4.5보다 높은 하한은 억지로 채우게 만든다)
-ok(SPECS.promo.mainMin === 3, '홍보글 하한 3회 (제목 1 + 본문 2)', String(SPECS.promo.mainMin))
-ok(SPECS.promo.mainMax === 6, '상한은 6 — 실질 상한은 밀도가 정한다', String(SPECS.promo.mainMax))
+/*
+ * 하한은 5회로 둔다 — 「많이 넣어서 오르지는 않지만 5회가 위험하지도 않다」를 따로 재봤다.
+ *   5회 이상 15편 → 1~3위 6편 · 평균 순위 4.3
+ *   4회 이하 17편 → 1~3위 6편 · 평균 순위 4.6
+ * 5회 이상이 오히려 평균 순위가 약간 좋았고, 5~6회 쓴 글에 1위(성정동 5회/1.3%)와
+ * 2위(두정동 5회/1.9%)가 있었다.
+ */
+ok(SPECS.promo.mainMin === 5, '홍보글 하한 5회 (안전성을 따로 확인했다)', String(SPECS.promo.mainMin))
+ok(SPECS.promo.mainMax === 7, '상한은 7 — 실질 상한은 밀도가 정한다', String(SPECS.promo.mainMax))
+// 5회를 쓸 때 밀도가 안전선 안인지 (제목 1 + 본문 4)
+const kcSafe = (klen, chars) => Math.round(((4 * klen) / chars) * 10000) / 100
+ok(kcSafe(6, 1750) < 2, '6자 키워드 1,750자에서 5회 → 밀도 2% 안', String(kcSafe(6, 1750)))
+ok(kcSafe(8, 1750) < 2, '8자 키워드도 안전', String(kcSafe(8, 1750)))
+ok(kcSafe(9, 1750) > 2, '9자 키워드 짧은 분량은 초과한다 — 그래서 하한을 자동으로 낮춘다', String(kcSafe(9, 1750)))
+const kcLong = reachableKeywordRange({ keyword: '쌍용동 24시 헬스장', charCount: 1750, densityMax: 2, mainMin: 5, mainMax: 7, inTitle: 1 })
+ok(kcLong.min === 4 && kcLong.tight, '긴 키워드는 하한 5회를 요구하지 않는다', `${kcLong.min}~${kcLong.max}`)
 const kcCheck = checkPost({
   type: 'promo',
   title: '쌍용동 헬스장, 퇴근 늦어도 갈 수 있을까?',
@@ -3367,7 +3380,8 @@ const kcCheck = checkPost({
   tags: [],
   legalName: 'MTO 피트니스 쌍용점',
 })
-ok(kcCheck.items.find((i) => i.id === 'mainCount').level === 'pass', '3회면 통과한다 (예전 하한 5회에서는 걸렸다)', kcCheck.items.find((i) => i.id === 'mainCount').value)
+// 4회 = 주의(1회 미달) · 3회 이하 = 수정필요. 회원이 정한 하한 5회를 그대로 지킨다
+ok(kcCheck.items.find((i) => i.id === 'mainCount').level === 'fail', '3회는 하한 5회에 2회 미달이라 수정필요', kcCheck.items.find((i) => i.id === 'mainCount').value)
 
 // ─── 함께 쓰는 키워드 — 0회를 수정필요로 걸지 않는다 ───
 /*
