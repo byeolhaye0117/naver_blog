@@ -320,14 +320,21 @@ function keywordPositions(text: string, keyword: string): number[] {
   return out
 }
 
-function splitSentences(text: string): string[] {
+/**
+ * 문장 쪼개기.
+ *
+ * 상위노출 조사(scripts/study.mjs)가 **이 함수를 그대로** 쓴다 — 검수는 A 로 세고
+ * 조사는 B 로 세면 기준이 조용히 어긋난다.
+ */
+export function splitSentences(text: string): string[] {
   return text
     .split(/(?<=[.!?。…])\s+|\n+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 1)
 }
 
-function endingOf(sentence: string): string {
+/** 문장의 어미 갈래 (조사와 검수가 같은 기준을 쓰도록 내보낸다) */
+export function endingOf(sentence: string): string {
   const s = sentence.replace(/[.!?…\s]+$/, '')
   if (/습니다$|입니다$|됩니다$|립니다$|십니다$/.test(s)) return '~습니다'
   if (/어요$|아요$|에요$|예요$|해요$|세요$|요$/.test(s)) return '~요'
@@ -854,11 +861,11 @@ export function checkPost(input: CheckInput): CheckResult {
   /*
    * ─── 내용 균형 ───────────────────────────────────────────────
    *
-   * 상위 글 11편을 실제로 세보고 넣은 두 항목이다 (content.ts 주석).
-   *   1~3위 평균: 정보 5.2종류 · 홍보 2.0종류
-   *   4위 이하  : 정보 3.6종류 · 홍보 3.8종류
-   * 정보가 모자란 것과 홍보가 과한 것은 고칠 방법이 달라서(더하기 / 덜어내기)
-   * 한 항목으로 묶지 않고 따로 낸다.
+   * 141편 재측정으로 두 항목의 무게가 뒤바뀌었다 (content.ts 주석).
+   *   정보 종류: 3~4종류 1~3위 17% / 5종류 이상 40~43%  ← 이 앱에서 가장 센 신호 중 하나
+   *   홍보 종류: 1~2 36% · 3 32% · 4 19% · 5 47% · 6 43% · 7 이상 14%  ← 7 전까지 무의미
+   * 그래서 정보는 4→5, 홍보는 3→2 로 가중치를 옮겼다. 항목을 묶지 않는 이유는 그대로다 —
+   * 고치는 방향이 반대(더하기 / 합치기)이기 때문이다.
    */
   const balance = contentBalance(scanText, input.type)
   const infoMin = INFO_MIN_BY_TYPE[input.type]
@@ -877,19 +884,28 @@ export function checkPost(input: CheckInput): CheckResult {
     target:
       input.type === 'review'
         ? `${infoMin}종류면 충분 (후기는 순위보다 신뢰를 만드는 글)`
-        : `${infoMin}종류 이상 (상위 1~3위 평균 5.2)`,
+        : `${infoMin}종류 이상 (3~4종류 1~3위 17% / 5종류 이상 40~43%)`,
     hint: balance.level === 'thin' || balance.level === 'both' ? balance.infoNote : undefined,
-    weight: 4,
+    weight: 5,
   })
   add({
     id: 'promo-restraint',
     group: '내용 균형',
     label: '홍보 표현 절제',
-    level: level(balance.signals.promo <= promoMax, balance.signals.promo <= promoMax + 2),
+    /*
+     * 상한을 넘긴 정도로 등급을 나눈다. 다만 이 상한은 **순위 근거가 없다** — 두 번 재는
+     * 동안 홍보 종류 수는 순위를 가르지 않았고, 7종류 이상 칸은 14% → 44% 로 뒤집혔다
+     * (각각 7편·9편). 그래서 넘겨도 곧바로 실패로 몰지 않는다 (+1 까지 주의).
+     */
+    level: level(balance.signals.promo <= promoMax, balance.signals.promo <= promoMax + 1),
     value: `${balance.signals.promo}종류`,
-    target: `${promoMax}종류 이하 (상위 1~3위 평균 2.0)`,
+    target: `${promoMax}종류 이하 (순위 기준이 아니라 글의 목적 기준)`,
     hint: balance.level === 'pushy' || balance.level === 'both' ? balance.promoNote : undefined,
-    weight: 3,
+    /*
+     * 가중치 3 → 2. 홍보 종류 수는 순위를 가르지 않았다 (content.ts 재측정 표).
+     * 그래도 0 은 아니다 — 상한을 크게 넘긴 글은 전단지로 읽힌다.
+     */
+    weight: 2,
   })
 
   // ─── 저품질 위험 ─────────────────────────────────────────────

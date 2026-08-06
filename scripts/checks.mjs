@@ -2794,8 +2794,17 @@ ok(SPONSOR_LABEL.noMark === '표기 없음', '표기 없음을 그대로 부른�
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[50] 내용 균형 — 시설·이벤트만으로는 위로 못 간다')
-const { countSignals, contentBalance, INFO_MIN, INFO_MIN_BY_TYPE, PROMO_MAX, PROMO_MAX_BY_TYPE, INFO_WORDS, PROMO_WORDS } =
-  require(`${OUT}/analysis/content.js`)
+const {
+  countSignals,
+  contentBalance,
+  INFO_MIN,
+  INFO_MIN_BY_TYPE,
+  INFO_RELEASE,
+  PROMO_MAX,
+  PROMO_MAX_BY_TYPE,
+  INFO_WORDS,
+  PROMO_WORDS,
+} = require(`${OUT}/analysis/content.js`)
 
 // 종류를 센다 — 횟수를 세면 같은 말을 반복해 점수를 올릴 수 있다
 const cbRep = countSignals('자세 자세 자세 자세 자세 자세 자세 자세')
@@ -2804,17 +2813,34 @@ const cbMany = countSignals('자세와 루틴, 식단과 유산소, 스트레칭
 ok(cbMany.info === 5, '다른 말은 각각 센다', String(cbMany.info))
 ok(cbMany.infoFound.includes('루틴'), '무엇이 들어 있었는지 담는다')
 
-// 실측한 4위 글 — 홍보 표현을 다 넣은 글
-const cbPushy = contentBalance('상담 예약 이벤트 할인 영업시간 문의 주세요. 시설이 넓습니다.')
+/*
+ * 상한(6종류)을 넘긴 글 — 파는 말이 본문 전체에 깔린 상태.
+ * 예전엔 이 예시가 6종류로 걸렸는데, 141편 재측정으로 상한이 3→6 이 되면서
+ * 7종류를 넘겨야 걸린다. 실측에서 실제로 떨어진 지점이 거기다 (7종류 이상 1~3위 14%).
+ */
+const cbPushy = contentBalance(
+  '상담 예약 이벤트 할인 영업시간 문의 선착순 마감 지금 바로 오세요. 시설이 넓습니다.'
+)
 ok(cbPushy.signals.promo > PROMO_MAX, '홍보 표현이 많은 것을 잡는다', String(cbPushy.signals.promo))
 ok(cbPushy.level === 'both' || cbPushy.level === 'pushy', '판정', cbPushy.level)
-ok(cbPushy.promoNote.includes('한 곳에 모으고'), '무엇을 하라고 말한다')
-ok(cbPushy.promoNote.includes('1~3위 평균 2.0'), '실측 근거를 함께 준다')
+ok(cbPushy.promoNote.includes('한 곳에 합치세요'), '지우라고 하지 않고 합치라고 한다', cbPushy.promoNote)
+ok(!cbPushy.promoNote.includes('1~3위 평균 2.0'), '반증된 근거(1~3위 평균 2.0종류)를 더 대지 않는다')
+ok(cbPushy.promoNote.includes('순위 기준이 아닙니다'), '상한이 순위 근거가 아니라고 밝힌다')
+ok(cbPushy.promoNote.includes('혜택 내용은 그대로'), '혜택을 지우라고 하지 않는다')
+
+/*
+ * 홍보 6종류 — 예전 기준으로는 「과하다」였고 실측으로는 1~3위 43% 였다.
+ * 이제 통과해야 한다. 회원이 「이벤트 문구는 줄이지 않는다」고 한 지점이 이것이다.
+ */
+const cbSix = contentBalance('상담 예약 이벤트 할인 영업시간 문의 주세요. 자세와 호흡, 세트와 무게, 초보 회복까지 잡아드립니다.')
+ok(cbSix.signals.promo === 6, '홍보 6종류', String(cbSix.signals.promo))
+ok(cbSix.level === 'good', '정보가 충분하면 홍보 6종류도 통과한다 (실측 1~3위 43%)', cbSix.level)
 
 // 실측한 2위 글 모양 — 순수 소개글인데도 정보가 들어 있었다 (자세·식단·유산소·스트레칭)
 const cbOk = contentBalance(
   '쌍용역 5분 거리입니다. 유산소는 이 시간대에, 자세는 이렇게 잡으세요. 식단은 단백질부터. 스트레칭도 함께. 궁금하면 문의 주세요.'
 )
+// 정보 하한이 4→5 로 올라갔으므로 이 예시도 5종류다 (유산소·자세·식단·단백질·스트레칭)
 ok(cbOk.level === 'good', '정보가 있고 홍보가 절제되면 통과', cbOk.level)
 ok(cbOk.signals.info >= INFO_MIN, `정보 ${INFO_MIN}종류 이상`, String(cbOk.signals.info))
 ok(cbOk.infoNote.includes('상위권 수준'), '통과했다고 말해준다')
@@ -2825,14 +2851,14 @@ const cbThin = contentBalance(
 )
 ok(cbThin.level === 'thin' || cbThin.level === 'both', '시설·이벤트만 쓰면 걸린다', cbThin.level)
 ok(cbThin.infoNote.includes('무엇을 어떻게 한다'), '고치는 방법을 말한다', cbThin.infoNote)
-ok(cbThin.infoNote.includes('5.2종류'), '상위권 실측값을 근거로 준다')
+ok(cbThin.infoNote.includes('40~43%'), '계단이 있던 실측값을 근거로 준다', cbThin.infoNote)
 
 // 홍보가 하나도 없으면 그것도 알려준다 (우리 글은 상담으로 이어져야 한다)
 const cbNoPromo = contentBalance('자세와 루틴, 식단과 유산소, 스트레칭을 다룹니다.')
 ok(cbNoPromo.level === 'good', '정보만 있어도 균형 자체는 통과')
 ok(cbNoPromo.promoNote.includes('마지막에 한 번은 넣으세요'), '홍보가 0이면 넣으라고 한다')
 
-ok(INFO_MIN === 4 && PROMO_MAX === 3, '실측으로 잡은 기준선')
+ok(INFO_MIN === 5 && PROMO_MAX === 6, '141편 재측정으로 옮긴 기준선')
 ok(INFO_WORDS.includes('식단') && INFO_WORDS.includes('자세'), '정보 어휘')
 ok(PROMO_WORDS.includes('선착순'), '홍보 어휘에 마감 압박도 넣는다')
 
@@ -2851,8 +2877,28 @@ ok(Boolean(infoItem), '검수에 정보 항목이 있다')
 ok(Boolean(promoItem), '검수에 홍보 절제 항목이 있다')
 ok(infoItem.group === '내용 균형' && promoItem.group === '내용 균형', '같은 묶음에 둔다')
 ok(infoItem.level !== 'pass', '시설·이벤트만 쓴 글은 정보 항목에서 걸린다', infoItem.level)
-ok(promoItem.level !== 'pass', '홍보 표현이 많으면 걸린다', `${promoItem.value} ${promoItem.level}`)
-ok(infoItem.target.includes('5.2'), '목표에 상위권 실측값을 적는다', infoItem.target)
+/*
+ * 이 예시는 홍보 5종류(이벤트·상담·문의·예약·영업시간)다 — 실측 1~3위 47% 라서
+ * 이제 통과해야 한다. 예전엔 걸렸고, 그게 회원이 반박한 지점이었다.
+ */
+ok(promoItem.level === 'pass', '홍보 5종류는 통과한다 (실측 1~3위 47%)', `${promoItem.value} ${promoItem.level}`)
+ok(
+  promoItem.hint === undefined || !/줄이|덜어/.test(promoItem.hint),
+  '정보가 모자란 글에도 홍보를 줄이라고 하지 않는다',
+  String(promoItem.hint)
+)
+ok(infoItem.target.includes('40~43%'), '목표에 계단이 있던 실측값을 적는다', infoItem.target)
+ok(infoItem.weight === 5, '정보 종류는 이 앱에서 가장 센 신호급 (가중치 5)', String(infoItem.weight))
+ok(promoItem.weight === 2, '홍보 종류 수는 순위를 가르지 않아 가중치를 내렸다', String(promoItem.weight))
+
+/*
+ * 정보가 모자라고 홍보가 3종류 이상이면, 「줄이지 말고 정보를 더하라」고 말해야 한다.
+ * 실측: 정보 4종류 이하 글에서 홍보 2종류 이하 1~3위 17% / 3종류 초과 16% — 줄여도 안 오른다.
+ */
+const thinButPushy = contentBalance('런닝머신이 있습니다. 신규 등록 이벤트 상담 문의 주세요.', 'promo')
+ok(thinButPushy.level === 'thin', '정보만 모자란 판정', thinButPushy.level)
+ok(thinButPushy.promoNote.includes('이건 줄이지 마세요'), '홍보를 줄이지 말라고 명시한다', thinButPushy.promoNote)
+ok(thinButPushy.promoNote.includes('17%'), '줄여도 안 오른다는 실측을 붙인다')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[51] 유리한 글 유형 제안 — 앱이 보여주고 회원이 결정')
@@ -3125,7 +3171,12 @@ console.log('\n[54] 글의 목적에 따라 기준이 다르다 — 후기에 �
  * 그래서 후기의 정보 하한을 낮추고, 순위는 정보글·홍보글이 맡는다.
  */
 ok(INFO_MIN_BY_TYPE.info === 5, '정보글은 정보가 주인공 (상위권 평균 5.2)')
-ok(INFO_MIN_BY_TYPE.promo === 4, '홍보글은 시설·이벤트 말고 실행 정보까지')
+/*
+ * 홍보글 하한 4 → 5 (2026-08-06, 홍보 섞인 글 141편).
+ * 3~4종류 1~3위 17% 는 1~2종류 18% 와 구분되지 않았고, 5종류를 넘겨야 40~43% 가 됐다.
+ * 계단이 있는 자리에 기준선을 둔다.
+ */
+ok(INFO_MIN_BY_TYPE.promo === 5, '홍보글도 5종류 — 3~4종류로는 이득이 없었다 (17% vs 40~43%)')
 ok(INFO_MIN_BY_TYPE.review === 2, '후기글은 들은 말을 옮기는 정도로 족하다')
 ok(INFO_MIN_BY_TYPE.review > 0, '그래도 0 은 아니다 — 가져갈 게 하나도 없으면 안 된다')
 
@@ -3322,13 +3373,24 @@ ok(scanRisks('완치 사례가 있습니다').some((r) => r.category.startsWith(
 // ─────────────────────────────────────────────────────────────
 console.log('\n[57] 홍보 상한도 목적에 따라 다르다')
 /*
- * 홍보글에서 CTA 수단을 쓰면 상담·전화로 2종류가 필연적으로 소진된다. 상한 3 은
- * 홍보글에 「혜택 이름 하나만 쓰라」는 뜻이 되어, 정상 글이 주의를 맞았다.
- * 대신 정보글은 2 로 조인다 — 전체 압력은 그대로 두고 배분만 바꿨다.
+ * 홍보글 상한 4 → 6 (2026-08-06, 홍보 섞인 글 141편).
+ *   1~2종류 1~3위 36% · 3종류 32% · 4종류 19% · 5종류 47% · 6종류 43% · 7종류 이상 14%
+ * 6종류까지는 오르내리기만 하고 95% 구간이 전부 겹친다 — 상한이 필요한 지점은 7 하나다.
+ * 정보글·후기글의 더 낮은 상한은 **순위 근거가 아니라 목적 근거다** (content.ts 주석).
  */
-ok(PROMO_MAX_BY_TYPE.promo === 4, '홍보글은 4종류까지 (CTA 수단이 2종류를 쓴다)')
-ok(PROMO_MAX_BY_TYPE.info === 2, '정보글은 2종류로 조인다')
-ok(PROMO_MAX_BY_TYPE.review === 3, '후기글은 3종류')
+ok(PROMO_MAX_BY_TYPE.promo === 6, '홍보글은 6종류까지 — 순위 근거가 아니라 판단이다')
+ok(PROMO_MAX_BY_TYPE.info === 2, '정보글은 2종류로 조인다 (순위가 아니라 목적)')
+ok(PROMO_MAX_BY_TYPE.review === 3, '후기글은 3종류 (대가성 티가 저품질 위험)')
+ok(INFO_RELEASE === 5, '정보 5종류 이상이면 홍보를 더 세도 순위가 안 내려갔다')
+/*
+ * 회원이 반박한 지점을 그대로 고정한다 — "이벤트 문구는 줄이지 않아."
+ * 정보 5종류 + 홍보 4종류 이상 = 1~3위 39%, 홍보 1~3종류 = 43%. 구간이 겹친다.
+ */
+const KEEP_EVENT = '상담 예약 이벤트 할인 혜택 문의 주세요. 자세와 호흡, 세트와 무게, 초보 회복까지.'
+const keepEvent = contentBalance(KEEP_EVENT, 'promo')
+ok(keepEvent.signals.promo >= 4, '홍보 4종류 이상', String(keepEvent.signals.promo))
+ok(keepEvent.signals.info >= 5, '정보 5종류 이상', String(keepEvent.signals.info))
+ok(keepEvent.level === 'good', '이벤트 문구를 다 넣어도 통과한다 (실측 39% vs 43%)', keepEvent.level)
 const PM_TEXT = '상담은 전화로 받습니다. 신규 등록 혜택이 있습니다.'
 ok(countSignals(PM_TEXT).promo === 4, '상담·전화·신규·혜택 = 4종류', String(countSignals(PM_TEXT).promo))
 ok(contentBalance(PM_TEXT, 'promo').level !== 'pushy', '홍보글에서는 통과한다')
@@ -3602,9 +3664,24 @@ const rkSkel = buildTemplate('promo', {
   subKeywords: ['쌍용동 24시 헬스장', '쌍용동 PT'],
 })
 ok(rkSkel.includes('해결 (620~720자'), '해결 구간을 늘렸다 (500~600 → 620~720)')
-ok(rkSkel.includes('이벤트 본공개 (220~260자'), '이벤트를 줄였다 (280~320 → 220~260)')
+ok(rkSkel.includes('이벤트 본공개 (220~260자'), '이벤트 자수는 그대로 (220~260)')
 ok(rkSkel.includes('공감 (280~330자'), '공감도 조금 줄였다')
-ok(rkSkel.includes('줄인 자리다'), '왜 줄였는지 적는다')
+/*
+ * 「줄인 자리다」를 뺐다 (2026-08-06). 홍보 종류 수는 순위와 무관했고, 회원이 그대로
+ * 반박한 지점이다 — "이벤트 문구는 줄이지 않아." 자수 예산은 유지하되(전체 분량을 지켜야
+ * 하므로) 「줄여라」는 말과 반증된 근거를 골격에서 지웠다.
+ */
+ok(!rkSkel.includes('줄인 자리다'), '이벤트를 줄이라고 하지 않는다')
+ok(!rkSkel.includes('1~3위 평균 2.0종류'), '반증된 근거를 골격에 남기지 않는다')
+ok(rkSkel.includes('줄이지 않는다'), '오히려 줄이지 말라고 적는다')
+ok(rkSkel.includes('「상담」68%'), '상위권이 실제로 쓴 홍보 낱말을 근거로 준다')
+ok(
+  rkSkel.includes('정보 3~4종류는 1~3위 17%') && rkSkel.includes('5종류 이상'),
+  '대신 정보 5종류를 요구한다 — 계단이 있던 쪽'
+)
+ok(!buildSystemPrompt('promo').includes('1~3위 평균 2.0종류'), 'AI 지시문에서도 반증된 근거를 지웠다')
+ok(buildSystemPrompt('promo').includes('줄이지 않는다'), 'AI 지시문도 이벤트를 줄이지 말라고 한다')
+ok(buildSystemPrompt('promo').includes('정보 5종류 이상'), 'AI 지시문이 정보 5종류를 요구한다')
 ok(buildSystemPrompt('promo').includes('해결 620~720자'), 'AI 지시문도 같은 숫자')
 ok(buildSystemPrompt('promo').includes('이벤트 220~260자'), 'AI 지시문 이벤트도 같은 숫자')
 
@@ -3728,6 +3805,97 @@ ok(subCheck(4).hint.includes('메인 키워드 자리를 잡아먹습니다'), '
 // 밀도는 순위 규칙이 아니라 안전선이라고 밝힌다
 const dnItem = kcCheck.items.find((i) => i.id === 'density')
 ok(dnItem.target.includes('스터핑 안전선'), '밀도의 성격을 밝힌다', dnItem.target)
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[70] 상위노출 조사 판정 규칙 — 표본 오차를 발견으로 착각하지 않는다')
+/*
+ * 이 묶음이 지키는 것은 「기준을 언제 바꾸는가」다 (lib/analysis/study.ts).
+ * 이 규칙이 느슨하면 앱의 모든 기준이 우연을 따라 움직인다 — 실제로 11편 표본으로 잡은
+ * 기준 하나가 141편에서 뒤집혔고, 그게 이 도구를 만든 이유다.
+ */
+const { wilson, mergeRuns, boundaryScan, verdictFor, MIN_SIDE, MIN_SAMPLE } =
+  require(`${OUT}/analysis/study.js`)
+
+// ─── Wilson 구간 ───
+const [w5lo, w5hi] = wilson(5, 10)
+ok(w5lo < 0.3 && w5hi > 0.7, '10편 중 5편은 「50%」가 아니라 24~76% 다', `${(w5lo*100).toFixed(0)}~${(w5hi*100).toFixed(0)}%`)
+const [w50lo, w50hi] = wilson(50, 100)
+ok(w50hi - w50lo < w5hi - w5lo, '편수가 늘면 구간이 좁아진다')
+ok(wilson(0, 8)[0] === 0, '0건이면 하한은 0')
+ok(wilson(8, 8)[1] === 1, '전부 맞으면 상한은 1')
+ok(wilson(0, 8)[1] > 0.2, '0/8 이어도 「0%」라고 단정하지 않는다', String(wilson(0, 8)[1]))
+const [wz1, wz2] = wilson(0, 0)
+ok(wz1 === 0 && wz2 === 1, '편수 0은 「모른다」(0~1)로 돌려준다')
+
+// ─── 런 합치기 ───
+const mkPost = (url, rank, extra = {}) => ({
+  url, blogId: url.slice(-3), title: url, ranks: { '쌍용동 헬스장': rank },
+  chars: 2000, images: 8, videos: 0, paras: 12, longestPara: 200, avgPara: 150,
+  info: 6, promo: 3, experience: 2, infoFound: [], promoFound: [], topEnding: '~요',
+  topEndingShare: 40, ...extra,
+})
+const mergeIn = [
+  { date: '2026-08-01', keywords: ['쌍용동 헬스장'], top: 10, posts: [mkPost('a', 2), mkPost('b', 1), mkPost('c', 8)] },
+  { date: '2026-08-08', keywords: ['쌍용동 헬스장'], top: 10, posts: [mkPost('a', 3), mkPost('b', 9), mkPost('d', 2)] },
+]
+const merged = mergeRuns(mergeIn)
+const byUrl = Object.fromEntries(merged.map((m) => [m.url, m]))
+ok(merged.length === 4, '네 글로 합쳐진다 (a·b·c·d)', String(merged.length))
+ok(byUrl.a.runs === 2 && byUrl.c.runs === 1, '런에 몇 번 나왔는지 센다')
+ok(byUrl.a.held === true, '두 런 다 3위 안이면 「유지」다')
+ok(byUrl.b.held === false, '한 번 밀려나면 유지가 아니다 (1위 → 9위)')
+ok(byUrl.d.held === false, '한 번만 나온 글은 유지라고 하지 않는다 — 아직 모른다')
+ok(byUrl.c.held === false, '한 번 나온 하위권도 당연히 아니다')
+ok(byUrl.a.best === 2.5, '순위는 런별 최고순위의 중간값', String(byUrl.a.best))
+ok(byUrl.b.firstBest === 1 && byUrl.b.lastBest === 9, '처음과 마지막을 따로 남긴다 (내려간 글 찾기)')
+// 측정값은 최근 런의 것 — 글이 그 사이 수정되었을 수 있다
+const reEdited = mergeRuns([
+  { date: '2026-08-01', keywords: ['k'], top: 10, posts: [mkPost('e', 2, { chars: 1000 })] },
+  { date: '2026-08-08', keywords: ['k'], top: 10, posts: [mkPost('e', 2, { chars: 3000 })] },
+])
+ok(reEdited[0].chars === 3000, '측정값은 가장 최근 런의 것을 쓴다', String(reEdited[0].chars))
+ok(reEdited[0].runs === 2, '그래도 이력은 둘 다 센다')
+
+// ─── 경계 찾기 ───
+const rowsFor = (spec) => spec.flatMap(([value, n, hits]) =>
+  Array.from({ length: n }, (_, i) => ({ v: value, best: i < hits ? 2 : 8 })))
+// 확실히 갈리는 자료: 5 이상은 40편 중 32편이 1~3위, 미만은 40편 중 4편
+const clear = boundaryScan(rowsFor([[6, 40, 32], [3, 40, 4]]), (r) => r.v, { kind: 'min', candidates: [3, 5, 6] })
+ok(clear.pick !== null, '구간이 갈리면 경계를 집는다')
+ok(clear.pick.separated === true, '갈렸다고 표시한다')
+ok(clear.pick.c === 5 || clear.pick.c === 6, '갈린 경계를 집는다', String(clear.pick.c))
+
+// 우연 수준의 차이: 구간이 겹치면 아무 말도 하지 않는다 (이 도구의 핵심)
+const noisy = boundaryScan(rowsFor([[6, 20, 8], [3, 20, 6]]), (r) => r.v, { kind: 'min', candidates: [5] })
+ok(noisy.pick === null, '차이가 표본 오차 안이면 경계를 집지 않는다')
+ok(noisy.rows[0].gap > 0, '차이 자체는 있었다 (그래도 집지 않는다)', noisy.rows[0].gap.toFixed(2))
+ok(noisy.rows[0].separated === false, '겹쳤다고 표시한다')
+
+// 한쪽이 MIN_SIDE 미만인 경계는 건너뛴다 — 4편으로 「40% 였다」를 말할 수 없다
+const lopsided = boundaryScan(rowsFor([[6, 60, 30], [3, 4, 0]]), (r) => r.v, { kind: 'min', candidates: [5] })
+ok(lopsided.rows[0].skip === true, `한쪽이 ${MIN_SIDE}편 미만이면 건너뛴다`)
+ok(lopsided.pick === null, '건너뛴 경계는 집히지 않는다')
+
+// 상한(max)은 방향이 반대다
+const maxScan = boundaryScan(rowsFor([[3, 40, 32], [9, 40, 4]]), (r) => r.v, { kind: 'max', candidates: [5] })
+ok(maxScan.pick !== null && maxScan.pick.goodRate > maxScan.pick.badRate, '상한에서는 값이 작은 쪽이 good')
+
+// ─── 판정 ───
+ok(verdictFor(5, clear, 10, 'min') === 'insufficient', `대상이 ${MIN_SAMPLE}편 미만이면 판정하지 않는다`)
+ok(verdictFor(5, noisy, 80, 'min') === 'keep', '겹치면 유지')
+ok(verdictFor(clear.pick.c, clear, 80, 'min') === 'confirmed', '데이터가 지금 값을 가리키면 확인')
+/*
+ * 여기가 이 규칙에서 가장 중요한 갈래다.
+ *
+ * 하한 항목에서 이 도구가 찾는 것은 「이 아래로 내려가면 확실히 불리한 지점」(절벽)이다.
+ * 글자수 절벽이 1,200자에 있다고 해서 목표를 1,200자로 **내리라는** 뜻이 아니다 —
+ * 우리 기준 1,750자는 절벽 위쪽, 안전한 자리다. 이 갈래가 없으면 도구가 앱을 나쁜 쪽으로
+ * 끌고 간다 (실제로 첫 판에서 「제안: 1750 → 1200」이라고 출력했다).
+ */
+ok(verdictFor(1750, clear, 80, 'min') === 'stricter', '하한이 절벽보다 높으면 「유지」쪽이다 (내리라는 뜻이 아니다)')
+ok(verdictFor(2, clear, 80, 'min') === 'change', '하한이 절벽보다 낮으면 고쳐야 한다')
+ok(verdictFor(2, maxScan, 80, 'max') === 'stricter', '상한이 절벽보다 낮으면 안전한 쪽')
+ok(verdictFor(9, maxScan, 80, 'max') === 'change', '상한이 절벽보다 높으면 고쳐야 한다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
