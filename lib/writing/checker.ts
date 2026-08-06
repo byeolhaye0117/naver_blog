@@ -889,17 +889,31 @@ export function checkPost(input: CheckInput): CheckResult {
 
   // ─── AI 티 제거 ─────────────────────────────────────────────
   const total = sentences.length || 1
-  const formalRate = Math.round(((sentenceEndings['~습니다'] ?? 0) / total) * 100)
+  /*
+   * **「~습니다」만 보던 것을 「가장 많은 어미」로 넓혔다** (2026-08-06 실측 161편).
+   *
+   * 어미가 한쪽으로 몰린 정도별 순위가 이렇게 갈렸다.
+   *
+   *   골고루 (한 어미 40% 이하)   9편  평균 4.22위 · 1~3위 44%
+   *   보통 (40~55%)            62편       5.19위 ·       35%
+   *   한쪽으로 (55~70%)         63편       5.22위 ·       33%
+   *   거의 하나 (70% 이상)       27편       6.30위 ·       19%
+   *
+   * 몰리는 어미가 「~습니다」가 아니어도 같다 — 하위권은 명사형 마침(「~완비」「~운영」)이
+   * 많았다 (1~3위 13% / 6위 이하 18%). 그래서 어미 종류를 가리지 않고 최다 어미를 본다.
+   */
+  const topEnding = Object.entries(sentenceEndings).sort((a, b) => b[1] - a[1])[0]
+  const dominantRate = topEnding ? Math.round((topEnding[1] / total) * 100) : 0
   add({
     id: 'endings',
     group: 'AI 티 제거',
     label: '어미 다양성',
-    level: level(formalRate <= 65, formalRate <= 80),
-    value: `"~습니다" ${formalRate}%`,
-    target: '65% 이하',
+    level: level(dominantRate <= 55, dominantRate <= 70),
+    value: topEnding ? `"${topEnding[0]}" ${dominantRate}%` : '문장 없음',
+    target: '한 어미 55% 이하 (상위권은 골고루 쓸수록 위에 있었습니다)',
     hint:
-      formalRate > 65
-        ? '"~요", "~거든요", 짧은 명사형 마침을 사이사이에 섞으세요. 한 어미만 연속되면 기계 냄새가 납니다.'
+      dominantRate > 55
+        ? '한 어미로 몰려 있습니다. 상위권 문체는 "~습니다" 25~30% · "~요/~죠" 30~40% · "~다" 10~15% · 명사형 15% 이하로 섞여 있었습니다.'
         : undefined,
     weight: 2,
   })
@@ -919,6 +933,54 @@ export function checkPost(input: CheckInput): CheckResult {
       variance < 40
         ? '문장 길이가 고르면 기계가 쓴 글처럼 읽힙니다. 긴 설명 뒤에 짧은 문장 하나를 넣으세요.'
         : undefined,
+    weight: 2,
+  })
+
+  /*
+   * ─── 문단 쪼개기 (2026-08-06 실측 160편) ───────────────────
+   *
+   * **문단 길이 자체는 순위와 무관했다.** 문단 길이 중간값이 1~3위 142자 · 4~6위 154자 ·
+   * 7~10위 131자로 방향이 없다. 그래서 「몇 자로 써라」는 규칙은 두지 않는다.
+   *
+   * 갈린 것은 **덩어리로 썼는지**였다.
+   *
+   *   문단 3~5개    5편 → 1~3위  0%   (그 글들의 문단 중간값이 322자였다)
+   *   문단 6~9개   21편 → 1~3위 24%
+   *   문단 10~14개 39편 → 1~3위 36%
+   *   문단 15개 이상 94편 → 1~3위 35%
+   *
+   *   가장 긴 문단이 본문의 40% 이상   4편 → 1~3위 0%
+   *   상위권의 가장 긴 문단 중간값 308자 · 최대 문단 비중 중간값 10%
+   *
+   * 문단 수는 글 길이에 딸린 값이라 절대 개수로 걸면 짧은 글이 억울해진다. 그래서
+   * **평균과 최대 길이**로 본다 — 같은 것을 재면서 길이에 공정하다.
+   *
+   * 우리 골격은 7단계라 그대로 쓰면 문단이 6~7개다. 특히 「해결 620~720자」를 한 덩어리로
+   * 쓰면 그 문단만 본문의 35% 근처가 되는데 그 구간에 1~3위가 없다.
+   */
+  const paras = prose
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter((l) => l.replace(/\s/g, '').length >= 20)
+  const paraLens = paras.map((l) => l.replace(/\s/g, '').length)
+  const longestPara = paraLens.length ? Math.max(...paraLens) : 0
+  const paraTotal = paraLens.reduce((a, b) => a + b, 0)
+  const paraAvg = paraLens.length ? Math.round(paraTotal / paraLens.length) : 0
+  // 문단이 3개도 안 되면 길이를 볼 것 없이 한 덩어리다 (짧은 글도 예외가 아니다)
+  const chunky = paras.length < 3 || longestPara > 300 || paraAvg > 250
+  const veryChunky = paras.length < 2 || longestPara > 400 || paraAvg > 330
+  add({
+    id: 'paraShape',
+    group: '분량·구조',
+    label: '문단 쪼개기',
+    level: level(!chunky, !veryChunky),
+    value: paras.length
+      ? `${paras.length}개 · 평균 ${paraAvg}자 · 최대 ${longestPara}자`
+      : '문단 없음',
+    target: '평균 250자 이하 · 가장 긴 문단 300자 이하',
+    hint: chunky
+      ? '단계를 한 덩어리로 쓰지 마세요. 문단이 3~5개인 글은 1~3위가 한 편도 없었고, 한 문단이 본문의 40%를 넘는 글도 없었습니다 — 긴 문단을 두세 개로 끊으세요.'
+      : undefined,
     weight: 2,
   })
 
