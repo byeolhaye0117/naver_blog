@@ -11,6 +11,7 @@ import type { Post, PostType, Store } from '../types'
 import { POST_TYPE_LABEL } from '../types'
 import { SPECS } from '../writing/checker'
 import { RISK_TERMS } from '../writing/banned'
+import { prescriptionForType } from '../analysis/prescription'
 
 export interface WriteRequest {
   type: PostType
@@ -174,7 +175,15 @@ export function buildSystemPrompt(type: PostType): string {
     '- **어미를 섞는다. 한 어미가 55%를 넘지 않게.** 상위권 배합: "~습니다" 25~30% · "~요/~죠" 30~40% · "~다" 10~15% · 명사형 마침 15% 이하. 어미가 한쪽으로 70% 넘게 몰린 글은 평균 6.30위였다 (골고루 쓴 글은 4.22위).',
     '- **명사형 마침을 남발하지 않는다.** "24시간 운영", "샤워실 완비" 같은 마침은 하위권 특징이다 (1~3위 13% / 6위 이하 18%). 스펙 나열체로 읽힌다.',
     '- **숫자는 1,000자당 20개 미만.** 35개 이상 쓴 글은 평균 7.11위였다. 가격·개수를 늘어놓지 않는다.',
-    '- **구어체를 1,000자당 2회 이상** 섞는다 ("거든요", "더라고요", "잖아요", "~는데요").',
+    /*
+     * **예시 낱말을 유형별로 나눈다.** 예전에는 모든 유형에 "더라고요"를 예시로 줬는데,
+     * 그건 방문자 후기의 대표 어미다 — 홍보글 스킬이 「여기 괜찮더라고요」를 제3자 후기
+     * 톤으로 금지하고 있는데 지시문이 그것을 쓰라고 하고 있었다. 모델에게 반대말을 준 셈이고,
+     * 실제로 홍보글이 후기 말투로 나왔다.
+     */
+    type === 'review'
+      ? '- **구어체를 1,000자당 2회 이상** 섞는다 ("거든요", "더라고요", "잖아요", "~는데요") — 방문자 말투다.'
+      : '- **구어체를 1,000자당 2회 이상** 섞는다 ("거든요", "~는데요", "~니까요", "말씀드릴게요"). **"더라고요", "가봤더니", "괜찮았어요" 같은 방문자 말투는 쓰지 않는다** — 이 글은 센터가 쓴다.',
     '- 문장 길이는 중간값 40~42자로 들쭉날쭉하게. 짧은 문장만 나열하지도 않는다 (15자 이하 문장은 10% 정도).',
     '- 이모지는 1,000자당 4개까지 자연스럽다 — 상위권이 하위권보다 오히려 많이 썼다.',
     '- "첫째, 둘째" 나열, "바쁜 현대인의 일상 속에서" 류 도입, 형용사 3개 연속을 쓰지 않는다.',
@@ -250,8 +259,16 @@ export function buildUserPrompt(req: WriteRequest): string {
   }
 
   if (req.prescription?.length) {
-    lines.push('', '## 상위노출 분석 결과 (이 조건을 맞춘다)')
-    for (const p of req.prescription.slice(0, 6)) lines.push(`- ${p}`)
+    /*
+     * **유형에 맞게 걸러서 넣는다.** 처방은 키워드 단위로 저장되어 글 유형을 모른다.
+     * 걸러내지 않으면 「우리도 방문 후기 형태로 맞붙어라」가 홍보글 지시문으로 가고,
+     * 실제로 그래서 홍보글이 후기 톤으로 나왔다 (prescriptionForType 주석 참고).
+     */
+    const rx = prescriptionForType(req.prescription, req.type)
+    if (rx.length) {
+      lines.push('', '## 상위노출 분석 결과 (이 조건을 맞춘다)')
+      for (const p of rx.slice(0, 6)) lines.push(`- ${p}`)
+    }
   }
 
   if (req.recent?.length) {

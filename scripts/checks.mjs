@@ -143,7 +143,11 @@ console.log('\n[5] 위험한 글은 낮은 점수')
 const badPromo = { ...goodPromo, title: '최고의 헬스장! 지역 1위!', body: '저희는 최고의 시설과 무조건 확실히 빠지는 프로그램으로 한 달 5kg 감량 보장합니다. 통증 치료도 가능하고 할인 할인 할인 특가 이벤트 이벤트 이벤트 무료 무료 혜택 혜택 혜택입니다. 010-1111-2222 010-3333-4444', tags: [] }
 const c2 = checkPost(badPromo)
 console.log(`  점수 ${c2.score} · 위험표현 ${c2.risks.length}건 (즉시수정 ${c2.risks.filter(r=>r.level==='fail').length}건)`)
-ok(c2.score < 40, '위험한 글은 40점 미만', `${c2.score}`)
+/*
+ * 화자 검사(가중치 5)가 새로 생겨서 이 글이 통과하는 항목이 하나 늘었다 —
+ * 홍보글이고 방문자 말투는 없으니 화자는 맞다. 그래서 하한을 발행 기준 기준으로 표현한다.
+ */
+ok(c2.score < PUBLISH_THRESHOLD - 40, '위험한 글은 발행 기준보다 40점 이상 낮다', `${c2.score}`)
 ok(c2.risks.length >= 6, '위험표현 다수 탐지', `${c2.risks.length}건`)
 
 // ─────────────────────────────────────────────────────────────
@@ -901,6 +905,52 @@ const sysReview = buildSystemPrompt('review')
   ok(fresh.items[0] === '제목은 38~40자로 맞추세요.', '커트라인이 아닌 처방은 건드리지 않는다')
   const noCut = findPrescription([{ ...stored, items: ['제목은 38~40자로 맞추세요.'] }], '쌍용동헬스장')
   ok(noCut.items.length === 1, '커트라인 문장이 없으면 그대로 돌려준다')
+}
+
+/*
+ * 화자 검사 — 회원이 홍보글을 요청했는데 제목에 「후기」가 박히고 본문이 방문자 말투로
+ * 나왔다. 검수에 화자를 보는 항목이 없어서 그대로 통과했다.
+ */
+{
+  const paras = Array.from({ length: 14 }, () => '가'.repeat(130)).join('\n\n')
+  const base = { mainKeyword: '쌍용동 헬스장', subKeywords: [], tags: [], legalName: '천안점' }
+  // 홍보글인데 제목에 「후기」
+  const t1 = checkPost({ ...base, type: 'promo', title: '쌍용동 헬스장 24시간 운영 시설 후기', body: paras })
+  const v1 = t1.items.find((i) => i.id === 'voice')
+  ok(v1.level === 'fail', '홍보글 제목에 「후기」가 있으면 걸린다', v1.value)
+  ok(v1.weight === 5, '화자는 무겁게 본다 (겪지 않은 일을 겪은 척하는 문제다)', String(v1.weight))
+  // 홍보글인데 본문이 방문자 말투
+  const t2 = checkPost({ ...base, type: 'promo', title: '쌍용동 헬스장 어디가 좋을까요', body: `${paras}\n\n직접 가봤더니 시설이 괜찮더라고요.` })
+  ok(t2.items.find((i) => i.id === 'voice').level === 'fail', '홍보글 본문의 방문자 말투도 걸린다', t2.items.find((i) => i.id === 'voice').value)
+  // 제대로 쓴 홍보글은 통과
+  const t3 = checkPost({ ...base, type: 'promo', title: '쌍용동 헬스장 어디가 좋을까요', body: paras })
+  ok(t3.items.find((i) => i.id === 'voice').level === 'pass', '센터 말투 홍보글은 통과', t3.items.find((i) => i.id === 'voice').value)
+  // 후기글은 반대 — 소속 1인칭이 걸린다
+  const t4 = checkPost({ ...base, type: 'review', title: '쌍용동 헬스장 등록 후기', body: `${paras}\n\n저희 센터는 24시간 운영합니다.` })
+  ok(t4.items.find((i) => i.id === 'voice').level === 'fail', '후기글에 소속 1인칭이 있으면 걸린다', t4.items.find((i) => i.id === 'voice').value)
+  const t5 = checkPost({ ...base, type: 'review', title: '쌍용동 헬스장 등록 후기', body: `${paras}\n\n상담만 받고 나왔는데 부담이 없었어요.` })
+  ok(t5.items.find((i) => i.id === 'voice').level === 'pass', '방문자 말투 후기글은 통과', t5.items.find((i) => i.id === 'voice').value)
+}
+
+/*
+ * 처방을 유형에 맞게 걸러야 한다 — 「우리도 방문 후기 형태로 맞붙어라」가 홍보글
+ * 지시문으로 가서 실제로 후기 톤 글이 나왔다.
+ */
+{
+  const { prescriptionForType } = require(`${OUT}/analysis/prescription.js`)
+  const RX = [
+    '제목은 38~40자로 맞추세요.',
+    '상위 제목에 반복되는 말: PT, 후기, 추천, 시설. 검색하는 사람이 실제로 알고 싶은 게 이쪽이라는 신호이니 소제목에 반영하세요.',
+    '상위 제목에 다른 업체 이름("미녀와야수짐")이 반복됩니다 — 그 업체 후기 글이 이 키워드를 먹고 있다는 뜻입니다. 우리도 방문 후기 형태로 맞붙거나, 세부 의도를 붙여 우회하세요. (그 이름을 우리 글에 쓰면 남의 가게를 홍보하는 셈이니 쓰지 마세요.)',
+  ]
+  const promo = prescriptionForType(RX, 'promo')
+  ok(!promo.some((l) => l.includes('방문 후기 형태로 맞붙')), '홍보글에 후기로 맞붙으라고 하지 않는다')
+  ok(promo.some((l) => l.includes('후기로 맞붙지 않습니다')), '왜 안 되는지와 대안을 알려준다')
+  const words = promo.find((l) => l.includes('반복되는 말'))
+  ok(!words.includes('후기'), '반영할 낱말 목록에서 「후기」를 뺀다', words)
+  ok(words.includes('PT') && words.includes('추천'), '나머지 낱말은 그대로 둔다', words)
+  ok(promo[0] === '제목은 38~40자로 맞추세요.', '관계없는 처방은 건드리지 않는다')
+  ok(prescriptionForType(RX, 'review').join() === RX.join(), '후기글에는 그대로 넘긴다')
 }
 
 ok(sysReview.includes('방문객'), '후기글 화자는 방문객')
