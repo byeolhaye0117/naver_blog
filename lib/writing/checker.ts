@@ -995,7 +995,12 @@ export function checkPost(input: CheckInput): CheckResult {
   const per1k = (n: number) => (charCount ? (n / charCount) * 1000 : 0)
   const bangRate = per1k((prose.match(/!/g) ?? []).length)
   const emojiRate = per1k((prose.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu) ?? []).length)
-  const firstPerson = (prose.match(/제가|저는|저도/g) ?? []).length
+  /*
+   * 「저희」는 세지 않는다 — 그게 소속 1인칭이고, 그것만 반복하는 글이 회사 공지문이다.
+   * 다만 「저한테」·「저에게」는 사람이 말하는 1인칭이라 센다 (실제 초안에서 「저한테 제일
+   * 먼저 물으시는 게」를 놓쳐 통과해야 할 글에 주의를 줬다).
+   */
+  const firstPerson = (prose.match(/제가|저는|저도|저한테|저에게|저희가 보기/g) ?? []).length
   // 후기글 화자는 방문객이라 「저희 센터」가 없는 게 정상이다 — 센터 1인칭은 홍보·정보만 본다
   const stiff = input.type !== 'review' && firstPerson === 0
   const loud = bangRate > 6 || emojiRate > 8
