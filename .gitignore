@@ -15,3 +15,6 @@ data/db.json
 
 .DS_Store
 *.log
+
+# 상위노출 조사가 받아온 원본 HTML — 다시 받으면 되므로 커밋하지 않는다
+study/.cache/
