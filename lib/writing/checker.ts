@@ -980,6 +980,44 @@ export function checkPost(input: CheckInput): CheckResult {
     weight: 2,
   })
 
+  /*
+   * ─── 톤 (딱딱함 ↔ 가벼움) ─────────────────────────────────────
+   *
+   * **순위 기준이 아니다.** 방문자 화자를 걸러낸 81편에서 톤 지표는 전부 |ρ| ≤ 0.22 이고
+   * 95% 구간이 겹쳤다 (느낌표 +0.13 · 이모지 -0.05 · 1인칭 -0.04 · 감정 낱말 -0.09).
+   * 그래서 이 항목의 가중치는 2 이고, 목표 문구에도 순위 기준이 아니라고 밝힌다.
+   *
+   * 그래도 넣는 이유는 회원이 말한 문제가 실재하기 때문이다 — "업체 화자니까 너무 가벼워
+   * 보여도 안 되지만, 너무 무거워서 가까워지기 어려운 톤이면 안 된다." 양쪽 극단만 잡는다.
+   *   딱딱한 쪽: 센터 1인칭(「제가」·「저는」)이 한 번도 없음 → 회사 공지문이 된다
+   *   가벼운 쪽: 느낌표·이모지 남발 (상위권 중간값의 두 배를 넘김)
+   */
+  const per1k = (n: number) => (charCount ? (n / charCount) * 1000 : 0)
+  const bangRate = per1k((prose.match(/!/g) ?? []).length)
+  const emojiRate = per1k((prose.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu) ?? []).length)
+  const firstPerson = (prose.match(/제가|저는|저도/g) ?? []).length
+  // 후기글 화자는 방문객이라 「저희 센터」가 없는 게 정상이다 — 센터 1인칭은 홍보·정보만 본다
+  const stiff = input.type !== 'review' && firstPerson === 0
+  const loud = bangRate > 6 || emojiRate > 8
+  add({
+    id: 'tone',
+    group: 'AI 티 제거',
+    label: '톤 (딱딱함 · 가벼움)',
+    level: stiff && loud ? 'fail' : stiff || loud ? 'warn' : 'pass',
+    value: loud
+      ? `느낌표 ${bangRate.toFixed(1)} · 이모지 ${emojiRate.toFixed(1)} (1,000자당)`
+      : stiff
+        ? '센터 1인칭 0회'
+        : '통과',
+    target: '순위 기준이 아니라 우리 톤 기준입니다 (실측에서 톤은 순위와 무관했습니다)',
+    hint: stiff
+      ? '「저희 센터는」만 반복하면 회사 공지문이 됩니다. 「제가」를 넣어 운영하는 사람이 말하고 있다는 걸 드러내세요 — 예) "제가 상담할 때 가장 많이 듣는 말이 이겁니다."'
+      : loud
+        ? `느낌표·이모지가 많습니다 (상위권 중간값은 1,000자당 느낌표 3.3개 · 이모지 3.9개). 업체 글에서 남발하면 전단지로 읽힙니다 — 느낌표는 문단당 1개 이하, 이모지는 구간마다 1개까지로 줄이세요.`
+        : undefined,
+    weight: 2,
+  })
+
   const lengths = sentences.map((s) => s.length)
   const meanLen = lengths.reduce((a, b) => a + b, 0) / total
   const sdLen = Math.sqrt(lengths.reduce((s, l) => s + (l - meanLen) ** 2, 0) / total)

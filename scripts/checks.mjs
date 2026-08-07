@@ -3897,5 +3897,81 @@ ok(verdictFor(2, clear, 80, 'min') === 'change', '하한이 절벽보다 낮으�
 ok(verdictFor(2, maxScan, 80, 'max') === 'stricter', '상한이 절벽보다 낮으면 안전한 쪽')
 ok(verdictFor(9, maxScan, 80, 'max') === 'change', '상한이 절벽보다 높으면 고쳐야 한다')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[71] 톤 — 순위 기준이 아니라 우리 톤 기준이라고 밝힌다')
+/*
+ * 회원 질문: "요즘 상위 블로그는 감정도 들어가고 친근한데 우리 글은 정제된 느낌이다.
+ * 업체 화자니까 너무 가벼워도 안 되고 너무 무거워도 안 된다."
+ *
+ * 재봤더니 **톤은 순위와 관계가 없었다** (방문자 화자를 걸러낸 81편, 전부 |ρ| ≤ 0.22):
+ *   느낌표 +0.13 · 이모지 -0.05 · 1인칭 -0.04 · 감정 낱말 -0.09 · 질문 -0.12
+ * 그래서 이 항목은 가중치 2 이고, 목표 문구에 순위 기준이 아니라고 적는다.
+ * 잡는 것은 양쪽 극단뿐이다 — 회사 공지문(센터 1인칭 0회)과 전단지(느낌표·이모지 남발).
+ */
+const toneBody = (extra) => ['[이미지: 대표]', '쌍용동 헬스장 이야기입니다.', '', '[이미지: 2]',
+  '## 소제목', '자세와 호흡, 세트와 무게를 봅니다. ' + '가'.repeat(1700), extra].join('\n')
+const toneCheck = (extra) => checkPost({ type:'promo', title:'쌍용동 헬스장, 갈 수 있을까?',
+  body: toneBody(extra), mainKeyword:'쌍용동 헬스장', subKeywords:['쌍용동 PT'], tags:[],
+  legalName:'MTO 피트니스 쌍용점' }).items.find((i) => i.id === 'tone')
+
+const toneStiff = toneCheck('저희 센터는 최선을 다합니다.')
+ok(toneStiff.level === 'warn', '센터 1인칭이 없으면 주의 (회사 공지문)', toneStiff.level)
+ok(toneStiff.value === '센터 1인칭 0회', '무엇이 없는지 말한다', toneStiff.value)
+ok(toneStiff.hint.includes('제가'), '「제가」를 넣으라고 한다')
+ok(toneStiff.hint.includes('회사 공지문'), '왜 그런지 말한다')
+
+const toneOk = toneCheck('제가 상담할 때 가장 많이 듣는 말이 이겁니다.')
+ok(toneOk.level === 'pass', '「제가」가 있으면 통과', toneOk.level)
+
+// 가벼운 쪽 — 느낌표·이모지 남발 (상위권 중간값 느낌표 3.3 · 이모지 3.9 의 두 배 초과)
+const toneLoud = toneCheck('제가 말씀드릴게요! 대박!! 정말 좋아요!!! ' + '!'.repeat(20))
+ok(toneLoud.level === 'warn', '느낌표를 남발하면 주의', `${toneLoud.value} ${toneLoud.level}`)
+ok(toneLoud.hint.includes('전단지'), '왜 줄이라는지 말한다', toneLoud.hint)
+ok(toneLoud.hint.includes('3.3'), '상위권 중간값을 근거로 준다')
+
+// 순위 기준이 아니라고 못박는다 — 나중에 순위 데이터가 바뀌어도 이 항목은 흔들리지 않는다
+ok(toneOk.target.includes('순위 기준이 아니라'), '순위 기준이 아니라고 밝힌다', toneOk.target)
+ok(toneOk.target.includes('톤은 순위와 무관'), '실측 결과를 함께 적는다')
+ok(toneOk.weight === 2, '가중치는 낮게 (순위 근거가 없으므로)', String(toneOk.weight))
+
+/*
+ * 후기글은 화자가 방문객이라 「저희 센터」가 없는 게 정상이다 — 센터 1인칭을 요구하면 안 된다.
+ */
+const toneReview = checkPost({ type:'review', title:'쌍용동 헬스장 등록 후기, 3주 다녀보고',
+  body: toneBody('시설을 둘러봤어요.'), mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
+  .items.find((i) => i.id === 'tone')
+ok(toneReview.level === 'pass', '후기글에는 센터 1인칭을 요구하지 않는다', toneReview.level)
+
+// ─── 「더라고요」 금지를 풀었다 ───
+/*
+ * 1위 운영자 글이 「집이나 회사에서 멀면 결국 발길이 뜸해지더라고요」를 쓴다. 후기 톤 유출을
+ * 막으려고 낱말 단위로 금지한 것이 과했다 — 막아야 하는 것은 어미가 아니라 **센터가
+ * 체험자인 척하는 것**이다.
+ */
+const tonePromo = buildSystemPrompt('promo')
+ok(!/"더라고요", "가봤더니"/.test(tonePromo), '「더라고요」를 통째로 금지하지 않는다')
+ok(tonePromo.includes('하시더라고요'), '센터가 관찰한 「~하시더라고요」는 쓰라고 한다')
+ok(tonePromo.includes('체험자인 척'), '무엇이 진짜 금지인지 밝힌다')
+ok(tonePromo.includes('가봤더니'), '체험자인 척하는 말은 그대로 금지')
+// 검수기 쪽은 원래부터 정확했다 — 평가하는 「좋더라고요」만 잡는다
+const toneVoiceItem = (body) => checkPost({ type:'promo', title:'쌍용동 헬스장 안내', body,
+  mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] }).items.find((i) => i.id === 'voice')
+ok(toneVoiceItem(toneBody('회원분들이 이걸 어려워하시더라고요.')).level === 'pass',
+  '센터가 관찰한 「어려워하시더라고요」는 통과')
+ok(toneVoiceItem(toneBody('직접 가봤더니 좋더라고요.')).level !== 'pass',
+  '체험자인 척하는 「가봤더니 좋더라고요」는 걸린다')
+
+// ─── 톤 지시문이 순위 규칙과 섞이지 않는다 ───
+ok(tonePromo.includes('## 우리 톤'), 'AI 지시문에 톤 묶음이 따로 있다')
+ok(/## 우리 톤 \(순위 규칙이 아니다/.test(tonePromo), '묶음 제목에 순위 규칙이 아니라고 적는다')
+ok(tonePromo.includes('동네 헬스장 사장이 상담 온 사람에게 말하듯'), '원하는 톤을 한 문장으로 준다')
+ok(tonePromo.includes('등록만 하고 또 안 가게 될까 봐'), '감정을 상황으로 쓰는 예를 준다')
+ok(tonePromo.includes('대박'), '가벼워지는 쪽도 막는다')
+ok(buildSystemPrompt('promo').indexOf('## 우리 톤') < buildSystemPrompt('promo').indexOf('## 구조'),
+  '톤은 화자 바로 다음에 둔다 (숫자 규칙에 묻히지 않게)')
+const skelTone = buildTemplate('promo', { mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동 PT'] })
+ok(skelTone.includes('동네 헬스장 사장이 상담 온 사람에게 말하듯'), '글 골격에도 같은 톤을 적는다')
+ok(skelTone.includes('발길이 뜸해지더라고요'), '1위 글의 실제 예를 근거로 준다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

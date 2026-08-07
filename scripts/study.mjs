@@ -72,7 +72,6 @@ const arg = (name, fallback) => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`))
   return hit ? hit.slice(name.length + 3) : fallback
 }
-const has = (name) => process.argv.includes(`--${name}`)
 
 /*
  * 통계와 판정 규칙은 lib/analysis/study.ts 에 있다 (wilson · mergeRuns · boundaryScan ·
@@ -222,6 +221,30 @@ async function collect(lib) {
         const sentenceCount = Object.values(endings).reduce((s, x) => s + x, 0)
         const topEnding = Object.entries(endings).sort((a, b) => b[1] - a[1])[0]
         const meta = seen.get(url)
+        /*
+         * 톤 지표.
+         *
+         * 2026-08-06 측정에서 톤은 순위와 관계가 없었다 (전부 |ρ| ≤ 0.22). 그래도 매 런
+         * 기록하는 이유는 회원의 질문이 「요즘」에 대한 것이었기 때문이다 — "요즘 상위
+         * 블로그는 감정도 들어가고 친근해진 것 같다." 한 번 재서 아니라고 답하는 것과,
+         * 계속 재서 변하는지 보는 것은 다르다. 판이 바뀌면 여기서 먼저 보인다.
+         */
+        const cnt = (re) => (metrics.text.match(re) ?? []).length
+        const per1k = (n) => (metrics.charCount ? Number(((n / metrics.charCount) * 1000).toFixed(2)) : 0)
+        const tone = {
+          bang: per1k(cnt(/!/g)),
+          emoji: per1k(cnt(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu)),
+          firstPerson: per1k(cnt(/제가|저는|저도|저희/g)),
+          colloquial: per1k(cnt(/거든요|더라고요|더라구요|는데요|니까요/g)),
+          emotion: per1k(cnt(/솔직히|걱정|고민|마음|뿌듯|아쉽|막막|힘드|응원/g)),
+          question: per1k(cnt(/\?/g)),
+          // 회원이 실제로 하는 말을 따옴표로 옮긴 대목
+          quotes: cnt(/[“”"][^“”"\n]{6,80}[“”"]/g),
+          // 어미 배합 (비중) — 「~습니다」로만 쓴 딱딱한 글을 시간축에서 보려면 필요하다
+          endingMix: Object.fromEntries(
+            Object.entries(endings).map(([k, v]) => [k, sentenceCount ? Number((v / sentenceCount).toFixed(3)) : 0])
+          ),
+        }
         posts.push({
           url,
           blogId: meta.blogId,
@@ -241,6 +264,15 @@ async function collect(lib) {
           promoFound: signals.promoFound,
           topEnding: topEnding ? topEnding[0] : '',
           topEndingShare: sentenceCount ? Math.round((topEnding[1] / sentenceCount) * 100) : 0,
+          /*
+           * 방문자 화자인지. 톤을 비교할 때 이걸로 갈라야 한다 — 후기는 원래 따뜻하고,
+           * 섞어서 세면 「업체 글도 후기처럼 쓰라」는 잘못된 결론이 나온다.
+           * (판별식은 lib/writing/checker.ts 의 voice 검사와 같은 계열이다)
+           */
+          visitorVoice:
+            /후기|내돈내산|체험/.test(meta.serpTitle) ||
+            /다녀왔|다녀온|가봤더니|등록했어요|등록하고 왔|상담을 받아봤|내돈내산|체험단/.test(metrics.text),
+          tone,
           // 본문은 담지 않는다 — 남의 글이고, 커밋하면 저장소가 불어난다
         })
         await sleep(250)
@@ -350,8 +382,7 @@ function standards(lib) {
 }
 
 function analyze(lib) {
-  const { mergeRuns, boundaryScan, verdictFor, wilson, MIN_SAMPLE, MIN_SIDE } = lib.study
-  const { median } = lib.cutline
+  const { mergeRuns, boundaryScan, verdictFor, wilson, exactMedian: median, MIN_SAMPLE, MIN_SIDE } = lib.study
   const { spearman } = lib.factors
   const wstr = (hit, n) => {
     const [lo, hi] = wilson(hit, n)
@@ -388,6 +419,22 @@ function analyze(lib) {
   if (runs.length === 1) {
     say('  (런 2회 이상부터 나옵니다)')
   } else {
+    /*
+     * 런 간격이 짧으면 「유지」가 거짓이 된다.
+     *
+     * 실제로 그랬다 — 컨테이너 시계가 자정을 넘어서 몇 시간 차이인 두 런이 날짜가 다른
+     * 파일로 남았고, 리포트는 145편 중 40편을 「매번 3위 안」이라고 불렀다. 몇 시간 동안
+     * 순위가 안 바뀐 것은 유지가 아니다. 간격을 재서 말해준다.
+     */
+    const first = Date.parse(runs[0].date)
+    const last = Date.parse(runs[runs.length - 1].date)
+    const spanDays = Number.isFinite(first) && Number.isFinite(last) ? (last - first) / 86_400_000 : 0
+    if (spanDays < 3) {
+      say(`  ⚠ 첫 런과 마지막 런의 간격이 ${spanDays.toFixed(0)}일뿐입니다 — **아래 「유지」는 믿지 마세요.**`)
+      say('    몇 시간~하루 사이에 순위가 안 바뀐 것은 유지가 아닙니다. 최소 일주일은 벌려야')
+      say('    올라갔다 사라지는 글이 걸러집니다.')
+      say('')
+    }
     say(`  런 2회 이상 등장 ${repeat.length}편 · 그중 **매번 3위 안이었던 글 ${held.length}편**`)
     const dropped = repeat.filter((r) => r.firstBest <= 3 && r.lastBest > 3)
     const climbed = repeat.filter((r) => r.firstBest > 3 && r.lastBest <= 3)
@@ -402,9 +449,9 @@ function analyze(lib) {
         say(`    ${r.blogId.padEnd(18)} 정보${String(r.info).padStart(2)} 홍보${String(r.promo).padStart(2)} ${String(r.chars).padStart(5)}자 이미지${String(r.images).padStart(2)}  ${r.title.slice(0, 34)}`)
       }
     }
-    if (dropped.length) {
+    if (dropped.length >= MIN_SIDE) {
       say('')
-      say('  내려간 글과 유지한 글의 차이 (중간값):')
+      say(`  내려간 글과 유지한 글의 차이 (중간값 · 내려간 글 ${dropped.length}편이라 참고만):`)
       say(`    유지 ${held.length}편: 정보 ${median(held.map((r) => r.info))}종류 · 홍보 ${median(held.map((r) => r.promo))}종류 · ${median(held.map((r) => r.chars))}자`)
       say(`    내려감 ${dropped.length}편: 정보 ${median(dropped.map((r) => r.info))}종류 · 홍보 ${median(dropped.map((r) => r.promo))}종류 · ${median(dropped.map((r) => r.chars))}자`)
     }
@@ -469,6 +516,70 @@ function analyze(lib) {
       n: sub.length,
       rho: Number(rho.toFixed(2)),
     })
+  }
+
+  // ─── 톤 ──────────────────────────────────────────────────────
+  /*
+   * **순위 기준이 아니다.** 2026-08-06 측정에서 톤 지표는 전부 |ρ| ≤ 0.22 였고 구간이
+   * 겹쳤다. 그래서 기준 점검 표(위)에 넣지 않고 여기서 따로 보여준다 — 「제안」을 내지
+   * 않고 관찰만 한다. 회원 질문이 「요즘 상위 블로그가 친근해진 것 같다」였으므로,
+   * 매 런 다시 재서 판이 정말 그쪽으로 가는지 시간축으로 본다.
+   *
+   * 방문자 화자를 갈라서 본다 — 후기는 원래 따뜻하고, 섞으면 「업체 글도 후기처럼
+   * 쓰라」는 잘못된 결론이 나온다. 우리 홍보·정보글의 비교 대상은 비방문자 글이다.
+   */
+  const toned = rows.filter((r) => r.tone)
+  say('')
+  say('## 톤 (순위 기준이 아닙니다 — 관찰만 합니다)')
+  if (!toned.length) {
+    say('  이 런에는 톤 측정값이 없습니다 (예전 형식의 런). 다시 collect 하면 채워집니다.')
+  } else {
+    const biz = toned.filter((r) => !r.visitorVoice)
+    say(`  대상: 방문자 화자가 아닌 글 ${biz.length}편 (우리 홍보·정보글과 같은 처지) · 방문자 화자 ${toned.length - biz.length}편은 제외`)
+    if (biz.length < MIN_SAMPLE) {
+      say(`  ${MIN_SAMPLE}편 미만이라 비교하지 않습니다.`)
+    } else {
+      const bt = biz.filter((r) => r.best <= 3)
+      const bb = biz.filter((r) => r.best >= 7)
+      say('')
+      say('  지표                    1~3위    7위이하    상관ρ   (1,000자당)')
+      const METRICS = [
+        ['구어체 (거든요/더라고요)', (r) => r.tone.colloquial],
+        ['1인칭 (제가/저희)', (r) => r.tone.firstPerson],
+        ['감정 낱말', (r) => r.tone.emotion],
+        ['질문 (?)', (r) => r.tone.question],
+        ['느낌표', (r) => r.tone.bang],
+        ['이모지', (r) => r.tone.emoji],
+        ['회원 말 인용 (개, 글당)', (r) => r.tone.quotes],
+      ]
+      let anyReal = false
+      for (const [name, f] of METRICS) {
+        const rho = spearman(biz.map(f), biz.map((r) => r.best)) ?? 0
+        const real = Math.abs(rho) >= 0.3
+        if (real) anyReal = true
+        say(
+          `  ${name.padEnd(24)} ${median(bt.map(f)).toFixed(2).padStart(5)}  ${median(bb.map(f)).toFixed(2).padStart(7)}   ` +
+            `${rho.toFixed(2).padStart(6)}${real ? '  ← 관계가 보임' : ''}`
+        )
+      }
+      const mix = (g) => {
+        const acc = {}
+        let n = 0
+        for (const r of g) for (const [k, v] of Object.entries(r.tone.endingMix ?? {})) { acc[k] = (acc[k] ?? 0) + v; n++ }
+        return Object.entries(acc).map(([k, v]) => [k, v / (g.length || 1)]).sort((a, b) => b[1] - a[1])
+      }
+      say('')
+      say('  어미 배합  1~3위: ' + mix(bt).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · '))
+      say('             7위–: ' + mix(bb).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · '))
+      say('')
+      if (anyReal) {
+        say('  → 관계가 보이는 지표가 있습니다. 톤을 「우리 판단」으로만 두지 말고 다시 검토하세요')
+        say('     (lib/ai/prompt.ts 의 TONE 주석 · lib/writing/checker.ts 의 tone 항목).')
+      } else {
+        say('  → 순위와 관계있는 톤 지표가 없습니다 (전부 |ρ| < 0.3). **톤은 순위를 잃을 걱정 없이**')
+        say('     정할 수 있다는 뜻입니다 — 상담 전환에 좋은 쪽으로 고르면 됩니다.')
+      }
+    }
   }
 
   // ─── 상위권이 쓰는 말 ────────────────────────────────────────
