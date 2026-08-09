@@ -128,7 +128,7 @@ ok(c1.stats.mainKeywordCount === trueKw, '메인 키워드 카운트 정확', `�
 ok(c1.stats.legalNameCount === trueName, '상호명 카운트 정확', `검수기 ${c1.stats.legalNameCount} = 실제 ${trueName}`)
 ok(c1.stats.phoneCount === 1, '전화번호 1회 인식')
 ok(c1.stats.imageCount === 6 && c1.stats.headings.length === 5, '이미지 6 / 소제목 5')
-ok(c1.score === PUBLISH_THRESHOLD - 6, '수정필요가 있으면 발행 구간 아래로 캡', `${c1.score} (캡 ${PUBLISH_THRESHOLD - 6})`)
+ok(c1.score <= PUBLISH_THRESHOLD - 6, '수정필요가 있으면 발행 구간 아래로 캡', `${c1.score} (캡 ${PUBLISH_THRESHOLD - 6})`)
 // 미달 항목을 정확히 지적하는지
 // 하한을 실측에 맞춰 3회로 내렸으므로 4회는 통과다 (예전 5회 하한에서는 warn 이었다)
 ok(c1.items.find(i => i.id === 'mainCount')?.level === 'warn', '메인KW 4회는 warn (하한 5회에 1회 미달)', c1.items.find(i => i.id === 'mainCount')?.value)
@@ -2972,8 +2972,14 @@ const promoSkeleton = buildTemplate('promo', {
 })
 ok(promoSkeleton.includes('시설 스펙을 나열하지 않는다'), '시설 나열을 금지한다')
 ok(promoSkeleton.includes('자극(어디에 오는지)'), '무엇을 쓰라고 짚어준다 (실측으로 갈린 말)')
-ok(promoSkeleton.includes('런닝머신 10대" (X)'), '나쁜 예와 좋은 예를 같이 준다')
-ok(promoSkeleton.includes('중간 CTA 를 넣지 않는다'), '중간 CTA 를 없앤다')
+ok(promoSkeleton.includes('천국의 계단 4대" (X)'), '시설 소개의 나쁜 예와 좋은 예를 같이 준다')
+/*
+ * 「중간 CTA 를 넣지 않는다」를 지웠다 (2026-08-07). 정반대가 실측으로 나왔다 —
+ * 「상담·예약·문의」 6회 이상 1~3위 60%(평균 3.3위) / 0~1회 14%(6.5위), 세 표본 재현.
+ */
+ok(!promoSkeleton.includes('중간 CTA 를 넣지 않는다'), '중간 CTA 금지를 지웠다')
+ok(promoSkeleton.includes('상담·예약·문의를 본문 전체에서 6회 이상'), '오히려 6회 이상 쓰라고 한다')
+ok(promoSkeleton.includes('한 곳에 몰아넣지 말고'), '한 곳에 몰지 말라고 한다')
 /*
  * 「한 줄로만」을 뺐다 (2026-08-07). 회원 지적: "처음 홍보 후킹 문장이 너무 약해.
  * 광복절 이벤트 내용을 조금 더 구체적으로 넣되 다 밝히진 않은 선에서."
@@ -3006,9 +3012,10 @@ ok(promoSkeleton.includes('[영상:'), '영상 자리를 표기로 넣는다')
 ok(promoSkeleton.includes('10~20초'), '영상 길이까지 알려준다')
 ok(stripGuides(promoSkeleton).includes('[영상:'), '복사 본문에도 영상 자리가 남는다')
 // 홍보를 없애지는 않는다 — 이 글의 목적은 상담이다
-ok(promoSkeleton.includes('7단계 CTA'), 'CTA 단계는 그대로 남긴다')
-ok(promoSkeleton.includes('6단계 이벤트 본공개'), '이벤트 단계도 그대로 남긴다')
-ok(promoSkeleton.includes('해결 (620~720자'), '해결 구간을 늘렸다 (450~550 → 620~720)')
+ok(promoSkeleton.includes('8단계 CTA'), '구간이 하나 늘어 CTA 는 8단계다')
+ok(promoSkeleton.includes('7단계 이벤트 본공개'), '이벤트는 7단계로 밀렸다')
+ok(promoSkeleton.includes('4단계 운동 정보 (300~380자'), '운동 정보는 짧게')
+ok(promoSkeleton.includes('5단계 시설 소개 (300~380자'), '시설 소개 구간이 생겼다')
 
 
 // ─────────────────────────────────────────────────────────────
@@ -3686,9 +3693,10 @@ const rkSkel = buildTemplate('promo', {
   mainKeyword: '쌍용동 헬스장',
   subKeywords: ['쌍용동 24시 헬스장', '쌍용동 PT'],
 })
-ok(rkSkel.includes('해결 (620~720자'), '해결 구간을 늘렸다 (500~600 → 620~720)')
-ok(rkSkel.includes('이벤트 본공개 (220~260자'), '이벤트 자수는 그대로 (220~260)')
-ok(rkSkel.includes('공감 (280~330자'), '공감도 조금 줄였다')
+ok(rkSkel.includes('운동 정보 (300~380자'), '골격도 운동 정보를 짧게')
+ok(rkSkel.includes('시설 소개 (300~380자'), '골격에 시설 소개 구간이 있다')
+ok(rkSkel.includes('이벤트 본공개 (280~330자'), '골격의 이벤트도 늘렸다')
+ok(rkSkel.includes('공감 (250~300자'), '공감을 줄여 이벤트로 옮겼다')
 /*
  * 「줄인 자리다」를 뺐다 (2026-08-06). 홍보 종류 수는 순위와 무관했고, 회원이 그대로
  * 반박한 지점이다 — "이벤트 문구는 줄이지 않아." 자수 예산은 유지하되(전체 분량을 지켜야
@@ -3696,17 +3704,28 @@ ok(rkSkel.includes('공감 (280~330자'), '공감도 조금 줄였다')
  */
 ok(!rkSkel.includes('줄인 자리다'), '이벤트를 줄이라고 하지 않는다')
 ok(!rkSkel.includes('1~3위 평균 2.0종류'), '반증된 근거를 골격에 남기지 않는다')
-ok(rkSkel.includes('줄이지 않는다'), '오히려 줄이지 말라고 적는다')
+ok(rkSkel.includes('늘린 자리다'), '이벤트가 늘어난 자리라고 적는다')
 ok(rkSkel.includes('「상담」68%'), '상위권이 실제로 쓴 홍보 낱말을 근거로 준다')
 ok(
   rkSkel.includes('정보 3~4종류는 1~3위 17%') && rkSkel.includes('5종류 이상'),
   '대신 정보 5종류를 요구한다 — 계단이 있던 쪽'
 )
 ok(!buildSystemPrompt('promo').includes('1~3위 평균 2.0종류'), 'AI 지시문에서도 반증된 근거를 지웠다')
-ok(buildSystemPrompt('promo').includes('줄이지 않는다'), 'AI 지시문도 이벤트를 줄이지 말라고 한다')
+ok(buildSystemPrompt('promo').includes('늘린 자리다'), 'AI 지시문에서 이벤트가 늘어난 자리라고 밝힌다')
 ok(buildSystemPrompt('promo').includes('정보 5종류 이상'), 'AI 지시문이 정보 5종류를 요구한다')
-ok(buildSystemPrompt('promo').includes('해결 620~720자'), 'AI 지시문도 같은 숫자')
-ok(buildSystemPrompt('promo').includes('이벤트 220~260자'), 'AI 지시문 이벤트도 같은 숫자')
+/*
+ * 「해결 620~720」 한 구간을 「운동 정보 300~380 + 시설 소개 300~380」으로 쪼갰다
+ * (2026-08-07). 회원 지적: "정보성으로 포커스가 너무 치우쳐 있다. 정보성은 아주 살짝
+ * 간단하게 소개하고 다음은 시설 소개랑 이벤트 소개로 가면 좋겠다."
+ * 순위를 가른 것은 정보의 **종류 수**이고 분량이 아니어서, 종류를 유지하고 자수만 옮겼다.
+ */
+ok(!buildSystemPrompt('promo').includes('해결 620~720자'), '「해결」 한 덩어리를 없앴다')
+ok(buildSystemPrompt('promo').includes('운동 정보 300~380자'), '운동 정보는 짧게')
+ok(buildSystemPrompt('promo').includes('시설 소개 300~380자'), '시설 소개 구간을 만들었다')
+ok(buildSystemPrompt('promo').includes('종류 수**이고 분량이 아니다'), '분량이 아니라 종류라고 밝힌다')
+ok(!buildSystemPrompt('promo').includes('**시설 스펙을 나열하지 않는다.**'), '시설 소개 자체를 막지 않는다')
+ok(buildSystemPrompt('promo').includes('10개 이상 몰아넣지 않는다'), '대신 상한만 남긴다 (밀도 10 이상 1~3위 0%)')
+ok(buildSystemPrompt('promo').includes('이벤트 280~330자'), '이벤트를 늘렸다 (220~260 → 280~330)')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[62] 키워드 횟수 — 실측으로 기준을 다시 잡았다')
@@ -4004,6 +4023,113 @@ ok(buildSystemPrompt('promo').indexOf('## 우리 톤') < buildSystemPrompt('prom
 const skelTone = buildTemplate('promo', { mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동 PT'] })
 ok(skelTone.includes('동네 헬스장 사장이 상담 온 사람에게 말하듯'), '글 골격에도 같은 톤을 적는다')
 ok(skelTone.includes('발길이 뜸해지더라고요'), '1위 글의 실제 예를 근거로 준다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[72] 상담 유도 횟수 — 이 앱에서 찾은 가장 센 신호')
+/*
+ * 회원이 말한 목적: "홍보성 글의 목적은 사람들이 이 글을 보고 상담 예약을 하거나 상담하러
+ * 오게 만드는 것." 그래서 재봤더니 **순위도 같은 방향이었다.**
+ *
+ * 비방문자 글 84편 · 「상담·예약·문의」 등장 **횟수**(종류가 아니다):
+ *   0~1회  29편  평균 6.45위  1~3위 14% ( 5~31%)
+ *   1~3회  32편       4.75위        34% (20~52%)
+ *   3~6회  13편       4.92위        31% (13~58%)
+ *   6회 이상 10편      3.30위        60% (31~83%)
+ *   밀도 3+/1,000자 8편 → 3.13위 · 75% (41~93%)  vs  0.5 미만 31편 → 6.32위 · 16% (7~33%)
+ *
+ * 세 표본에서 재현(ρ -0.23 ~ -0.35)되고 95% 구간이 갈렸다. 글자수 교란도 아니다
+ * (글자수 자체 ρ -0.11~-0.18, 밀도 3+ 집단이 오히려 더 길다).
+ *
+ * 이 앱의 처음 규칙은 「홍보 표현을 줄여라」였고 두 번 뒤집혔다 — 종류 수는 무관(무해),
+ * 상담 유도 횟수는 **많은 쪽이 위**. 둘은 다른 일이라서 항목도 따로 둔다.
+ */
+const { countCta, CTA_WORDS, CTA_MIN_BY_TYPE } = require(`${OUT}/analysis/content.js`)
+
+ok(CTA_WORDS.join() === '상담,예약,문의', '세 낱말만 센다', CTA_WORDS.join('·'))
+const cc = countCta('상담 예약 문의 주세요. 상담은 예약 후에. 문의 환영.')
+ok(cc.count === 6, '종류가 아니라 횟수를 센다', String(cc.count))
+ok(cc.found['상담'] === 2 && cc.found['예약'] === 2 && cc.found['문의'] === 2, '낱말별로도 센다')
+ok(countCta('').count === 0, '빈 글은 0')
+ok(countCta('상담상담').count === 2, '붙어 있어도 센다')
+
+ok(CTA_MIN_BY_TYPE.promo === 6, '홍보글 하한 6회 (6회 이상 1~3위 60% / 0~1회 14%)')
+ok(CTA_MIN_BY_TYPE.info === 1, '정보글은 마무리 한 번이면 된다 (목적 우선)')
+ok(CTA_MIN_BY_TYPE.review === 2, '후기글은 방문자 화자 — 여섯 번 권하면 대가성 광고가 된다')
+
+const ctaBody = (n) => ['[이미지: 대표]', '쌍용동 헬스장입니다. 제가 안내드릴게요.', '', '[이미지: 2]',
+  '## 소제목', '자세와 호흡, 세트와 무게, 초보 회복까지 봅니다. ' + '가'.repeat(1700),
+  Array(n).fill('상담 예약 문의 주세요.').join(' ')].join('\n')
+const ctaItem = (n) => checkPost({ type:'promo', title:'쌍용동 헬스장 8월 혜택, 새벽에도 갈 수 있을까?',
+  body: ctaBody(n), mainKeyword:'쌍용동 헬스장', subKeywords:['쌍용동 PT'], tags:[],
+  legalName:'MTO 피트니스 쌍용점' }).items.find((i) => i.id === 'cta-invite')
+
+ok(ctaItem(0).level === 'fail', '상담 유도가 없으면 수정필요', ctaItem(0).level)
+ok(ctaItem(0).hint.includes('가장 뚜렷한 순위 신호'), '왜 중요한지 말한다')
+ok(ctaItem(0).hint.includes('몰아넣으라는 뜻이 아닙니다'), '한 곳에 몰지 말라고 알려준다')
+ok(ctaItem(0).hint.includes('각 단락의 끝에'), '어디에 넣으라고 알려준다')
+ok(ctaItem(1).level === 'warn', '3회면 주의 (하한 6의 절반)', `${ctaItem(1).value} ${ctaItem(1).level}`)
+ok(ctaItem(2).level === 'pass', '6회면 통과', `${ctaItem(2).value} ${ctaItem(2).level}`)
+ok(ctaItem(3).level === 'pass', '더 써도 통과 — 상한은 두지 않는다 (근거가 없다)')
+ok(ctaItem(2).value.includes('상담 2'), '낱말별 횟수를 보여준다', ctaItem(2).value)
+ok(ctaItem(2).target.includes('60%'), '목표에 실측을 적는다', ctaItem(2).target)
+ok(ctaItem(2).weight === 4, '구간이 갈린 신호라 가중치를 높게', String(ctaItem(2).weight))
+
+/*
+ * 「홍보 표현 절제」(종류 6종류 이하)와 충돌하지 않는다 —
+ * 상담·예약·문의 3종류만으로 6회를 채울 수 있다.
+ */
+const bothItems = checkPost({ type:'promo', title:'쌍용동 헬스장 8월 혜택, 새벽에도 갈 수 있을까?',
+  body: ctaBody(3), mainKeyword:'쌍용동 헬스장', subKeywords:['쌍용동 PT'], tags:[],
+  legalName:'MTO 피트니스 쌍용점' }).items
+ok(bothItems.find((i) => i.id === 'cta-invite').level === 'pass', '상담 유도 통과')
+ok(bothItems.find((i) => i.id === 'promo-restraint').level === 'pass', '동시에 홍보 종류도 통과 (충돌 없음)')
+
+// 후기글에서는 2회로 족하다 — 방문자가 상담을 여섯 번 권하면 광고다
+const revCta = checkPost({ type:'review', title:'쌍용동 헬스장 등록 후기, 3주 다녀보고',
+  body: ctaBody(1), mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
+  .items.find((i) => i.id === 'cta-invite')
+ok(revCta.level === 'pass', '후기글은 3회로도 통과', `${revCta.value} ${revCta.level}`)
+ok(revCta.target.includes('글의 목적'), '후기는 순위보다 목적이라고 밝힌다', revCta.target)
+
+// 제목에 홍보성을 넣으라고 한다 (실측: 있음 36% / 없음 29% — 불리하지 않다)
+const promoTitleRule = buildSystemPrompt('promo')
+ok(promoTitleRule.includes('제목에 혜택을 한 조각 넣는다'), '제목에 혜택을 넣으라고 한다')
+ok(promoTitleRule.includes('있음 1~3위 36% / 없음 29%'), '불리하지 않다는 실측을 붙인다')
+ok(promoTitleRule.includes('금액을 제목에 박지는 않는다'), '금액은 제목에 안 박게 한다')
+ok(!buildSystemPrompt('review').includes('제목에 혜택을 한 조각'), '후기글에는 이 규칙을 주지 않는다')
+ok(promoTitleRule.includes('소제목은 `## 소제목` 형식. 5~6개'), '홍보글 소제목은 5~6개 (구간이 늘었다)')
+ok(buildSystemPrompt('info').includes('소제목은 `## 소제목` 형식. 4~5개'), '다른 유형은 4~5개 그대로')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[73] 회원이 직접 쓴 홍보글에서 나온 오탐 두 개')
+/*
+ * 회원이 홍보글을 직접 뽑아 보여줬는데 64점이 나왔다. 그중 「즉시수정」과 「수정필요」
+ * 하나씩이 **정상 문장을 잡은 오탐**이었다. 고치고 나서 79점이 됐다.
+ *
+ * 낱말만 보고 판정하면 이런 일이 난다 — 이 두 검사에서 벌써 네 번째다.
+ */
+const { scanRisks: sr73 } = require(`${OUT}/writing/banned.js`)
+
+// ① 「확실히」 — 결과에 붙을 때만 위험하다
+ok(!sr73('등에 자극이 확실히 옮겨갑니다.').length, '「자극이 확실히 옮겨갑니다」는 잡지 않는다')
+ok(!sr73('무릎이 안쪽으로 말리는지 확실히 보고 잡아드립니다.').length, '「확실히 보고」도 통과')
+ok(sr73('확실히 빠집니다').some((r) => r.category.startsWith('B.')), '「확실히 빠집니다」는 그대로 잡는다')
+ok(sr73('확실히 좋아집니다').some((r) => r.category.startsWith('B.')), '「확실히 좋아집니다」도 잡는다')
+ok(sr73('확실히 달라집니다').some((r) => r.category.startsWith('B.')), '「확실히 달라집니다」도 잡는다')
+ok(sr73('무조건 됩니다').some((r) => r.category.startsWith('A.')), '「무조건」은 그대로 잡는다')
+ok(sr73('절대로 안 됩니다').some((r) => r.category.startsWith('A.')), '「절대로」도 그대로')
+
+// ② 「추천드려요」 — 장소를 평가하며 권할 때만 방문자 말투다
+const v73 = (body) => checkPost({ type:'promo', title:'쌍용동 헬스장 8월 혜택 안내', body,
+  mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] }).items.find((i) => i.id === 'voice')
+const v73body = (tail) => ['[이미지: 대표]', '쌍용동 헬스장입니다. 제가 안내드릴게요.', '',
+  '[이미지: 2]', '## 소제목', '자세와 호흡, 무게를 봅니다. ' + '가'.repeat(1700), tail].join('\n')
+ok(v73(v73body('리니어 로우로 넘어가는 순서를 추천드려요.')).level === 'pass',
+  '센터가 운동 순서를 권하는 「추천드려요」는 통과')
+ok(v73(v73body('식단은 단백질부터 챙기시길 추천드려요.')).level === 'pass', '방법을 권하는 것도 통과')
+ok(v73(v73body('여기 정말 추천드려요.')).level !== 'pass', '「여기 추천드려요」는 방문자 말투로 잡는다')
+ok(v73(v73body('이 헬스장 꼭 추천드려요.')).level !== 'pass', '「이 헬스장 추천드려요」도 잡는다')
+ok(v73(v73body('가봤더니 좋더라고요.')).level !== 'pass', '「좋더라고요」는 그대로 잡는다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

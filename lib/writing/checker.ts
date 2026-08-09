@@ -1,4 +1,10 @@
-import { contentBalance, INFO_MIN_BY_TYPE, PROMO_MAX_BY_TYPE } from '../analysis/content'
+import {
+  contentBalance,
+  countCta,
+  CTA_MIN_BY_TYPE,
+  INFO_MIN_BY_TYPE,
+  PROMO_MAX_BY_TYPE,
+} from '../analysis/content'
 import { TITLE_SHAPE_LABEL, titleAdvice, titleShape } from '../analysis/title'
 import { evidenceHeadline, itemEvidence } from './evidence'
 import type { PooledFactor } from '../analysis/factors'
@@ -472,12 +478,22 @@ export function checkPost(input: CheckInput): CheckResult {
     id: 'headings',
     group: '분량·구조',
     label: '소제목 개수',
-    level: level(
-      parsed.headings.length >= 4 && parsed.headings.length <= 5,
-      parsed.headings.length >= 3 && parsed.headings.length <= 6
-    ),
+    /*
+     * 홍보글만 5~6개다 — 「해결」 한 구간을 「운동 정보」와 「시설 소개」로 쪼개면서
+     * 구간이 하나 늘었다 (lib/ai/prompt.ts 의 STRUCTURE.promo 주석).
+     */
+    level:
+      input.type === 'promo'
+        ? level(
+            parsed.headings.length >= 5 && parsed.headings.length <= 6,
+            parsed.headings.length >= 4 && parsed.headings.length <= 7
+          )
+        : level(
+            parsed.headings.length >= 4 && parsed.headings.length <= 5,
+            parsed.headings.length >= 3 && parsed.headings.length <= 6
+          ),
     value: `${parsed.headings.length}개`,
-    target: '4~5개',
+    target: input.type === 'promo' ? '5~6개' : '4~5개',
     hint: '소제목은 스캔 가능성 = 체류시간입니다. `## 소제목` 형식으로 적으세요.',
     weight: 2,
   })
@@ -888,6 +904,45 @@ export function checkPost(input: CheckInput): CheckResult {
     hint: balance.level === 'thin' || balance.level === 'both' ? balance.infoNote : undefined,
     weight: 5,
   })
+  /*
+   * ─── 상담 유도 (이 앱에서 찾은 가장 센 신호) ────────────────
+   *
+   * 「상담·예약·문의」 등장 **횟수**가 순위를 갈랐다 (content.ts 의 CTA_WORDS 주석):
+   *   0~1회 1~3위 14% (평균 6.45위) / 6회 이상 60% (3.30위) · 세 표본에서 재현 · 구간 갈림
+   *
+   * 바로 위의 「홍보 표현 절제」와 모순이 아니다 — 그건 **종류 수**(할인·특가·선착순…)이고
+   * 이건 **횟수**다. 종류를 늘리는 것은 전단지가 되고, 상담을 여러 번 권하는 것은 「오시라」는
+   * 말이다. 회원이 말한 이 글의 목적과도 같은 방향이다.
+   */
+  const cta = countCta(scanText)
+  const ctaMin = CTA_MIN_BY_TYPE[input.type]
+  add({
+    id: 'cta-invite',
+    group: '내용 균형',
+    label: '상담 유도 횟수',
+    level: level(cta.count >= ctaMin, cta.count >= Math.ceil(ctaMin / 2)),
+    value: `${cta.count}회${
+      Object.keys(cta.found).length
+        ? ` (${Object.entries(cta.found).map(([w, n]) => `${w} ${n}`).join(' · ')})`
+        : ''
+    }`,
+    target:
+      input.type === 'promo'
+        ? `${ctaMin}회 이상 (6회 이상 1~3위 60% / 0~1회 14%)`
+        : `${ctaMin}회 이상 (이 유형은 순위보다 글의 목적을 우선합니다)`,
+    hint:
+      cta.count < ctaMin
+        ? input.type === 'promo'
+          ? `이 앱에서 확인한 가장 뚜렷한 순위 신호입니다 — 「상담·예약·문의」를 6회 이상 쓴 글이 1~3위 60%(평균 3.3위)였고, 0~1회인 글은 14%(6.5위)였습니다. 마지막 단락에 몰아넣으라는 뜻이 아닙니다: 이벤트 단락에 「상담 때 조건 안내드릴게요」, 시설 단락에 「예약하고 오시면 대기 없이 보실 수 있어요」처럼 각 단락의 끝에 자연스럽게 한 번씩 얹으세요.`
+          : `${ctaMin}회는 넘기세요 — 읽는 사람이 다음에 무엇을 하면 되는지 모릅니다.`
+        : undefined,
+    /*
+     * 가중치 4. 구간이 갈린 신호가 이 앱에 몇 개 없다 (제목 키워드 · 정보 종류 · 이것).
+     * 다만 후기글·정보글에서는 하한 자체가 낮아 사실상 통과한다.
+     */
+    weight: 4,
+  })
+
   add({
     id: 'promo-restraint',
     group: '내용 균형',
@@ -1112,7 +1167,21 @@ export function checkPost(input: CheckInput): CheckResult {
    */
   const VISITOR_TONE = [
     { p: /다녀왔|다녀온|가봤더니|(제가|저는|직접)\s*[^.!?\n]{0,12}(갔|가봤|가보니)/, label: '「다녀왔다」류 방문 서술' },
-    { p: /괜찮더라고요|좋더라고요|만족했어요|추천드려요/, label: '방문자 감상 말투' },
+    /*
+     * **「추천드려요」를 뺐다** (2026-08-07).
+     *
+     * 회원이 직접 쓴 홍보글이 이 항목에서 수정필요를 맞았다 — 「그다음 리니어 로우로
+     * 넘어가는 순서를 추천드려요」. 센터가 운동 순서를 권하는 말이고, 방문자 말투가 아니다.
+     *
+     * 방문자 티가 나는 것은 **장소를 평가하며** 권하는 말이다 (「여기 추천드려요」).
+     * 그래서 대상을 요구하도록 좁혔다. 이 검사에서 벌써 세 번째 오탐이라
+     * (「남들 다 자는 새벽에 갔는데」 · 「저한테 물으시는」 · 이번), 낱말만 보면 안 된다.
+     */
+    { p: /괜찮더라고요|좋더라고요|만족했어요/, label: '방문자 감상 말투' },
+    {
+      p: /(헬스장|센터|지점|여기|이곳|이 곳)[^.!?\n]{0,12}추천드려요/,
+      label: '장소를 평가하며 권하는 말투',
+    },
     { p: /내돈내산|제 돈으로|직접 결제/, label: '「내돈내산」류' },
     { p: /등록했어요|등록하게 됐|상담받아보니/, label: '방문자 등록 서술' },
   ]

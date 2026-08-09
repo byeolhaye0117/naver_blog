@@ -25,6 +25,18 @@ import MineOverlapCard from '@/components/MineOverlapCard'
 import SpellCard from '@/components/SpellCard'
 import CopyButton from '@/components/CopyButton'
 
+/**
+ * 글쓰기 버튼에 박는 화자 — **누르기 전에 보이게 하려고 만들었다.**
+ *
+ * 유형을 잘못 두고 「AI로 본문 쓰기」를 누르면, 요청한 것과 다른 화자의 글이 나오는데
+ * 그게 결과물을 다 읽고 나서야 드러났다. 버튼에 화자를 박으면 그 전에 눈에 걸린다.
+ */
+const SPEAKER_LABEL: Record<PostType, string> = {
+  promo: '센터',
+  info: '아는 사람',
+  review: '방문객',
+}
+
 const TYPE_HINT: Record<PostType, string> = {
   promo: '센터가 1인칭으로 쓰는 홍보글. 목표는 방문 상담 예약입니다. 메인 키워드 5~7회, 정식 상호명 3회.',
   info: '검색 유입을 끌어오는 정보글. 정보 키워드가 주인공, 지역 키워드는 조연입니다. C-Rank를 키우는 글입니다.',
@@ -68,7 +80,14 @@ export default function Editor({
   const router = useRouter()
 
   const [id, setId] = useState(existing?.id ?? '')
-  const [type, setType] = useState<PostType>(existing?.type ?? initialType ?? 'info')
+  /*
+   * 기본값을 정보글 → **홍보글**로 바꿨다 (2026-08-07).
+   *
+   * 회원이 홍보글을 뽑았다고 생각했는데 후기글 구조가 나온 일이 있었다. 유형이 무엇이든
+   * 화면에서 안 보이면 같은 일이 또 난다 — 기본값을 가장 많이 쓰는 유형으로 두고,
+   * 아래 「AI로 … 쓰기」 버튼에 유형과 화자를 함께 박아 누르기 전에 보이게 했다.
+   */
+  const [type, setType] = useState<PostType>(existing?.type ?? initialType ?? 'promo')
   const [status, setStatus] = useState<PostStatus>(existing?.status ?? 'draft')
   const [storeId, setStoreId] = useState(existing?.storeId ?? initialStoreId ?? stores[0]?.id ?? '')
   const [title, setTitle] = useState(existing?.title ?? '')
@@ -393,6 +412,16 @@ export default function Editor({
     const all = Array.from(new Set([...base, ...extra, ...generic, ...sponsorTag])).slice(0, 12)
     setTagText(all.join(', '))
   }
+
+  /*
+   * 화자 검사(checker 의 voice 항목)가 걸렸는지. 본문이 있을 때만 본다 —
+   * 빈 화면에 경고를 띄우면 소음이 된다.
+   */
+  const voiceMismatch = useMemo(() => {
+    if (!body.trim()) return null
+    const v = result.items.find((i) => i.id === 'voice')
+    return v && v.level !== 'pass' ? (v.hint ?? v.value) : null
+  }, [body, result])
 
   const tone = result.score >= 85 ? 'good' : result.score >= 65 ? 'warn' : 'bad'
 
@@ -763,7 +792,7 @@ export default function Editor({
                       <span className="block size-[14px]">
                         <IconSpark />
                       </span>
-                      {aiBusy ? '쓰는 중…' : 'AI로 본문 쓰기'}
+                      {aiBusy ? '쓰는 중…' : `AI로 ${POST_TYPE_LABEL[type]} 쓰기 (화자: ${SPEAKER_LABEL[type]})`}
                     </button>
                     {/* 두 번째 호출 — 초안이 85점 미만일 때만 보인다 */}
                     {fixIssues && (
@@ -796,6 +825,28 @@ export default function Editor({
                   >
                     {aiMsg}
                   </p>
+                )}
+
+                {/*
+                  **화자가 어긋났으면 여기서 먼저 말한다.**
+
+                  회원이 홍보글을 뽑았다고 생각했는데 후기글 구조·말투로 나온 일이 있었다.
+                  검수기는 그걸 잡고 있었지만(voice 항목) 검수 탭을 열어야 보였고, 회원은
+                  본문을 다 읽고 나서 알았다. 유형이 틀렸든 모델이 어긋났든, 결과물 바로
+                  위에서 눈에 걸려야 한다.
+                */}
+                {voiceMismatch && (
+                  <div className="mb-3 rounded-[14px] border border-red-500/40 bg-red-500/10 px-3.5 py-3 text-[12px] leading-relaxed">
+                    <p className="font-bold text-red-700 dark:text-red-200">
+                      화자가 어긋났습니다 — 지금 유형은 「{POST_TYPE_LABEL[type]}」(화자: {SPEAKER_LABEL[type]})입니다
+                    </p>
+                    <p className="muted mt-1">{voiceMismatch}</p>
+                    <p className="muted mt-1.5">
+                      {type === 'review'
+                        ? '센터가 1인칭으로 쓰는 글을 원하셨다면 위에서 글 유형을 「홍보글」로 바꾸고 다시 쓰세요.'
+                        : '방문객 시점으로 쓰려면 글 유형을 「후기글」로 바꾸세요. 유형이 맞다면 「검수 항목 고쳐 쓰기」로 화자를 되돌릴 수 있습니다.'}
+                    </p>
+                  </div>
                 )}
 
                 {/*
