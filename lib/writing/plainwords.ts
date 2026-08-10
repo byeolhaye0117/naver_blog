@@ -84,6 +84,11 @@ export const HARD_WORDS: HardWord[] = [
   { word: '밀리리터', easy: 'ml', why: '단위는 기호로' },
   { word: '그램', easy: 'g', why: '단위는 기호로' },
   { word: '칼로리', easy: 'kcal', why: '단위는 기호로' },
+  /*
+   * 「프로」(30프로)는 넣지 않는다 — 「프로그램」이 그대로 걸린다 (앞이 글 시작이면 가드가
+   * 안 듣는다). 「퍼센트」만 잡는다.
+   */
+  { word: '퍼센트', easy: '%', why: '단위는 기호로' },
 ]
 
 /*
@@ -95,6 +100,7 @@ export const HARD_WORDS: HardWord[] = [
  *          든 글에는 아무 말 하지 않았다. 어려워 보인다고 다 막으면 정보가 얕아진다.
  *   분·초·시간 — 시간 단위는 한글이 자연스럽다 (「15분」이 「15min」보다 낫다).
  *   프로그램·인스타그램 — 「그램」이 들어 있지만 앞이 한글이라 안 걸린다 (findHardWords 주석).
+ *   프로(30프로) — 「프로그램」이 문장 맨 앞에 오면 가드가 안 듣는다. 「퍼센트」만 잡는다.
  */
 
 export interface HardWordHit extends HardWord {

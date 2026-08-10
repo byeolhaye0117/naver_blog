@@ -5162,5 +5162,81 @@ ok(buildSystemPrompt('promo').includes('「10킬로그램」(X) → 「10kg」(O
 ok(buildSystemPrompt('promo').includes('시간은 한글로'), '시간은 한글이라고 함께 적는다')
 ok(buildTemplate('promo', { mainKeyword: 'a', subKeywords: ['b'] }).includes('**단위는 기호로.**'), '골격에도 적혀 있다')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[89] 퍼센트 단위와 「팩트가 우선」')
+// 회원 요청: "%도 해주고 정보글은 팩트가 우선이야 정확한 정보로 쓸 수 있게 해줘"
+ok(findHardWords('폭식이 30퍼센트 줄어요')[0]?.easy === '%', `퍼센트 → % — ${findHardWords('폭식이 30퍼센트 줄어요')[0]?.found}`)
+ok(findHardWords('폭식이 30% 줄어요').length === 0, '% 로 쓰면 안 걸린다')
+// 「프로」는 목록에 없다 — 「프로그램」이 문장 맨 앞에 오면 가드가 안 듣는다
+ok(!HARD_WORDS.some((w) => w.word === '프로'), '「프로」는 안 막는다 (프로그램 오탐)')
+ok(findHardWords('프로그램을 짜드립니다').length === 0, '문장 맨 앞의 「프로그램」도 안 걸린다')
+ok(buildSystemPrompt('info').includes('「퍼센트」(X) → 「%」'), '지시문에 % 규칙이 있다')
+
+/*
+ * 팩트 — 나온 글에 「식단 사진만 찍어놔도 줄어든다는 연구가 꽤 있습니다」가 있었다.
+ * 사실일 수도 있지만 우리는 출처를 못 댄다. 정보글은 신뢰를 쌓으려고 쓰는 글이다.
+ */
+const factBody = (line) => `안녕하세요, MTO 피트니스 쌍용점입니다. 폭식 멈추는 방법을 물으시는 분이 많아요.
+
+## 왜 저녁에 몰리나
+${line}
+
+## 순서를 바꿔보세요
+웨이트 40분 먼저 하고 유산소 15분을 뒤에 붙이면 공복감이 덜합니다.
+
+## 저희 센터에서는
+24시간 운영이라 늦게도 오실 수 있어요. 상담은 예약 주시면 됩니다.`
+const factItem = (line, patch = {}) =>
+  checkPost({
+    type: 'info',
+    title: '폭식 멈추는 방법, 순서부터 바꿔보세요',
+    body: factBody(line),
+    mainKeyword: '폭식 멈추는 방법',
+    subKeywords: ['다이어트 폭식'],
+    localKeyword: '천안헬스장',
+    tags: ['폭식멈추는방법'],
+    legalName: 'MTO 피트니스 쌍용점',
+    ...patch,
+  }).items.find((i) => i.id === 'fact-source')
+
+const cited = factItem('사진만 찍어놔도 충동적으로 먹는 횟수가 줄어든다는 연구가 꽤 있습니다.')
+ok(cited && cited.level === 'fail', `출처 없는 연구 인용은 즉시수정 — ${cited?.value}`)
+ok(cited.group === '저품질 위험', '저품질 위험으로 분류한다')
+ok(cited.hint.includes('제가 상담하면서 보면'), '우리 근거로 바꾸는 방법을 준다')
+ok(factItem('전문가들은 아침을 거르지 말라고 합니다.')?.level === 'fail', '전문가 인용도 잡는다')
+ok(factItem('임상에서 확인된 방법입니다.')?.level === 'fail', '임상 언급도 잡는다')
+
+// 효과에 붙은 수치
+const numbered = factItem('이 순서만 지키면 폭식이 30% 줄어듭니다.')
+ok(numbered && numbered.level === 'fail', `효과 수치는 즉시수정 — ${numbered?.value}`)
+ok(numbered.hint.includes('방향으로 쓰세요'), '어떻게 쓰면 되는지 알려준다')
+// 가격·비율이 효과와 무관하면 대상이 아니다
+ok(factItem('3개월 9.9만원으로 시작할 수 있어요.') === undefined, '가격 숫자는 대상이 아니다')
+ok(factItem('경사 3도에 15분 걸으세요.') === undefined, '우리가 안내하는 값은 대상이 아니다')
+ok(factItem('눈에 띄게 줄어드시더라고요.') === undefined, '방향으로 쓴 문장은 통과')
+
+// 출처가 있으면 주의로 낮춘다 — 근거를 댄 글을 즉시수정으로 잡으면 근거 대는 일을 막는다
+const sourced = factItem('연구에 따르면 그렇습니다. 출처: https://example.com/paper')
+ok(sourced.level === 'warn', `출처가 있으면 주의로 낮춘다 — ${sourced?.level}`)
+ok(sourced.hint.includes('정말 그 출처의 내용인지'), '그래도 확인하라고 한다')
+
+// 세 유형 다 본다 — 없는 연구를 홍보글에 쓰면 광고 표시에 걸린다
+ok(checkPost({ ...goodPromo, body: goodPromo.body.replace('운동하다 자세가', '연구에 따르면 그렇습니다. 운동하다 자세가') }).items.some((i) => i.id === 'fact-source'), '홍보글도 검사한다')
+ok(checkPost({ ...goodPromo }).items.every((i) => i.id !== 'fact-source'), '주장이 없으면 항목이 안 생긴다')
+
+// 지시문
+const factPrompt = buildSystemPrompt('info')
+ok(factPrompt.includes('이 글은 팩트가 우선이다'), '정보글 지시문에 팩트 우선을 적었다')
+ok(factPrompt.includes('연구·논문·전문가를 인용하지 않는다'), '연구 인용을 막는다')
+ok(factPrompt.includes('효과를 숫자로 단정하지 않는다'), '효과 수치를 막는다')
+ok(factPrompt.includes('기능을 단정하지 않는다'), '호르몬 이름은 쓰되 단정을 막는다')
+ok(factPrompt.includes('숫자는 우리가 확인한 것만'), '쓸 수 있는 숫자를 알려준다')
+ok(!buildSystemPrompt('promo').includes('이 글은 팩트가 우선이다'), '홍보글 구조에는 안 넣는다 (검수로만 잡는다)')
+
+// 발행 체크리스트 — 틀린 사실은 기계가 못 잡는다
+const factPkg = buildCopyPackage({ ...goodPromo, type: 'info', id:'x', status:'draft', storeId:'s', createdAt:'', updatedAt:'' }, { legalName:'a', location:'b', phone:'c' })
+ok(factPkg.checklist.some((c) => c.label.includes('숫자와 단정 문장')), '정보글 체크리스트에 팩트 확인이 있다')
+ok(buildCopyPackage({ ...goodPromo, id:'x', status:'draft', storeId:'s', createdAt:'', updatedAt:'' }, { legalName:'a', location:'b', phone:'c' }).checklist.every((c) => !c.label.includes('숫자와 단정 문장')), '홍보글에는 안 넣는다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
