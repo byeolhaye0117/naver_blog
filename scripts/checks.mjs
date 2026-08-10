@@ -5238,9 +5238,13 @@ ok(factItem('대한비만학회 자료를 참고해 순서를 정리했어요.')
 ok(factItem('연구에 따르면 그렇습니다.').level === 'fail', '기관 이름이 없으면 여전히 잡는다')
 // 「출처를 밝혀라」와 「영문을 쓰지 마라」가 부딪히지 않아야 한다
 ok(findLatinWords('WHO 권고에 따르면 그렇습니다.').length === 0, '기관 약어는 영문 검사에서 허용된다')
-const srcNote = 'ACSM 2023 운동 지침 — 주 150분 중강도 유산소 권고'
-const withNote = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터', body: factBody('ACSM 2023 운동 지침에서는 주 150분을 권고합니다.'), mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점', sourceNote: srcNote }).items.find((i) => i.id === 'korean-only')
-ok(withNote.level === 'pass', '「근거·출처」 칸에 적은 기관 이름은 영문 검사를 통과한다')
+/*
+ * 「근거·출처」 칸은 **지웠다** (회원: "이제 알아서 써주는 거면 이거는 삭제해줘"). AI 가 검색해서
+ * 찾으므로 사람이 넣을 자리가 필요 없다. 대신 검색으로 찾은 **출처 이름이 영문 검사에 걸리지
+ * 않아야** 한다 — 지시문이 「출처 이름은 한국어로, 약어는 괄호에」로 그 길을 정해준다.
+ */
+const orgItem = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터', body: factBody('세계보건기구(WHO) 신체활동 지침 연구에서는 주 150분을 권고합니다.'), mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' }).items.find((i) => i.id === 'korean-only')
+ok(orgItem.level === 'pass', '「세계보건기구(WHO)」는 영문 검사를 통과한다')
 
 // 세 유형 다 본다 — 없는 연구를 홍보글에 쓰면 광고 표시에 걸린다
 ok(checkPost({ ...goodPromo, body: goodPromo.body.replace('운동하다 자세가', '연구에 따르면 그렇습니다. 운동하다 자세가') }).items.some((i) => i.id === 'fact-source'), '홍보글도 검사한다')
@@ -5258,15 +5262,11 @@ ok(factPrompt.includes('막는 것은 이름이 아니라 단정이다'), '호�
 ok(factPrompt.includes('우리가 안내하는 값은 그대로 쓴다'), '쓸 수 있는 숫자를 알려준다')
 
 // 「근거·출처」 묶음 — 있을 때와 없을 때
-const srcPrompt = buildUserPrompt({ type: 'info', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], sourceNote: '대한비만학회 2024 진료지침 — 하루 500kcal' })
-ok(srcPrompt.includes('## 근거·출처 (인용은 이 안에서만 한다)'), '적어둔 자료를 따로 낸다')
-ok(srcPrompt.includes('대한비만학회 2024 진료지침'), '적은 것을 그대로 넣는다')
-ok(srcPrompt.includes('글자 그대로'), '이름·수치를 바꾸지 말라고 한다')
-ok(srcPrompt.includes('출처를 밝힌다'), '본문에 출처를 쓰라고 한다')
+// 검색이 안 되는 키에서는 인용을 막는다 (사람이 넣을 칸이 없으므로 그게 유일하게 안전한 길이다)
 const noSrcPrompt = buildUserPrompt({ type: 'info', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'] })
-ok(noSrcPrompt.includes('연구·논문·전문가 인용과 효과 수치를 쓰지 않는다'), '자료가 없으면 인용을 막는다')
+ok(noSrcPrompt.includes('연구·논문·전문가 인용과 효과 수치를 쓰지 않는다'), '자료를 못 찾으면 인용을 막는다')
 ok(noSrcPrompt.includes('단정을 빼고 쓴다'), '대신 어떻게 쓸지 알려준다')
-ok(!buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], sourceNote: 'x' }).includes('근거·출처'), '홍보글에는 이 묶음을 안 낸다')
+ok(!buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], canSearch: true }).includes('근거·출처'), '홍보글에는 이 묶음을 안 낸다')
 ok(!buildSystemPrompt('promo').includes('이 글은 팩트가 우선이다'), '홍보글 구조에는 안 넣는다 (검수로만 잡는다)')
 
 // 발행 체크리스트 — 틀린 사실은 기계가 못 잡는다
@@ -5315,15 +5315,10 @@ ok(noSearchPrompt.includes('자료를 찾을 수 없는 상태다'), '못 찾으
 ok(noSearchPrompt.includes('연구·논문·전문가 인용과 효과 수치를 쓰지 않는다'), '그때는 인용을 막는다')
 ok(!noSearchPrompt.includes('검색 도구로 직접 찾아서'), '못 하는 것을 시키지 않는다')
 
-// 회원이 지정한 자료는 검색 결과보다 먼저
-const bothPrompt = buildUserPrompt({ ...srcBase, canSearch: true, sourceNote: '대한비만학회 2024 진료지침' })
-ok(bothPrompt.includes('### 반드시 포함할 자료 (회원이 직접 지정했다)'), '지정한 자료를 따로 낸다')
-ok(bothPrompt.includes('검색 결과보다 **먼저** 쓴다'), '지정한 것을 우선한다')
-ok(bothPrompt.includes('검색 도구로 직접 찾아서 인용한다'), '지정이 있어도 검색은 계속한다')
-// 검색이 안 되는 키인데 회원이 자료를 넣었으면 그 자료만 쓴다
-const onlyNotePrompt = buildUserPrompt({ ...srcBase, canSearch: false, sourceNote: '대한비만학회 2024 진료지침' })
-ok(onlyNotePrompt.includes('인용은 이 안에서만 한다'), '검색이 없으면 적어준 자료만 쓴다')
-ok(onlyNotePrompt.includes('대한비만학회 2024 진료지침'), '적은 것을 그대로 넣는다')
+// 출처 이름을 한국어로 적게 한다 — 「한국어로만」 검사와 부딪히지 않게
+ok(searchPrompt.includes('출처 이름은 한국어로 적는다'), '출처 이름을 한국어로 쓰라고 한다')
+ok(searchPrompt.includes('세계보건기구(WHO)'), '약어는 괄호에 넣는 예를 준다')
+ok(searchPrompt.includes('발행 기관 이름'), '우리말 이름이 없으면 기관으로 밝히라고 한다')
 // 홍보글·후기글은 대상이 아니다
 ok(!buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], canSearch: true }).includes('검색 도구로'), '홍보글에는 검색 지시를 안 낸다')
 

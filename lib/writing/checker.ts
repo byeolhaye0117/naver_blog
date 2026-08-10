@@ -64,13 +64,6 @@ export interface CheckInput {
    */
   promoNote?: string
   /**
-   * 인용할 근거·출처 (정보글).
-   *
-   * 검수에 쓰는 곳은 하나다 — 이 칸의 기관 이름·자료명이 본문에 로마자로 들어가도
-   * 「한국어로만」 검사에 걸리지 않게 허용 목록으로 넘긴다.
-   */
-  sourceNote?: string
-  /**
    * 관찰소에 쌓인 근거 (`poolFactors()` 결과).
    *
    * 넣으면 항목마다 「관찰 N회: 유리 x · 거꾸로 y」가 붙고, 거꾸로 나온 항목은 점수
@@ -1418,8 +1411,6 @@ export function checkPost(input: CheckInput): CheckResult {
     input.mainKeyword ?? '',
     ...(input.subKeywords ?? []),
     input.localKeyword ?? '',
-    // 회원이 적은 출처의 기관 이름·자료명 — 인용하라고 시켜놓고 영문 검사로 막으면 안 된다
-    input.sourceNote ?? '',
   ]
     .join(' ')
     .split(/[^A-Za-z]+/)
