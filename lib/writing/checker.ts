@@ -147,14 +147,30 @@ export const SPECS: Record<PostType, Spec> = {
     requireLocalKeyword: false,
     requireReviewWord: false,
   },
-  // gym-info-writer: 정보 메인 3~5회, 지역 키워드 1~2회, 2,000~2,500자
+  /*
+   * gym-info-writer: 정보 메인 3~5회, 지역 키워드 1~2회.
+   *
+   * ─── 분량 1,900~2,600 → 2,200~3,000 (2026-08-10) ──────────
+   *
+   * 회원이 결과물을 보고 말했다 — "정보성 글 분량이 부족한 거 같아 늘려서 업데이트 해줘."
+   * 단락 예산도 같이 늘렸다 (합계 2,250~2,800자, prompt.ts 의 STRUCTURE.info).
+   *
+   * **순위 근거가 아니다.** 실측에서 분량은 순위와 무관했다 (방향이 키워드마다 갈렸다).
+   * 다만 올리는 방향이 위험하지도 않다 — 절벽은 1,200자 아래에 있었고 위쪽에는 없었다.
+   * 정보글은 이 블로그가 주제 신뢰를 쌓는 글이라, 같은 종류를 얕게 늘어놓는 것보다
+   * 깊게 쓰는 쪽을 택한다. 종류 하한(5)은 그대로다 — 그건 실측값이다.
+   *
+   * legalNameMin 0 → 2: 회원 요청으로 **첫 문장에 인사 + 정식 상호명**이 들어간다
+   * (도입 1회 + 마지막 구간 1회). 예전에는 0이라 정보글에서 상호명을 한 번도 안 써도
+   * 통과했는데, 그러면 누가 쓴 글인지 모르는 채로 발행됐다.
+   */
   info: {
     mainMin: 3,
     mainMax: 5,
     densityMax: 1.8,
-    charMin: 1900,
-    charMax: 2600,
-    legalNameMin: 0,
+    charMin: 2200,
+    charMax: 3000,
+    legalNameMin: 2,
     requireLocalKeyword: true,
     requireReviewWord: false,
   },
