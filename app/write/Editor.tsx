@@ -56,7 +56,6 @@ export default function Editor({
   initialStoreId,
   prescription,
   evidence,
-  autoOpened = false,
   resumable,
 }: {
   stores: Store[]
@@ -75,14 +74,12 @@ export default function Editor({
    * 근거가 갈리거나 거꾸로인 항목은 점수 비중이 내려간다 (lib/writing/evidence.ts).
    */
   evidence?: PooledFactor[]
-  /** 「글 작성」만 눌러 들어와 쓰던 초안을 자동으로 열어준 경우 */
-  autoOpened?: boolean
   /**
-   * 오늘 것이 아니어서 **자동으로 열지 않은** 초안.
+   * **자동으로 열지 않은** 가장 최근 초안.
    *
-   * 예전에는 며칠 전 초안도 자동으로 열었다. 그래서 새 글을 쓰려고 들어온 회원이 옛
-   * 후기글을 이어 쓰는 상태가 됐고, 유형만 바꾸니 본문이 후기라서 화자 경고가 떴다.
-   * 이제 오늘 것만 열고, 나머지는 이 배너로 알린다 — 지우지도 감추지도 않는다.
+   * 예전에는 이걸 그냥 열었다. 그래서 새 글을 쓰려고 들어온 회원이 옛 후기글을 이어 쓰는
+   * 상태가 됐고, 유형만 바꾸니 본문이 후기라서 화자 경고가 떴다. 이제 들어오면 항상 새
+   * 홍보글이고, 초안은 이 배너로만 알린다 — 지우지도 감추지도 않는다.
    */
   resumable?: { id: string; title: string; type: PostType; updatedAt: string }
 }) {
@@ -547,27 +544,11 @@ export default function Editor({
 
   return (
     <div>
-      {autoOpened && (
-        <div className="card mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] px-4 py-3">
-          <span className="text-[12.5px] leading-relaxed">
-            쓰던 초안을 열었습니다 —{' '}
-            <b className="font-bold">{title || '(제목 없음)'}</b>
-            <span className="muted"> · {POST_TYPE_LABEL[type]} · {result.score}점</span>
-          </span>
-          <a
-            href="/write?new=1"
-            className="bd surface ml-auto rounded-full border px-3 py-1.5 text-[12px] font-bold hover:bg-slate-500/8"
-          >
-            새 글로 시작
-          </a>
-        </div>
-      )}
-
       {/*
         오늘 것이 아니어서 자동으로 열지 않은 초안 — 있다는 것만 알리고 선택은 회원이 한다.
         예전에는 이걸 그냥 열어버려서, 새 글을 쓰려던 회원이 옛 후기글을 이어 쓰고 있었다.
       */}
-      {!autoOpened && resumable && (
+      {resumable && (
         <div className="bd surface mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] border px-4 py-3">
           <span className="text-[12.5px] leading-relaxed">
             <b className="font-bold">새 {POST_TYPE_LABEL[type]}</b>로 시작합니다.
