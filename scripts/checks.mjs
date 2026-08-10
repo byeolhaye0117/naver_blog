@@ -83,6 +83,8 @@ const goodPromo = {
   subKeywords: ['쌍용동 24시헬스장'],
   legalName: 'MTO 피트니스 쌍용점',
   womenOnly: false,
+  // 이벤트가 있는 글이어야 「후킹에 이벤트 훅」이 재어진다 (없으면 항목 자체가 안 생긴다)
+  eventText: '8월 등록분 3개월 이용권 99,000원 · 선착순 50명',
   tags: ['쌍용동 헬스장','쌍용동 24시헬스장','천안헬스장','쌍용동PT','새벽운동','교대근무','헬스장추천','MTO피트니스','쌍용동헬스','천안24시헬스장'],
   body: `[이미지: 새벽 시간대 시설 전경 + 이번 달 등록 혜택 배지]
 안녕하세요, MTO 피트니스 쌍용점입니다.
@@ -3092,12 +3094,16 @@ ok(promoSkeleton.includes('한 곳에 몰아넣지 말고'), '한 곳에 몰지 
 /*
  * 「한 줄로만」을 뺐다 (2026-08-07). 회원 지적: "처음 홍보 후킹 문장이 너무 약해.
  * 광복절 이벤트 내용을 조금 더 구체적으로 넣되 다 밝히진 않은 선에서."
- * 혜택 이름만 던지면 예고가 약해서 아래로 안 내려간다. 금액대와 제한이 있다는 것까지
- * 흘리고, 정확한 금액·인원·마감일만 6단계로 남긴다.
+ *
+ * 그 뒤에도 나온 글에 훅이 없어서(2026-08-10) 조건을 **두 조각으로 쪼개** 적었다 —
+ * 검수의 `event-hook` 이 재는 것과 같은 둘이다. 「6단계에서 공개」라고 적혀 있던 것도
+ * 함께 고쳤다: 이 골격에서 이벤트는 **7단계**다 (단정문이 옛 번호를 박고 있었다).
  */
-ok(promoSkeleton.includes('금액대와 제한이 있다는 것까지만'), '이벤트 예고의 수위를 정해준다')
-ok(promoSkeleton.includes('10만 원 아래로 맞췄고, 인원은 정해뒀어요'), '흘리는 예를 그대로 준다')
-ok(promoSkeleton.includes('정확한 금액·인원 수·마감일은 6단계'), '다 밝히지는 않게 한다')
+ok(promoSkeleton.includes('㉮무엇이 있다'), '훅의 첫 조각을 요구한다')
+ok(promoSkeleton.includes('㉯제한이 있다'), '훅의 두 번째 조각을 요구한다')
+ok(promoSkeleton.includes('10만 원 아래로 맞췄어요'), '흘리는 예를 그대로 준다')
+ok(promoSkeleton.includes('정확한 인원 수·마감일은 7단계'), '다 밝히지는 않게 한다 (단계 번호도 맞다)')
+ok(promoSkeleton.includes('「이벤트 진행 중입니다」는 훅이 아니다'), '내용 없는 예고를 막는다')
 
 /*
  * 「아픈 지점을 인사보다 먼저」를 뺐다 (2026-08-07 실측, 비방문자 글 84편).
@@ -3123,7 +3129,8 @@ ok(!sysHook.includes('금액을 제목에 박지는 않는다'), '금액을 제�
 ok(sysHook.includes('금액을 그대로 써도 된다'), '금액을 제목에 써도 된다고 알려준다')
 ok(sysHook.includes('3개월 9.9만원'), '회원이 든 예를 그대로 준다')
 ok(sysHook.includes('최저가·파격가·반값'), '광고심의 위험 표현은 계속 막는다')
-ok(sysHook.includes('금액대와 제한이 있다는 것까지만'), 'AI 지시문도 예고 수위를 정해준다')
+ok(sysHook.includes('「무엇이 있다」와 「제한이 있다」를 붙여 쓴다'), 'AI 지시문도 두 조각을 요구한다')
+ok(sysHook.includes('정확한 인원 수·마감일·포함 항목은 6단계에서 공개한다'), 'AI 지시문은 이벤트가 6단계다 (골격과 번호가 다르다)')
 /*
  * 영상은 안내(`> `)가 아니라 **표기**로 넣는다 — 안내는 복사할 때 지워지므로,
  * 안내로만 두면 네이버에 붙이는 순간 영상 자리가 사라진다.
@@ -4571,6 +4578,45 @@ ok(fix80Prompt.includes('[수정필요] 부터 반드시 해결한다'), '수정
 ok(fix80Prompt.includes('이미 통과한 것은 건드리지 않는다'), '맞던 것을 깨지 말라고 한다')
 ok(fix80Prompt.includes('문장을 새로 만들지 말고'), '키워드를 억지로 늘리지 않는 방법을 준다')
 ok(fix80Prompt.includes('[주의] 는 남아도 발행할 수 있으니'), '주의는 남겨도 된다고 알려준다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[81] 이벤트 훅 — 후킹에서 흘렸는가')
+/*
+ * 회원 지적: "첫 구조에서 이벤트에 대한 훅이 없는 것 같아." 지시문에는 있었는데 나온 글에는
+ * 없었다 — 아무도 안 잡고 있었기 때문이다. 순위 기준이 아니라 우리 규칙이다.
+ */
+const hookItem = (input) => checkPost(input).items.find((i) => i.id === 'event-hook')
+ok(hookItem(goodPromo)?.level === 'pass', `기준 글은 통과 — ${hookItem(goodPromo)?.value}`)
+
+// 이벤트가 없으면 항목을 만들지 않는다 (없는 것을 안 넣었다고 감점하면 안 된다)
+ok(hookItem({ ...goodPromo, eventText: undefined }) === undefined, '이벤트가 없는 글에는 항목이 안 생긴다')
+
+const stripHook = goodPromo.body.replace('이번 달에는 그 시간대에 오시는 분들을 위한 혜택을 걸었어요. 3개월 이용권을 10만 원 아래로 맞췄고 인원은 정해뒀습니다. 정확한 조건은 아래에서 정리해 드릴게요.', '오늘은 그 시간 문제를 어떻게 풀면 되는지 정리해서 말씀드릴게요.')
+const noHook = hookItem({ ...goodPromo, body: stripHook })
+ok(noHook?.level === 'fail', `훅을 빼면 수정필요 — ${noHook?.value}`)
+ok(noHook?.hint?.includes('한 문장만 흘리세요'), '무엇을 쓰면 되는지 예문을 준다')
+
+// 절반만 있으면 주의 — ㉮만 있으면 광고 문구, ㉯만 있으면 무엇이 걸렸는지 모른다
+const offerOnly = hookItem({ ...goodPromo, body: goodPromo.body.replace('3개월 이용권을 10만 원 아래로 맞췄고 인원은 정해뒀습니다. 정확한 조건은 아래에서 정리해 드릴게요.', '3개월 이용권 가격을 낮췄습니다.').replace('이번 달에는 그 시간대에 오시는 분들을 위한 혜택을 걸었어요.', '그 시간대에 오시는 분들을 위해 준비한 게 있어요.') })
+ok(offerOnly?.level === 'warn', `혜택만 있으면 주의 — ${offerOnly?.value}`)
+
+// 내용 없는 예고는 훅이 아니다
+const emptyTease = hookItem({ ...goodPromo, body: stripHook.replace('오늘은 그 시간 문제를', '이벤트도 진행 중입니다. 오늘은 그 시간 문제를') })
+ok(emptyTease?.level === 'warn', `「이벤트 진행 중입니다」만으로는 통과 못 한다 — ${emptyTease?.value}`)
+
+// 홍보글만 본다 — 후기글의 예고는 방문자 시점 한 줄이면 되고, 정보글은 이벤트 글이 아니다
+ok(hookItem({ ...goodPromo, type: 'info' }) === undefined, '정보글에는 항목이 안 생긴다')
+ok(hookItem({ ...goodPromo, type: 'review' }) === undefined, '후기글에는 항목이 안 생긴다')
+
+// 지시문과 검사가 같은 것을 요구해야 한다 (어긋나면 AI 는 옛 규칙으로 쓰고 검수는 새 규칙으로 잰다)
+const hookPrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], eventText: '8월 3개월 9.9만원 선착순 50명' })
+ok(hookPrompt.includes('### 이벤트 훅 (첫 구간에 반드시 넣는다)'), '이벤트가 있으면 훅 지시를 따로 낸다')
+ok(hookPrompt.includes('「무엇이 있다」 + 「제한이 있다」'), '검사와 같은 두 조각을 요구한다')
+ok(hookPrompt.includes('이벤트 진행 중입니다'), '내용 없는 예고를 예시로 금지한다')
+const noEventPrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'] })
+ok(!noEventPrompt.includes('이벤트 훅'), '이벤트가 없으면 훅 지시도 안 낸다')
+const infoHookPrompt = buildUserPrompt({ type: 'info', mainKeyword: '스쿼트 자세', subKeywords: ['하체운동'], eventText: '8월 이벤트' })
+ok(!infoHookPrompt.includes('이벤트 훅'), '정보글에는 훅 지시를 안 낸다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
