@@ -203,6 +203,20 @@ const HEADING_RE = /^\s*(?:##+\s*|■\s*|▶\s*)(.+?)\s*$/
 
 export interface ParsedBody {
   prose: string
+  /**
+   * 산문 + **소제목까지** 원래 순서로 (이미지·영상 지시문만 뺀 것).
+   *
+   * **소제목을 세는 데서 빠져 있었다** (2026-08-10). `prose` 는 소제목을 따로 빼내므로
+   * 글자수와 키워드 횟수가 소제목을 빼고 계산됐다. 그런데 발행하면 소제목도 본문이고,
+   * 기준을 만든 조사 도구는 소제목을 **포함해서** 잰다 (parsePostMetrics 는 se-main-container
+   * 안을 통째로 읽는다). 즉 같은 것을 서로 다른 자로 재고 있었다.
+   *
+   * 회원이 「메인 키워드 2회」로 계속 걸린 이유도 여기 있었다 — 소제목에 넣은 것이 안 세졌다.
+   *
+   * 구조 검사(문단 쪼개기·어미·이미지 배치)는 그대로 `prose` 를 쓴다. 소제목은 문단이
+   * 아니어서 섞으면 문단 통계가 망가진다.
+   */
+  scan: string
   headings: string[]
   images: string[]
   /** 영상 자리 설명 */
@@ -219,6 +233,8 @@ export function parseBody(body: string): ParsedBody {
   const images: string[] = []
   const videos: string[] = []
   const proseLines: string[] = []
+  /** 산문과 소제목을 원래 순서로 — 키워드 횟수·글자수·위치는 이걸로 센다 */
+  const scanLines: string[] = []
   let headingsWithImageAbove = 0
   let lastMeaningful: 'image' | 'heading' | 'prose' | null = null
   let sawHeading = false
@@ -245,6 +261,7 @@ export function parseBody(body: string): ParsedBody {
     const h = HEADING_RE.exec(trimmed)
     if (h) {
       headings.push(h[1])
+      scanLines.push(h[1])
       if (lastMeaningful === 'image') headingsWithImageAbove++
       lastMeaningful = 'heading'
       sawHeading = true
@@ -252,12 +269,14 @@ export function parseBody(body: string): ParsedBody {
     }
 
     proseLines.push(trimmed)
+    scanLines.push(trimmed)
     if (!sawHeading) introLines.push(trimmed)
     lastMeaningful = 'prose'
   }
 
   return {
     prose: proseLines.join('\n'),
+    scan: scanLines.join('\n'),
     headings,
     images,
     videos,
@@ -358,20 +377,30 @@ export function checkPost(input: CheckInput): CheckResult {
   const main = input.mainKeyword.trim()
   const subs = input.subKeywords.map((s) => s.trim()).filter(Boolean)
 
-  // 검수 대상 텍스트 = 제목 + 본문 산문 (이미지 지시문·해시태그 제외)
+  /*
+   * 검수 대상 텍스트 = 제목 + 본문(산문 + 소제목). 이미지·영상 지시문과 해시태그는 뺀다.
+   *
+   * **소제목을 포함한다** (2026-08-10 정정 — ParsedBody.scan 주석). 발행하면 소제목도
+   * 본문이고, 기준을 만든 조사 도구도 소제목을 포함해서 잰다. 빼고 세면 소제목에 넣은
+   * 키워드가 사라져서 「몇 번 더 넣어라」고 잘못 요구하게 된다.
+   *
+   * 문단·어미 같은 구조 검사는 아래에서 `prose` 를 그대로 쓴다 — 소제목은 문단이 아니다.
+   */
   const prose = parsed.prose
-  const scanText = `${title}\n${prose}`
-  const charCount = prose.replace(/\n/g, '').length
+  const bodyText = parsed.scan
+  const scanText = `${title}\n${bodyText}`
+  const charCount = bodyText.replace(/\n/g, '').length
 
   const mainInTitle = main ? countLoose(title, main) : 0
-  const mainInProse = main ? countLoose(prose, main) : 0
+  const mainInProse = main ? countLoose(bodyText, main) : 0
   const mainKeywordCount = mainInTitle + mainInProse
   const density =
     charCount > 0 && main
       ? Math.round(((main.replace(/\s+/g, '').length * mainInProse) / charCount) * 1000) / 10
       : 0
 
-  const positions = keywordPositions(prose, main)
+  // 위치(등간격 패턴·첫 100자)도 소제목을 포함한 본문에서 본다 — 세는 대상과 같아야 한다
+  const positions = keywordPositions(bodyText, main)
   const evenSpacing = detectEvenSpacing(positions)
 
   const subKeywordCounts = subs.map((k) => ({ keyword: k, count: countLoose(scanText, k) }))

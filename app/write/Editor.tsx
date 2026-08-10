@@ -37,6 +37,21 @@ const SPEAKER_LABEL: Record<PostType, string> = {
   review: '방문객',
 }
 
+/**
+ * 운동 정보 구간 주제 보기.
+ *
+ * 실측에서 상위권과 갈린 말들(자세·무게·호흡·식단·초보)이 자연스럽게 나오는 주제로 골랐다 —
+ * 아무 주제나 되는 게 아니라, 한 주제 안에서 정보 5종류가 채워져야 하기 때문이다.
+ */
+const INFO_TOPIC_IDEAS = [
+  '새벽 운동 시작하기',
+  '다이어트 첫 달에 할 것',
+  '처음 등록했을 때 첫 2주',
+  '체중이 안 빠질 때 점검할 것',
+  '하체 운동 자세 잡기',
+  '퇴근 후 30분 루틴',
+]
+
 const TYPE_HINT: Record<PostType, string> = {
   promo: '센터가 1인칭으로 쓰는 홍보글. 목표는 방문 상담 예약입니다. 메인 키워드 5~7회, 정식 상호명 3회.',
   info: '검색 유입을 끌어오는 정보글. 정보 키워드가 주인공, 지역 키워드는 조연입니다. C-Rank를 키우는 글입니다.',
@@ -133,6 +148,14 @@ export default function Editor({
    */
   const [revisedAt, setRevisedAt] = useState(existing?.revisedAt ?? '')
   const [eventText, setEventText] = useState(existing?.eventText ?? '')
+  /*
+   * 회원 요청 두 개 (2026-08-10).
+   *   "정보성란을 내가 원하는 주제로 넣을 수 있는지"        → infoTopic
+   *   "이런 식으로 해달라고 하는 요청칸이 있으면 좋겠어"     → request
+   * 글에 저장해 둔다 — 다시 쓸 때 같은 요청이 그대로 반영돼야 한다.
+   */
+  const [infoTopic, setInfoTopic] = useState(existing?.infoTopic ?? '')
+  const [request, setRequest] = useState(existing?.request ?? '')
 
   const [view, setView] = useState<View>('write')
   const [saving, setSaving] = useState(false)
@@ -320,6 +343,8 @@ export default function Editor({
     sponsorship: type === 'review' ? sponsorship : undefined,
     // 유형을 바꿔도 적어둔 이벤트 정보는 잃지 않게 그대로 저장한다 (정보글에서는 쓰이지 않음)
     eventText: eventText.trim() || undefined,
+    infoTopic: infoTopic.trim() || undefined,
+    request: request.trim() || undefined,
     publishedUrl: publishedUrl || undefined,
     publishedAt: publishedAt || undefined,
     revisedAt: revisedAt || undefined,
@@ -338,6 +363,8 @@ export default function Editor({
     mainKeyword,
     sponsorship,
     eventText,
+    infoTopic,
+    request,
   ])
 
   async function save() {
@@ -442,6 +469,8 @@ export default function Editor({
           subKeywords,
           localKeyword: localKeyword || store.localKeywords[0],
           eventText,
+          infoTopic,
+          request,
           sponsorship,
           // 상위노출 분석에서 나온 처방 — 이게 빠지면 분석이 글에 반영되지 않는다
           prescription: useRx && rxMatches ? rx?.items : undefined,
@@ -817,6 +846,60 @@ export default function Editor({
                       )}
                     </Field>
                   )}
+
+                  {/*
+                    회원 요청 두 개 (2026-08-10).
+
+                      "현재 나오는 글이 24시 운영으로 되어 있는데 정보성란을 내가 원하는
+                       주제로 넣을 수 있는지"
+                      "혹은 이런 식으로 해달라고 하는 요청칸이 있으면 좋겠어"
+
+                    첫 번째가 필요했던 이유: 지시문은 「운동 정보는 주제를 하나만 잡는다」까지만
+                    말하고 **어느 주제인지는 AI 가 골랐다.** 키워드가 「24시」쪽이니 매번
+                    시간대 이야기로 수렴했다.
+                  */}
+                  {type !== 'review' && (
+                    <Field
+                      label="운동 정보 주제 (비우면 AI 가 고릅니다)"
+                      hint="이 주제 하나만 다룹니다. 여러 개 적으면 강의처럼 되니 하나만 적으세요."
+                    >
+                      <input
+                        value={infoTopic}
+                        onChange={(e) => setInfoTopic(e.target.value)}
+                        className={inputClass}
+                        placeholder="다이어트 첫 달에 할 것"
+                      />
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {INFO_TOPIC_IDEAS.map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setInfoTopic(t)}
+                            className="bd surface rounded-full border px-2.5 py-1 text-[11px] font-semibold hover:bg-slate-500/8"
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </Field>
+                  )}
+
+                  <Field
+                    label="이번 글 요청 (자유롭게)"
+                    hint="AI 지시문 맨 끝에 넣고 「다른 지시보다 우선」이라고 알려줍니다. 다만 글자수·키워드 횟수 같은 형식 규칙은 그대로 지킵니다 — 그건 기계가 검사합니다."
+                  >
+                    <textarea
+                      value={request}
+                      onChange={(e) => setRequest(e.target.value)}
+                      rows={3}
+                      className={inputClass}
+                      placeholder={
+                        '예) 여성 회원분들이 많다는 걸 자연스럽게 넣어주세요\n' +
+                        '예) 주차 얘기는 빼고 대신 샤워실을 강조해주세요\n' +
+                        '예) 이벤트는 마지막에 짧게만'
+                      }
+                    />
+                  </Field>
                 </div>
               </Card>
 
