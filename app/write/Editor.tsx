@@ -315,10 +315,13 @@ export default function Editor({
         legalName: store?.legalName,
         womenOnly: store?.womenOnly,
         sponsorship: type === 'review' ? sponsorship : undefined,
+        // 이벤트가 있는 글인지 알아야 「후킹에 이벤트 훅」을 잴 수 있다
+        eventText,
         evidence,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [type, title, body, mainKeyword, sub1, legacySub, localKeyword, tagText, storeId, sponsorship]
+    // eventText 를 빼면 이벤트를 지웠는데 「후킹에 이벤트 훅」이 그대로 남는다
+    [type, title, body, mainKeyword, sub1, legacySub, localKeyword, tagText, storeId, sponsorship, eventText]
   )
 
   const advice = useMemo(
