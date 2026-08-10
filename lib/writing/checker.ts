@@ -412,6 +412,45 @@ export function endingOf(sentence: string): string {
   return '기타'
 }
 
+/**
+ * 한국어 글에 섞인 **로마자 낱말**을 찾는다.
+ *
+ * 회원 지적 — "글에 영문이 들어가. 모든 글은 한국어로 작성될 수 있게 해줘."
+ * 실제로 나온 문장: "같은 양을 먹어도 혈당이 천천히 올라가서 **addictive**한 느낌이 덜합니다."
+ * 모델이 한국어로 쓰다가 개념어 하나를 영어로 흘리는 일이 있다.
+ *
+ * 다 막을 수는 없다 — 우리 글에는 **정말 필요한 로마자**가 있다:
+ *   · 정식 상호명 (MTO 피트니스 쌍용점)
+ *   · 굳어진 약어 (PT · OT · GX · VAT · CCTV)
+ *   · 단위 (kg · kcal · cm)
+ *   · 링크
+ * 그래서 허용 목록을 두고, 링크는 아예 지운 뒤에 본다. 낱말을 세는 게 아니라
+ * **한글로 쓸 수 있는데 영어로 쓴 것**을 찾는 것이 목적이다.
+ */
+export const LATIN_ALLOWED = [
+  // 굳어진 약어 — 한글로 바꾸면 오히려 못 알아본다
+  'PT', 'OT', 'GX', 'TRX', 'RM', 'VAT', 'CCTV', 'SNS', 'QR', 'MRI', 'DM', 'TV', 'PC', 'AM', 'PM', 'OK',
+  // 단위
+  'kg', 'g', 'kcal', 'cal', 'cm', 'mm', 'km', 'ml', 'L', 'kW',
+]
+
+export function findLatinWords(text: string, extraAllow: string[] = []): string[] {
+  const allow = new Set([...LATIN_ALLOWED, ...extraAllow].map((w) => w.toLowerCase()).filter(Boolean))
+  const cleaned = (text ?? '')
+    // 링크·메일은 로마자여야 한다 — 세지 않는다
+    .replace(/(?:https?:\/\/|www\.)\S+/gi, ' ')
+    .replace(/[\w.+-]+@[\w.-]+/g, ' ')
+  const found: string[] = []
+  for (const m of cleaned.matchAll(/[A-Za-z][A-Za-z'’-]*/g)) {
+    const word = m[0].replace(/[-'’]+$/, '')
+    // 한 글자는 보지 않는다 (「L사이즈」·「A타입」처럼 기호에 가깝게 쓰인다)
+    if (word.length < 2) continue
+    if (allow.has(word.toLowerCase())) continue
+    if (!found.includes(word)) found.push(word)
+  }
+  return found
+}
+
 export function checkPost(input: CheckInput): CheckResult {
   const spec = SPECS[input.type]
   const parsed = parseBody(input.body)
@@ -1246,6 +1285,47 @@ export function checkPost(input: CheckInput): CheckResult {
       weight: 3,
     })
   }
+
+  /*
+   * ─── 한국어로만 쓰였는가 ──────────────────────────────────────
+   *
+   * 회원 지적 — "글에 영문이 들어가. 모든 글은 한국어로 작성될 수 있게 해줘."
+   * 나온 문장: "혈당이 천천히 올라가서 addictive한 느낌이 덜합니다."
+   *
+   * **순위 기준이 아니다.** 우리 글의 독자는 동네 손님이고, 모르는 영어 낱말 하나가
+   * 「번역기 돌린 글」로 읽히게 만든다. 상호명·PT·kg 같은 필요한 로마자는 허용 목록으로
+   * 빼고(`LATIN_ALLOWED`), 링크는 아예 세지 않는다. 키워드에 로마자가 들어 있으면
+   * 그것도 허용한다 — 「쌍용동PT」를 쓰라고 시켜놓고 걸면 안 된다.
+   */
+  const latinAllow = [
+    input.legalName ?? '',
+    input.mainKeyword ?? '',
+    ...(input.subKeywords ?? []),
+    input.localKeyword ?? '',
+  ]
+    .join(' ')
+    .split(/[^A-Za-z]+/)
+    .filter(Boolean)
+  const latin = findLatinWords(`${input.title}\n${scanText}`, latinAllow)
+  add({
+    id: 'korean-only',
+    group: 'AI 티 제거',
+    label: '한국어로만 쓰기',
+    level: latin.length === 0 ? 'pass' : 'fail',
+    value: latin.length === 0 ? '통과' : `영문 ${latin.length}개: ${latin.slice(0, 5).join(' · ')}`,
+    target: '제목·본문 전부 한국어 (상호명·PT·kg·링크는 예외)',
+    hint: latin.length
+      ? `${latin
+          .slice(0, 5)
+          .map((w) => `「${w}」`)
+          .join(' · ')}을 한글로 바꾸세요 — 예) addictive → 중독성, routine → 루틴. 읽는 분들은 동네 손님이라 영어 낱말 하나가 번역기 돌린 글처럼 읽히게 만듭니다. 정말 필요한 약어(PT·OT·kg)와 링크는 그대로 둬도 됩니다.`
+      : undefined,
+    /*
+     * 가중치 3. 순위 근거는 없지만 한 낱말만 섞여도 글이 어색해지고, 고치는 데 드는 비용은
+     * 거의 없다 (낱말 하나 바꾸기). 인사 검사(2)보다 높고 정보 종류(5)보다 낮게 둔다.
+     */
+    weight: 3,
+  })
 
   /*
    * ─── 정보글: 마지막 홍보가 「적어둔 것」인가 ────────────────────
