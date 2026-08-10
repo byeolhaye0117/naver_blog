@@ -89,6 +89,8 @@ async function handle(req: Request, ms: () => string) {
       subKeywords?: string[]
       localKeyword?: string
       eventText?: string
+      infoTopic?: string
+      request?: string
       sponsorship?: 'own' | 'sponsored' | 'unset'
       prescription?: string[]
       /**
@@ -143,6 +145,8 @@ async function handle(req: Request, ms: () => string) {
       subKeywords: (body.subKeywords ?? []).filter(Boolean),
       localKeyword: body.localKeyword?.trim() || undefined,
       eventText: body.eventText?.trim() || undefined,
+      infoTopic: body.infoTopic?.trim() || undefined,
+      request: body.request?.trim() || undefined,
       sponsorship: body.sponsorship,
       recent,
       prescription: body.prescription,

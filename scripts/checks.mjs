@@ -4333,5 +4333,81 @@ ok(v77rev.level === 'fail', '후기글에 센터 말투가 새면 잡는다')
 ok(v77rev.value.includes('저희 센터'), '걸린 말을 보여준다', v77rev.value)
 ok(v77rev.hint.includes('본문에 「저희 센터'), '힌트도 그 말을 짚는다', v77rev.hint)
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[78] 소제목도 본문이다 — 세는 데서 빠져 있었다')
+/*
+ * 회원 화면에서 「메인 키워드 2회」가 매번 수정필요로 떴다. 원인은 AI 만이 아니었다 —
+ * **검수기가 소제목을 세지 않고 있었다.**
+ *
+ * parseBody 가 소제목을 headings 로 따로 빼내고 prose 에서 지워서, 글자수와 키워드 횟수가
+ * 소제목을 빼고 계산됐다. 그런데 발행하면 소제목도 본문이고, 기준을 만든 조사 도구는
+ * 소제목을 **포함해서** 잰다 (parsePostMetrics 는 se-main-container 를 통째로 읽는다).
+ * 같은 것을 서로 다른 자로 재고 있었다.
+ */
+const { parseBody: pb78 } = require(`${OUT}/writing/checker.js`)
+const p78 = pb78(['[이미지: 대표]', '앞 문장입니다.', '## 쌍용동 헬스장 소제목', '뒤 문장입니다.'].join('\n'))
+ok(!p78.prose.includes('쌍용동 헬스장 소제목'), 'prose 는 소제목을 빼둔다 (문단 통계용)')
+ok(p78.scan.includes('쌍용동 헬스장 소제목'), 'scan 은 소제목을 넣는다 (세기용)')
+ok(!p78.scan.includes('[이미지'), 'scan 에서 이미지 지시문은 뺀다')
+ok(p78.scan.indexOf('앞 문장') < p78.scan.indexOf('소제목'), '원래 순서를 지킨다 (첫 100자·등간격 판정용)')
+ok(p78.scan.indexOf('소제목') < p78.scan.indexOf('뒤 문장'), '소제목 다음이 뒤 문장')
+
+// 소제목에 넣은 키워드가 실제로 세어지는지
+const kw78 = (heading) => checkPost({ type:'promo', title:'쌍용동 헬스장 8월 혜택, 새벽에도 갈까?',
+  body: ['[이미지: 대표]', '안녕하세요, MTO 피트니스 쌍용점입니다. 쌍용동 헬스장 이야기예요.', '',
+    '[이미지: 2]', `## ${heading}`,
+    '자세와 호흡, 세트와 무게, 초보 회복까지 봅니다. ' + '가'.repeat(1700),
+    '상담 예약 문의 주세요. 상담 예약 문의 환영합니다. MTO 피트니스 쌍용점 MTO 피트니스 쌍용점'].join('\n'),
+  mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[], legalName:'MTO 피트니스 쌍용점' })
+  .items.find((i) => i.id === 'mainCount')
+const withKw = kw78('쌍용동 헬스장 중에 공간이 나뉘어 있는 곳')
+const without = kw78('공간이 나뉘어 있는 곳')
+ok(withKw.value !== without.value, '소제목에 넣으면 횟수가 달라진다 (예전에는 같았다)',
+  `${withKw.value} vs ${without.value}`)
+ok(withKw.value.includes('3회'), '제목 1 + 본문 1 + 소제목 1 = 3회', withKw.value)
+ok(without.value.includes('2회'), '소제목에 없으면 2회', without.value)
+
+console.log('\n[79] 정보 주제·요청칸이 지시문에 실린다')
+/*
+ * 회원 요청: "정보성란을 내가 원하는 주제로 넣을 수 있는지, 혹은 이런 식으로 해달라고 하는
+ * 요청칸이 있으면 좋겠어."
+ *
+ * 주제를 지정할 수 있어야 했던 이유: 지시문은 「주제를 하나만 잡는다」까지만 말하고 **어느
+ * 주제인지는 AI 가 골랐다.** 키워드가 「24시」쪽이니 매번 시간대 이야기로 수렴했다.
+ */
+const REQ79 = {
+  type: 'promo', store: { name: '쌍용점', legalName: 'MTO 피트니스 쌍용점', localKeywords: [] },
+  mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동 24시 헬스장'],
+}
+const noExtra = buildUserPrompt(REQ79)
+ok(!noExtra.includes('운동 정보 구간의 주제'), '비워두면 주제 묶음이 안 들어간다')
+ok(!noExtra.includes('이번 글 요청'), '비워두면 요청 묶음도 안 들어간다')
+
+const withTopic = buildUserPrompt({ ...REQ79, infoTopic: '다이어트 첫 달에 할 것' })
+ok(withTopic.includes('## 운동 정보 구간의 주제 (이것만 다룬다)'), '주제 묶음이 들어간다')
+ok(withTopic.includes('다이어트 첫 달에 할 것'), '적은 주제를 그대로 넣는다')
+ok(withTopic.includes('다른 주제로 새지 않는다'), '한 주제만 다루라고 못박는다')
+ok(withTopic.includes('5종류 이상'), '그 주제 안에서 정보 5종류를 요구한다 (실측 기준 유지)')
+
+const withReq = buildUserPrompt({ ...REQ79, request: '주차 얘기는 빼고 샤워실을 강조해주세요' })
+ok(withReq.includes('## 이번 글 요청 (다른 지시보다 우선한다)'), '요청 묶음이 들어간다')
+ok(withReq.includes('주차 얘기는 빼고'), '적은 요청을 그대로 넣는다')
+/*
+ * **형식 규칙은 요청보다 위다.** 「우선한다」만 적어두면 모델이 글자수·키워드 횟수까지
+ * 무시할 수 있고, 그러면 검수에서 떨어진다.
+ */
+ok(withReq.includes('형식 규칙'), '형식 규칙은 지키라고 함께 적는다')
+ok(withReq.includes('기계가 검사한다'), '왜 지켜야 하는지 말한다')
+ok(
+  withReq.indexOf('## 이번 글 요청') > withReq.indexOf('## 이번 글'),
+  '요청은 뒤쪽에 둔다 (모델이 뒤를 더 강하게 따른다)'
+)
+
+// 키워드 자리를 세어서 지시한다 — 매번 미달나던 항목
+const slots = buildSystemPrompt('promo')
+ok(slots.includes('자리를 먼저 정하고'), '자리를 정해서 넣으라고 한다')
+ok(slots.includes('①제목'), '자리를 번호로 짚어준다')
+ok(slots.includes('소제목에 넣은 것도 세어진다'), '소제목이 세어진다고 알려준다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
