@@ -28,7 +28,12 @@ npm run study:analyze     # 쌓인 런을 전부 합쳐 기준 점검 → study/
 
 ```bash
 node scripts/study.mjs collect --keywords="쌍용동 헬스장,천안 PT" --top=10
+node scripts/study.mjs collect --cache-days=3   # 3일 안에 받은 본문은 다시 안 받는다
 ```
+
+**캐시는 하루만 듣습니다.** 같은 날 여러 번 돌릴 때만 재사용하고, 날이 바뀌면 본문을 다시
+받습니다. 캐시가 영구적이면 그동안 수정된 글의 옛 수치가 계속 나와서, 순위는 변하는데 내용은
+안 변하는 조사가 됩니다. 급할 때만 `--cache-days` 로 늘리세요.
 
 조사 키워드는 `study/keywords.json` 에서 고칩니다. 유지력을 보려면 몇 개는 그대로 두세요 —
 키워드를 다 바꾸면 예전 런과 비교할 대상이 없어집니다.
@@ -39,8 +44,8 @@ node scripts/study.mjs collect --keywords="쌍용동 헬스장,천안 PT" --top=
 | --- | --- | --- |
 | `study/runs/<날짜>.json` | O | 그날의 순위 + 측정값 (본문 없음) |
 | `study/report.md` | O | 사람이 읽는 리포트 (analyze 출력 그대로) |
-| `study/findings.json` | O | 항목별 판정 (`keep` / `confirmed` / `change` / `insufficient`) |
-| `study/.cache/` | X | 받아온 원본 HTML (다시 돌릴 때 재사용) |
+| `study/findings.json` | O | 항목별 판정 (`confirmed` / `keep` / `stricter` / `change` / `insufficient`) |
+| `study/.cache/` | X | 받아온 원본 HTML (**같은 날**에만 재사용) |
 
 런 파일에 **본문을 담지 않습니다.** 남의 글이고, 담으면 저장소가 수십 MB 로 불어납니다.
 측정은 받아올 때 끝내고 숫자만 남깁니다.
@@ -138,3 +143,7 @@ node scripts/study.mjs collect --keywords="쌍용동 헬스장,천안 PT" --top=
 | 어미 기준 | ~습니다 65% 이하 | 최다 어미 55% 이하 | 70% 이상 몰린 글 1~3위 19% |
 | 상호명 횟수 가중치 | 4 | 2 | 순위와 무관 |
 | 후기글 글자수 | 홍보와 동일 | 1,700~2,800자 | 1,700~2,200자 1~3위 69% |
+| 상담 유도 횟수 | 기준 없음 (오히려 줄이라고 했다) | **6회 이상** | 6회 이상 1~3위 60%(평균 3.3위) / 0~1회 14%(6.5위) · 세 표본 재현 · 구간 갈림 |
+| 톤 | 기준 없음 | 관찰만 | 톤 지표 전부 \|ρ\| ≤ 0.21 — 순위와 무관 |
+| 제목 홍보성 | 넣지 말라고 했다 | 넣는다 | 있음 1~3위 36% / 없음 29% — 불리하지 않다 |
+| 시설 소개 | 금지 (「스펙을 나열하지 않는다」) | 구간 신설 | 밀도 0~3 33% · 6~10 35% · 10 이상만 0% |

@@ -4083,14 +4083,21 @@ const ctaItem = (n) => checkPost({ type:'promo', title:'쌍용동 헬스장 8월
   legalName:'MTO 피트니스 쌍용점' }).items.find((i) => i.id === 'cta-invite')
 
 ok(ctaItem(0).level === 'fail', '상담 유도가 없으면 수정필요', ctaItem(0).level)
-ok(ctaItem(0).hint.includes('가장 뚜렷한 순위 신호'), '왜 중요한지 말한다')
+ok(ctaItem(0).hint.includes('방향이 가장 일관됐던'), '왜 중요한지 말한다')
+/*
+ * 런 3회 중간값으로 다시 재니 구간이 겹쳤다 (content.ts 의 「정정」 항목).
+ * 방향은 세 표본 다 같았지만 「6회」라는 선은 표본 오차 안이다 — 힌트가 과장하지 않게 고정한다.
+ */
+ok(!ctaItem(0).hint.includes('가장 뚜렷한 순위 신호'), '단정하지 않는다 (구간이 겹쳤다)')
+ok(ctaItem(0).hint.includes('0회와 1회 사이'), '가장 큰 계단이 어디인지 알려준다')
+ok(ctaItem(2).target.includes('표본 오차 안'), '목표 문구도 정확한 선이 아니라고 밝힌다', ctaItem(2).target)
 ok(ctaItem(0).hint.includes('몰아넣으라는 뜻이 아닙니다'), '한 곳에 몰지 말라고 알려준다')
 ok(ctaItem(0).hint.includes('각 단락의 끝에'), '어디에 넣으라고 알려준다')
 ok(ctaItem(1).level === 'warn', '3회면 주의 (하한 6의 절반)', `${ctaItem(1).value} ${ctaItem(1).level}`)
 ok(ctaItem(2).level === 'pass', '6회면 통과', `${ctaItem(2).value} ${ctaItem(2).level}`)
 ok(ctaItem(3).level === 'pass', '더 써도 통과 — 상한은 두지 않는다 (근거가 없다)')
 ok(ctaItem(2).value.includes('상담 2'), '낱말별 횟수를 보여준다', ctaItem(2).value)
-ok(ctaItem(2).target.includes('60%'), '목표에 실측을 적는다', ctaItem(2).target)
+ok(ctaItem(2).target.includes('45~60%'), '목표에 실측 범위를 적는다', ctaItem(2).target)
 ok(ctaItem(2).weight === 4, '구간이 갈린 신호라 가중치를 높게', String(ctaItem(2).weight))
 
 /*
@@ -4196,6 +4203,27 @@ const g74rev = checkPost({ type:'review', title:'쌍용동 헬스장 등록 후�
   mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
 ok(!g74rev.items.some((i) => i.id === 'intro-greeting'),
   '후기글에는 이 항목을 만들지 않는다 — 방문객이 센터 이름으로 인사하면 틀린다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[75] 조사 캐시는 하루만 듣는다')
+/*
+ * **캐시가 영구적이면 측정값이 굳는다.** 사흘 전에 받아둔 본문이 그대로 재사용되고 있었다 —
+ * 순위(SERP)는 매번 새로 받으니 순위 변화는 보이는데 내용은 안 변하는, 조용히 어긋나는
+ * 조사가 된다. 그동안 글이 수정됐으면 옛 수치가 영구히 남는다.
+ *
+ * 규칙 자체(날짜 비교)는 scripts/study.mjs 에 있지만, 그 규칙이 지켜야 하는 성질을
+ * 여기서 고정한다 — 날짜 문자열 비교가 맞는 방향인지.
+ */
+const cacheStamp = (offsetDays) =>
+  new Date(Date.UTC(2026, 7, 10) + offsetDays * 86_400_000).toISOString().slice(0, 10)
+const wouldReuse = (fileOffset, cacheDays) => cacheStamp(fileOffset) >= cacheStamp(-cacheDays)
+
+ok(wouldReuse(0, 0), '오늘 받은 것은 재사용한다 (같은 날 재실행을 싸게)')
+ok(!wouldReuse(-1, 0), '어제 받은 것은 다시 받는다 — 기본값에서')
+ok(!wouldReuse(-3, 0), '사흘 전 것도 다시 받는다 (실제로 이게 문제였다)')
+ok(wouldReuse(-3, 3), '--cache-days=3 이면 사흘 전 것까지 재사용')
+ok(!wouldReuse(-4, 3), '--cache-days=3 이면 나흘 전은 다시 받는다')
+ok(wouldReuse(0, 7), '넉넉히 줘도 오늘 것은 당연히 재사용')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

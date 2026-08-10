@@ -35,7 +35,7 @@
  *
  * 새 의존성은 없다 (node 내장 fetch + tsc).
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { compileLib, repoRoot } from './complib.mjs'
@@ -80,6 +80,9 @@ const arg = (name, fallback) => {
  */
 const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0)
 const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '-')
+/** 오늘 날짜 (offsetDays 만큼 뒤로) — YYYY-MM-DD */
+const today = (offsetDays = 0) =>
+  new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10)
 
 // ─── 수집 ────────────────────────────────────────────────────────────────
 const strip = (h) =>
@@ -145,12 +148,31 @@ async function fetchSerp(keyword, top) {
   return []
 }
 
+/**
+ * 캐시를 며칠까지 재사용할지 (기본 0 = 오늘 받은 것만).
+ *
+ * **캐시가 영구적이면 측정값이 굳는다.** 실제로 그랬다 — 사흘 전에 받아둔 본문이 그대로
+ * 재사용돼서, 그동안 글이 수정됐어도 옛 수치가 계속 나올 상태였다. 순위(SERP)는 매번 새로
+ * 받으니 순위 변화는 보이는데 내용은 안 변하는, 조용히 어긋나는 조사가 된다.
+ *
+ * 그래서 기본은 「오늘 받은 것만 재사용」이다. 같은 날 여러 번 돌릴 때만 캐시가 듣고,
+ * 주에 한 번 돌리는 정상 사용에서는 매번 새로 받는다. `--cache-days=N` 으로 늘릴 수 있다.
+ */
+const CACHE_DAYS = Number(arg('cache-days', '0'))
+
+function cacheFresh(path) {
+  if (!existsSync(path)) return false
+  // 받아온 날이 「오늘 − CACHE_DAYS」보다 뒤면 재사용한다 (기본 0 = 오늘 것만)
+  const stamped = new Date(statSync(path).mtimeMs).toISOString().slice(0, 10)
+  return stamped >= today(-Math.max(CACHE_DAYS, 0))
+}
+
 async function fetchHtml(url, postViewUrl) {
   const pv = postViewUrl(url)
   if (!pv) return null
   const key = pv.replace(/[^A-Za-z0-9]+/g, '_').slice(-120)
   const cached = join(CACHE, `${key}.html`)
-  if (existsSync(cached)) return readFileSync(cached, 'utf8')
+  if (cacheFresh(cached)) return readFileSync(cached, 'utf8')
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const r = await fetch(pv, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(25000) })
@@ -167,7 +189,7 @@ async function fetchHtml(url, postViewUrl) {
 
 async function collect(lib) {
   const { parsePostMetrics, parsePostTitle, postViewUrl } = lib.blogpost
-  const { countSignals } = lib.content
+  const { countSignals, countCta } = lib.content
   const { splitSentences, endingOf } = lib.checker
 
   const cfgPath = join(STUDY, 'keywords.json')
@@ -195,7 +217,10 @@ async function collect(lib) {
     }
   }
   const urls = [...seen.keys()]
-  console.log(`\n고유 글 ${urls.length}편 본문 측정 (캐시 재사용)`)
+  console.log(
+    `\n고유 글 ${urls.length}편 본문 측정 ` +
+      (CACHE_DAYS > 0 ? `(캐시 ${CACHE_DAYS}일까지 재사용)` : '(오늘 받은 캐시만 재사용 — 나머지는 새로 받는다)')
+  )
 
   const posts = []
   let done = 0
@@ -273,6 +298,11 @@ async function collect(lib) {
             /후기|내돈내산|체험/.test(meta.serpTitle) ||
             /다녀왔|다녀온|가봤더니|등록했어요|등록하고 왔|상담을 받아봤|내돈내산|체험단/.test(metrics.text),
           tone,
+          /*
+           * 상담 유도 횟수 — 이 앱에서 찾은 가장 센 신호라 매 런 다시 재야 한다
+           * (lib/analysis/content.ts 의 CTA_WORDS 주석). 앱이 쓰는 countCta 를 그대로 쓴다.
+           */
+          cta: countCta(metrics.text).count,
           // 본문은 담지 않는다 — 남의 글이고, 커밋하면 저장소가 불어난다
         })
         await sleep(250)
@@ -296,7 +326,7 @@ async function collect(lib) {
  * 95% 구간이 겹치면 제안하지 않는다 — 표본 오차를 발견으로 착각하지 않기 위해서다.
  */
 function standards(lib) {
-  const { INFO_MIN_BY_TYPE, PROMO_MAX_BY_TYPE } = lib.content
+  const { INFO_MIN_BY_TYPE, PROMO_MAX_BY_TYPE, CTA_MIN_BY_TYPE } = lib.content
   const { SPECS } = lib.checker
   const { IMAGE_BEST_MIN, IMAGE_BEST_MAX } = lib.cutline
   return [
@@ -322,6 +352,23 @@ function standards(lib) {
       kind: 'max',
       current: PROMO_MAX_BY_TYPE.promo,
       candidates: [2, 3, 4, 5, 6, 7, 8],
+    },
+    /*
+     * **가장 센 신호인데 점검 표에서 빠져 있었다** (2026-08-07 → 08-10 보완).
+     * 검수에는 넣고 조사에는 안 넣었으니, 뒤집혀도 알 수 없는 상태였다.
+     * 하한 항목이라 `stricter`/`change` 판정이 그대로 붙는다.
+     */
+    {
+      id: 'cta-min-promo',
+      label: '상담 유도 횟수 (홍보글)',
+      where: 'lib/analysis/content.ts · CTA_MIN_BY_TYPE.promo',
+      // 방문자 화자는 뺀다 — 방문객이 상담을 여섯 번 권하면 대가성 광고다
+      subset: (r) => r.cta !== undefined && !r.visitorVoice,
+      subsetLabel: '방문자 화자가 아닌 글',
+      value: (r) => r.cta,
+      kind: 'min',
+      current: CTA_MIN_BY_TYPE.promo,
+      candidates: [1, 2, 3, 4, 6, 8, 10],
     },
     {
       id: 'char-min-promo',
