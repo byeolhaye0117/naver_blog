@@ -1,6 +1,7 @@
 import {
   contentBalance,
   countCta,
+  countSignals,
   CTA_MIN_BY_TYPE,
   INFO_MIN_BY_TYPE,
   PROMO_MAX_BY_TYPE,
@@ -1164,6 +1165,51 @@ export function checkPost(input: CheckInput): CheckResult {
        * 상호를 못 알아보면 상담 전화가 올 곳을 모른다.
        */
       weight: 2,
+    })
+  }
+
+  /*
+   * ─── 정보글: 홍보가 마지막 구간에 모여 있는가 ─────────────────
+   *
+   * **순위 기준이 아니다.** 회원 요청이다 — "화자는 센타 입장에서 정보성 주제를 알려주는
+   * 느낌으로 해주고 정보성 8 : 홍보성 2 느낌으로 글 마지막에는 홍보가 들어갈 수 있게 해줘."
+   *
+   * 나온 글은 마지막 구간에 홍보가 있긴 했는데, 그 앞 정보 구간에도 「천안헬스장 다닌다고」
+   * 처럼 우리 얘기가 섞여 있었다. 비중은 뒤를 늘려서 맞추는 게 아니라 **앞에 안 섞어서**
+   * 맞춘다 — 정보 구간에서 우리 센터를 끌어오면 정보글이 쌓으려던 신뢰가 그 자리에서 없어진다.
+   *
+   * 그래서 홍보 낱말의 **개수**가 아니라 **자리**를 본다 (개수 상한은 4로 완화했다,
+   * content.ts 의 PROMO_MAX_BY_TYPE 주석). 마지막 소제목을 경계로 나눠서:
+   *   앞 구간 홍보 종류 ≤ 1  · 마지막 구간 홍보 종류 ≥ 2  → 통과
+   * 앞에 1종류를 허용하는 이유는 지역 키워드가 조연으로 들어가야 하기 때문이다 (정보글의
+   * 지역 신호는 그렇게 확보한다). 「상담」 한 번 스치는 것까지 잡으면 글이 부자연스러워진다.
+   */
+  if (input.type === 'info' && parsed.headings.length > 0) {
+    const lastHeading = parsed.headings[parsed.headings.length - 1]
+    const cut = parsed.scan.lastIndexOf(lastHeading)
+    const head = cut > 0 ? parsed.scan.slice(0, cut) : parsed.scan
+    const tail = cut > 0 ? parsed.scan.slice(cut) : ''
+    const headPromo = countSignals(head).promo
+    const tailPromo = countSignals(tail).promo
+    const cleanHead = headPromo <= 1
+    const hasTail = tailPromo >= 2
+    add({
+      id: 'info-promo-tail',
+      group: '내용 균형',
+      label: '홍보는 마지막 구간에',
+      level: cleanHead && hasTail ? 'pass' : cleanHead || hasTail ? 'warn' : 'fail',
+      value: `정보 구간 ${headPromo}종류 · 마지막 구간 ${tailPromo}종류`,
+      target: '정보 구간 1종류 이하 · 마지막 구간 2종류 이상 (정보 8 : 홍보 2)',
+      hint: !cleanHead
+        ? '정보 구간에 홍보가 섞였습니다. 시설·가격·이벤트·상호명·상담 안내를 마지막 구간으로 옮기세요 — 정보 8 : 홍보 2 는 뒤를 늘려서 맞추는 게 아니라 앞에 안 섞어서 맞춥니다. 지역 키워드 한 번은 괜찮습니다.'
+        : !hasTail
+          ? '마지막 구간이 비었습니다. 앞에서 설명한 방법을 우리 센터에서 어떻게 할 수 있는지로 잇고, 필요한 시설 두세 개 + 정식 상호명 1회 + 상담·예약 안내를 350~450자로 쓰세요.'
+          : undefined,
+      /*
+       * 가중치 3. 순위 근거가 없어 정보 종류(5)보다 낮게 두지만, 이 글의 목적 자체가
+       * 「홍보를 참아서 신뢰를 쌓는 것」이라 인사 검사(2)보다는 높다.
+       */
+      weight: 3,
     })
   }
 

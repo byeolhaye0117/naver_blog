@@ -3555,7 +3555,13 @@ console.log('\n[57] 홍보 상한도 목적에 따라 다르다')
  * 정보글·후기글의 더 낮은 상한은 **순위 근거가 아니라 목적 근거다** (content.ts 주석).
  */
 ok(PROMO_MAX_BY_TYPE.promo === 6, '홍보글은 6종류까지 — 순위 근거가 아니라 판단이다')
-ok(PROMO_MAX_BY_TYPE.info === 2, '정보글은 2종류로 조인다 (순위가 아니라 목적)')
+/*
+ * info 2 → 4 (2026-08-10). 회원 요청으로 정보글 마지막 구간을 「문의 한 줄」에서
+ * 「정보 8 : 홍보 2」로 늘렸다. 그 구간을 제대로 쓰면 상담·예약·전화·문의만으로 4종류다.
+ * 상한을 2로 두면 지시문은 「넣어라」, 검수는 「줄여라」가 되어 서로 싸운다.
+ * 대신 조이는 곳을 **개수에서 자리로** 옮겼다 (`info-promo-tail`).
+ */
+ok(PROMO_MAX_BY_TYPE.info === 4, '정보글은 4종류까지 — 마지막 구간에 홍보를 모으면 이만큼 된다')
 ok(PROMO_MAX_BY_TYPE.review === 3, '후기글은 3종류 (대가성 티가 저품질 위험)')
 ok(INFO_RELEASE === 5, '정보 5종류 이상이면 홍보를 더 세도 순위가 안 내려갔다')
 /*
@@ -3570,10 +3576,12 @@ ok(keepEvent.level === 'good', '이벤트 문구를 다 넣어도 통과한다 (
 const PM_TEXT = '상담은 전화로 받습니다. 신규 등록 혜택이 있습니다.'
 ok(countSignals(PM_TEXT).promo === 4, '상담·전화·신규·혜택 = 4종류', String(countSignals(PM_TEXT).promo))
 ok(contentBalance(PM_TEXT, 'promo').level !== 'pushy', '홍보글에서는 통과한다')
-// 이 짧은 예문은 정보도 0종류라 정보글에서는 두 축이 같이 걸린다 ('both')
+// 4종류는 정보글 상한과 같아서 홍보로는 안 걸린다 — 이 예문은 정보가 0종류라 그쪽만 걸린다
 const pmInfo = contentBalance(PM_TEXT, 'info')
-ok(pmInfo.level === 'both', '정보글에서는 홍보 과다 + 정보 부족이 같이 걸린다', pmInfo.level)
-ok(contentBalance(PM_TEXT, 'info').promoNote.includes('상한은 2종류'), '유형 상한을 밝힌다')
+ok(pmInfo.level === 'thin', '정보글에서 홍보 4종류는 상한 안 (정보 부족만 걸린다)', pmInfo.level)
+const pmInfo5 = contentBalance(PM_TEXT + ' 선착순 마감입니다.', 'info')
+ok(pmInfo5.level === 'both', '5종류가 되면 홍보도 함께 걸린다', pmInfo5.level)
+ok(pmInfo5.promoNote.includes('상한은 4종류'), '유형 상한을 밝힌다')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[58] 맞춤법 검사 — 0건과 「못 읽음」을 섞지 않는다')
@@ -4199,7 +4207,7 @@ ok(countCta('').count === 0, '빈 글은 0')
 ok(countCta('상담상담').count === 2, '붙어 있어도 센다')
 
 ok(CTA_MIN_BY_TYPE.promo === 6, '홍보글 하한 6회 (6회 이상 1~3위 60% / 0~1회 14%)')
-ok(CTA_MIN_BY_TYPE.info === 1, '정보글은 마무리 한 번이면 된다 (목적 우선)')
+ok(CTA_MIN_BY_TYPE.info === 2, '정보글은 2회 — 마지막 구간이 상담 유도 구간이 됐다 (홍보글 6과는 여전히 멀다)')
 ok(CTA_MIN_BY_TYPE.review === 2, '후기글은 방문자 화자 — 여섯 번 권하면 대가성 광고가 된다')
 
 const ctaBody = (n) => ['[이미지: 대표]', '쌍용동 헬스장입니다. 제가 안내드릴게요.', '', '[이미지: 2]',
@@ -4636,6 +4644,70 @@ const noEventPrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 �
 ok(!noEventPrompt.includes('이벤트 훅'), '이벤트가 없으면 훅 지시도 안 낸다')
 const infoHookPrompt = buildUserPrompt({ type: 'info', mainKeyword: '스쿼트 자세', subKeywords: ['하체운동'], eventText: '8월 이벤트' })
 ok(!infoHookPrompt.includes('이벤트 훅'), '정보글에는 훅 지시를 안 낸다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[82] 정보글 — 화자는 센터, 정보 8 : 홍보 2')
+/*
+ * 회원 요청: "화자는 센타 입장에서 정보성 주제를 알려주는 느낌으로 해주고 정보성 8 :
+ * 홍보성 2 느낌으로 글 마지막에는 홍보가 들어갈 수 있게 해줘."
+ * 순위 기준이 아니다 — 이 글의 목적(신뢰 축적) 쪽 규칙이다.
+ */
+const infoSys = buildSystemPrompt('info')
+ok(infoSys.includes('화자는 센터(사장·운영자) 본인이다'), '정보글 화자도 센터다')
+ok(infoSys.includes('파는 글이 아니다'), '그래도 파는 글은 아니라고 못 박는다')
+ok(infoSys.includes('정보 8 : 홍보 2'), '비중을 숫자로 적는다')
+ok(infoSys.includes('마지막 구간에서만 쓴다'), '홍보를 마지막 구간에 가둔다')
+ok(infoSys.includes('센터 소개 + 상담 유도 350~450자'), '마지막 구간 분량을 늘렸다')
+ok(infoSys.includes('1~4단계에는 시설·가격·이벤트·상호명을 쓰지 않는다'), '앞에 안 섞어서 비중을 맞추라고 한다')
+ok(!infoSys.includes('아는 사람이 옆에서 알려주듯'), '「아는 사람」 화자를 지웠다')
+// 홍보글 화자와 헷갈리게 만들지 않는다
+ok(!infoSys.includes('인사와 상호명으로 열'.slice(0, 6) + '어라'), '인사로 열라고 하지는 않는다')
+ok(infoSys.includes('인사와 상호명으로 열지 않는다'), '인사로 여는 것은 홍보글 문법이라고 적는다')
+
+const infoSkeleton = buildTemplate('info', { mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], localKeyword: '천안헬스장' })
+ok(infoSkeleton.includes('**화자는 센터다.**'), '골격도 화자를 센터로 적는다')
+ok(infoSkeleton.includes('센터 소개 + 상담 유도 (350~450자)'), '골격의 마무리 분량도 같이 옮겼다')
+ok(infoSkeleton.includes('정보 8 : 홍보 2'), '골격에도 비중을 적는다')
+ok(!infoSkeleton.includes('전화/문의 한 줄이면 충분'), '「한 줄이면 충분」을 지웠다')
+
+// ─── 홍보가 어디에 있는지를 본다 (개수가 아니라 자리)
+const infoBase = {
+  type: 'info',
+  title: '천안헬스장 다니는데 폭식 못 끊는 이유, 순서부터 바꿔보세요',
+  mainKeyword: '폭식 멈추는 방법',
+  subKeywords: ['다이어트 폭식'],
+  localKeyword: '천안헬스장',
+  tags: ['폭식멈추는방법', '다이어트폭식', '천안헬스장'],
+  legalName: 'MTO 피트니스 쌍용점',
+}
+const tailItem = (body) => checkPost({ ...infoBase, body }).items.find((i) => i.id === 'info-promo-tail')
+
+const INFO_GOOD = `폭식 멈추는 방법을 찾으시는 분들이 많습니다. 제가 상담할 때 이 질문을 제일 많이 받아요.
+
+## 운동하면 왜 더 배고파질까
+운동 강도를 갑자기 올리면 식욕 호르몬이 늘어납니다. 강도를 며칠 단위로 올리고 운동 직후 30분 안에 단백질을 챙기면 충동이 줄어듭니다.
+
+## 순서를 이렇게 바꿔보세요
+웨이트 40분 먼저 하고 유산소 15분을 뒤에 붙이면 혈당이 안정되면서 공복감이 덜합니다. 호흡은 힘쓰는 구간에서 뱉으세요.
+
+## 저희 센터에서는 이렇게 하실 수 있어요
+위 순서를 그대로 하시려면 웨이트실과 유산소존이 나뉘어 있는 게 편합니다. MTO 피트니스 쌍용점은 24시간 운영이라 새벽 근무 마치고도 오실 수 있어요. 궁금한 점은 상담 때 여쭤보시면 되고, 예약은 전화로 편하게 주세요.`
+ok(tailItem(INFO_GOOD)?.level === 'pass', `앞은 깨끗하고 뒤에 모였으면 통과 — ${tailItem(INFO_GOOD)?.value}`)
+
+// 앞 구간에 홍보가 섞이면 잡는다 — 이게 회원이 지적한 바로 그 지점이다
+const INFO_MIXED = INFO_GOOD.replace('웨이트 40분 먼저 하고', '저희 센터는 24시간 운영이고 상담도 예약으로 받습니다. 웨이트 40분 먼저 하고')
+const mixed = tailItem(INFO_MIXED)
+ok(mixed?.level !== 'pass', `정보 구간에 홍보가 섞이면 통과 못 한다 — ${mixed?.value}`)
+ok(mixed?.hint?.includes('앞에 안 섞어서 맞춥니다'), '비중을 맞추는 방법을 알려준다')
+
+// 마지막 구간이 비면 잡는다 (홍보 2가 없는 것)
+const INFO_NO_TAIL = INFO_GOOD.replace(/## 저희 센터에서는[\s\S]*$/, '## 정리하며\n습관을 바꾸는 게 핵심이에요. 순서부터 바꿔보세요.')
+const noTail = tailItem(INFO_NO_TAIL)
+ok(noTail?.level !== 'pass', `마지막 구간이 비면 통과 못 한다 — ${noTail?.value}`)
+ok(noTail?.hint?.includes('350~450자'), '무엇을 얼마나 쓰면 되는지 알려준다')
+
+// 홍보글·후기글에는 이 항목이 없다 (홍보글은 홍보가 앞에도 있어야 한다)
+ok(checkPost({ ...goodPromo }).items.every((i) => i.id !== 'info-promo-tail'), '홍보글에는 항목이 안 생긴다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
