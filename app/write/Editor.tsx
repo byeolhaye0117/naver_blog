@@ -24,6 +24,7 @@ import SimilarityCard from '@/components/SimilarityCard'
 import MineOverlapCard from '@/components/MineOverlapCard'
 import SpellCard from '@/components/SpellCard'
 import CopyButton from '@/components/CopyButton'
+import CopyRichButton from '@/components/CopyRichButton'
 
 /**
  * 글쓰기 버튼에 박는 화자 — **누르기 전에 보이게 하려고 만들었다.**
@@ -1408,15 +1409,7 @@ function CopyPane({
         <p className="bd rounded-xl border px-3 py-2.5 text-[13px] font-semibold">{pkg.title || '(제목 없음)'}</p>
       </Card>
 
-      <Card
-        title="2. 본문"
-        subtitle="작성 안내 줄과 이미지 지시문은 빠진 상태입니다. 소제목은 에디터에서 소제목 서식을 적용하세요."
-        right={<CopyButton text={pkg.body} />}
-      >
-        <pre className="bd scroll-x max-h-80 overflow-y-auto rounded-xl border px-3 py-2.5 text-[12px] leading-relaxed whitespace-pre-wrap">
-          {pkg.body || '(본문 없음)'}
-        </pre>
-      </Card>
+      <BodyCard pkg={pkg} />
 
       <Card
         title="3. 이미지 배치"
@@ -1490,5 +1483,73 @@ function CopyPane({
         )}
       </Card>
     </div>
+  )
+}
+
+/**
+ * 붙여넣을 본문.
+ *
+ * 회원이 그대로 붙여넣고 모바일로 보니 「문단 정리·가독성이 떨어진다」고 했다. 이유가
+ * 있었다 — 우리가 주던 본문은 **문단 하나가 한 줄**이어서, 250~300자 문단이 모바일에서
+ * 10줄 넘는 덩어리가 된다. 그래서 기본값을 **모바일**로 두고 문장 단위로 끊어서 준다.
+ *
+ * 「그대로」를 남겨둔 이유는 이미 이 형태로 발행해온 글과 비교할 수 있어야 하기 때문이다.
+ */
+function BodyCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
+  const [mode, setMode] = useState<'mobile' | 'plain'>('mobile')
+  const text = mode === 'mobile' ? pkg.bodyMobile : pkg.body
+  const headings = pkg.blocks.filter((b) => b.kind === 'heading').length
+  const lines = pkg.blocks.reduce((n, b) => n + b.lines.length, 0)
+
+  return (
+    <Card
+      title="2. 본문"
+      subtitle="작성 안내 줄과 이미지 지시문은 빠진 상태입니다"
+      right={
+        <div className="flex items-center gap-1.5">
+          <CopyRichButton html={pkg.bodyHtml} text={text} />
+          <CopyButton text={text} label="글자만" className="bg-slate-500/15 !text-inherit" />
+        </div>
+      }
+    >
+      <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+        {(
+          [
+            ['mobile', '모바일 줄바꿈'],
+            ['plain', '그대로'],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setMode(k)}
+            className={`bd rounded-xl border px-2.5 py-1 text-[11.5px] font-semibold ${
+              mode === k ? 'border-brand-500 bg-brand-600/10' : 'hover:bg-slate-500/8'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+        <span className="muted text-[11px]">
+          소제목 {headings}개 · {mode === 'mobile' ? `${lines}줄` : `${pkg.blocks.length}문단`}
+        </span>
+      </div>
+
+      <pre className="bd scroll-x max-h-80 overflow-y-auto rounded-xl border px-3 py-2.5 text-[12px] leading-relaxed whitespace-pre-wrap">
+        {text || '(본문 없음)'}
+      </pre>
+
+      <p className="muted mt-2 text-[11px] leading-relaxed">
+        <b>「서식 포함 복사」</b>로 붙이면 소제목이 굵고 큰 글씨로 함께 들어갑니다. 네이버 에디터가
+        자기 <b>「소제목」 서식</b>으로 잡아주는지는 에디터 버전마다 달라서, 붙인 뒤 소제목 줄을 한 번
+        눌러 확인하세요 (일반 글씨로 붙었으면 그 줄만 소제목으로 지정). 붙여넣기가 이상하게 되는
+        환경이면 <b>「글자만」</b>으로 붙이고 소제목만 손으로 지정하면 됩니다.
+      </p>
+      <p className="muted mt-1.5 text-[11px] leading-relaxed">
+        모바일 줄바꿈은 <b>가독성 판단이지 순위 규칙이 아닙니다.</b> 실측 160편에서 문단 길이 자체는
+        순위와 무관했지만(1~3위 142자 · 4~6위 154자), 덩어리로 쓴 글은 불리했습니다 — 문단 3~5개인
+        글은 1~3위 0%, 10개 이상은 35%였습니다. 끊어 붙이면 그 유리한 쪽에 놓입니다.
+      </p>
+    </Card>
   )
 }
