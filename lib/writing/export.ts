@@ -13,9 +13,9 @@ export interface CopyPackage {
   title: string
   /** 안내문·이미지 지시문을 뺀 순수 본문 — 문단 하나가 한 줄이다 */
   body: string
-  /** 모바일에서 읽히도록 문장 단위로 줄을 끊은 본문 (화면의 기본값) */
+  /** 모바일에서 읽히도록 마디에서 줄을 끊은 본문 (화면의 기본값) */
   bodyMobile: string
-  /** 서식을 함께 붙여넣기 위한 HTML — 소제목이 굵고 큰 글씨로 들어간다 */
+  /** 서식을 함께 붙여넣기 위한 HTML — 줄바꿈·구분선·인용구가 들어간다 */
   bodyHtml: string
   /** 본문을 소제목·문단으로 쪼갠 것 (원래 순서) */
   blocks: BodyBlock[]
@@ -28,23 +28,29 @@ export interface CopyPackage {
 /** 붙여넣을 본문의 한 덩어리 */
 export interface BodyBlock {
   kind: 'heading' | 'para'
-  /** 모바일에서 읽히도록 끊은 줄들 (소제목은 언제나 한 줄) */
-  lines: string[]
+  /** 빈 줄로 나뉘는 덩어리들. 덩어리 안의 줄은 줄바꿈으로 붙는다 (소제목은 [[한 줄]]) */
+  groups: string[][]
 }
 
 /**
- * 모바일에서 한 줄로 둘 글자수 상한.
+ * 줄을 끊는 길이.
+ *
+ * 회원이 손으로 고친 결과물을 기준으로 잡았다 — 한 줄이 **15~25자**, 이어지는 마디에서
+ * 끊고, 두세 줄마다 빈 줄. 처음엔 80자로 끊었는데 그건 데스크톱 기준이었고, 모바일에서는
+ * 그 한 줄이 화면 세 줄이 되어 여전히 덩어리로 보였다.
  *
  * **가독성 판단이지 순위 규칙이 아니다.** 실측(160편)에서 문단 **길이 자체는** 순위와
  * 무관했다 (1~3위 중간값 142자 · 4~6위 154자). 다만 **덩어리로 쓴 글은 불리했다** —
  * 문단 3~5개 5편 중 1~3위 0%, 문단 10개 이상은 35~36%, 가장 긴 문단이 본문의 40%를
- * 넘는 4편도 1~3위 0%였다.
- *
- * 네이버 에디터에 줄바꿈이 있는 글을 붙이면 줄마다 문단이 하나씩 생긴다. 그래서 이 상한은
- * 「문단이 많고 가장 긴 문단이 짧은」 쪽 — 실측에서 유리했던 쪽 — 으로 글을 옮긴다.
- * 회원이 모바일로 붙여넣고 「문단 정리가 안 된다」고 한 것이 이걸 만든 이유다.
+ * 넘는 4편도 1~3위 0%였다. 끊어 붙이면 그 유리했던 쪽으로 간다.
  */
-export const MOBILE_LINE_MAX = 80
+export const LINE_MIN = 14
+export const LINE_MAX = 30
+/** 이만큼도 안 남으면 끊지 않는다 (한두 낱말만 다음 줄로 떨어지는 것을 막는다) */
+const ORPHAN_MIN = 8
+/** 빈 줄 없이 이어 붙일 최대 줄 수 · 문장 수 */
+const GROUP_MAX_LINES = 4
+const GROUP_MAX_SENTENCES = 2
 
 function slug(s: string): string {
   return s
@@ -53,40 +59,81 @@ function slug(s: string): string {
     .slice(0, 40)
 }
 
-/** 한 문장이 상한보다 길면 쉼표·줄표에서 끊는다 (낱말 중간에서 끊지 않는다) */
-function breakLong(sentence: string): string[] {
-  const out: string[] = []
-  let rest = sentence.trim()
-  while (rest.length > MOBILE_LINE_MAX) {
-    const head = rest.slice(0, MOBILE_LINE_MAX)
-    let cut = Math.max(head.lastIndexOf(', '), head.lastIndexOf(' — '), head.lastIndexOf('; '))
-    if (cut < MOBILE_LINE_MAX * 0.4) cut = head.lastIndexOf(' ')
-    // 끊을 자리가 없으면 그냥 둔다 — 낱말을 자르면 읽기가 더 나빠진다
-    if (cut < MOBILE_LINE_MAX * 0.4) break
-    out.push(rest.slice(0, cut + 1).trim())
-    rest = rest.slice(cut + 1).trim()
+/**
+ * 이 낱말 뒤에서 줄을 끊어도 되는가.
+ *
+ * 글자수로만 끊으면 「제가 8월 들어서 꼭 여쭤보는 / 게 있어요」처럼 마디 중간에서
+ * 잘린다. 회원이 손으로 고칠 때는 **이어지는 마디 끝**에서 끊었다 — 쉼표, 연결어미
+ * (~고 ~며 ~면 ~다가 ~서), 조사(~한테 ~까지 ~부터).
+ *
+ * 낱말만 보는 판정이라 「순서」처럼 ~서로 끝나는 명사에서도 끊길 수 있다. 그건 줄이
+ * 조금 짧아지는 정도의 문제이고, 마디 중간에서 잘리는 것보다 낫다.
+ */
+function breakable(word: string): boolean {
+  if (/[,·;:]$/.test(word)) return true
+  const w = word.replace(/["'”’\)\]】]+$/, '')
+  return /(?:고|며|면|서|야|다가|는데|지만|니까|든지|한지|는지|인지|을지|까지|부터|한테|에게|에서|으로|처럼|보다|라며|자며|거나|어도|아도|해도)$/.test(w)
+}
+
+/** 문장 하나를 마디에서 끊어 줄들로 만든다 (낱말은 자르지 않는다) */
+export function clauseLines(sentence: string): string[] {
+  const words = sentence.trim().split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let cur = ''
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
+    // 넘칠 낱말은 **붙이기 전에** 다음 줄로 내린다 (붙인 뒤 끊으면 그 줄이 상한을 넘는다)
+    const joined = cur ? `${cur} ${w}` : w
+    if (cur && joined.length > LINE_MAX) {
+      lines.push(cur)
+      cur = w
+    } else {
+      cur = joined
+    }
+    const rest = words.slice(i + 1).join(' ')
+    /*
+     * 따옴표가 열린 채로는 끊지 않는다.
+     *
+     * 「"작년에도 이맘때 등록하려고 / 하셨죠?" 하면」처럼 인용 한복판이 갈리면 누가 한 말인지
+     * 눈으로 안 잡힌다. 회원이 손으로 고칠 때도 인용은 통째로 한 줄에 뒀다.
+     */
+    const inQuote = ((cur.match(/["“”]/g) ?? []).length % 2) === 1
+    // 마디 끝이면 끊는다 — 남은 게 한두 낱말뿐이면 그냥 데리고 간다
+    if (rest && !inQuote && cur.length >= LINE_MIN && breakable(w) && rest.length >= ORPHAN_MIN) {
+      lines.push(cur)
+      cur = ''
+    }
   }
-  if (rest) out.push(rest)
-  return out
+  if (cur) lines.push(cur)
+  return lines
 }
 
 /**
- * 문단 하나를 모바일에서 읽히는 줄들로 끊는다.
+ * 문단 하나를 「빈 줄로 나뉘는 덩어리들」로 만든다.
  *
- * 문장을 자르지 않는다 — 검수가 쓰는 `splitSentences` 로 쪼갠 뒤, 상한 안에 들어가는
- * 만큼만 다시 붙인다. 한 문장씩 무조건 끊으면 짧은 문장이 이어질 때 전단지처럼 읽힌다.
+ * 회원이 손으로 고친 글은 두세 줄마다 빈 줄이 있었다. 한 문장이 길어서 네 줄이 되면
+ * 그 문장 하나가 한 덩어리다.
  */
-export function mobileLines(paragraph: string): string[] {
+export function mobileGroups(paragraph: string): string[][] {
   const text = paragraph.trim()
   if (!text) return []
   const sentences = splitSentences(text)
-  const pieces = (sentences.length ? sentences : [text]).flatMap(breakLong)
-  const lines: string[] = []
-  for (const p of pieces) {
-    const last = lines[lines.length - 1]
-    if (last && last.length + 1 + p.length <= MOBILE_LINE_MAX) lines[lines.length - 1] = `${last} ${p}`
-    else lines.push(p)
+  const list = sentences.length ? sentences : [text]
+
+  const groups: string[][] = []
+  let cur: string[] = []
+  let sentences_in = 0
+  for (const s of list) {
+    const lines = clauseLines(s)
+    if (cur.length && (sentences_in >= GROUP_MAX_SENTENCES || cur.length + lines.length > GROUP_MAX_LINES)) {
+      groups.push(cur)
+      cur = []
+      sentences_in = 0
+    }
+    cur.push(...lines)
+    sentences_in++
   }
+  if (cur.length) groups.push(cur)
 
   /*
    * 글자가 하나라도 사라졌으면 원문을 그대로 돌려준다.
@@ -95,7 +142,7 @@ export function mobileLines(paragraph: string): string[] {
    * 발행할 본문을 만들므로 한 글자도 없어져선 안 된다 — 못 끊는 게 지우는 것보다 낫다.
    */
   const squash = (s: string) => s.replace(/\s+/g, '')
-  return squash(lines.join(' ')) === squash(text) ? lines : [text]
+  return squash(groups.flat().join(' ')) === squash(text) ? groups : [[text]]
 }
 
 /** 정리된 본문을 소제목·문단으로 쪼갠다 (이미지·영상 지시문은 버린다) */
@@ -105,7 +152,7 @@ export function toBlocks(cleaned: string): BodyBlock[] {
   const flush = () => {
     const joined = buf.join(' ').trim()
     buf = []
-    if (joined) blocks.push({ kind: 'para', lines: mobileLines(joined) })
+    if (joined) blocks.push({ kind: 'para', groups: mobileGroups(joined) })
   }
 
   for (const raw of cleaned.split(/\r?\n/)) {
@@ -117,7 +164,7 @@ export function toBlocks(cleaned: string): BodyBlock[] {
     const heading = line.match(/^##+\s*(.+)$/)
     if (heading) {
       flush()
-      blocks.push({ kind: 'heading', lines: [heading[1].trim()] })
+      blocks.push({ kind: 'heading', groups: [[heading[1].trim()]] })
       continue
     }
     buf.push(line)
@@ -130,31 +177,61 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+/** 소제목을 어떤 서식으로 낼지 */
+export type HeadingStyle = 'quote' | 'bold'
+
+const RULE = 'border:0;border-top:1px solid #dddddd;'
+
 /**
  * 서식을 함께 붙여넣기 위한 HTML.
  *
- * 회원 요청 — 「소제목은 붙여넣으면 자동으로 인식되게」. 네이버는 글쓰기 API 를 주지 않으니
- * 우리가 쓸 수 있는 통로는 클립보드 하나다. 글자만 복사하면 소제목이 본문과 똑같은 줄로
- * 붙지만, `text/html` 을 같이 담으면 **굵고 큰 글씨로** 붙는다.
+ * 회원 요청 — 「붙여넣으면 줄바꿈·구분선·인용구가 자동으로 들어가게」. 네이버는 글쓰기
+ * API 를 주지 않으니 우리가 쓸 수 있는 통로는 클립보드 하나다. `text/html` 을 함께 담으면
+ * 서식이 같이 넘어간다 (h3 로 낸 소제목이 굵고 큰 글씨로 붙는 것은 회원 화면에서 확인됐다).
  *
- * 다만 네이버 에디터가 이걸 자기 「소제목」 컴포넌트로 바꿔주는지는 에디터 버전에 따라
- * 다르다. 확인할 방법이 없으므로 **된다고 적지 않는다** — 화면에도 「붙인 뒤 소제목 줄을
- * 확인하세요」로 적어둔다. h3 안에 굵기·크기를 직접 박아두는 것도 그래서다. 태그가 벗겨져도
- * 최소한 굵고 큰 글씨는 남는다.
+ * 그래서 회원이 손으로 만들던 모양을 그대로 낸다:
+ *
+ *   구분선 → `<hr>`  ·  소제목 → `<blockquote>`  ·  줄바꿈 → `<br>`  ·  덩어리 → `<p>`
+ *
+ * **네이버가 이걸 자기 「구분선」·「인용구」 컴포넌트로 바꿔주는지는 확인할 방법이 없다.**
+ * 그래서 태그에만 기대지 않고 선·굵기·여백을 인라인으로 박는다 — 컴포넌트로 안 바뀌어도
+ * **보이는 모양은 남는다.** 인용구의 큰 따옴표 기호는 네이버 자기 스타일(라인&따옴표)에서만
+ * 나오므로 우리가 만들 수 없다. 화면에 「원하면 그 줄에서 인용구 스타일만 바꾸세요」로 적어둔다.
+ *
+ * `bold` 는 도망갈 구멍이다. 붙여넣기가 이상하게 되는 환경에서 예전 모양(h3)으로 돌아갈 수 있게.
  */
-export function blocksToHtml(blocks: BodyBlock[]): string {
-  return blocks
-    .map((b) =>
-      b.kind === 'heading'
-        ? `<h3 style="font-size:19px;font-weight:700;line-height:1.6;margin:34px 0 14px;">${esc(b.lines[0] ?? '')}</h3>`
-        : `<p style="font-size:16px;line-height:1.9;margin:0 0 26px;">${b.lines.map(esc).join('<br />')}</p>`
-    )
-    .join('\n')
+export function blocksToHtml(blocks: BodyBlock[], style: HeadingStyle = 'quote'): string {
+  const para = (groups: string[][]) =>
+    groups
+      .map((g) => `<p style="font-size:16px;line-height:1.9;margin:0 0 26px;">${g.map(esc).join('<br />')}</p>`)
+      .join('\n')
+
+  const heading = (text: string) =>
+    style === 'bold'
+      ? `<h3 style="font-size:19px;font-weight:700;line-height:1.6;margin:34px 0 14px;">${esc(text)}</h3>`
+      : [
+          `<hr style="${RULE}margin:40px 0 0;" />`,
+          `<blockquote style="border:0;margin:0;padding:22px 0 20px;font-size:19px;font-weight:700;line-height:1.6;">${esc(text)}</blockquote>`,
+          `<hr style="${RULE}margin:0 0 28px;" />`,
+        ].join('\n')
+
+  return blocks.map((b) => (b.kind === 'heading' ? heading(b.groups[0]?.[0] ?? '') : para(b.groups))).join('\n')
 }
 
-/** 모바일용 본문 — 문단 안은 줄바꿈, 문단 사이는 빈 줄 */
-export function blocksToText(blocks: BodyBlock[]): string {
-  return blocks.map((b) => b.lines.join('\n')).join('\n\n')
+/**
+ * 글자만 붙여넣을 때의 본문 — 덩어리 안은 줄바꿈, 덩어리 사이는 빈 줄.
+ *
+ * 소제목 위아래에 구분선 글자(───)를 넣는다. 서식이 안 넘어가는 환경에서도 소제목 자리가
+ * 눈에 보이고, 네이버에서 그 줄을 지우고 구분선 서식을 넣기만 하면 된다.
+ */
+export function blocksToText(blocks: BodyBlock[], rule = true): string {
+  return blocks
+    .map((b) =>
+      b.kind === 'heading' && rule
+        ? `───────────────\n${b.groups[0]?.[0] ?? ''}\n───────────────`
+        : b.groups.map((g) => g.join('\n')).join('\n\n')
+    )
+    .join('\n\n')
 }
 
 export function buildCopyPackage(post: Post, store?: Store): CopyPackage {

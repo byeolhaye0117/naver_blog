@@ -9,7 +9,7 @@ if (!OUT) {
 const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
-const { buildCopyPackage, toBlocks, blocksToText, blocksToHtml, mobileLines, MOBILE_LINE_MAX } = require(`${OUT}/writing/export.js`)
+const { buildCopyPackage, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, LINE_MIN, LINE_MAX } = require(`${OUT}/writing/export.js`)
 const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parsePlaceList } = require(
   `${OUT}/analysis/paste.js`
@@ -221,35 +221,62 @@ console.log(`  파일명 예: ${pkg.imagePlan[0].fileName} / alt: ${pkg.imagePla
 
 /*
  * 모바일 붙여넣기 — 회원이 그대로 붙여넣고 「문단 정리·가독성이 떨어진다」고 했다.
- * 문단 하나가 한 줄이면 모바일에서 덩어리가 된다. 그래서 문장 단위로 끊어서 준다.
+ * 문단 하나가 한 줄이면 모바일에서 덩어리가 된다. 회원이 손으로 고친 결과물이 기준이다:
+ * 한 줄 15~25자, 마디에서 끊고, 두세 줄마다 빈 줄, 소제목 위아래 구분선.
  */
-const mobLines = pkg.bodyMobile.split('\n').filter((l) => l.trim())
-const tooLong = mobLines.filter((l) => l.length > MOBILE_LINE_MAX)
-ok(mobLines.length > pkg.blocks.length, `모바일 본문이 더 잘게 끊긴다 (${pkg.blocks.length}덩어리 → ${mobLines.length}줄)`)
-// 끊을 자리가 없어 그냥 둔 줄은 허용한다 — 낱말을 자르는 것보다 낫다
-ok(tooLong.every((l) => !/[,;]|\s—\s/.test(l.slice(0, MOBILE_LINE_MAX))), `상한 넘는 줄은 끊을 자리가 없던 것뿐 (${tooLong.length}줄)`)
+const mobLines = pkg.bodyMobile.split('\n').filter((l) => l.trim() && !/^─+$/.test(l.trim()))
+const tooLong = mobLines.filter((l) => l.length > LINE_MAX)
+ok(mobLines.length > pkg.blocks.length * 2, `모바일 본문이 잘게 끊긴다 (${pkg.blocks.length}덩어리 → ${mobLines.length}줄)`)
+ok(tooLong.length === 0, `상한(${LINE_MAX}자) 넘는 줄 없음 — 가장 긴 줄 ${Math.max(...mobLines.map((l) => l.length))}자`)
+ok(pkg.bodyMobile.includes('\n\n'), '덩어리 사이에 빈 줄이 있다')
 ok(!pkg.bodyMobile.includes('[이미지'), '모바일 본문에도 이미지 지시문 없음')
 ok(!pkg.bodyMobile.includes('##'), '모바일 본문에 소제목 마크업 없음')
 ok(pkg.bodyMobile.includes('상담 때 가장 자주 듣는 첫마디'), '모바일 본문에 소제목 텍스트 남음')
+ok(/─{5,}\n상담 때/.test(pkg.bodyMobile), '글자만 붙일 때도 소제목 위에 구분선 글자가 있다')
+
+// 마디에서 끊는다 — 글자수로만 끊으면 「여쭤보는 / 게 있어요」처럼 마디 중간이 잘린다
+const sample = '쌍용동헬스장 상담 오시는 분들한테 제가 8월 들어서 꼭 여쭤보는 게 있어요.'
+ok(clauseLines(sample)[0] === '쌍용동헬스장 상담 오시는 분들한테', `조사 뒤에서 끊는다 — ${clauseLines(sample)[0]}`)
+const sample2 = '더워지면 운동복 입기도 귀찮고, 여름 다 갈 때까지 미루다가 가을 되면 또 겨울 준비하자며 미루는 패턴, 실제로 자주 봅니다.'
+ok(clauseLines(sample2)[0].endsWith('귀찮고,'), `쉼표 뒤에서 끊는다 — ${clauseLines(sample2)[0]}`)
+ok(clauseLines(sample2)[1] === '여름 다 갈 때까지 미루다가', `연결어미 뒤에서 끊는다 — ${clauseLines(sample2)[1]}`)
+ok(clauseLines('짧은 문장입니다.').length === 1, '짧은 문장은 안 끊는다')
+// 인용 한복판에서 갈리면 누가 한 말인지 눈으로 안 잡힌다
+const quoted = clauseLines('"작년에도 이맘때 등록하려고 하셨죠?" 하면 대부분 웃으시더라고요.')
+ok(quoted[0] === '"작년에도 이맘때 등록하려고 하셨죠?" 하면', `따옴표가 열린 채로는 안 끊는다 — ${quoted[0]}`)
+ok(clauseLines(sample).every((l) => l.length <= LINE_MAX), '모든 줄이 상한 안')
 
 // 문장을 자르지 않는다 — 원문 글자가 그대로 있어야 한다
 const squash = (s) => s.replace(/\s+/g, '')
-ok(squash(pkg.bodyMobile) === squash(pkg.body), '줄만 바꾸고 글자는 그대로다')
+ok(squash(pkg.bodyMobile.replace(/─/g, '')) === squash(pkg.body), '줄만 바꾸고 글자는 그대로다')
 
-// 서식 포함 복사 — 소제목이 h3 로 나가야 굵고 큰 글씨로 붙는다
-ok((pkg.bodyHtml.match(/<h3/g) ?? []).length === 6, `HTML 소제목 ${(pkg.bodyHtml.match(/<h3/g) ?? []).length}개`)
-ok(pkg.bodyHtml.includes('font-weight:700'), 'h3 에 굵기를 직접 박았다 (태그가 벗겨져도 남게)')
-ok(pkg.bodyHtml.includes('<br />'), '문단 안 줄바꿈이 br 로 나간다')
-ok(!/<h3[^>]*>\s*##/.test(pkg.bodyHtml), 'HTML 소제목에 ## 이 남지 않음')
-ok(blocksToText(toBlocks('## 소제목\n[이미지: 설명]\n본문입니다.')) === '소제목\n\n본문입니다.', '이미지 줄은 버리고 소제목·문단만 남는다')
+// 서식 포함 복사 — 구분선 + 인용구 (회원이 손으로 만들던 모양)
+ok((pkg.bodyHtml.match(/<hr/g) ?? []).length === 12, `소제목 6개 위아래로 구분선 ${(pkg.bodyHtml.match(/<hr/g) ?? []).length}개`)
+ok((pkg.bodyHtml.match(/<blockquote/g) ?? []).length === 6, `소제목이 인용구로 나간다 (${(pkg.bodyHtml.match(/<blockquote/g) ?? []).length}개)`)
+ok(pkg.bodyHtml.includes('border-top:1px solid'), '구분선을 인라인으로도 박았다 (컴포넌트로 안 바뀌어도 보이게)')
+ok(pkg.bodyHtml.includes('font-weight:700'), '소제목 굵기를 직접 박았다')
+ok(pkg.bodyHtml.includes('<br />'), '덩어리 안 줄바꿈이 br 로 나간다')
+ok((pkg.bodyHtml.match(/<p /g) ?? []).length > pkg.blocks.length, '덩어리마다 p 하나 — 문단이 잘게 나뉘어 붙는다')
+ok(!/<blockquote[^>]*>\s*##/.test(pkg.bodyHtml), 'HTML 소제목에 ## 이 남지 않음')
+
+// 도망갈 구멍 — 붙여넣기가 이상한 환경에서 예전 모양으로
+const boldHtml = blocksToHtml(pkg.blocks, 'bold')
+ok(!boldHtml.includes('<hr') && (boldHtml.match(/<h3/g) ?? []).length === 6, '「굵은 글씨」를 고르면 구분선 없이 h3 로 낸다')
+
+ok(blocksToText(toBlocks('## 소제목\n[이미지: 설명]\n본문입니다.'), false) === '소제목\n\n본문입니다.', '이미지 줄은 버리고 소제목·문단만 남는다')
 ok(blocksToHtml(toBlocks('<b>꺾쇠</b> 있는 문단')).includes('&lt;b&gt;'), 'HTML 특수문자를 이스케이프한다')
 ok(pkg.checklist.some((c) => c.label.includes('모바일 미리보기')), '체크리스트에 모바일 확인이 있다')
 
+// 덩어리 나누기 — 두세 줄마다 빈 줄, 긴 문장 하나는 혼자 한 덩어리
+const para = '안녕하세요, MTO 피트니스 쌍용점입니다. 쌍용동헬스장 상담 오시는 분들한테 제가 8월 들어서 꼭 여쭤보는 게 있어요. "작년에도 이맘때 등록하려고 하셨죠?" 하면 대부분 웃으시더라고요. 더워지면 운동복 입기도 귀찮고, 여름 다 갈 때까지 미루다가 가을 되면 또 겨울 준비하자며 미루는 패턴, 실제로 자주 봅니다.'
+const gs = mobileGroups(para)
+ok(gs.length >= 3, `한 문단이 ${gs.length}덩어리로 나뉜다`)
+ok(gs.every((g) => g.length <= 4), '한 덩어리가 4줄을 넘지 않는다')
+ok(squash(gs.flat().join(' ')) === squash(para), '덩어리로 나눠도 글자는 그대로다')
+
 // 글자가 사라지면 안 된다 — 문장 쪼개기는 짧은 조각을 버리는데, 발행 본문에서는 그게 사고다
 const oddPara = '짧다. ? 그래도 남아야 한다.'
-ok(mobileLines(oddPara).join(' ').replace(/\s+/g, '') === oddPara.replace(/\s+/g, ''), '못 끊어도 글자는 안 버린다')
-const longOne = '쉼표가 하나도 없이 아주 길게 이어지는 문장을 넣어도 낱말을 자르지 않고 그대로 한 줄로 둡니다 그래서 읽는 데 문제가 없습니다'
-ok(mobileLines(longOne).join('').length >= longOne.replace(/\s/g, '').length - longOne.split(' ').length, '긴 문장도 글자를 잃지 않는다')
+ok(squash(mobileGroups(oddPara).flat().join(' ')) === squash(oddPara), '못 끊어도 글자는 안 버린다')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[8] 후기글 협찬 표기')

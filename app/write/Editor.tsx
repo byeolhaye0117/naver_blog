@@ -13,7 +13,8 @@ import { explainNonJson } from '@/lib/ai/httperror'
 type Draft = { title: string; body: string; tags?: string[] }
 
 import { adviseRotation, ANGLES, INFO_FORMATS, INTRO_TYPES, REVIEW_INTRO_TYPES, TOPIC_GROUPS } from '@/lib/writing/rotation'
-import { buildCopyPackage, postLogLine } from '@/lib/writing/export'
+import { blocksToHtml, blocksToText, buildCopyPackage, postLogLine, LINE_MAX, LINE_MIN } from '@/lib/writing/export'
+import type { HeadingStyle } from '@/lib/writing/export'
 import { isPrescriptionStale, prescriptionAgeDays, prescriptionKey } from '@/lib/analysis/prescription'
 import type { PooledFactor } from '@/lib/analysis/factors'
 import type { IntentSuggestion } from '@/lib/analysis/intent'
@@ -1497,9 +1498,12 @@ function CopyPane({
  */
 function BodyCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
   const [mode, setMode] = useState<'mobile' | 'plain'>('mobile')
-  const text = mode === 'mobile' ? pkg.bodyMobile : pkg.body
+  const [style, setStyle] = useState<HeadingStyle>('quote')
+
+  const text = mode === 'mobile' ? blocksToText(pkg.blocks, style === 'quote') : pkg.body
+  const html = mode === 'mobile' ? blocksToHtml(pkg.blocks, style) : pkg.body
   const headings = pkg.blocks.filter((b) => b.kind === 'heading').length
-  const lines = pkg.blocks.reduce((n, b) => n + b.lines.length, 0)
+  const lines = pkg.blocks.reduce((n, b) => n + b.groups.reduce((m, g) => m + g.length, 0), 0)
 
   return (
     <Card
@@ -1507,7 +1511,7 @@ function BodyCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
       subtitle="작성 안내 줄과 이미지 지시문은 빠진 상태입니다"
       right={
         <div className="flex items-center gap-1.5">
-          <CopyRichButton html={pkg.bodyHtml} text={text} />
+          <CopyRichButton html={html} text={text} />
           <CopyButton text={text} label="글자만" className="bg-slate-500/15 !text-inherit" />
         </div>
       }
@@ -1530,6 +1534,28 @@ function BodyCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
             {label}
           </button>
         ))}
+        {mode === 'mobile' && (
+          <>
+            <span className="muted px-0.5 text-[11px]">소제목</span>
+            {(
+              [
+                ['quote', '구분선 + 인용구'],
+                ['bold', '굵은 글씨'],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setStyle(k)}
+                className={`bd rounded-xl border px-2.5 py-1 text-[11.5px] font-semibold ${
+                  style === k ? 'border-brand-500 bg-brand-600/10' : 'hover:bg-slate-500/8'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </>
+        )}
         <span className="muted text-[11px]">
           소제목 {headings}개 · {mode === 'mobile' ? `${lines}줄` : `${pkg.blocks.length}문단`}
         </span>
@@ -1540,15 +1566,17 @@ function BodyCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
       </pre>
 
       <p className="muted mt-2 text-[11px] leading-relaxed">
-        <b>「서식 포함 복사」</b>로 붙이면 소제목이 굵고 큰 글씨로 함께 들어갑니다. 네이버 에디터가
-        자기 <b>「소제목」 서식</b>으로 잡아주는지는 에디터 버전마다 달라서, 붙인 뒤 소제목 줄을 한 번
-        눌러 확인하세요 (일반 글씨로 붙었으면 그 줄만 소제목으로 지정). 붙여넣기가 이상하게 되는
-        환경이면 <b>「글자만」</b>으로 붙이고 소제목만 손으로 지정하면 됩니다.
+        <b>「서식 포함 복사」</b>로 붙이면 줄바꿈 · 소제목 위아래 <b>구분선</b> · <b>인용구</b>가 함께
+        들어갑니다. 네이버가 이걸 자기 <b>구분선·인용구 컴포넌트</b>로 바꿔주는지는 에디터 버전마다
+        달라서, 선·굵기를 직접 박아 보냅니다 — 컴포넌트로 안 바뀌어도 보이는 모양은 남습니다.
+        인용구의 <b>큰 따옴표 기호(“)</b>는 네이버 자기 스타일(라인&amp;따옴표)에서만 나오니, 원하면
+        붙인 뒤 그 줄에서 <b>인용구 스타일만</b> 바꿔 주세요.
       </p>
       <p className="muted mt-1.5 text-[11px] leading-relaxed">
-        모바일 줄바꿈은 <b>가독성 판단이지 순위 규칙이 아닙니다.</b> 실측 160편에서 문단 길이 자체는
-        순위와 무관했지만(1~3위 142자 · 4~6위 154자), 덩어리로 쓴 글은 불리했습니다 — 문단 3~5개인
-        글은 1~3위 0%, 10개 이상은 35%였습니다. 끊어 붙이면 그 유리한 쪽에 놓입니다.
+        줄은 <b>글자수가 아니라 마디에서</b> 끊습니다 (쉼표 · ~고 · ~며 · ~한테 같은 자리). 한 줄
+        {' '}{LINE_MIN}~{LINE_MAX}자, 두세 줄마다 빈 줄입니다. <b>가독성 판단이지 순위 규칙이 아닙니다</b> —
+        실측 160편에서 문단 길이 자체는 순위와 무관했지만(1~3위 142자 · 4~6위 154자), 덩어리로 쓴
+        글은 불리했습니다 (문단 3~5개 1~3위 0% · 10개 이상 35%). 끊어 붙이면 그 유리한 쪽에 놓입니다.
       </p>
     </Card>
   )
