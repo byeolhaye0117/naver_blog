@@ -141,6 +141,8 @@ export default function PostList({
               womenOnly: store?.womenOnly,
               sponsorship: p.sponsorship ?? 'unset',
               eventText: p.eventText,
+              placeReviews: store?.placeReviews,
+              placeId: store?.placeId,
               evidence,
             })
             const scoreTone = result.score >= 85 ? 'good' : result.score >= 65 ? 'warn' : 'bad'

@@ -7,6 +7,8 @@ import {
   PROMO_MAX_BY_TYPE,
 } from '../analysis/content'
 import { TITLE_SHAPE_LABEL, titleAdvice, titleShape } from '../analysis/title'
+import { analyzeReviews, placeReviewUrl, verifyReviewQuotes } from '../analysis/reviews'
+import type { PlaceReview } from '../analysis/reviews'
 import { evidenceHeadline, itemEvidence } from './evidence'
 import type { PooledFactor } from '../analysis/factors'
 import type {
@@ -44,6 +46,15 @@ export interface CheckInput {
    * (`event-hook`). 이벤트가 없으면 그 항목을 아예 만들지 않는다.
    */
   eventText?: string
+  /**
+   * 지점에 붙여넣어 둔 **실제** 플레이스 리뷰.
+   *
+   * 두 가지를 잰다 — 리뷰가 있는데 안 쓴 것(`review-proof`)과, **없는 리뷰를 지어낸 것**
+   * (`review-honesty`). 뒤쪽은 표시광고법에 걸리는 자리라 리뷰가 없어도 검사한다.
+   */
+  placeReviews?: PlaceReview[]
+  /** 플레이스 id — 리뷰 링크를 만드는 데 쓴다 */
+  placeId?: string
   /**
    * 관찰소에 쌓인 근거 (`poolFactors()` 결과).
    *
@@ -1226,6 +1237,86 @@ export function checkPost(input: CheckInput): CheckResult {
        * 「홍보를 참아서 신뢰를 쌓는 것」이라 인사 검사(2)보다는 높다.
        */
       weight: 3,
+    })
+  }
+
+  /*
+   * ─── 플레이스 리뷰 (실제 리뷰로 신뢰를 주는가) ─────────────────
+   *
+   * 회원 요청 — "홍보성 글에 플레이스 관련 헬스 및 피티 리뷰를 분석해서 신뢰성을 줄 수 있게
+   * 작성해주면 좋겠어. **실제 리뷰인 거지.** 링크도 첨부해서."
+   *
+   * 두 항목으로 나눈다. 성격이 다르기 때문이다:
+   *
+   *   review-proof   — 리뷰를 모아뒀는데 글에서 안 썼다. 아까운 일이지 위험한 일은 아니다.
+   *   review-honesty — 없는 리뷰를 지어냈다. **표시광고법 위반**이다 (거짓·과장 광고).
+   *
+   * 그래서 앞은 리뷰가 있을 때만 재고 가중치 3이며, 뒤는 **리뷰가 없어도** 재고 저품질
+   * 위험으로 둔다. 리뷰가 하나도 없는 글에서 「리뷰에 이런 말이 많아요」가 나오는 것이
+   * 가장 위험한 경우다 — 대조할 원본이 아예 없다.
+   *
+   * 순위 기준이 아니다. 리뷰 인용은 오히려 실측에서 반대로 나왔다 (인용 있음 1~3위 25% /
+   * 없음 35%, 표본 작음). 이건 순위가 아니라 **상담 전환**과 **법** 쪽 규칙이다.
+   */
+  const placeReviews = (input.placeReviews ?? []).filter((r) => r.text?.trim())
+
+  if (input.type === 'promo' && placeReviews.length >= 3) {
+    const analysis = analyzeReviews(placeReviews)
+    const url = placeReviewUrl(input.placeId)
+    const quoted = verifyReviewQuotes(input.body, placeReviews)
+    const cited = quoted.filter((q) => q.ok).length
+    const mentioned = /리뷰|후기/.test(scanText)
+    const linked = url ? input.body.includes(url) : false
+    add({
+      id: 'review-proof',
+      group: '내용 균형',
+      label: '플레이스 리뷰 인용',
+      level: cited >= 1 && (linked || !url) ? 'pass' : cited >= 1 || mentioned ? 'warn' : 'fail',
+      value: `인용 ${cited}개${url ? (linked ? ' · 링크 있음' : ' · 링크 없음') : ' · 플레이스 id 없음'}`,
+      target: `실제 리뷰 1~2개 인용 + 링크 (모은 리뷰 ${placeReviews.length}편${
+        analysis.themes[0] ? ` · 가장 많은 주제 「${analysis.themes[0].label}」 ${analysis.themes[0].count}편` : ''
+      })`,
+      hint:
+        cited < 1
+          ? `리뷰 ${placeReviews.length}편을 모아뒀는데 글에서 안 쓰고 있습니다. 신뢰 구간에서 「리뷰 ${placeReviews.length}편 중 ${
+              analysis.themes[0]?.count ?? 0
+            }편이 ${analysis.themes[0]?.label ?? '같은 말'}을 말했다」로 한 줄 쓰고, 리뷰 문장 하나를 따옴표로 그대로 옮기세요${
+              url ? ` — 링크도 함께: ${url}` : ' (지점 설정에 플레이스 id 를 넣으면 링크도 만들어 드립니다)'
+            }. 우리가 「깨끗합니다」라고 말하는 것과 손님이 그렇게 말한 것을 링크로 확인시키는 것은 무게가 다릅니다.`
+          : !linked && url
+            ? `인용은 있는데 확인할 링크가 없습니다. 신뢰 구간에 ${url} 을 한 줄로 넣으세요 — 링크가 없으면 인용도 우리 주장으로 읽힙니다.`
+            : undefined,
+      weight: 3,
+    })
+  }
+
+  /*
+   * 인용이 실제 리뷰에 있는가 — **리뷰를 모아두지 않았어도 검사한다.**
+   *
+   * 상담 대화 인용("제 시간에 문 여는 데가 없어요")은 대상이 아니다. 인용 앞뒤 40자에
+   * 「리뷰·후기·플레이스·별점·평점」이 있는 것만 본다 (reviews.ts 의 verifyReviewQuotes).
+   * 낱말이 아니라 **주장**을 보는 것이다 — 리뷰라고 말한 것만 리뷰로 검사한다.
+   */
+  const quoteChecks = verifyReviewQuotes(input.body, placeReviews)
+  const madeUp = quoteChecks.filter((q) => !q.ok)
+  if (quoteChecks.length > 0) {
+    add({
+      id: 'review-honesty',
+      group: '저품질 위험',
+      label: '리뷰 인용이 실제인가',
+      level: madeUp.length === 0 ? 'pass' : 'fail',
+      value:
+        madeUp.length === 0
+          ? `${quoteChecks.length}개 모두 실제 리뷰`
+          : `원본에 없는 인용 ${madeUp.length}개: "${madeUp[0].quote.slice(0, 30)}…"`,
+      target: '리뷰라고 쓴 인용은 붙여넣은 리뷰에 있는 문장이어야 합니다',
+      hint:
+        madeUp.length === 0
+          ? undefined
+          : placeReviews.length === 0
+            ? '지점에 붙여넣은 리뷰가 없는데 본문이 리뷰를 인용하고 있습니다. **없는 리뷰를 옮기면 표시광고법 위반(거짓·과장 광고)입니다.** 플레이스 리뷰를 지점 설정에 붙여넣고 그 문장만 쓰거나, 리뷰 얘기를 지우세요.'
+            : '붙여넣은 리뷰에 없는 문장입니다. 리뷰는 **글자 그대로** 옮기세요 — 요약하거나 다듬으면 실제로 아무도 하지 않은 말이 됩니다. 다듬고 싶으면 인용을 풀고 「리뷰 N편이 같은 말을 했다」처럼 숫자로 쓰세요.',
+      weight: 5,
     })
   }
 

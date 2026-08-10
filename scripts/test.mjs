@@ -27,6 +27,7 @@ const TARGETS = [
   'lib/analysis/factors.ts',
   'lib/analysis/agency.ts',
   'lib/analysis/content.ts',
+  'lib/analysis/reviews.ts',
   'lib/analysis/study.ts',
   'lib/analysis/intent.ts',
   'lib/analysis/title.ts',

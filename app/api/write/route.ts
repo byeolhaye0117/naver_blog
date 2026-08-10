@@ -198,6 +198,8 @@ async function handle(req: Request, ms: () => string) {
         womenOnly: store.womenOnly,
         sponsorship: body.sponsorship ?? 'unset',
         eventText: request.eventText,
+        placeReviews: store.placeReviews,
+        placeId: store.placeId,
         // AI 가 스스로 고칠 때도 같은 근거로 채점한다 — 화면 점수와 다르면 안 된다
         evidence,
       })

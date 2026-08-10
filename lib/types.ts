@@ -1,3 +1,5 @@
+import type { PlaceReview } from './analysis/reviews'
+
 // 앱 전체에서 쓰는 도메인 타입.
 
 /** 글 유형 — gym-blog-writer(홍보) / gym-info-writer(정보) / gym-review-writer(후기) 스킬과 1:1 대응 */
@@ -45,6 +47,14 @@ export interface Store {
   blogUrl?: string
   /** 네이버 플레이스 id — 플레이스 노출 순위에서 내 지점을 정확히 찾는 데 쓴다 */
   placeId?: string
+  /**
+   * 플레이스에서 붙여넣은 **실제 리뷰.**
+   *
+   * 홍보글의 신뢰 구간이 여기 있는 문장만 인용한다. 비어 있으면 글에서 리뷰를 언급하지
+   * 않는다 — 없는 리뷰를 만들면 표시광고법 위반이다 (lib/analysis/reviews.ts 주석).
+   * 자동 수집은 안 된다 (플레이스가 서버 IP 를 막는다). 붙여넣기로만 채운다.
+   */
+  placeReviews?: PlaceReview[]
   memo?: string
 }
 

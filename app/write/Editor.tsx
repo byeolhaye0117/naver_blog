@@ -327,6 +327,9 @@ export default function Editor({
         sponsorship: type === 'review' ? sponsorship : undefined,
         // 이벤트가 있는 글인지 알아야 「후킹에 이벤트 훅」을 잴 수 있다
         eventText,
+        // 실제 리뷰를 인용했는지 / 없는 리뷰를 지어냈는지 잰다
+        placeReviews: store?.placeReviews,
+        placeId: store?.placeId,
         evidence,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

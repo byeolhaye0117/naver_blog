@@ -31,6 +31,8 @@ export const POST = guard('지점 저장에 실패했습니다.', async (req: Re
     reserveUrl: optional(input.reserveUrl),
     blogUrl: optional(input.blogUrl),
     placeId: optional(input.placeId),
+    // 붙여넣은 실제 리뷰 — 홍보글 신뢰 구간이 이 문장만 인용한다
+    placeReviews: input.placeReviews?.length ? input.placeReviews : undefined,
     memo: optional(input.memo),
   }
   await mutate((db) => {
@@ -53,6 +55,7 @@ export const PUT = guard('지점 저장에 실패했습니다.', async (req: Req
       reserveUrl: optional(input.reserveUrl),
       blogUrl: optional(input.blogUrl),
       placeId: optional(input.placeId),
+      placeReviews: input.placeReviews?.length ? input.placeReviews : undefined,
       memo: optional(input.memo),
     }
     return db.stores[idx]
