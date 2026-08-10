@@ -59,7 +59,7 @@ const KIND_BY_COLOR: Record<string, SpellFix['kind']> = {
  * 응답은 `오늘 날씨가 <em class='red_text'>좋네요</em>` 처럼 온다. 원문 쪽은
  * `<span class='result_underline'>조으네요</span>` 로 표시돼 있어, 둘을 순서대로 짝짓는다.
  */
-export function parseSpellResult(raw: string): { fixes: SpellFix[]; count: number } | null {
+export function parseSpellResult(raw: string): { fixes: SpellFix[]; count: number; skipped: number } | null {
   let json: unknown
   try {
     json = JSON.parse(raw)
@@ -77,21 +77,64 @@ export function parseSpellResult(raw: string): { fixes: SpellFix[]; count: numbe
     /<span class='result_underline'>([\s\S]*?)<\/span>/g
   )]
 
-  const fixes: SpellFix[] = after.map((m, i) => ({
-    before: stripTags(before[i]?.[1] ?? ''),
-    after: stripTags(m[2]),
+  const raw_fixes: SpellFix[] = after.map((m, i) => ({
+    before: clean(before[i]?.[1] ?? ''),
+    after: clean(m[2]),
     kind: KIND_BY_COLOR[m[1]] ?? '기타',
   }))
+
+  /*
+   * 쓸 수 없는 제안을 여기서 버린다. 회원이 실제로 본 화면에 이런 게 있었다:
+   *
+   *   표준어  5시~7시쯤에 → 5시~7시쯤에     (원문과 제안이 똑같다)
+   *   맞춤법  무너진다&quot; → 무너진다&quot;라는  (엔티티가 안 풀렸다)
+   *
+   * ① **원문과 제안이 같은 것** — 검사기가 표준어 대안을 표시만 하고 바꿀 게 없을 때 이렇게
+   *    온다. 화면에 띄우면 「뭘 고치라는 거지」가 되고, 다른 제안의 신뢰까지 깎는다.
+   * ② **원문이 비어 있는 것** — `origin_html` 의 밑줄 개수가 `html` 의 강조 개수와 다르면
+   *    짝이 밀린다. 예전에는 빈 문자열을 그대로 넣어서 「→ 제안」만 보였다. 짝이 안 맞는
+   *    것은 어느 낱말 얘긴지 알 수 없으니 버린다.
+   *
+   * 버린 개수는 `skipped` 로 돌려준다 — 조용히 지우면 「검사기가 놓쳤다」로 읽힌다.
+   */
+  const fixes = raw_fixes.filter((f) => f.before && f.after && norm(f.before) !== norm(f.after))
 
   return {
     fixes,
     // errata_count 를 믿되, 없으면 실제로 뽑힌 개수를 쓴다
     count: typeof r.errata_count === 'number' ? r.errata_count : fixes.length,
+    skipped: raw_fixes.length - fixes.length,
   }
 }
 
-function stripTags(s: string): string {
-  return s.replace(/<[^>]*>/g, '').trim()
+/**
+ * 원문과 제안이 같은지 볼 때만 쓴다.
+ *
+ * **공백을 지우면 안 된다.** 띄어쓰기 교정은 공백만 다르다 (「밥먹었어요 → 밥 먹었어요」).
+ * 공백을 지워서 비교하면 그 정당한 제안이 전부 「원문과 같음」으로 버려진다 —
+ * 처음에 그렇게 썼다가 테스트가 잡았다. 연속 공백만 한 칸으로 줄여서 비교한다.
+ */
+function norm(s: string): string {
+  return s.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * 태그를 떼고 **HTML 엔티티를 풀어** 사람이 읽는 글자로 만든다.
+ *
+ * 엔티티를 안 풀어서 회원 화면에 「무너진다&quot; → 무너진다&quot;라는」이 떴다.
+ * 따옴표가 든 문장은 우리 글에 흔하다 (상담 대화·리뷰 인용).
+ */
+function clean(s: string): string {
+  return s
+    .replace(/<[^>]*>/g, '')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    // &amp; 는 마지막에 — 먼저 풀면 &amp;quot; 가 따옴표로 잘못 바뀐다
+    .replace(/&amp;/g, '&')
+    .trim()
 }
 
 /**
@@ -132,7 +175,47 @@ export interface SpellReport {
   checked: number
   /** 호출 제한 등으로 못 읽은 덩어리 수 — 0 이 아니면 결과가 반쪽이다 */
   failed: number
+  /** 원문과 같거나 짝이 안 맞아서 버린 제안 수 */
+  skipped: number
+  /** 우리 낱말(상호명·키워드·기구 이름)이라 뺀 제안 수 */
+  ours: number
   headline: string
+}
+
+/**
+ * 검사기가 모르는 **우리 낱말.**
+ *
+ * 헬스장 기구·운동 이름은 표준 사전에 없어서 검사기가 엉뚱하게 고치라고 한다. 목록에 있는
+ * 말이 든 제안은 아예 안 보여준다 — 매번 같은 것을 눈으로 걸러내게 하면 결국 아무도 안 본다.
+ */
+export const GYM_WORDS = [
+  '랫풀다운', '렛풀다운', '스미스머신', '레그프레스', '레그컬', '레그익스텐션', '체스트프레스',
+  '펙덱플라이', '천국의계단', '프리웨이트', '데드리프트', '루마니안', '케틀벨', '덤벨', '바벨',
+  '스쿼트', '런지', '플랭크', '유산소존', '인바디', '오티', '피티', '스텝밀', '제로러너',
+  '무동력', '트레드밀', '싸이클', '사이클', '푸시업', '풀업', '치닝디핑', '컨디셔닝',
+]
+
+/**
+ * 우리 낱말이 든 제안을 뺀다.
+ *
+ * **키워드가 특히 중요하다.** 회원 화면에 「쌍용동PT까지 → 쌍용동 PT까지」가 떴는데, 그건
+ * 따르면 안 되는 제안이다 — 검색 키워드는 붙여 써야 그 검색어에 걸린다. 검사기 말대로
+ * 띄우면 키워드 횟수가 0 이 된다. 맞춤법보다 우선하는 규칙이라 목록에서 뺀다.
+ */
+export function dropOurWords(fixes: SpellFix[], ignore: string[]): { kept: SpellFix[]; ours: number } {
+  const words = [...GYM_WORDS, ...ignore]
+    .flatMap((w) => (w ?? '').split(/[^0-9A-Za-z가-힣]+/))
+    .map((w) => w.trim())
+    // 두 글자 미만은 너무 흔해서 멀쩡한 제안까지 지운다
+    .filter((w) => w.length >= 2)
+  const flat = (s: string) => s.replace(/\s+/g, '').toLowerCase()
+  const hay = words.map(flat)
+  const kept = fixes.filter((f) => {
+    const b = flat(f.before)
+    const a = flat(f.after)
+    return !hay.some((w) => b.includes(w) || a.includes(w))
+  })
+  return { kept, ours: fixes.length - kept.length }
 }
 
 /**
@@ -140,20 +223,37 @@ export interface SpellReport {
  *
  * **못 읽은 덩어리가 있으면 그걸 먼저 말한다.** 「0건」과 「못 읽음」을 섞으면 안 된다.
  */
-export function spellHeadline(fixes: SpellFix[], checked: number, failed: number): string {
+export function spellHeadline(
+  fixes: SpellFix[],
+  checked: number,
+  failed: number,
+  skipped = 0,
+  ours = 0
+): string {
   const part = failed
     ? ` 다만 ${failed}덩어리는 네이버 검사기가 호출을 막아 확인하지 못했습니다 (공식 API 가 아니라 자주 막힙니다) — 발행 전에 그 부분은 눈으로 한 번 보세요.`
     : ''
+  /*
+   * 버린 것을 **말한다.** 조용히 지우면 「검사기가 놓쳤다」로 읽히고, 다음에 같은 제안이
+   * 안 보이는 이유도 모르게 된다.
+   */
+  const dropped = [
+    skipped ? `원문과 같거나 짝이 안 맞은 제안 ${skipped}건` : '',
+    ours ? `우리 낱말(상호명·키워드·기구 이름)이라 뺀 제안 ${ours}건` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  const droppedPart = dropped ? ` ${dropped}은 빼고 보여줍니다.` : ''
   if (!checked) {
     return `네이버 맞춤법 검사기를 읽지 못했습니다 (${failed}덩어리 전부 실패). 지금은 검사 결과가 없는 상태이며, 맞춤법이 깨끗하다는 뜻이 아닙니다.`
   }
   if (!fixes.length) {
-    return `${checked}덩어리를 검사했고 교정할 곳이 없습니다.${part}`
+    return `${checked}덩어리를 검사했고 교정할 곳이 없습니다.${droppedPart}${part}`
   }
   const byKind = new Map<string, number>()
   for (const f of fixes) byKind.set(f.kind, (byKind.get(f.kind) ?? 0) + 1)
   const summary = [...byKind.entries()].map(([k, n]) => `${k} ${n}건`).join(' · ')
-  return `${checked}덩어리에서 ${fixes.length}건 나왔습니다 (${summary}).${part}`
+  return `${checked}덩어리에서 ${fixes.length}건 나왔습니다 (${summary}).${droppedPart}${part}`
 }
 
 async function fetchKey(): Promise<string | null> {
@@ -170,7 +270,10 @@ async function fetchKey(): Promise<string | null> {
   }
 }
 
-async function checkChunk(text: string, key: string): Promise<SpellFix[] | null> {
+async function checkChunk(
+  text: string,
+  key: string
+): Promise<{ fixes: SpellFix[]; skipped: number } | null> {
   const url =
     `${SPELL_URL}?passportKey=${encodeURIComponent(key)}` +
     `&where=nexearch&color_blindness=0&q=${encodeURIComponent(text)}`
@@ -182,7 +285,7 @@ async function checkChunk(text: string, key: string): Promise<SpellFix[] | null>
     })
     if (!res.ok) return null
     const parsed = parseSpellResult(await res.text())
-    return parsed ? parsed.fixes : null
+    return parsed ? { fixes: parsed.fixes, skipped: parsed.skipped } : null
   } catch {
     return null
   }
@@ -195,14 +298,15 @@ async function checkChunk(text: string, key: string): Promise<SpellFix[] | null>
  * 첫 건만 통과했다. 그래도 막히면 실패로 세고 그 사실을 결과에 남긴다 —
  * 조용히 넘기면 「검사했는데 0건」으로 보인다.
  */
-export async function spellCheck(text: string): Promise<SpellReport> {
+export async function spellCheck(text: string, ignore: string[] = []): Promise<SpellReport> {
   const chunks = chunkForSpell(text)
-  const fixes: SpellFix[] = []
+  const found: SpellFix[] = []
   let checked = 0
   let failed = 0
+  let skipped = 0
 
   for (const chunk of chunks) {
-    let got: SpellFix[] | null = null
+    let got: { fixes: SpellFix[]; skipped: number } | null = null
     for (let attempt = 0; attempt <= RETRIES && got === null; attempt++) {
       const key = await fetchKey()
       if (!key) continue
@@ -211,9 +315,29 @@ export async function spellCheck(text: string): Promise<SpellReport> {
     if (got === null) failed++
     else {
       checked++
-      fixes.push(...got)
+      found.push(...got.fixes)
+      skipped += got.skipped
     }
   }
 
-  return { fixes, checked, failed, headline: spellHeadline(fixes, checked, failed) }
+  // 같은 제안이 여러 덩어리에서 나오면 한 번만 보여준다
+  const seen = new Set<string>()
+  const unique = found.filter((f) => {
+    const key = `${f.before}→${f.after}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  skipped += found.length - unique.length
+
+  const { kept, ours } = dropOurWords(unique, ignore)
+
+  return {
+    fixes: kept,
+    checked,
+    failed,
+    skipped,
+    ours,
+    headline: spellHeadline(kept, checked, failed, skipped, ours),
+  }
 }

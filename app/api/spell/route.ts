@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { parseBody } from '@/lib/writing/checker'
+import { stripGuides } from '@/lib/writing/templates'
 import { spellCheck } from '@/lib/naver/speller'
 
 export const dynamic = 'force-dynamic'
@@ -17,9 +18,14 @@ export const maxDuration = 120
  */
 export async function POST(req: Request) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { text?: string }
+    const body = (await req.json().catch(() => ({}))) as { text?: string; ignore?: string[] }
     const raw = body.text ?? ''
-    const prose = parseBody(raw).prose.trim()
+    /*
+     * **안내 줄(`> …`)을 먼저 뺀다.** 예전에는 안 뺐다. 골격 안내에는 「"많이 걱정되시죠"(X)」
+     * 처럼 따옴표·괄호가 든 예문이 있어서, 그걸 검사기에 넣으면 없는 오류가 쏟아진다.
+     * 회원 화면에 뜬 「무너진다&quot;」 같은 조각이 그런 경로로 들어왔다.
+     */
+    const prose = parseBody(stripGuides(raw)).prose.trim()
     if (prose.length < 20) {
       return NextResponse.json(
         { error: '검사할 본문이 너무 짧습니다. 글을 먼저 채워주세요.' },
@@ -27,7 +33,13 @@ export async function POST(req: Request) {
       )
     }
 
-    const report = await spellCheck(prose)
+    /*
+     * 검사기가 모르는 우리 낱말을 함께 보낸다 — 상호명·지역 키워드·검색 키워드.
+     * 특히 키워드는 붙여 써야 검색에 걸리므로 「쌍용동PT → 쌍용동 PT」 같은 제안을 따르면
+     * 안 된다 (lib/naver/speller.ts 의 dropOurWords 주석).
+     */
+    const ignore = Array.isArray(body.ignore) ? body.ignore.filter((w) => typeof w === 'string') : []
+    const report = await spellCheck(prose, ignore)
     return NextResponse.json(report)
   } catch (e) {
     return NextResponse.json(
