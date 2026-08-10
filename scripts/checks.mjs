@@ -5199,26 +5199,48 @@ const factItem = (line, patch = {}) =>
     ...patch,
   }).items.find((i) => i.id === 'fact-source')
 
+/*
+ * **판정을 뒤집었다** (같은 날 두 번째 판). 회원 지적: "정보글인데 내용 자체는 팩트로 써야
+ * 하잖아. 그냥 감으로 이렇게 했더니 이렇게 됬다더라 하면 안 되는 거잖아. 실제 연구 결과 등이
+ * 있으면 **출처도 함께 인용해서** 쓰는 게 좋을 거 같아."
+ *
+ * 앞 판에서 나는 「연구를 인용하지 않는다」로 막았는데 그건 반대 방향이었다 — 인용을 막으면
+ * 정보글이 「감으로 쓴 글」이 된다. 문제는 인용이 아니라 **출처 없는 인용**이다.
+ */
 const cited = factItem('사진만 찍어놔도 충동적으로 먹는 횟수가 줄어든다는 연구가 꽤 있습니다.')
-ok(cited && cited.level === 'fail', `출처 없는 연구 인용은 즉시수정 — ${cited?.value}`)
+ok(cited && cited.level === 'fail', `출처 없는 인용은 즉시수정 — ${cited?.value}`)
 ok(cited.group === '저품질 위험', '저품질 위험으로 분류한다')
-ok(cited.hint.includes('제가 상담하면서 보면'), '우리 근거로 바꾸는 방법을 준다')
-ok(factItem('전문가들은 아침을 거르지 말라고 합니다.')?.level === 'fail', '전문가 인용도 잡는다')
-ok(factItem('임상에서 확인된 방법입니다.')?.level === 'fail', '임상 언급도 잡는다')
+ok(cited.hint.includes('인용은 좋습니다'), '인용 자체를 막지 않는다고 알려준다')
+ok(cited.hint.includes('「근거·출처」 칸'), '어디에 넣으면 되는지 알려준다')
+ok(factItem('전문가들은 아침을 거르지 말라고 합니다.')?.level === 'fail', '전문가 인용도 출처가 필요하다')
+ok(factItem('임상에서 확인된 방법입니다.')?.level === 'fail', '임상 언급도 마찬가지')
 
-// 효과에 붙은 수치
+// 효과에 붙은 수치도 출처가 필요하다
 const numbered = factItem('이 순서만 지키면 폭식이 30% 줄어듭니다.')
-ok(numbered && numbered.level === 'fail', `효과 수치는 즉시수정 — ${numbered?.value}`)
-ok(numbered.hint.includes('방향으로 쓰세요'), '어떻게 쓰면 되는지 알려준다')
+ok(numbered && numbered.level === 'fail', `출처 없는 수치는 즉시수정 — ${numbered?.value}`)
+ok(numbered.hint.includes('수치에도 출처가 필요합니다'), '수치도 출처를 요구한다')
 // 가격·비율이 효과와 무관하면 대상이 아니다
 ok(factItem('3개월 9.9만원으로 시작할 수 있어요.') === undefined, '가격 숫자는 대상이 아니다')
 ok(factItem('경사 3도에 15분 걸으세요.') === undefined, '우리가 안내하는 값은 대상이 아니다')
 ok(factItem('눈에 띄게 줄어드시더라고요.') === undefined, '방향으로 쓴 문장은 통과')
 
-// 출처가 있으면 주의로 낮춘다 — 근거를 댄 글을 즉시수정으로 잡으면 근거 대는 일을 막는다
-const sourced = factItem('연구에 따르면 그렇습니다. 출처: https://example.com/paper')
-ok(sourced.level === 'warn', `출처가 있으면 주의로 낮춘다 — ${sourced?.level}`)
-ok(sourced.hint.includes('정말 그 출처의 내용인지'), '그래도 확인하라고 한다')
+/*
+ * ─── 출처를 붙이면 **통과** — 이게 우리가 원하는 모양이다
+ */
+const sourcedLink = factItem('연구에 따르면 그렇습니다. 출처: https://example.com/paper')
+ok(sourcedLink.level === 'pass', `링크를 붙이면 통과 — ${sourcedLink?.value}`)
+const sourcedOrg = factItem('대한비만학회 연구에 따르면 하루 500kcal 줄이면 주당 0.5kg 정도라고 합니다.')
+ok(sourcedOrg.level === 'pass', `기관 이름을 밝히면 통과 — ${sourcedOrg?.value}`)
+ok(sourcedOrg.value.includes('출처 표기 있음'), '무엇을 출처로 봤는지 보여준다')
+ok(factItem('질병관리청 국민건강영양조사 연구에서 아침 결식률이 34% 늘었다고 합니다.').level === 'pass', '정부 기관도 출처로 본다')
+// 인용도 수치도 없으면 항목이 아예 안 생긴다 (기관 이름만 적은 문장은 주장이 아니다)
+ok(factItem('대한비만학회 자료를 참고해 순서를 정리했어요.') === undefined, '주장이 없으면 항목이 안 생긴다')
+ok(factItem('연구에 따르면 그렇습니다.').level === 'fail', '기관 이름이 없으면 여전히 잡는다')
+// 「출처를 밝혀라」와 「영문을 쓰지 마라」가 부딪히지 않아야 한다
+ok(findLatinWords('WHO 권고에 따르면 그렇습니다.').length === 0, '기관 약어는 영문 검사에서 허용된다')
+const srcNote = 'ACSM 2023 운동 지침 — 주 150분 중강도 유산소 권고'
+const withNote = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터', body: factBody('ACSM 2023 운동 지침에서는 주 150분을 권고합니다.'), mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점', sourceNote: srcNote }).items.find((i) => i.id === 'korean-only')
+ok(withNote.level === 'pass', '「근거·출처」 칸에 적은 기관 이름은 영문 검사를 통과한다')
 
 // 세 유형 다 본다 — 없는 연구를 홍보글에 쓰면 광고 표시에 걸린다
 ok(checkPost({ ...goodPromo, body: goodPromo.body.replace('운동하다 자세가', '연구에 따르면 그렇습니다. 운동하다 자세가') }).items.some((i) => i.id === 'fact-source'), '홍보글도 검사한다')
@@ -5227,10 +5249,24 @@ ok(checkPost({ ...goodPromo }).items.every((i) => i.id !== 'fact-source'), '주�
 // 지시문
 const factPrompt = buildSystemPrompt('info')
 ok(factPrompt.includes('이 글은 팩트가 우선이다'), '정보글 지시문에 팩트 우선을 적었다')
-ok(factPrompt.includes('연구·논문·전문가를 인용하지 않는다'), '연구 인용을 막는다')
-ok(factPrompt.includes('효과를 숫자로 단정하지 않는다'), '효과 수치를 막는다')
-ok(factPrompt.includes('기능을 단정하지 않는다'), '호르몬 이름은 쓰되 단정을 막는다')
-ok(factPrompt.includes('숫자는 우리가 확인한 것만'), '쓸 수 있는 숫자를 알려준다')
+ok(factPrompt.includes('「감으로 이렇게 했더니 이렇게 되더라」로 쓰면 안 된다'), '회원 말을 그대로 규칙으로 옮겼다')
+ok(factPrompt.includes('두 갈래 중 하나여야 한다'), '현장 근거 / 출처 있는 사실로 갈래를 나눈다')
+ok(factPrompt.includes('출처를 함께 쓴다'), '인용은 출처와 함께 하라고 한다')
+ok(factPrompt.includes('어느 연구인지 못 밝히는 인용은 쓰지 않는다'), '막는 것이 무엇인지 분명히 한다')
+ok(!factPrompt.includes('연구·논문·전문가를 인용하지 않는다'), '「인용하지 마라」를 지웠다 (앞 판이 반대였다)')
+ok(factPrompt.includes('막는 것은 이름이 아니라 단정이다'), '호르몬 이름은 쓰되 단정을 막는다')
+ok(factPrompt.includes('우리가 안내하는 값은 그대로 쓴다'), '쓸 수 있는 숫자를 알려준다')
+
+// 「근거·출처」 묶음 — 있을 때와 없을 때
+const srcPrompt = buildUserPrompt({ type: 'info', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], sourceNote: '대한비만학회 2024 진료지침 — 하루 500kcal' })
+ok(srcPrompt.includes('## 근거·출처 (인용은 이 안에서만 한다)'), '적어둔 자료를 따로 낸다')
+ok(srcPrompt.includes('대한비만학회 2024 진료지침'), '적은 것을 그대로 넣는다')
+ok(srcPrompt.includes('글자 그대로'), '이름·수치를 바꾸지 말라고 한다')
+ok(srcPrompt.includes('출처를 밝힌다'), '본문에 출처를 쓰라고 한다')
+const noSrcPrompt = buildUserPrompt({ type: 'info', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'] })
+ok(noSrcPrompt.includes('연구·논문·전문가 인용과 효과 수치를 쓰지 않는다'), '자료가 없으면 인용을 막는다')
+ok(noSrcPrompt.includes('단정을 빼고 쓴다'), '대신 어떻게 쓸지 알려준다')
+ok(!buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], sourceNote: 'x' }).includes('근거·출처'), '홍보글에는 이 묶음을 안 낸다')
 ok(!buildSystemPrompt('promo').includes('이 글은 팩트가 우선이다'), '홍보글 구조에는 안 넣는다 (검수로만 잡는다)')
 
 // 발행 체크리스트 — 틀린 사실은 기계가 못 잡는다

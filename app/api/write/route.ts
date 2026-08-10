@@ -118,6 +118,7 @@ async function handle(req: Request, ms: () => string) {
       localKeyword?: string
       eventText?: string
       promoNote?: string
+      sourceNote?: string
       infoTopic?: string
       request?: string
       sponsorship?: 'own' | 'sponsored' | 'unset'
@@ -175,6 +176,7 @@ async function handle(req: Request, ms: () => string) {
       localKeyword: body.localKeyword?.trim() || undefined,
       eventText: body.eventText?.trim() || undefined,
       promoNote: body.promoNote?.trim() || undefined,
+      sourceNote: body.sourceNote?.trim() || undefined,
       infoTopic: body.infoTopic?.trim() || undefined,
       request: body.request?.trim() || undefined,
       sponsorship: body.sponsorship,
@@ -201,6 +203,7 @@ async function handle(req: Request, ms: () => string) {
         sponsorship: body.sponsorship ?? 'unset',
         eventText: request.eventText,
         promoNote: request.promoNote,
+        sourceNote: request.sourceNote,
         placeReviews: store.placeReviews,
         placeId: store.placeId,
         // AI 가 스스로 고칠 때도 같은 근거로 채점한다 — 화면 점수와 다르면 안 된다
