@@ -4293,5 +4293,45 @@ ok(cronMerged.length === 1, '문단 필드가 없어도 합쳐진다')
 ok(cronMerged[0].held === true, '유지 판정은 순위만으로 된다 (문단 없이도)')
 ok(cronMerged[0].longestPara === undefined, '없는 값은 없는 채로 둔다 (0 으로 꾸미지 않는다)')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[77] 화자 경고는 걸린 말을 그대로 보여준다')
+/*
+ * 회원이 유형을 홍보글로 바꿨는데 본문은 예전 후기글이 남아 있었다. 그 상태에서 빨간
+ * 배너를 보고 「유형은 홍보글이고 화자도 센터가 맞는데 왜 어긋났다고 하나」로 읽었다.
+ *
+ * 배너가 **패턴 목록**을 읊고 있었기 때문이다 — 「제목의 「후기」나 「다녀왔다」·
+ * 「괜찮더라고요」는…」. 무엇 때문에 걸렸는지 알려주지 않으면 맞는 경고도 버그로 읽힌다.
+ * 이제 실제로 걸린 구절을 뽑아 보여준다.
+ */
+const v77 = (title, tail) => checkPost({ type:'promo', title,
+  body: ['[이미지: 대표]', '안녕하세요, MTO 피트니스 쌍용점입니다. 쌍용동 헬스장입니다.', '',
+    '[이미지: 2]', '## 소제목', '자세와 호흡, 무게를 봅니다. ' + '가'.repeat(1700), tail].join('\n'),
+  mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[], legalName:'MTO 피트니스 쌍용점' })
+  .items.find((i) => i.id === 'voice')
+
+const v77body = v77('쌍용동 헬스장 8월 혜택 안내', '지난주에 직접 다녀왔습니다.')
+ok(v77body.level === 'fail', '방문자 말투는 그대로 잡는다')
+ok(v77body.value.includes('다녀왔'), '걸린 말을 value 에 넣는다', v77body.value)
+ok(v77body.hint.includes('본문의 「다녀왔'), '힌트도 걸린 말을 짚는다', v77body.hint)
+ok(!v77body.hint.includes('괜찮더라고요'), '걸리지도 않은 패턴을 나열하지 않는다')
+
+const v77title = v77('쌍용동 헬스장 등록 후기, 3주 다녀보고', '오시면 안내드립니다.')
+ok(v77title.hint.includes('제목의 「후기」'), '제목에서 걸렸으면 제목이라고 말한다', v77title.hint)
+
+const v77both = v77('쌍용동 헬스장 체험 후기', '내돈내산으로 다녀왔습니다.')
+ok(v77both.hint.includes('제목의') && v77both.hint.includes('본문의'), '둘 다면 둘 다 짚는다')
+
+ok(v77('쌍용동 헬스장 8월 혜택 안내', '오시면 안내드립니다.').level === 'pass',
+  '깨끗하면 통과 (센터 말투는 홍보글에서 정상)')
+
+// 후기글 쪽도 같은 방식
+const v77rev = checkPost({ type:'review', title:'쌍용동 헬스장 등록 후기, 3주 다녀보고',
+  body: ['[이미지: 대표]', '등록한 지 3주 됐어요. 쌍용동 헬스장 후기예요.', '', '[이미지: 2]',
+    '## 소제목', '자세를 봐주셨어요. ' + '가'.repeat(1700), '저희 센터는 24시간 운영합니다.'].join('\n'),
+  mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] }).items.find((i) => i.id === 'voice')
+ok(v77rev.level === 'fail', '후기글에 센터 말투가 새면 잡는다')
+ok(v77rev.value.includes('저희 센터'), '걸린 말을 보여준다', v77rev.value)
+ok(v77rev.hint.includes('본문에 「저희 센터'), '힌트도 그 말을 짚는다', v77rev.hint)
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

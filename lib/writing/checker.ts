@@ -1242,33 +1242,47 @@ export function checkPost(input: CheckInput): CheckResult {
     { p: /저희 (센터|지점|짐|헬스장)|우리 센터|우리 지점/, label: '소속 1인칭(「저희 센터」)' },
     { p: /오시면|방문해 주시|등록하시면|안내드립니다/, label: '센터가 손님을 부르는 말투' },
   ]
+  /*
+   * **걸린 말을 그대로 보여준다** (2026-08-10).
+   *
+   * 예전에는 「제목의 「후기」나 「다녀왔다」·「괜찮더라고요」는…」처럼 **패턴 목록**을 읊었다.
+   * 회원이 유형을 홍보글로 바꿨는데 본문은 예전 후기글이 남아 있는 상태에서 이 배너를 보고
+   * 「유형은 홍보글인데 왜 어긋났다고 하나」로 읽었다 — 무엇 때문인지 안 알려줬기 때문이다.
+   * 이제 실제로 걸린 구절을 뽑아서 보여준다.
+   */
+  const matchOf = (re: RegExp, text: string) => text.match(re)?.[0]?.trim().slice(0, 24)
   if (input.type === 'review') {
-    const hits = OWNER_TONE.filter((t) => t.p.test(prose)).map((t) => t.label)
+    const found = OWNER_TONE.map((t) => ({ label: t.label, at: matchOf(t.p, prose) })).filter((x) => x.at)
     add({
       id: 'voice',
       group: '저품질 위험',
       label: '화자 (방문객이어야 합니다)',
-      level: hits.length ? 'fail' : 'pass',
-      value: hits.length ? hits.join(', ') : '방문객 1인칭 유지',
+      level: found.length ? 'fail' : 'pass',
+      value: found.length ? found.map((f) => `「${f.at}」`).join(' · ') : '방문객 1인칭 유지',
       target: '센터 소속 1인칭을 쓰지 않습니다',
-      hint: hits.length
-        ? '후기글의 화자는 방문객입니다. 센터 말투로 새면 후기가 아니라 홍보글이 됩니다 — 그건 gym-blog-writer 로 쓰세요.'
+      hint: found.length
+        ? `본문에 ${found.map((f) => `「${f.at}」(${f.label})`).join(' · ')} 가 있습니다. 후기글의 화자는 방문객이라 센터 말투로 새면 후기가 아니라 홍보글이 됩니다 — 유형을 「홍보글」로 바꾸거나 그 표현을 방문객 시점으로 고치세요.`
         : undefined,
       weight: 5,
     })
   } else {
-    const titleHit = /후기|내돈내산|체험단?/.test(title)
-    const bodyHits = VISITOR_TONE.filter((t) => t.p.test(prose)).map((t) => t.label)
-    const hits = [...(titleHit ? ['제목에 「후기」류'] : []), ...bodyHits]
+    const titleAt = matchOf(/후기|내돈내산|체험단?/, title)
+    const bodyFound = VISITOR_TONE.map((t) => ({ label: t.label, at: matchOf(t.p, prose) })).filter((x) => x.at)
+    const found = [
+      ...(titleAt ? [{ label: '제목', at: titleAt }] : []),
+      ...bodyFound,
+    ]
     add({
       id: 'voice',
       group: '저품질 위험',
       label: '화자 (센터여야 합니다)',
-      level: hits.length ? 'fail' : 'pass',
-      value: hits.length ? hits.join(', ') : '센터 1인칭 유지',
+      level: found.length ? 'fail' : 'pass',
+      value: found.length ? found.map((f) => `「${f.at}」`).join(' · ') : '센터 1인칭 유지',
       target: '방문자 말투·「후기」 표기를 쓰지 않습니다',
-      hint: hits.length
-        ? '이 글은 센터가 쓰는 글입니다. 제목의 「후기」나 「다녀왔다」·「괜찮더라고요」는 겪지 않은 일을 겪은 것처럼 말하는 것이라 사실이 아닙니다. 방문객 시점으로 쓰려면 글 유형을 「후기글」로 바꾸세요.'
+      hint: found.length
+        ? `${titleAt ? `제목의 「${titleAt}」` : ''}${titleAt && bodyFound.length ? ' · ' : ''}${bodyFound
+            .map((f) => `본문의 「${f.at}」`)
+            .join(' · ')} 때문입니다. 이 글은 센터가 쓰는 글이라 겪지 않은 일을 겪은 것처럼 말하는 셈이 됩니다. 방문객 시점으로 쓰려면 유형을 「후기글」로 바꾸세요.`
         : undefined,
       weight: 5,
     })
