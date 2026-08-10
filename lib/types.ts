@@ -184,6 +184,43 @@ export interface DB {
    * 섞지 않는다 (규칙이 정반대로 나온 실측이 있다).
    */
   benchmarkKeywords?: string[]
+  /**
+   * 상위노출 조사 런 — 매일 크론이 하나씩 쌓는다 (app/api/cron/study).
+   *
+   * 회원이 물었다 — "일주일 뒤까지 모으지 않아도 하루씩 모이게 할 수 있지 않아?"
+   * 된다. 「유지하고 있는 글」을 가리는 데 필요한 것은 **기간**이고, 하루씩 쌓으면
+   * 이 주면 14개 런이 14일을 덮는다. 손으로 주에 한 번 돌리는 것보다 촘촘하다.
+   *
+   * 오래된 것도 버리지 않는다 — 다만 무한정 쌓으면 저장소가 커지므로 상한을 둔다
+   * (STUDY_RUNS_KEEP). 파일 형태의 study/runs/ 와 같은 내용이고, `npm run study:pull`
+   * 로 내려받아 분석한다.
+   */
+  studyRuns?: StudyRunRecord[]
+  /**
+   * 글별 본문 측정값 캐시.
+   *
+   * **순위는 매일 바뀌지만 본문은 거의 안 바뀐다.** 그래서 순위(SERP)는 매일 새로 받고,
+   * 본문은 오래된 것만 다시 받는다. 이 구분이 없으면 매일 160편을 다시 읽어야 하고,
+   * 그건 크론 한 번에 들어가지 않는다.
+   */
+  studyPosts?: StudyPostCache[]
+}
+
+/** 하루치 조사 (lib/analysis/study.ts 의 StudyRun 과 같은 모양) */
+export interface StudyRunRecord {
+  date: string
+  keywords: string[]
+  top: number
+  posts: unknown[]
+}
+
+/** 글 하나의 본문 측정값 — 며칠은 재사용한다 */
+export interface StudyPostCache {
+  url: string
+  /** 측정한 날 (YYYY-MM-DD) */
+  measuredAt: string
+  /** StudyPost 에서 순위(ranks)를 뺀 나머지 */
+  metrics: Record<string, unknown>
 }
 
 /** 한 번의 관찰 (lib/analysis/factors.ts 의 FactorObservation 을 그대로 저장한다) */

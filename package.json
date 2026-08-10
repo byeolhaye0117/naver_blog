@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/test.mjs",
     "study:collect": "node scripts/study.mjs collect",
-    "study:analyze": "node scripts/study.mjs analyze"
+    "study:analyze": "node scripts/study.mjs analyze",
+    "study:pull": "node scripts/study.mjs pull"
   },
   "dependencies": {
     "next": "15.5.22",

@@ -669,14 +669,70 @@ function analyze(lib) {
   console.log('\nstudy/findings.json · study/report.md 갱신')
 }
 
+/**
+ * 배포된 앱에 쌓인 런을 내려받는다.
+ *
+ * 크론(`/api/cron/study`)이 매일 하나씩 쌓지만 그 결과는 배포 쪽 저장소에 있다. 분석은
+ * 이 스크립트가 하므로 가져오는 단계가 하나 필요하다.
+ *
+ * 이미 있는 날짜는 **덮어쓰지 않는다** — 로컬에서 `collect` 로 직접 잰 런은 문단 구조까지
+ * 들어 있어서 크론 런보다 정보가 많다. 덮어쓰면 그게 사라진다.
+ */
+async function pull() {
+  const base = arg('url', process.env.STUDY_URL)
+  if (!base) {
+    throw new Error(
+      '앱 주소가 필요합니다 — node scripts/study.mjs pull --url=https://your-app.vercel.app\n' +
+        '(또는 STUDY_URL 환경변수)'
+    )
+  }
+  mkdirSync(RUNS, { recursive: true })
+  const have = new Set(
+    existsSync(RUNS) ? readdirSync(RUNS).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)) : []
+  )
+  const u = `${base.replace(/\/$/, '')}/api/study/runs`
+  console.log(`${u} 에서 받아옵니다…`)
+  const res = await fetch(u, { signal: AbortSignal.timeout(60000) })
+  const raw = await res.text()
+  let json
+  try {
+    json = JSON.parse(raw)
+  } catch {
+    throw new Error(`JSON 이 아닌 응답입니다 (${res.status}). 주소가 맞는지 확인하세요.\n${raw.slice(0, 200)}`)
+  }
+  const runs = json.runs ?? []
+  if (!runs.length) {
+    console.log('받을 런이 없습니다. 크론이 아직 한 번도 안 돌았을 수 있습니다.')
+    return
+  }
+  let wrote = 0
+  let kept = 0
+  for (const run of runs) {
+    if (!run?.date) continue
+    if (have.has(run.date)) {
+      kept++
+      continue
+    }
+    writeFileSync(join(RUNS, `${run.date}.json`), JSON.stringify(run, null, 1))
+    wrote++
+  }
+  console.log(`런 ${runs.length}개 중 ${wrote}개 저장 · ${kept}개는 이미 있어서 건너뜀 (로컬 것을 지우지 않습니다)`)
+  if (json.measuredRange) {
+    console.log(`본문 측정값 기간: ${json.measuredRange.from} ~ ${json.measuredRange.to}`)
+  }
+  console.log('다음: npm run study:analyze')
+}
+
 // ─── 진입점 ──────────────────────────────────────────────────────────────
 const cmd = process.argv[2]
-if (!['collect', 'analyze'].includes(cmd)) {
+if (!['collect', 'analyze', 'pull'].includes(cmd)) {
   console.log(`사용법:
-  node scripts/study.mjs collect [--keywords="a,b"] [--top=10]
+  node scripts/study.mjs collect [--keywords="a,b"] [--top=10] [--cache-days=0]
+  node scripts/study.mjs pull --url=https://your-app.vercel.app
   node scripts/study.mjs analyze
 
   collect  지금 순위를 재서 study/runs/<날짜>.json 에 저장 (본문은 커밋하지 않음)
+  pull     배포된 앱에 크론이 쌓아둔 런을 내려받는다 (하루 하나씩 쌓인다)
   analyze  쌓인 런을 전부 합쳐 앱 기준을 점검 → study/report.md · study/findings.json
 
   자세한 설명은 study/README.md`)
@@ -704,6 +760,7 @@ const lib = {
 
 try {
   if (cmd === 'collect') await collect(lib)
+  else if (cmd === 'pull') await pull()
   else analyze(lib)
 } catch (e) {
   console.error(e instanceof Error ? e.message : String(e))

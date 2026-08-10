@@ -128,6 +128,8 @@ function emptyDB(): DB {
     prescriptions: [],
     factorRuns: [],
     benchmarkKeywords: [],
+    studyRuns: [],
+    studyPosts: [],
   }
 }
 
@@ -144,6 +146,8 @@ function normalize(raw: unknown): DB {
     prescriptions: Array.isArray(r.prescriptions) ? r.prescriptions : [],
     factorRuns: Array.isArray(r.factorRuns) ? r.factorRuns : [],
     benchmarkKeywords: Array.isArray(r.benchmarkKeywords) ? r.benchmarkKeywords : [],
+    studyRuns: Array.isArray(r.studyRuns) ? r.studyRuns : [],
+    studyPosts: Array.isArray(r.studyPosts) ? r.studyPosts : [],
   }
 }
 
@@ -259,6 +263,8 @@ export async function importDB(raw: unknown): Promise<DB> {
     'prescriptions',
     'factorRuns',
     'benchmarkKeywords',
+    'studyRuns',
+    'studyPosts',
   ] as const
   const present = known.filter((k) => Array.isArray(r[k]))
   if (present.length === 0) {

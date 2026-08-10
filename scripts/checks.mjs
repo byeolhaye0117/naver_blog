@@ -4225,5 +4225,73 @@ ok(wouldReuse(-3, 3), '--cache-days=3 이면 사흘 전 것까지 재사용')
 ok(!wouldReuse(-4, 3), '--cache-days=3 이면 나흘 전은 다시 받는다')
 ok(wouldReuse(0, 7), '넉넉히 줘도 오늘 것은 당연히 재사용')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[76] 하루씩 쌓기 — 순위는 매일, 본문은 묵은 것만')
+/*
+ * 회원이 물었다 — "일주일 뒤까지 모으지 않아도 하루씩 모이게 할 수 있지 않아?"
+ *
+ * 된다. 유지 판정에 필요한 것은 런 개수가 아니라 **기간**이고, 하루씩 쌓으면 이 주면
+ * 14개 런이 14일을 덮는다. 문제는 비용이었다 — 키워드 22개 × 상위 10편이면 매일 본문
+ * 160편을 읽어야 하고 함수 한 번에 안 들어간다.
+ *
+ * 그래서 나눴다: **순위는 매일 전부(22콜), 본문은 7일 넘게 묵은 것만.**
+ * 순위는 매일 바뀌고 본문은 거의 안 바뀌므로 유지 판정이 흐려지지 않는다.
+ */
+const {
+  BODY_MAX_AGE_DAYS,
+  BODY_BUDGET_PER_RUN,
+  STUDY_RUNS_KEEP,
+  STUDY_POSTS_KEEP,
+  measurementAgeDays,
+  studyKeywords,
+} = require(`${OUT}/analysis/study.js`)
+
+ok(BODY_MAX_AGE_DAYS === 7, '본문은 7일까지 재사용', String(BODY_MAX_AGE_DAYS))
+ok(BODY_BUDGET_PER_RUN >= 40 && BODY_BUDGET_PER_RUN <= 100, '한 번에 읽을 본문에 상한을 둔다', String(BODY_BUDGET_PER_RUN))
+ok(STUDY_RUNS_KEEP >= 30, '하루 하나면 한 달 이상 남는다', String(STUDY_RUNS_KEEP))
+ok(STUDY_POSTS_KEEP >= 300, '상위 글 수보다 넉넉하게 둔다', String(STUDY_POSTS_KEEP))
+
+// ─── 측정값 나이 ───
+ok(measurementAgeDays('2026-08-10', '2026-08-10') === 0, '같은 날이면 0일')
+ok(measurementAgeDays('2026-08-03', '2026-08-10') === 7, '이레 전이면 7일')
+ok(measurementAgeDays('2026-08-03', '2026-08-10') >= BODY_MAX_AGE_DAYS, '7일이면 다시 받는다')
+ok(measurementAgeDays('2026-08-04', '2026-08-10') < BODY_MAX_AGE_DAYS, '6일이면 재사용한다')
+ok(measurementAgeDays('2026-07-31', '2026-08-10') === 10, '달을 넘겨도 센다')
+ok(!Number.isFinite(measurementAgeDays('', '2026-08-10')), '날짜가 없으면 무한 — 무조건 다시 받는다')
+ok(!Number.isFinite(measurementAgeDays('망가진 값', '2026-08-10')), '깨진 값도 다시 받는다')
+// 미래 날짜(시계가 어긋난 경우)를 음수로 돌려주면 영원히 재사용된다
+ok(measurementAgeDays('2026-08-20', '2026-08-10') === 0, '미래 날짜는 0으로 (음수를 돌려주지 않는다)')
+
+// ─── 조사 키워드 ───
+const kwDb = {
+  rankTargets: [{ keyword: '쌍용동 헬스장' }, { keyword: '천안 PT' }],
+  stores: [{ localKeywords: ['쌍용동 헬스장', '봉명동 헬스장'] }],
+}
+ok(studyKeywords(kwDb, ['두정동 헬스장', '성정동 헬스장']).length === 2, '파일 목록이 있으면 그것만 쓴다')
+ok(studyKeywords(kwDb, ['두정동 헬스장'])[0] === '두정동 헬스장', '파일 목록을 그대로 쓴다')
+ok(studyKeywords(kwDb, ['  ', '']).length === 3, '빈 항목만 있으면 앱 키워드로 물러선다', String(studyKeywords(kwDb, ['  ']).length))
+ok(studyKeywords(kwDb, []).includes('쌍용동 헬스장'), '물러설 때 순위 추적 키워드를 쓴다')
+ok(studyKeywords(kwDb, []).includes('봉명동 헬스장'), '지점 지역 키워드도 쓴다')
+ok(new Set(studyKeywords(kwDb, [])).size === studyKeywords(kwDb, []).length, '중복을 없앤다')
+ok(studyKeywords({}, []).length === 0, '아무것도 없으면 빈 목록 (크론이 400 으로 알려준다)')
+
+/*
+ * 크론 런에는 문단 구조가 없다 (se-component 쪼개기는 로컬 스크립트에만 있다).
+ * 그래도 합치기·판정이 깨지지 않아야 한다 — 문단 항목만 대상에서 빠지면 된다.
+ */
+const cronPost = {
+  url: 'x', blogId: 'b', title: 't', ranks: { k: 2 },
+  chars: 2000, images: 8, videos: 0,
+  info: 6, promo: 3, experience: 2, infoFound: [], promoFound: [], cta: 7,
+  topEnding: '~요', topEndingShare: 40,
+}
+const cronMerged = mergeRuns([
+  { date: '2026-08-09', keywords: ['k'], top: 10, posts: [cronPost] },
+  { date: '2026-08-10', keywords: ['k'], top: 10, posts: [{ ...cronPost, ranks: { k: 3 } }] },
+])
+ok(cronMerged.length === 1, '문단 필드가 없어도 합쳐진다')
+ok(cronMerged[0].held === true, '유지 판정은 순위만으로 된다 (문단 없이도)')
+ok(cronMerged[0].longestPara === undefined, '없는 값은 없는 채로 둔다 (0 으로 꾸미지 않는다)')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
