@@ -5097,7 +5097,12 @@ ok(findHardWords('사용이 편합니다').length === 0, '「사용이」를 「
 // 목록에서 뺀 것 — 어려워 보인다고 다 막으면 정보가 얕아진다
 ok(!HARD_WORDS.some((w) => w.word === '개선'), '「개선」은 우리도 쓰는 말이라 안 막는다')
 ok(!HARD_WORDS.some((w) => ['코르티솔', '렙틴', '그렐린', '인슐린'].includes(w.word)), '다이어트에서 실제로 쓰는 말은 안 막는다')
-ok(HARD_WORDS.length <= 35, `목록을 짧게 유지한다 — ${HARD_WORDS.length}개`)
+/*
+ * 상한은 **갈래별로** 센다. 단위 항목(그램→g)은 성격이 달라서 같이 세면 「목록이 길어졌다」와
+ * 「단위를 추가했다」가 구분되지 않는다. 조이려는 것은 낱말을 막는 쪽이다.
+ */
+const jargon = HARD_WORDS.filter((w) => w.why !== '단위는 기호로')
+ok(jargon.length <= 30, `막는 낱말 목록을 짧게 유지한다 — ${jargon.length}개`)
 
 const pwItem = (patch) => checkPost({ ...goodPromo, ...patch }).items.find((i) => i.id === 'plain-words')
 ok(pwItem({}).level === 'pass', '기준 글은 통과')
@@ -5117,6 +5122,45 @@ ok(buildSystemPrompt('promo').includes('낙폭·반등·급락·변동성·지�
 ok(buildSystemPrompt('promo').includes('상담 오신 분께 말로 설명할 때 쓸 낱말인가'), '판단 기준을 하나 준다')
 ok(buildSystemPrompt('info').includes('중학생도 아는 말로 쓴다'), '정보글 톤에도 적었다')
 ok(buildTemplate('info', { mainKeyword: 'a', subKeywords: ['b'] }).includes('**평소 쓰는 말로.**'), '골격에도 적혀 있다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[88] 단위는 기호로')
+/*
+ * 회원 요청 — "g, kg 같은 단위는 한글이 아니라 영어로 나오게 고쳐줘."
+ *
+ * 바로 앞 판에서 「제목과 본문을 전부 한국어로 쓴다」를 넣었더니 그 규칙이 단위까지 끌고 갈
+ * 수 있다 — 「단백질 10g」이 「10그램」으로 나온다. 두 검사가 같은 곳을 서로 반대로 밀지
+ * 않게, `korean-only` 의 허용 목록과 이 목록이 같은 단위를 가리키게 맞춰 뒀다.
+ */
+const unitHit = findHardWords('단백질을 10그램 정도 챙기세요')
+ok(unitHit.length === 1 && unitHit[0].easy === 'g', `한글로 쓴 단위를 잡는다 — ${unitHit[0]?.found} → ${unitHit[0]?.easy}`)
+ok(unitHit[0].why === '단위는 기호로', '이유를 따로 표시한다')
+ok(findHardWords('3킬로그램 빠졌어요')[0].easy === 'kg', '킬로그램 → kg')
+ok(findHardWords('300킬로칼로리 정도')[0].easy === 'kcal', '킬로칼로리 → kcal')
+ok(findHardWords('무릎이 5센티미터')[0].easy === 'cm', '센티미터 → cm')
+ok(findHardWords('물 500밀리리터')[0].easy === 'ml', '밀리리터 → ml')
+// 기호로 쓴 것은 당연히 안 걸린다 (그게 우리가 원하는 모양이다)
+ok(findHardWords('단백질 10g, 체중 3kg, 300kcal').length === 0, '기호로 쓰면 안 걸린다')
+// 두 검사가 서로 반대로 밀지 않는다 — korean-only 는 이 기호들을 허용한다
+ok(findLatinWords('단백질 10g 과 3kg, 300kcal, 5cm, 500ml').length === 0, '기호는 영문 검사에서 허용된다')
+// 시간은 한글이 맞다 — 「15min」이 아니다
+ok(findHardWords('유산소 15분, 3초 버티기, 40분이면 끝').length === 0, '시간 단위는 한글로 둔다')
+ok(!HARD_WORDS.some((w) => ['분', '초', '시간'].includes(w.word)), '시간 단위는 목록에 없다')
+// 「그램」이 든 흔한 낱말을 잡으면 안 된다
+ok(findHardWords('프로그램을 짜드립니다').length === 0, '「프로그램」을 「그램」으로 잡지 않는다')
+ok(findHardWords('인스타그램에 올렸어요').length === 0, '「인스타그램」도 안 잡는다')
+
+const unitItem = checkPost({ ...goodPromo, body: goodPromo.body.replace('세트 사이에 호흡만', '단백질을 20그램 챙기고, 세트 사이에 호흡만') }).items.find((i) => i.id === 'plain-words')
+ok(unitItem.level === 'fail', `한글 단위가 있으면 수정필요 — ${unitItem.value}`)
+ok(unitItem.hint.includes('단위는 기호로 씁니다'), '단위 안내를 따로 준다')
+ok(unitItem.hint.includes('시간(분·초)은 한글'), '시간은 예외라고 알려준다')
+
+for (const t of ['promo', 'info', 'review']) {
+  ok(buildSystemPrompt(t).includes('단위는 기호로 쓴다'), `${t} 지시문에 단위 규칙이 있다`)
+}
+ok(buildSystemPrompt('promo').includes('「10킬로그램」(X) → 「10kg」(O)'), '바꾸는 예를 준다')
+ok(buildSystemPrompt('promo').includes('시간은 한글로'), '시간은 한글이라고 함께 적는다')
+ok(buildTemplate('promo', { mainKeyword: 'a', subKeywords: ['b'] }).includes('**단위는 기호로.**'), '골격에도 적혀 있다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
