@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { Store } from '@/lib/types'
 import { areasFromStore } from '@/lib/analysis/keyword'
-import { areasFromPlace, type PlaceInfo } from '@/lib/naver/place'
+import { areasFromPlace, extractPlaceId, type PlaceInfo } from '@/lib/naver/place'
 import {
   analyzeReviews,
   parsePastedReviews,
@@ -311,6 +311,14 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
               />
             </Field>
           </div>
+
+          {/*
+            플레이스 id 를 **손으로 넣을 칸이 없었다.** 위의 「플레이스에서 가져오기」가
+            성공할 때만 채워졌는데, 그 조회는 서버 IP 가 막히면 빈 결과가 온다 (place.ts).
+            그래서 주소를 붙여넣어도 되게 만든다 — 회원이 "플레이스 아이디 어디서 확인해?"
+            라고 물은 것이 이 칸이 없다는 뜻이었다.
+          */}
+          <PlaceIdField key={editing.id || 'new'} value={editing.placeId} onChange={(v) => set('placeId', v)} />
 
           <Field label="블로그 URL" hint="순위 추적에서 내 글을 찾는 기준으로 쓸 수 있습니다">
             <input
@@ -639,6 +647,98 @@ function ReviewField({
             )}
           </>
         )}
+      </div>
+    </Field>
+  )
+}
+
+/**
+ * 플레이스 id 입력.
+ *
+ * **주소를 통째로 붙여넣어도 되게** 한다. 회원이 확인하는 곳은 주소창이고, 거기서 숫자만
+ * 골라 옮기라고 하면 한 번 더 틀릴 일을 만든다. 뽑아낸 숫자와 그걸로 만든 리뷰 링크를
+ * 바로 보여줘서 맞는 업체인지 눈으로 확인하게 한다.
+ */
+function PlaceIdField({ value, onChange }: { value?: string; onChange: (v?: string) => void }) {
+  /*
+   * 화면에는 **붙여넣은 그대로** 두고, 저장은 뽑아낸 숫자로 한다. 주소를 붙여넣었을 때
+   * 입력칸이 갑자기 숫자로 바뀌면 「내가 넣은 게 지워졌나」로 읽히므로, 무엇이 뽑혔는지는
+   * 아래에 따로 보여준다.
+   */
+  const [draft, setDraft] = useState(value ?? '')
+  const id = extractPlaceId(draft)
+  const url = placeReviewUrl(id ?? undefined)
+  const short = /naver\.me/i.test(draft)
+
+  function edit(next: string) {
+    setDraft(next)
+    onChange(extractPlaceId(next) ?? undefined)
+  }
+
+  return (
+    <Field
+      label="플레이스 id"
+      hint="네이버 지도에서 내 업체를 열면 주소에 들어 있는 숫자입니다. 주소를 그대로 붙여넣어도 됩니다"
+    >
+      <div className="space-y-2">
+        <input
+          value={draft}
+          onChange={(e) => edit(e.target.value)}
+          className={inputClass}
+          placeholder="1234567890 또는 https://m.place.naver.com/place/1234567890/home"
+        />
+
+        {id ? (
+          <p className="muted text-[11px] leading-relaxed">
+            id <b className="tnum">{id}</b> · 리뷰 링크 <span className="break-all">{url}</span> — 눌러서 내
+            업체가 맞는지 확인하세요.{' '}
+            <button type="button" onClick={() => edit('')} className="font-semibold hover:underline">
+              지우기
+            </button>
+          </p>
+        ) : draft.trim() ? (
+          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
+            {short ? (
+              <>
+                단축주소(naver.me)에는 숫자가 없습니다. 그 링크를 <b>한 번 열고</b> 주소창에 나오는
+                주소를 다시 붙여넣으세요.
+              </>
+            ) : (
+              <>여기서 숫자를 못 찾았습니다. 주소를 그대로 붙여넣거나 숫자만 넣어주세요.</>
+            )}
+          </p>
+        ) : null}
+
+        <details className="text-[11.5px]">
+          <summary className="muted cursor-pointer font-semibold">어디서 확인하나요?</summary>
+          <ol className="muted mt-1.5 list-decimal space-y-1 pl-4 leading-relaxed">
+            <li>
+              <b>가장 쉬운 방법</b> — 위 「네이버 플레이스에서 가져오기」로 내 업체를 찾으면 id 가
+              자동으로 들어옵니다.
+            </li>
+            <li>
+              <b>PC</b> — 네이버 지도(map.naver.com)에서 상호를 검색해 내 업체를 클릭하면 주소가{' '}
+              <code>
+                map.naver.com/p/entry/place/<b>1234567890</b>
+              </code>{' '}
+              이 됩니다. 그 숫자입니다.
+            </li>
+            <li>
+              <b>모바일</b> — 업체를 열고 공유 → 링크 복사. 주소가{' '}
+              <code>
+                m.place.naver.com/place/<b>1234567890</b>/home
+              </code>{' '}
+              형태입니다. 단축주소로 복사되면 한 번 열어서 주소창을 보세요.
+            </li>
+            <li>
+              <b>스마트플레이스</b> — 사업주 콘솔(smartplace.naver.com)에서 업체를 고르면 주소의{' '}
+              <code>
+                id=<b>1234567890</b>
+              </code>{' '}
+              가 같은 값입니다 (<code>bookingBusinessId</code> 는 예약용이라 다른 번호입니다).
+            </li>
+          </ol>
+        </details>
       </div>
     </Field>
   )

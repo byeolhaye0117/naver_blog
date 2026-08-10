@@ -19,7 +19,7 @@ const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffix
 const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SECTION_CAP, normalizeBlogUrl, SECTION_PAGE_SIZE } = require(
   `${OUT}/naver/blogsection.js`
 )
-const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex } = require(`${OUT}/naver/place.js`)
+const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex, extractPlaceId } = require(`${OUT}/naver/place.js`)
 const { mockBlogSearch, mockBlogTotal } = require(`${OUT}/naver/search.js`)
 const { mockKeywordTool, dedupeAdRows, toRate } = require(`${OUT}/naver/searchad.js`)
 const { gradeKeyword, adNoteFor, adPressureOf, ctrNote, keywordVerdict, PLACE_ABOVE_BLOG, AD_HEAVY, AD_SOME } = require(`${OUT}/analysis/keyword.js`)
@@ -4848,6 +4848,30 @@ ok(buildSystemPrompt('promo').includes('묶음이 없으면 리뷰·후기·별�
 const rvPkg = buildCopyPackage({ ...goodPromo, id: 'x', status: 'draft', storeId: 's', createdAt: '', updatedAt: '', body: WITH_REVIEW }, { legalName: 'MTO 피트니스 쌍용점', location: '신협 뒷건물 4층', phone: '010-2455-2896', placeId: '1234567890' })
 ok(rvPkg.checklist.some((c) => c.label.includes('리뷰 링크가 열리는지')), '체크리스트에 링크 확인이 들어간다')
 ok(buildCopyPackage({ ...goodPromo, id: 'x', status: 'draft', storeId: 's', createdAt: '', updatedAt: '' }, { legalName: 'a', location: 'b', phone: 'c' }).checklist.every((c) => !c.label.includes('리뷰 링크')), '링크를 안 쓴 글에는 안 넣는다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[84] 플레이스 id — 주소를 붙여넣어도 되게')
+/*
+ * 회원이 물었다 — "플레이스 아이디 어디서 확인해?" 확인하는 곳은 주소창인데 손으로 넣을
+ * 칸이 없었다 (플레이스 조회가 성공할 때만 채워졌다). 주소 모양이 여러 가지라 통째로
+ * 받는다 — 숫자만 골라 옮기라고 하면 한 번 더 틀릴 일을 만든다.
+ */
+ok(extractPlaceId('1234567890') === '1234567890', '숫자만 넣어도 된다')
+ok(extractPlaceId('https://m.place.naver.com/place/1234567890/home') === '1234567890', '모바일 플레이스 주소')
+ok(extractPlaceId('https://pcmap.place.naver.com/place/1234567890/review/visitor') === '1234567890', '리뷰 탭 주소')
+ok(extractPlaceId('https://map.naver.com/p/entry/place/1234567890?c=15.00,0,0,0,dh') === '1234567890', '지도 새 주소')
+ok(extractPlaceId('https://map.naver.com/v5/entry/place/1234567890') === '1234567890', '지도 옛 주소')
+ok(extractPlaceId('https://m.place.naver.com/restaurant/1234567890/home') === '1234567890', '업종 경로가 달라도 된다')
+ok(extractPlaceId('https://smartplace.naver.com/bizes/place/home?id=1234567890') === '1234567890', '스마트플레이스 주소')
+ok(extractPlaceId('  https://m.place.naver.com/place/1234567890/home  ') === '1234567890', '앞뒤 공백 무시')
+// 단축주소에는 숫자가 없다 — 서버가 따라가야 알 수 있고 그건 이 함수의 일이 아니다
+ok(extractPlaceId('https://naver.me/xAbCdEfG') === null, '단축주소는 못 뽑는다 (화면에서 안내한다)')
+ok(extractPlaceId('') === null && extractPlaceId('쌍용동 헬스장') === null, '빈 값·상호명은 null')
+// 주소가 섞인 문장에서 엉뚱한 숫자를 집지 않는다
+ok(extractPlaceId('전화 010-2455-2896') === null, '전화번호를 id 로 착각하지 않는다')
+ok(extractPlaceId('123') === null, '너무 짧은 숫자는 id 가 아니다')
+// 뽑은 id 로 리뷰 링크가 바로 만들어져야 한다 (화면에서 눌러 확인하게)
+ok(placeReviewUrl(extractPlaceId('https://map.naver.com/p/entry/place/1234567890')) === 'https://m.place.naver.com/place/1234567890/review/visitor', '뽑은 id 로 리뷰 링크를 만든다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
