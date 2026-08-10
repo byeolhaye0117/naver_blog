@@ -385,6 +385,8 @@ export default async function Dashboard() {
                   womenOnly: store?.womenOnly,
                   sponsorship: p.sponsorship ?? 'unset',
                   eventText: p.eventText,
+                  placeReviews: store?.placeReviews,
+                  placeId: store?.placeId,
                   evidence,
                 })
                 return (

@@ -6,6 +6,12 @@ import { useState } from 'react'
 import type { Store } from '@/lib/types'
 import { areasFromStore } from '@/lib/analysis/keyword'
 import { areasFromPlace, type PlaceInfo } from '@/lib/naver/place'
+import {
+  analyzeReviews,
+  parsePastedReviews,
+  placeReviewUrl,
+  type PlaceReview,
+} from '@/lib/analysis/reviews'
 import { Badge, Card, Field, inputClass } from '@/components/ui'
 
 function emptyStore(): Store {
@@ -315,6 +321,12 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
             />
           </Field>
 
+          <ReviewField
+            reviews={editing.placeReviews ?? []}
+            placeId={editing.placeId}
+            onChange={(rs) => set('placeReviews', rs.length ? rs : undefined)}
+          />
+
           <Field label="메모">
             <textarea
               value={editing.memo ?? ''}
@@ -472,5 +484,162 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
         </Card>
       ))}
     </div>
+  )
+}
+
+/**
+ * 플레이스 리뷰 붙여넣기.
+ *
+ * 회원 요청 — "홍보성 글에 플레이스 관련 헬스 및 피티 리뷰를 분석해서 신뢰성을 줄 수 있게.
+ * **실제 리뷰인 거지.** 링크도 첨부해서."
+ *
+ * 자동으로 못 가져온다 (플레이스가 서버 IP 를 429·캡차로 막는다 — lib/naver/place.ts).
+ * 그래서 SERP 에서 이미 쓰는 방식대로 붙여넣기로 받는다. 파싱은 완벽하지 않은 것을 전제로,
+ * 뽑아낸 줄을 그대로 보여주고 지울 수 있게 한다.
+ */
+function ReviewField({
+  reviews,
+  placeId,
+  onChange,
+}: {
+  reviews: PlaceReview[]
+  placeId?: string
+  onChange: (r: PlaceReview[]) => void
+}) {
+  const [raw, setRaw] = useState('')
+  const [msg, setMsg] = useState<string | null>(null)
+  const analysis = analyzeReviews(reviews)
+  const url = placeReviewUrl(placeId)
+
+  function add() {
+    const { reviews: parsed, dropped } = parsePastedReviews(raw)
+    if (!parsed.length) {
+      setMsg('리뷰로 볼 만한 줄을 못 찾았습니다. 리뷰 본문이 포함됐는지 확인해 주세요.')
+      return
+    }
+    // 이미 있는 것과 합치고 중복은 뺀다 (여러 번 나눠 붙여넣을 수 있게)
+    const seen = new Set(reviews.map((r) => r.text.replace(/\s+/g, '')))
+    const fresh = parsed.filter((r) => !seen.has(r.text.replace(/\s+/g, '')))
+    onChange([...reviews, ...fresh])
+    setRaw('')
+    setMsg(`${fresh.length}개 추가 (버린 줄 ${dropped}개${fresh.length < parsed.length ? ` · 중복 ${parsed.length - fresh.length}개` : ''}). 저장을 눌러야 반영됩니다.`)
+  }
+
+  return (
+    <Field
+      label="플레이스 리뷰 (실제 리뷰만)"
+      hint="홍보글 신뢰 구간이 여기 있는 문장만 인용합니다. 비어 있으면 글에서 리뷰를 언급하지 않습니다"
+    >
+      <div className="space-y-2.5">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11.5px] leading-relaxed text-amber-900 dark:text-amber-200">
+          <b>없는 리뷰를 쓰면 표시광고법 위반</b>(거짓·과장 광고)입니다. 그래서 앱이 본문의 리뷰
+          인용을 여기 있는 문장과 대조하고, 없으면 <b>즉시수정</b>으로 잡습니다. 플레이스 리뷰
+          화면을 <b>전체 선택·복사</b>해서 그대로 붙여넣으세요 — 닉네임·날짜 줄은 알아서 버립니다.
+        </div>
+
+        <textarea
+          value={raw}
+          onChange={(e) => setRaw(e.target.value)}
+          rows={4}
+          className={inputClass}
+          placeholder={
+            url
+              ? `${url} 화면을 열어 전체 선택·복사해서 붙여넣기`
+              : '플레이스 리뷰 화면을 전체 선택·복사해서 붙여넣기 (플레이스 id 를 넣으면 링크를 만들어 드립니다)'
+          }
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={add}
+            disabled={!raw.trim()}
+            className="bd rounded-xl border px-3 py-1.5 text-[12px] font-semibold hover:bg-slate-500/8 disabled:opacity-50"
+          >
+            리뷰 뽑아내기
+          </button>
+          {reviews.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange([])
+                setMsg('전부 지웠습니다. 저장을 눌러야 반영됩니다.')
+              }}
+              className="muted px-1 text-[11.5px] font-semibold hover:underline"
+            >
+              전부 지우기
+            </button>
+          )}
+          {msg && <span className="muted text-[11px]">{msg}</span>}
+        </div>
+
+        {reviews.length > 0 && (
+          <>
+            <p className="text-[12px] font-semibold">
+              모은 리뷰 {reviews.length}편{' '}
+              <span className="muted font-normal">
+                (인용 가능 {analysis.count}편 · 짧은 한마디 {analysis.tagCount}편)
+              </span>
+            </p>
+
+            {analysis.themes.length > 0 && (
+              <div className="bd rounded-xl border px-3 py-2.5">
+                <p className="muted mb-1.5 text-[11px] font-semibold">
+                  리뷰에서 반복된 것 — 글에서 이 순서로 씁니다
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {analysis.themes.slice(0, 6).map((t) => (
+                    <span
+                      key={t.label}
+                      className="bd rounded-xl border px-2 py-0.5 text-[11.5px]"
+                      title={`걸린 말: ${t.words.join('·')}`}
+                    >
+                      {t.label} <b className="tnum">{t.count}</b>
+                      <span className="muted"> · {Math.round(t.share * 100)}%</span>
+                    </span>
+                  ))}
+                </div>
+                <p className="muted mt-2 text-[11px] leading-relaxed">
+                  우리가 고른 강점이 아니라 <b>손님들이 고른 강점</b>입니다. 가장 많이 나온 것을
+                  신뢰 구간의 중심으로 씁니다.
+                </p>
+              </div>
+            )}
+
+            <div className="bd max-h-52 overflow-y-auto rounded-xl border">
+              <ul className="divide-y divide-slate-500/15">
+                {reviews.map((r, i) => (
+                  <li key={`${i}-${r.text.slice(0, 12)}`} className="flex items-start gap-2 px-3 py-1.5">
+                    <span className="muted mt-0.5 shrink-0 text-[10px] font-bold">
+                      {r.kind === 'tag' ? '한마디' : '리뷰'}
+                    </span>
+                    <span className="flex-1 text-[11.5px] leading-relaxed">{r.text}</span>
+                    <button
+                      type="button"
+                      onClick={() => onChange(reviews.filter((_, j) => j !== i))}
+                      className="muted shrink-0 text-[11px] font-semibold hover:underline"
+                      aria-label="이 줄 지우기"
+                    >
+                      지우기
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {analysis.quotes.length > 0 && (
+              <p className="muted text-[11px] leading-relaxed">
+                글에 인용될 문장: {analysis.quotes.map((q) => `"${q}"`).join(' · ')}
+              </p>
+            )}
+            {!url && (
+              <p className="muted text-[11px]">
+                <b>플레이스 id 를 넣으면</b> 리뷰 링크(m.place.naver.com/…/review/visitor)를 글에
+                함께 넣어 확인시킬 수 있습니다.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </Field>
   )
 }

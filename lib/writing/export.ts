@@ -1,6 +1,7 @@
 import type { Post, Store } from '@/lib/types'
 import { stripGuides } from './templates'
 import { parseBody, splitSentences } from './checker'
+import { placeReviewUrl } from '../analysis/reviews'
 
 /**
  * 복사용 패키지.
@@ -277,6 +278,7 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     .trim()
 
   const blocks = toBlocks(cleaned)
+  const reviewUrl = placeReviewUrl(store?.placeId)
 
   const localKw = post.localKeyword || post.mainKeyword
   const imagePlan = parsed.images.map((desc, i) => ({
@@ -350,6 +352,18 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
       detail:
         '「#태그 #태그」 한 줄을 그대로 붙이면 안 걸립니다. 태그 칸에 하나 붙이고 Enter, 다음 것 붙이고 Enter로 넣으세요 (아래 태그 카드에 하나씩 복사 버튼이 있습니다). 태그 안에 공백이 있으면 거기서 끊기니 붙여 씁니다',
     },
+    /*
+     * 리뷰 링크는 발행 전에 사람이 한 번 열어봐야 한다 — 플레이스 주소는 업체가 이전하거나
+     * 리뷰 탭 구조가 바뀌면 죽는다. 죽은 링크가 붙은 「실제 리뷰」는 없는 리뷰와 같아진다.
+     */
+    ...(reviewUrl && post.body.includes(reviewUrl)
+      ? [
+          {
+            label: '플레이스 리뷰 링크가 열리는지 확인',
+            detail: `${reviewUrl} — 인용한 문장이 그 화면에 실제로 보이는지까지 보세요. 링크가 죽으면 「실제 리뷰」가 확인 불가가 됩니다`,
+          },
+        ]
+      : []),
     {
       label: '네이버 지도 위치 첨부',
       detail: store ? `${store.legalName} — ${store.location}` : '플레이스 연결로 지역 신호 확보',

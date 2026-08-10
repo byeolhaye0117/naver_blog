@@ -10,6 +10,7 @@ const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeyw
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
 const { buildCopyPackage, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, normalizeTag, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
+const { parsePastedReviews, analyzeReviews, placeReviewUrl, verifyReviewQuotes } = require(`${OUT}/analysis/reviews.js`)
 const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parsePlaceList } = require(
   `${OUT}/analysis/paste.js`
@@ -4728,6 +4729,125 @@ ok(noTail?.hint?.includes('350~450자'), '무엇을 얼마나 쓰면 되는지 �
 
 // 홍보글·후기글에는 이 항목이 없다 (홍보글은 홍보가 앞에도 있어야 한다)
 ok(checkPost({ ...goodPromo }).items.every((i) => i.id !== 'info-promo-tail'), '홍보글에는 항목이 안 생긴다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[83] 플레이스 리뷰 — 실제 리뷰로 신뢰 주기')
+/*
+ * 회원 요청: "홍보성 글에 플레이스 관련 헬스 및 피티 리뷰를 분석해서 신뢰성을 줄 수 있게
+ * 작성해주면 좋겠어. **실제 리뷰인 거지.** 링크도 첨부해서."
+ *
+ * 순위 기준이 아니다 (인용은 오히려 실측에서 반대로 나왔다 — 있음 25% / 없음 35%, 표본 작음).
+ * 상담 전환과 **법** 쪽 규칙이다.
+ */
+const RAW_REVIEWS = [
+  '방문자 리뷰',
+  '헬스빌런',
+  '2026.7.28.화',
+  '새벽에 가도 사람이 적당히 있고 기구가 깨끗해서 좋았어요',
+  '시설이 깨끗해요',
+  '3',
+  'PT 받는데 자세를 하나하나 잡아주셔서 확실히 다릅니다',
+  '팔로우 12',
+  '샤워실이 넓고 수건도 넉넉하게 있어서 퇴근하고 바로 가기 편해요',
+  '친절해요',
+  '새벽에 가도 사람이 적당히 있고 기구가 깨끗해서 좋았어요',
+  '★★★★★',
+].join('\n')
+
+const { reviews: parsedRv, dropped: rvDropped } = parsePastedReviews(RAW_REVIEWS)
+ok(parsedRv.length === 5, `리뷰 5줄을 뽑는다 (닉네임·날짜·숫자는 버림) — ${parsedRv.length}줄, 버린 것 ${rvDropped}개`)
+ok(!parsedRv.some((r) => r.text === '헬스빌런'), '닉네임 줄은 안 들어온다 (짧은 줄은 서술어로 끝나야 남긴다)')
+ok(!parsedRv.some((r) => /^20\d{2}/.test(r.text)), '날짜 줄은 안 들어온다')
+ok(!parsedRv.some((r) => r.text === '3' || r.text === '★★★★★'), '숫자·별표 줄은 안 들어온다')
+ok(parsedRv.filter((r) => r.text.includes('새벽에 가도')).length === 1, '같은 리뷰를 두 번 안 넣는다')
+ok(parsedRv.find((r) => r.text === '시설이 깨끗해요')?.kind === 'tag', '짧은 한마디는 tag 로 구분한다')
+ok(parsedRv.find((r) => r.text.includes('PT 받는데'))?.kind === 'text', '긴 문장은 인용 가능(text)')
+
+const rvA = analyzeReviews(parsedRv, rvDropped)
+ok(rvA.count === 3 && rvA.tagCount === 2, `인용 가능 3 · 한마디 2 — ${rvA.count}/${rvA.tagCount}`)
+ok(rvA.themes.length > 0, '주제를 뽑는다')
+ok(rvA.themes[0].count >= 2, `가장 많은 주제가 2편 이상 — ${rvA.themes[0].label} ${rvA.themes[0].count}편`)
+ok(rvA.themes.every((t) => t.words.length > 0), '어떤 낱말이 걸렸는지 함께 준다 (근거를 보여주려고)')
+ok(rvA.themes.some((t) => t.label === '청결·관리'), '「깨끗」을 청결 주제로 센다')
+ok(rvA.themes.some((t) => t.label === 'PT·트레이너'), 'PT 리뷰도 주제로 잡는다')
+ok(rvA.quotes.length >= 2 && rvA.quotes.length <= 4, `인용문 2~4개 — ${rvA.quotes.length}개`)
+ok(rvA.quotes.every((q) => parsedRv.some((r) => r.text === q)), '인용문은 원문 그대로다 (요약하지 않는다)')
+ok(rvA.quotes.every((q) => q.length >= 18), '너무 짧은 문장은 인용하지 않는다')
+
+ok(placeReviewUrl('1234567890') === 'https://m.place.naver.com/place/1234567890/review/visitor', '리뷰 링크를 만든다')
+ok(placeReviewUrl(undefined) === null, '플레이스 id 가 없으면 링크도 없다')
+
+// ─── 지어낸 인용을 잡는다 (표시광고법)
+const REAL_RV = [{ text: '새벽에 가도 사람이 적당히 있고 기구가 깨끗해서 좋았어요', kind: 'text' }]
+const okQuote = verifyReviewQuotes('플레이스 리뷰에 이런 말이 있어요. "새벽에 가도 사람이 적당히 있고 기구가 깨끗해서 좋았어요"', REAL_RV)
+ok(okQuote.length === 1 && okQuote[0].ok, '실제 리뷰 인용은 통과')
+const fakeQuote = verifyReviewQuotes('리뷰에 이런 말이 많아요. "3개월에 10kg 빠졌어요 최고의 헬스장"', REAL_RV)
+ok(fakeQuote.length === 1 && !fakeQuote[0].ok, '없는 리뷰 인용은 잡는다')
+// 상담 대화 인용은 리뷰가 아니다 — 전부 대조하면 멀쩡한 글이 걸린다
+const consultQuote = verifyReviewQuotes('상담 때 가장 많이 듣는 말이 이겁니다. "제 시간에 문 여는 데가 없어요"', REAL_RV)
+ok(consultQuote.length === 0, '리뷰라고 안 붙인 인용은 대조하지 않는다')
+// 조사·말줄임만 다듬은 인용은 통과 (그걸 위반으로 잡으면 아무도 인용을 못 한다)
+const trimmed = verifyReviewQuotes('방문자 리뷰: "새벽에 가도 사람이 적당히 있고 기구가 깨끗해서"', REAL_RV)
+ok(trimmed[0].ok, '리뷰 안의 일부만 인용해도 통과')
+
+// ─── 검수 항목 두 개
+const RV_STORE = { placeReviews: parsedRv, placeId: '1234567890' }
+const rvItem = (patch) => checkPost({ ...goodPromo, ...RV_STORE, ...patch }).items.find((i) => i.id === 'review-proof')
+const honestyItem = (patch) => checkPost({ ...goodPromo, ...RV_STORE, ...patch }).items.find((i) => i.id === 'review-honesty')
+
+ok(rvItem({}) && rvItem({}).level === 'fail', `리뷰를 모아뒀는데 안 쓰면 수정필요 — ${rvItem({}).value}`)
+ok(rvItem({}).hint.includes('플레이스 리뷰 화면'.slice(0, 2)) || rvItem({}).hint.includes('모아뒀는데'), '무엇을 쓰면 되는지 알려준다')
+ok(rvItem({}).target.includes('가장 많은 주제'), '가장 많이 나온 주제를 알려준다')
+ok(checkPost({ ...goodPromo }).items.every((i) => i.id !== 'review-proof'), '리뷰를 안 모았으면 항목이 안 생긴다')
+ok(rvItem({ type: 'info' }) === undefined, '정보글에는 항목이 안 생긴다')
+
+const WITH_REVIEW =
+  goodPromo.body.replace(
+    '운동하다 자세가 무너지면',
+    '플레이스 방문자 리뷰 5편 중 3편이 같은 말을 하셨어요. "새벽에 가도 사람이 적당히 있고 기구가 깨끗해서 좋았어요" 라고요. 확인은 여기서 하실 수 있습니다 — https://m.place.naver.com/place/1234567890/review/visitor\n운동하다 자세가 무너지면'
+  )
+ok(rvItem({ body: WITH_REVIEW }).level === 'pass', `인용 + 링크가 있으면 통과 — ${rvItem({ body: WITH_REVIEW }).value}`)
+ok(honestyItem({ body: WITH_REVIEW }).level === 'pass', '실제 리뷰라 정직성도 통과')
+const noLink = WITH_REVIEW.replace(' 확인은 여기서 하실 수 있습니다 — https://m.place.naver.com/place/1234567890/review/visitor', '')
+ok(rvItem({ body: noLink }).level === 'warn', `인용만 있고 링크가 없으면 주의 — ${rvItem({ body: noLink }).value}`)
+
+// 지어낸 리뷰 — 리뷰를 안 모아둔 지점에서도 잡아야 한다 (가장 위험한 경우)
+const FAKE = goodPromo.body.replace(
+  '운동하다 자세가 무너지면',
+  '플레이스 리뷰를 보면 "3개월 만에 10kg 빠졌어요" 같은 말이 많습니다.\n운동하다 자세가 무너지면'
+)
+const fakeNoStore = checkPost({ ...goodPromo, body: FAKE }).items.find((i) => i.id === 'review-honesty')
+ok(fakeNoStore && fakeNoStore.level === 'fail', '리뷰를 안 모았는데 리뷰를 인용하면 즉시수정')
+ok(fakeNoStore.group === '저품질 위험', '저품질 위험으로 분류한다', fakeNoStore.group)
+ok(fakeNoStore.hint.includes('표시광고법'), '왜 위험한지 밝힌다')
+ok(honestyItem({ body: FAKE }).level === 'fail', '리뷰를 모아뒀어도 원본에 없으면 즉시수정')
+ok(checkPost({ ...goodPromo }).items.every((i) => i.id !== 'review-honesty'), '리뷰 인용이 없는 글에는 항목이 안 생긴다')
+
+// ─── 지시문
+const rvStore = { id: 's', name: 'MTO 쌍용점', legalName: 'MTO 피트니스 쌍용점', localKeywords: ['쌍용동 헬스장'], phone: '010-2455-2896', placeId: '1234567890', placeReviews: parsedRv }
+const rvPrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], store: rvStore })
+ok(rvPrompt.includes('## 플레이스 리뷰 (실제 리뷰다 — 여기 없는 말을 만들지 않는다)'), '리뷰 묶음을 낸다')
+ok(rvPrompt.includes('리뷰에서 반복된 것 (많은 순)'), '분석 결과를 넣는다')
+ok(rvPrompt.includes('글자 그대로'), '그대로 옮기라고 한다')
+ok(rvPrompt.includes('m.place.naver.com/place/1234567890/review/visitor'), '링크를 넣어준다')
+ok(rvPrompt.includes('별점·평점 숫자를 쓰지 않는다'), '없는 숫자를 막는다')
+ok(rvPrompt.includes('출처 없는 인용은 거짓 광고다'), '왜 안 되는지 적는다')
+
+// 리뷰가 없으면 **언급 금지**를 명시한다 (지시가 없으면 모델이 지어낸다)
+const noRvPrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], store: { ...rvStore, placeReviews: [] } })
+ok(noRvPrompt.includes('리뷰·후기·별점을 언급하지 않는다'), '리뷰가 없으면 언급하지 말라고 한다')
+ok(!noRvPrompt.includes('인용할 수 있는 문장'), '없는 인용문 목록을 만들지 않는다')
+const rvInfoPrompt = buildUserPrompt({ type: 'info', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], store: rvStore })
+ok(!rvInfoPrompt.includes('플레이스 리뷰'), '정보글에는 리뷰 묶음을 안 낸다')
+
+// 골격 지시문도 같은 것을 요구한다
+ok(promoSkeleton.includes('플레이스 리뷰') || buildSystemPrompt('promo').includes('「플레이스 리뷰」 묶음'), '홍보글 구조에 리뷰 구간이 있다')
+ok(buildSystemPrompt('promo').includes('묶음이 없으면 리뷰·후기·별점을 아예 언급하지 않는다'), '리뷰가 없을 때의 규칙도 구조에 적는다')
+
+// 발행 체크리스트 — 죽은 링크가 붙은 「실제 리뷰」는 없는 리뷰와 같다
+const rvPkg = buildCopyPackage({ ...goodPromo, id: 'x', status: 'draft', storeId: 's', createdAt: '', updatedAt: '', body: WITH_REVIEW }, { legalName: 'MTO 피트니스 쌍용점', location: '신협 뒷건물 4층', phone: '010-2455-2896', placeId: '1234567890' })
+ok(rvPkg.checklist.some((c) => c.label.includes('리뷰 링크가 열리는지')), '체크리스트에 링크 확인이 들어간다')
+ok(buildCopyPackage({ ...goodPromo, id: 'x', status: 'draft', storeId: 's', createdAt: '', updatedAt: '' }, { legalName: 'a', location: 'b', phone: 'c' }).checklist.every((c) => !c.label.includes('리뷰 링크')), '링크를 안 쓴 글에는 안 넣는다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
