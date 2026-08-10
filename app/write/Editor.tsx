@@ -160,6 +160,7 @@ export default function Editor({
    */
   const [revisedAt, setRevisedAt] = useState(existing?.revisedAt ?? '')
   const [eventText, setEventText] = useState(existing?.eventText ?? '')
+  const [promoNote, setPromoNote] = useState(existing?.promoNote ?? '')
   /*
    * 회원 요청 두 개 (2026-08-10).
    *   "정보성란을 내가 원하는 주제로 넣을 수 있는지"        → infoTopic
@@ -327,6 +328,8 @@ export default function Editor({
         sponsorship: type === 'review' ? sponsorship : undefined,
         // 이벤트가 있는 글인지 알아야 「후킹에 이벤트 훅」을 잴 수 있다
         eventText,
+        // 정보글 마지막 홍보가 「적어둔 것」인지 대조한다
+        promoNote,
         // 실제 리뷰를 인용했는지 / 없는 리뷰를 지어냈는지 잰다
         placeReviews: store?.placeReviews,
         placeId: store?.placeId,
@@ -361,6 +364,7 @@ export default function Editor({
     sponsorship: type === 'review' ? sponsorship : undefined,
     // 유형을 바꿔도 적어둔 이벤트 정보는 잃지 않게 그대로 저장한다 (정보글에서는 쓰이지 않음)
     eventText: eventText.trim() || undefined,
+    promoNote: promoNote.trim() || undefined,
     infoTopic: infoTopic.trim() || undefined,
     request: request.trim() || undefined,
     publishedUrl: publishedUrl || undefined,
@@ -381,6 +385,7 @@ export default function Editor({
     mainKeyword,
     sponsorship,
     eventText,
+    promoNote,
     infoTopic,
     request,
   ])
@@ -487,6 +492,7 @@ export default function Editor({
           subKeywords,
           localKeyword: localKeyword || store.localKeywords[0],
           eventText,
+          promoNote,
           infoTopic,
           request,
           sponsorship,
@@ -854,7 +860,32 @@ export default function Editor({
                     </Field>
                   )}
 
-                  {/* 정보글은 홍보로 넘어가면 목적(C-Rank 축적)이 깨지므로 이벤트 칸을 두지 않는다 */}
+                  {/*
+                    정보글에는 **마지막 홍보 칸**을 따로 둔다.
+                    회원 지적: "정보글에 마지막 홍보를 넣어달란 게 알아서 작성해달란 게 아니라,
+                    내가 원하는 홍보글 칸을 넣어서 거기 정보를 주면 그에 맞게 작성해달란 거였어."
+                    비워두면 AI 가 그 자리를 스스로 채우면서 없는 가격·이벤트를 만든다.
+                  */}
+                  {type === 'info' && (
+                    <Field
+                      label="마지막 홍보 내용 (정보글의 마지막 구간에만 들어갑니다)"
+                      hint="여기 적은 것만 씁니다. 비워두면 시설·상담 안내만 들어가고, 가격·이벤트는 만들지 않습니다"
+                    >
+                      <textarea
+                        value={promoNote}
+                        onChange={(e) => setPromoNote(e.target.value)}
+                        rows={3}
+                        className={inputClass}
+                        placeholder={'1:1 PT 공동구매 500회 진행 중, 회당 45,000원(VAT 별도), 10회 단위 등록 가능\n웨이트실·프리웨이트실 분리, 24시간 운영'}
+                      />
+                      <p className="muted mt-1.5 text-[11px] leading-relaxed">
+                        정보 8 : 홍보 2 에서 <b>홍보 2 에 해당하는 자리</b>입니다 (400~500자). 앞의 정보
+                        구간에는 안 들어갑니다. <b>적지 않은 금액이 글에 나오면 검수가 잡습니다</b> — 확인
+                        안 된 가격은 거짓 광고가 되기 때문입니다.
+                      </p>
+                    </Field>
+                  )}
+
                   {type !== 'info' && (
                     <Field
                       label={

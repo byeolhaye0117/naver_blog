@@ -56,6 +56,13 @@ export interface CheckInput {
   /** 플레이스 id — 리뷰 링크를 만드는 데 쓴다 */
   placeId?: string
   /**
+   * 정보글 마지막 홍보 구간에 넣기로 적어둔 내용.
+   *
+   * 이걸로 재는 것은 하나다 — **적지 않은 가격·이벤트가 글에 들어갔는지** (`info-promo-source`).
+   * 회원이 적은 것만 쓰기로 했으므로, 없는 조건이 생기면 그건 AI 가 만든 것이다.
+   */
+  promoNote?: string
+  /**
    * 관찰소에 쌓인 근거 (`poolFactors()` 결과).
    *
    * 넣으면 항목마다 「관찰 N회: 유리 x · 거꾸로 y」가 붙고, 거꾸로 나온 항목은 점수
@@ -1238,6 +1245,56 @@ export function checkPost(input: CheckInput): CheckResult {
        */
       weight: 3,
     })
+  }
+
+  /*
+   * ─── 정보글: 마지막 홍보가 「적어둔 것」인가 ────────────────────
+   *
+   * 회원 지적 — "정보글에 마지막 홍보를 넣어달란 게 알아서 작성해달란 게 아니라, 내가 원하는
+   * 홍보글 칸을 넣어서 거기 정보를 주면 그에 맞게 작성해달란 거였어."
+   *
+   * 앞 판에서 「센터 소개 + 상담 유도 400~500자」만 시켰더니 모델이 그 자리를 스스로 채웠다 —
+   * 「1:1 PT 공동구매 500회, 회당 45,000원」처럼. 실제 조건이면 다행이고 아니면 거짓 광고다.
+   * **어느 쪽인지 글만 봐서는 알 수 없다는 게 문제다.**
+   *
+   * 그래서 **금액**만 대조한다. 「24시간」·「4대」 같은 숫자는 지점 정보에서 오므로 대상이
+   * 아니고, 전화번호는 「원」이 없어서 안 걸린다. 좁게 잡는 대신 확실하게 잡는다.
+   */
+  if (input.type === 'info') {
+    const note = input.promoNote?.trim() ?? ''
+    const noteDigits = note.replace(/[^0-9]/g, '')
+    /** 「45,000원」·「9.9만원」·「99000원」 — 금액만 본다 */
+    const MONEY = /\d[\d,.]*\s*만?\s*원/g
+    const money = Array.from(new Set(input.body.match(MONEY) ?? []))
+    const unsourced = money.filter((m) => {
+      const digits = m.replace(/[^0-9]/g, '')
+      return digits.length > 0 && !noteDigits.includes(digits)
+    })
+    // 이벤트를 말하는 낱말 — 적어둔 것이 없는데 나오면 만들어낸 것이다
+    const eventWord = /이벤트|공동구매|특가|프로모션|할인|선착순|마감/.exec(prose)?.[0]
+    const invented = unsourced.length > 0 || (!note && Boolean(eventWord))
+    if (money.length > 0 || eventWord || note) {
+      add({
+        id: 'info-promo-source',
+        group: '저품질 위험',
+        label: '마지막 홍보가 적어둔 내용인가',
+        level: invented ? 'fail' : 'pass',
+        value: invented
+          ? unsourced.length
+            ? `적어두지 않은 금액: ${unsourced.slice(0, 3).join(' · ')}`
+            : `적어둔 내용이 없는데 「${eventWord}」가 있음`
+          : note
+            ? `적어둔 내용 안에서 씀${money.length ? ` (금액 ${money.length}개 확인)` : ''}`
+            : '가격·이벤트 없음',
+        target: '홍보 칸에 적은 조건만 (적지 않은 금액·이벤트는 만들지 않습니다)',
+        hint: invented
+          ? note
+            ? `글에 있는 금액이 홍보 칸에 없습니다. 조건이 맞으면 홍보 칸에 그 금액을 적고, 아니면 본문에서 지우세요 — 확인 안 된 가격은 거짓 광고가 됩니다.`
+            : 'AI 가 없는 조건을 만들었습니다. 「마지막 홍보 내용」 칸에 실제 조건(무엇을·얼마에·언제까지)을 적고 다시 쓰거나, 본문에서 그 대목을 지우세요. 칸이 비어 있으면 시설·상담 안내만 들어갑니다.'
+          : undefined,
+        weight: 4,
+      })
+    }
   }
 
   /*

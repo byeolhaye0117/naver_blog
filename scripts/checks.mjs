@@ -4873,5 +4873,69 @@ ok(extractPlaceId('123') === null, '너무 짧은 숫자는 id 가 아니다')
 // 뽑은 id 로 리뷰 링크가 바로 만들어져야 한다 (화면에서 눌러 확인하게)
 ok(placeReviewUrl(extractPlaceId('https://map.naver.com/p/entry/place/1234567890')) === 'https://m.place.naver.com/place/1234567890/review/visitor', '뽑은 id 로 리뷰 링크를 만든다')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[85] 정보글 마지막 홍보 — 적어둔 것만 쓴다')
+/*
+ * 회원 지적: "정보글에 마지막 홍보를 넣어달란 게 알아서 작성해달란 게 아니라, 내가 원하는
+ * 홍보글 칸을 넣어서 거기 정보를 주면 그에 맞게 작성해달란 거였어."
+ *
+ * 앞 판에서 「센터 소개 + 상담 유도 400~500자」만 시켰더니 모델이 그 자리를 스스로 채웠고,
+ * 실제 결과물에 「1:1 PT 공동구매 500회, 회당 45,000원」이 들어왔다. 실제 조건이면 다행이고
+ * 아니면 거짓 광고인데 — **글만 봐서는 어느 쪽인지 알 수 없다.** 그게 문제였다.
+ */
+const NOTE = '1:1 PT 공동구매 500회 진행 중, 회당 45,000원(VAT 별도), 10회 단위 등록 가능'
+const promoPrompt = buildUserPrompt({ type: 'info', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], promoNote: NOTE })
+ok(promoPrompt.includes('## 마지막 홍보 구간에 넣을 내용 (이 안에서만 쓴다)'), '적어둔 내용을 따로 낸다')
+ok(promoPrompt.includes(NOTE), '적은 것을 그대로 넣는다')
+ok(promoPrompt.includes('없는 가격·기간·인원·혜택을 보태지 않는다'), '보태지 말라고 한다')
+ok(promoPrompt.includes('그대로 나열하지는 말고'), '나열이 아니라 이어서 쓰라고 한다')
+
+// 비었을 때가 더 중요하다 — 지시가 없으면 모델이 그 자리를 채운다
+const emptyNotePrompt = buildUserPrompt({ type: 'info', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'] })
+ok(emptyNotePrompt.includes('가격·이벤트·혜택을 만들지 않는다'), '비면 만들지 말라고 못 박는다')
+ok(emptyNotePrompt.includes('시설·운영시간과 상담·예약 안내만으로'), '대신 무엇을 쓸지 알려준다')
+ok(!emptyNotePrompt.includes('이 안에서만 쓴다'), '없는 내용 묶음을 만들지 않는다')
+// 홍보글에는 이벤트 칸이 따로 있으니 이 묶음을 내지 않는다
+const promoTypePrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], promoNote: NOTE })
+ok(!promoTypePrompt.includes('마지막 홍보 구간'), '홍보글에는 안 낸다 (이벤트 칸이 그 역할)')
+ok(buildSystemPrompt('info').includes('묶음이 있으면 **그 내용으로** 쓴다'), '구조 지시도 칸을 가리킨다')
+ok(buildSystemPrompt('info').includes('묶음이 없으면 가격·이벤트를 만들지 않는다'), '구조 지시에도 비었을 때 규칙을 적는다')
+
+// ─── 검수: 적어두지 않은 금액을 잡는다
+const infoBody = (tailPromo) => `안녕하세요, MTO 피트니스 쌍용점입니다. 제가 상담할 때 폭식 멈추는 방법을 제일 많이 물으십니다.
+
+## 왜 저녁에 몰리나
+혈당이 하루 종일 낮게 유지되다 저녁에 떨어지면서 생깁니다. 낮에 단백질을 챙기면 줄어듭니다.
+
+## 순서를 이렇게 바꿔보세요
+웨이트 40분 먼저 하고 유산소 15분을 뒤에 붙이면 공복감이 덜합니다. 호흡은 힘쓰는 구간에서 뱉으세요.
+
+## 저희 센터에서는 이렇게 하실 수 있어요
+${tailPromo} 궁금한 점은 상담 때 여쭤보시면 되고, 예약은 전화로 편하게 주세요.`
+
+const srcItem = (patch) => checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터 바꿔보세요', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], localKeyword: '천안헬스장', tags: ['폭식멈추는방법'], legalName: 'MTO 피트니스 쌍용점', ...patch }).items.find((i) => i.id === 'info-promo-source')
+
+const MADE_UP = infoBody('1:1 PT 공동구매 500회 진행 중인데 회당 45,000원입니다.')
+ok(srcItem({ body: MADE_UP }).level === 'fail', `칸이 비었는데 금액·이벤트가 있으면 즉시수정 — ${srcItem({ body: MADE_UP }).value}`)
+ok(srcItem({ body: MADE_UP }).group === '저품질 위험', '저품질 위험으로 분류한다')
+ok(srcItem({ body: MADE_UP }).hint.includes('「마지막 홍보 내용」 칸'), '어디에 적으면 되는지 알려준다')
+ok(srcItem({ body: MADE_UP, promoNote: NOTE }).level === 'pass', '칸에 그 조건을 적으면 통과한다')
+
+// 칸에 적었는데 **다른** 금액이 나오면 잡는다 (AI 가 숫자를 바꿔 쓰는 일이 있다)
+const WRONG_PRICE = infoBody('1:1 PT 공동구매 진행 중인데 회당 39,000원입니다.')
+const wrong = srcItem({ body: WRONG_PRICE, promoNote: NOTE })
+ok(wrong.level === 'fail', `적어둔 금액과 다르면 잡는다 — ${wrong.value}`)
+ok(wrong.value.includes('39,000원'), '어떤 금액이 문제인지 보여준다')
+
+// 시설·상담만 쓴 마무리는 칸이 비어도 통과 (그게 기본 동작이다)
+const FACILITY_ONLY = infoBody('웨이트실과 프리웨이트실이 나뉘어 있고 24시간 운영이라 새벽에도 오실 수 있어요.')
+ok(srcItem({ body: FACILITY_ONLY }) === undefined || srcItem({ body: FACILITY_ONLY }).level === 'pass', '시설·상담만 쓰면 통과')
+// 「24시간」·「4대」 같은 숫자는 금액이 아니라 대조 대상이 아니다
+ok(!/24시간/.test(String(srcItem({ body: FACILITY_ONLY })?.value ?? '')), '운영시간 숫자를 금액으로 착각하지 않는다')
+// 전화번호는 「원」이 없어서 안 걸린다
+ok(srcItem({ body: infoBody('전화 010-2455-2896 으로 주세요.') }) === undefined || srcItem({ body: infoBody('전화 010-2455-2896 으로 주세요.') }).level === 'pass', '전화번호를 금액으로 착각하지 않는다')
+// 홍보글·후기글에는 이 항목이 없다 (홍보글은 이벤트 칸이 따로 검사된다)
+ok(checkPost({ ...goodPromo }).items.every((i) => i.id !== 'info-promo-source'), '홍보글에는 항목이 안 생긴다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
