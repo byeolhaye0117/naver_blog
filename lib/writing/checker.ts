@@ -1078,6 +1078,55 @@ export function checkPost(input: CheckInput): CheckResult {
     weight: 2,
   })
 
+  /*
+   * ─── 첫 문장이 인사 + 정식 상호명인가 ───────────────────────
+   *
+   * **순위 기준이 아니다** (인사로 시작 27% / 아닌 글 32%, 구간 겹침). 우리 규칙이다.
+   *
+   * 회원이 실제 결과물을 보고 말했다 — "첫 문장이 「안녕하세요 MTO 피트니스 쌍용점」이
+   * 아니라 뭐 이상한 문장이야. 업체명을 제대로 쓴 것도 아니고 「쌍용점」이라고만 나오고."
+   * 나온 문장이 「저희는 쌍용점입니다」였다. 정식 상호명 횟수 검사는 이걸 못 잡는다 —
+   * 뒤쪽에서 세 번 채우면 통과하기 때문이다. 그래서 **첫 문장만** 따로 본다.
+   *
+   * 후기글은 건너뛴다 — 화자가 방문객이라 센터 이름으로 인사하면 오히려 틀린다.
+   */
+  if (input.type !== 'review') {
+    const opening = prose.slice(0, 80)
+    const greeted = /안녕하세[요셔]|반갑습니다/.test(opening)
+    /*
+     * 상호명은 countLoose 와 같은 기준으로 본다 — 띄어쓰기 차이로 못 찾으면 거짓 경고가 된다
+     * (「MTO 피트니스 쌍용점」 vs 「MTO피트니스 쌍용점」).
+     */
+    const legal = input.legalName?.trim() ?? ''
+    const flat = (t: string) => t.replace(/\s+/g, '')
+    const namedInOpening = legal ? flat(opening).includes(flat(legal)) : false
+    add({
+      id: 'intro-greeting',
+      group: '분량·구조',
+      label: '첫 문장 인사 + 정식 상호명',
+      level: greeted && namedInOpening ? 'pass' : greeted || namedInOpening ? 'warn' : 'fail',
+      value: greeted
+        ? namedInOpening
+          ? '통과'
+          : '인사는 있는데 정식 상호명이 없음'
+        : namedInOpening
+          ? '상호명은 있는데 인사가 없음'
+          : '없음',
+      target: '「안녕하세요, (정식 상호명)입니다」로 시작 (순위 기준이 아니라 우리 규칙)',
+      hint:
+        greeted && namedInOpening
+          ? undefined
+          : legal
+            ? `글 맨 처음을 「안녕하세요, ${legal}입니다」로 여세요. 「저희는 ○○점입니다」처럼 줄이면 읽는 사람이 상호를 못 알아보고 검색도 못 합니다.`
+            : '지점 정보에 정식 상호명이 없습니다. 지점 설정에서 먼저 채워주세요.',
+      /*
+       * 가중치 2. 순위 근거가 없는 항목이라 낮게 두지만, 0 은 아니다 —
+       * 상호를 못 알아보면 상담 전화가 올 곳을 모른다.
+       */
+      weight: 2,
+    })
+  }
+
   const lengths = sentences.map((s) => s.length)
   const meanLen = lengths.reduce((a, b) => a + b, 0) / total
   const sdLen = Math.sqrt(lengths.reduce((s, l) => s + (l - meanLen) ** 2, 0) / total)

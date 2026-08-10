@@ -2970,7 +2970,15 @@ const promoSkeleton = buildTemplate('promo', {
     phone: '010-0000-0000',
   },
 })
-ok(promoSkeleton.includes('시설 스펙을 나열하지 않는다'), '시설 나열을 금지한다')
+/*
+ * 「시설 스펙을 나열하지 않는다」를 지웠다 (2026-08-07). 시설 소개 구간을 통째로 막고
+ * 있었고, 다시 재보니 시설을 말하는 것 자체는 순위와 무관했다 (밀도 0~3 33% · 6~10 35%,
+ * 1,000자당 10개 이상만 1~3위 0%). 회원 지적도 같았다 — "이건 시설 소개 내용이 전혀 아니야."
+ */
+ok(!promoSkeleton.includes('시설 스펙을 나열하지 않는다'), '시설 소개를 통째로 막지 않는다')
+ok(promoSkeleton.includes('우리 센터에 무엇이 있나'), '시설 구간이 답할 질문을 준다')
+ok(promoSkeleton.includes('운동하는 방법을 다시 설명하지 않는다'), '두 구간이 같은 내용이 되지 않게 막는다')
+ok(promoSkeleton.includes('주제를 하나만 잡는다'), '정보 구간은 한 주제로 좁힌다')
 ok(promoSkeleton.includes('자극(어디에 오는지)'), '무엇을 쓰라고 짚어준다 (실측으로 갈린 말)')
 ok(promoSkeleton.includes('천국의 계단 4대" (X)'), '시설 소개의 나쁜 예와 좋은 예를 같이 준다')
 /*
@@ -2995,14 +3003,25 @@ ok(promoSkeleton.includes('정확한 금액·인원 수·마감일은 6단계'),
  *   인사로 시작 37편 1~3위 27% (15~43%) / 아닌 글 47편 32% (20~46%) — 구간이 겹친다.
  * 1~3위 글 다수가 「안녕하세요」로 시작한다. 순서를 강제한 것은 내 통설이었다.
  */
-ok(promoSkeleton.includes('①짧은 인사(화자 밝히기)'), '인사를 먼저 하게 한다')
+ok(promoSkeleton.includes('①**첫 문장이 인사다**'), '인사를 첫 문장으로 못박는다')
+ok(promoSkeleton.includes('처럼 줄이지 않는다'), '상호명을 줄여 쓰지 말라고 한다')
 ok(!promoSkeleton.includes('①아픈 지점으로 첫 문장'), '아픈 지점을 인사보다 앞세우지 않는다')
 ok(promoSkeleton.includes('순위 차이가 없었다'), '순서에 근거가 없다고 밝힌다')
 ok(promoSkeleton.includes('인사 다음 문장이 승부처다'), '대신 첫 문장의 세기를 요구한다')
 ok(promoSkeleton.includes('많은 분들이 고민하십니다'), '약한 첫 문장의 나쁜 예를 준다')
 ok(promoSkeleton.includes('새벽 근무 끝나고'), '강한 첫 문장의 좋은 예를 준다')
 const sysHook = buildSystemPrompt('promo')
-ok(sysHook.includes('짧은 인사로 시작한다'), 'AI 지시문도 인사로 열게 한다')
+ok(sysHook.includes('**첫 문장이 인사다.**'), 'AI 지시문도 인사를 첫 문장으로 못박는다')
+ok(sysHook.includes('정식 상호명)입니다」를 글의 맨 처음에'), '정식 상호명을 그대로 쓰라고 한다')
+/*
+ * 「금액을 제목에 박지는 않는다」를 지웠다 (2026-08-07). 회원이 직접 예를 들었다 —
+ * "나 같으면 「쌍용동 헬스장 가격 궁금할 때, 3개월 9.9만원」 이런 식으로 지었을 것."
+ * 내가 넣은 금지였고 근거가 없었다 (제목에 금액 4편, 1~3위 25% vs 없음 30% — 표본이 못 된다).
+ */
+ok(!sysHook.includes('금액을 제목에 박지는 않는다'), '금액을 제목에 못 쓰게 하지 않는다')
+ok(sysHook.includes('금액을 그대로 써도 된다'), '금액을 제목에 써도 된다고 알려준다')
+ok(sysHook.includes('3개월 9.9만원'), '회원이 든 예를 그대로 준다')
+ok(sysHook.includes('최저가·파격가·반값'), '광고심의 위험 표현은 계속 막는다')
 ok(sysHook.includes('금액대와 제한이 있다는 것까지만'), 'AI 지시문도 예고 수위를 정해준다')
 /*
  * 영상은 안내(`> `)가 아니라 **표기**로 넣는다 — 안내는 복사할 때 지워지므로,
@@ -3722,7 +3741,7 @@ ok(buildSystemPrompt('promo').includes('정보 5종류 이상'), 'AI 지시문�
 ok(!buildSystemPrompt('promo').includes('해결 620~720자'), '「해결」 한 덩어리를 없앴다')
 ok(buildSystemPrompt('promo').includes('운동 정보 300~380자'), '운동 정보는 짧게')
 ok(buildSystemPrompt('promo').includes('시설 소개 300~380자'), '시설 소개 구간을 만들었다')
-ok(buildSystemPrompt('promo').includes('종류 수**이고 분량이 아니다'), '분량이 아니라 종류라고 밝힌다')
+ok(buildSystemPrompt('promo').includes('종류 수이고 분량이 아니다'), '분량이 아니라 종류라고 밝힌다')
 ok(!buildSystemPrompt('promo').includes('**시설 스펙을 나열하지 않는다.**'), '시설 소개 자체를 막지 않는다')
 ok(buildSystemPrompt('promo').includes('10개 이상 몰아넣지 않는다'), '대신 상한만 남긴다 (밀도 10 이상 1~3위 0%)')
 ok(buildSystemPrompt('promo').includes('이벤트 280~330자'), '이벤트를 늘렸다 (220~260 → 280~330)')
@@ -4095,7 +4114,7 @@ ok(revCta.target.includes('글의 목적'), '후기는 순위보다 목적이라
 const promoTitleRule = buildSystemPrompt('promo')
 ok(promoTitleRule.includes('제목에 혜택을 한 조각 넣는다'), '제목에 혜택을 넣으라고 한다')
 ok(promoTitleRule.includes('있음 1~3위 36% / 없음 29%'), '불리하지 않다는 실측을 붙인다')
-ok(promoTitleRule.includes('금액을 제목에 박지는 않는다'), '금액은 제목에 안 박게 한다')
+ok(promoTitleRule.includes('금액을 그대로 써도 된다'), '금액을 제목에 써도 된다 (회원 요청 · 반대 근거 없음)')
 ok(!buildSystemPrompt('review').includes('제목에 혜택을 한 조각'), '후기글에는 이 규칙을 주지 않는다')
 ok(promoTitleRule.includes('소제목은 `## 소제목` 형식. 5~6개'), '홍보글 소제목은 5~6개 (구간이 늘었다)')
 ok(buildSystemPrompt('info').includes('소제목은 `## 소제목` 형식. 4~5개'), '다른 유형은 4~5개 그대로')
@@ -4130,6 +4149,53 @@ ok(v73(v73body('식단은 단백질부터 챙기시길 추천드려요.')).level
 ok(v73(v73body('여기 정말 추천드려요.')).level !== 'pass', '「여기 추천드려요」는 방문자 말투로 잡는다')
 ok(v73(v73body('이 헬스장 꼭 추천드려요.')).level !== 'pass', '「이 헬스장 추천드려요」도 잡는다')
 ok(v73(v73body('가봤더니 좋더라고요.')).level !== 'pass', '「좋더라고요」는 그대로 잡는다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[74] 첫 문장 인사 + 정식 상호명 — 회원이 직접 잡은 문제')
+/*
+ * 회원 지적: "첫 문장이 「안녕하세요 MTO 피트니스 쌍용점」이 아니라 뭐 이상한 문장이야.
+ * 업체명을 제대로 쓴 것도 아니고 「쌍용점」이라고만 나오고."
+ * 나온 문장이 「저희는 쌍용점입니다」였다.
+ *
+ * 정식 상호명 **횟수** 검사는 이걸 못 잡는다 — 뒤쪽에서 세 번 채우면 통과한다.
+ * 그래서 첫 80자만 따로 본다. 순위 기준은 아니다 (인사로 시작 27% / 아닌 글 32%).
+ */
+const g74 = (opening) => checkPost({ type:'promo', title:'쌍용동 헬스장 3개월 9.9만원, 새벽에도 갈 수 있을까?',
+  body: ['[이미지: 대표]', opening, '', '[이미지: 2]', '## 소제목',
+    '자세와 호흡, 무게를 봅니다. ' + '가'.repeat(1700),
+    'MTO 피트니스 쌍용점에서 상담 예약 문의 주세요. 상담 예약 문의 환영합니다.'].join('\n'),
+  mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[], legalName:'MTO 피트니스 쌍용점' })
+  .items.find((i) => i.id === 'intro-greeting')
+
+ok(g74('안녕하세요, MTO 피트니스 쌍용점입니다. 쌍용동 헬스장 이야기예요.').level === 'pass',
+  '인사 + 정식 상호명이면 통과')
+/*
+ * 회원 글에 실제로 나온 문장이다 — 인사도 없고 정식 상호명도 없어서 수정필요다.
+ * ("새벽에 눈뜨자마자 … 계시죠. 저희는 쌍용점입니다.")
+ */
+ok(g74('저희는 쌍용점입니다. 쌍용동 헬스장 이야기예요.').level === 'fail',
+  '「저희는 쌍용점입니다」는 잡는다 — 회원이 지적한 그 문장', g74('저희는 쌍용점입니다. 쌍용동 헬스장 이야기예요.').value)
+ok(g74('안녕하세요, 저희는 쌍용점입니다. 쌍용동 헬스장 이야기예요.').level === 'warn',
+  '인사는 했지만 상호를 줄이면 주의')
+ok(g74('안녕하세요, 저희는 쌍용점입니다.').hint.includes('MTO 피트니스 쌍용점'),
+  '어떻게 써야 하는지 상호명을 넣어 보여준다')
+ok(g74('안녕하세요, 저희는 쌍용점입니다.').hint.includes('줄이면'), '줄여 쓰면 안 되는 이유를 말한다')
+ok(g74('MTO 피트니스 쌍용점 쌍용동 헬스장 안내입니다.').level === 'warn', '인사가 없으면 주의')
+ok(g74('새벽 근무 끝나고 나오면 애매하죠. 쌍용동 헬스장 이야기예요.').level === 'fail',
+  '둘 다 없으면 수정필요')
+// 띄어쓰기 차이로 거짓 경고를 내지 않는다
+ok(g74('안녕하세요, MTO피트니스 쌍용점입니다. 쌍용동 헬스장 이야기예요.').level === 'pass',
+  '띄어쓰기가 달라도 같은 상호로 본다')
+ok(g74('안녕하세요, MTO 피트니스 쌍용점입니다.').target.includes('순위 기준이 아니라'),
+  '순위 기준이 아니라고 밝힌다')
+
+// 후기글은 화자가 방문객이라 이 검사를 하지 않는다
+const g74rev = checkPost({ type:'review', title:'쌍용동 헬스장 등록 후기, 3주 다녀보고',
+  body: ['[이미지: 대표]', '등록한 지 3주 됐어요. 쌍용동 헬스장 이야기예요.', '', '[이미지: 2]',
+    '## 소제목', '자세를 봐주셨어요. ' + '가'.repeat(1700)].join('\n'),
+  mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
+ok(!g74rev.items.some((i) => i.id === 'intro-greeting'),
+  '후기글에는 이 항목을 만들지 않는다 — 방문객이 센터 이름으로 인사하면 틀린다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
