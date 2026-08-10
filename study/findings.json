@@ -1,63 +1,71 @@
 {
- "analyzedAt": "2026-08-07",
- "runs": 2,
- "posts": 167,
+ "analyzedAt": "2026-08-10",
+ "runs": 3,
+ "posts": 209,
  "findings": [
   {
    "id": "info-min-promo",
    "where": "lib/analysis/content.ts · INFO_MIN_BY_TYPE.promo",
    "current": 5,
    "verdict": "keep",
-   "n": 142,
-   "rho": -0.19
+   "n": 180,
+   "rho": -0.23
   },
   {
    "id": "promo-max",
    "where": "lib/analysis/content.ts · PROMO_MAX_BY_TYPE.promo",
    "current": 6,
    "verdict": "keep",
-   "n": 142,
-   "rho": 0.04
+   "n": 180,
+   "rho": 0.05
+  },
+  {
+   "id": "cta-min-promo",
+   "where": "lib/analysis/content.ts · CTA_MIN_BY_TYPE.promo",
+   "current": 6,
+   "verdict": "keep",
+   "n": 88,
+   "rho": -0.24
   },
   {
    "id": "char-min-promo",
    "where": "lib/writing/checker.ts · SPECS.promo.charMin",
    "current": 1750,
    "verdict": "keep",
-   "n": 167,
-   "rho": -0.17
+   "n": 209,
+   "rho": -0.15
   },
   {
    "id": "image-min",
    "where": "lib/analysis/cutline.ts · IMAGE_BEST_MIN",
    "current": 6,
    "verdict": "keep",
-   "n": 167,
-   "rho": -0.02
+   "n": 209,
+   "rho": -0.06
   },
   {
    "id": "image-max",
    "where": "lib/analysis/cutline.ts · IMAGE_BEST_MAX",
    "current": 10,
    "verdict": "keep",
-   "n": 167,
-   "rho": -0.02
+   "n": 209,
+   "rho": -0.06
   },
   {
    "id": "ending-max",
    "where": "lib/writing/checker.ts · endings 항목",
    "current": 55,
    "verdict": "keep",
-   "n": 167,
-   "rho": 0.01
+   "n": 209,
+   "rho": 0.04
   },
   {
    "id": "para-max",
    "where": "lib/writing/checker.ts · paraShape 항목",
    "current": 300,
    "verdict": "keep",
-   "n": 167,
-   "rho": -0.21
+   "n": 209,
+   "rho": -0.13
   }
  ]
 }

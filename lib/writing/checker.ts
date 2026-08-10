@@ -908,7 +908,11 @@ export function checkPost(input: CheckInput): CheckResult {
    * ─── 상담 유도 (이 앱에서 찾은 가장 센 신호) ────────────────
    *
    * 「상담·예약·문의」 등장 **횟수**가 순위를 갈랐다 (content.ts 의 CTA_WORDS 주석):
-   *   0~1회 1~3위 14% (평균 6.45위) / 6회 이상 60% (3.30위) · 세 표본에서 재현 · 구간 갈림
+   *   0~1회 1~3위 14% (평균 6.45위) / 6회 이상 60% (3.30위) · 세 표본에서 방향 재현
+   *
+   * **정확한 선은 표본 오차 안이다** (2026-08-10, 런 3회 중간값으로 다시 재고 → 구간 겹침).
+   * 가장 큰 계단은 0회 → 1회다 (17% → 39%). 그래서 6 은 목표이고, 5회가 위험한 게 아니다 —
+   * 절반(3회) 미만만 수정필요로 잡는다.
    *
    * 바로 위의 「홍보 표현 절제」와 모순이 아니다 — 그건 **종류 수**(할인·특가·선착순…)이고
    * 이건 **횟수**다. 종류를 늘리는 것은 전단지가 되고, 상담을 여러 번 권하는 것은 「오시라」는
@@ -928,12 +932,12 @@ export function checkPost(input: CheckInput): CheckResult {
     }`,
     target:
       input.type === 'promo'
-        ? `${ctaMin}회 이상 (6회 이상 1~3위 60% / 0~1회 14%)`
+        ? `${ctaMin}회 이상 (6회 이상 1~3위 45~60% / 0~1회 14~17% · 정확한 선은 표본 오차 안)`
         : `${ctaMin}회 이상 (이 유형은 순위보다 글의 목적을 우선합니다)`,
     hint:
       cta.count < ctaMin
         ? input.type === 'promo'
-          ? `이 앱에서 확인한 가장 뚜렷한 순위 신호입니다 — 「상담·예약·문의」를 6회 이상 쓴 글이 1~3위 60%(평균 3.3위)였고, 0~1회인 글은 14%(6.5위)였습니다. 마지막 단락에 몰아넣으라는 뜻이 아닙니다: 이벤트 단락에 「상담 때 조건 안내드릴게요」, 시설 단락에 「예약하고 오시면 대기 없이 보실 수 있어요」처럼 각 단락의 끝에 자연스럽게 한 번씩 얹으세요.`
+          ? `실측에서 방향이 가장 일관됐던 항목입니다 — 「상담·예약·문의」를 6회 이상 쓴 글이 1~3위 45~60%였고, 0~1회인 글은 14~17%였습니다 (세 표본 모두 같은 방향). 가장 큰 차이는 0회와 1회 사이입니다. 마지막 단락에 몰아넣으라는 뜻이 아닙니다: 이벤트 단락에 「상담 때 조건 안내드릴게요」, 시설 단락에 「예약하고 오시면 대기 없이 보실 수 있어요」처럼 각 단락의 끝에 자연스럽게 한 번씩 얹으세요.`
           : `${ctaMin}회는 넘기세요 — 읽는 사람이 다음에 무엇을 하면 되는지 모릅니다.`
         : undefined,
     /*
@@ -1238,33 +1242,47 @@ export function checkPost(input: CheckInput): CheckResult {
     { p: /저희 (센터|지점|짐|헬스장)|우리 센터|우리 지점/, label: '소속 1인칭(「저희 센터」)' },
     { p: /오시면|방문해 주시|등록하시면|안내드립니다/, label: '센터가 손님을 부르는 말투' },
   ]
+  /*
+   * **걸린 말을 그대로 보여준다** (2026-08-10).
+   *
+   * 예전에는 「제목의 「후기」나 「다녀왔다」·「괜찮더라고요」는…」처럼 **패턴 목록**을 읊었다.
+   * 회원이 유형을 홍보글로 바꿨는데 본문은 예전 후기글이 남아 있는 상태에서 이 배너를 보고
+   * 「유형은 홍보글인데 왜 어긋났다고 하나」로 읽었다 — 무엇 때문인지 안 알려줬기 때문이다.
+   * 이제 실제로 걸린 구절을 뽑아서 보여준다.
+   */
+  const matchOf = (re: RegExp, text: string) => text.match(re)?.[0]?.trim().slice(0, 24)
   if (input.type === 'review') {
-    const hits = OWNER_TONE.filter((t) => t.p.test(prose)).map((t) => t.label)
+    const found = OWNER_TONE.map((t) => ({ label: t.label, at: matchOf(t.p, prose) })).filter((x) => x.at)
     add({
       id: 'voice',
       group: '저품질 위험',
       label: '화자 (방문객이어야 합니다)',
-      level: hits.length ? 'fail' : 'pass',
-      value: hits.length ? hits.join(', ') : '방문객 1인칭 유지',
+      level: found.length ? 'fail' : 'pass',
+      value: found.length ? found.map((f) => `「${f.at}」`).join(' · ') : '방문객 1인칭 유지',
       target: '센터 소속 1인칭을 쓰지 않습니다',
-      hint: hits.length
-        ? '후기글의 화자는 방문객입니다. 센터 말투로 새면 후기가 아니라 홍보글이 됩니다 — 그건 gym-blog-writer 로 쓰세요.'
+      hint: found.length
+        ? `본문에 ${found.map((f) => `「${f.at}」(${f.label})`).join(' · ')} 가 있습니다. 후기글의 화자는 방문객이라 센터 말투로 새면 후기가 아니라 홍보글이 됩니다 — 유형을 「홍보글」로 바꾸거나 그 표현을 방문객 시점으로 고치세요.`
         : undefined,
       weight: 5,
     })
   } else {
-    const titleHit = /후기|내돈내산|체험단?/.test(title)
-    const bodyHits = VISITOR_TONE.filter((t) => t.p.test(prose)).map((t) => t.label)
-    const hits = [...(titleHit ? ['제목에 「후기」류'] : []), ...bodyHits]
+    const titleAt = matchOf(/후기|내돈내산|체험단?/, title)
+    const bodyFound = VISITOR_TONE.map((t) => ({ label: t.label, at: matchOf(t.p, prose) })).filter((x) => x.at)
+    const found = [
+      ...(titleAt ? [{ label: '제목', at: titleAt }] : []),
+      ...bodyFound,
+    ]
     add({
       id: 'voice',
       group: '저품질 위험',
       label: '화자 (센터여야 합니다)',
-      level: hits.length ? 'fail' : 'pass',
-      value: hits.length ? hits.join(', ') : '센터 1인칭 유지',
+      level: found.length ? 'fail' : 'pass',
+      value: found.length ? found.map((f) => `「${f.at}」`).join(' · ') : '센터 1인칭 유지',
       target: '방문자 말투·「후기」 표기를 쓰지 않습니다',
-      hint: hits.length
-        ? '이 글은 센터가 쓰는 글입니다. 제목의 「후기」나 「다녀왔다」·「괜찮더라고요」는 겪지 않은 일을 겪은 것처럼 말하는 것이라 사실이 아닙니다. 방문객 시점으로 쓰려면 글 유형을 「후기글」로 바꾸세요.'
+      hint: found.length
+        ? `${titleAt ? `제목의 「${titleAt}」` : ''}${titleAt && bodyFound.length ? ' · ' : ''}${bodyFound
+            .map((f) => `본문의 「${f.at}」`)
+            .join(' · ')} 때문입니다. 이 글은 센터가 쓰는 글이라 겪지 않은 일을 겪은 것처럼 말하는 셈이 됩니다. 방문객 시점으로 쓰려면 유형을 「후기글」로 바꾸세요.`
         : undefined,
       weight: 5,
     })

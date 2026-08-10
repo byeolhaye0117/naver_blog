@@ -56,7 +56,7 @@ export default function Editor({
   initialStoreId,
   prescription,
   evidence,
-  autoOpened = false,
+  resumable,
 }: {
   stores: Store[]
   posts: Post[]
@@ -74,8 +74,14 @@ export default function Editor({
    * 근거가 갈리거나 거꾸로인 항목은 점수 비중이 내려간다 (lib/writing/evidence.ts).
    */
   evidence?: PooledFactor[]
-  /** 「글 작성」만 눌러 들어와 쓰던 초안을 자동으로 열어준 경우 */
-  autoOpened?: boolean
+  /**
+   * **자동으로 열지 않은** 가장 최근 초안.
+   *
+   * 예전에는 이걸 그냥 열었다. 그래서 새 글을 쓰려고 들어온 회원이 옛 후기글을 이어 쓰는
+   * 상태가 됐고, 유형만 바꾸니 본문이 후기라서 화자 경고가 떴다. 이제 들어오면 항상 새
+   * 홍보글이고, 초안은 이 배너로만 알린다 — 지우지도 감추지도 않는다.
+   */
+  resumable?: { id: string; title: string; type: PostType; updatedAt: string }
 }) {
   const router = useRouter()
 
@@ -384,6 +390,29 @@ export default function Editor({
   }
 
   /**
+   * 지금 유형에 맞게 **본문을 비우고 새로 쓴다.**
+   *
+   * 화자가 어긋난 상태에서 회원이 할 일은 본문을 손으로 지우고 다시 쓰는 것이었다.
+   * 유형을 바꿨는데 본문이 예전 유형으로 남아 있는 경우가 가장 흔해서 버튼 하나로 만든다.
+   * 덮어쓰기 전에 한 번 묻는다 — 되돌릴 수 없는 동작이다.
+   */
+  async function rewriteForType() {
+    if (!store) {
+      setAiMsg('지점을 먼저 골라주세요.')
+      return
+    }
+    if (!mainKeyword.trim()) {
+      setAiMsg('메인 키워드를 먼저 넣어주세요.')
+      return
+    }
+    if (!confirm(`현재 제목·본문을 지우고 ${POST_TYPE_LABEL[type]}로 새로 씁니다. 계속할까요?`)) return
+    setTitle('')
+    setBody('')
+    setFixIssues(null)
+    await callWrite({})
+  }
+
+  /**
    * `/api/write` 호출 한 번.
    *
    * `draft`·`issues` 를 함께 보내면 서버가 **고쳐 쓰기만** 한다. 응답이 JSON 이 아닌
@@ -515,18 +544,25 @@ export default function Editor({
 
   return (
     <div>
-      {autoOpened && (
-        <div className="card mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] px-4 py-3">
+      {/*
+        오늘 것이 아니어서 자동으로 열지 않은 초안 — 있다는 것만 알리고 선택은 회원이 한다.
+        예전에는 이걸 그냥 열어버려서, 새 글을 쓰려던 회원이 옛 후기글을 이어 쓰고 있었다.
+      */}
+      {resumable && (
+        <div className="bd surface mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] border px-4 py-3">
           <span className="text-[12.5px] leading-relaxed">
-            쓰던 초안을 열었습니다 —{' '}
-            <b className="font-bold">{title || '(제목 없음)'}</b>
-            <span className="muted"> · {POST_TYPE_LABEL[type]} · {result.score}점</span>
+            <b className="font-bold">새 {POST_TYPE_LABEL[type]}</b>로 시작합니다.
+            <span className="muted">
+              {' '}
+              쓰던 초안이 하나 있습니다 — 「{resumable.title || '제목 없음'}」 ·{' '}
+              {POST_TYPE_LABEL[resumable.type]} · {resumable.updatedAt.slice(0, 10)}
+            </span>
           </span>
           <a
-            href="/write?new=1"
-            className="bd surface ml-auto rounded-full border px-3 py-1.5 text-[12px] font-bold hover:bg-slate-500/8"
+            href={`/write?id=${encodeURIComponent(resumable.id)}`}
+            className="bd panel ml-auto rounded-full border px-3 py-1.5 text-[12px] font-bold hover:bg-slate-500/8"
           >
-            새 글로 시작
+            그 초안 이어서 쓰기
           </a>
         </div>
       )}
@@ -931,9 +967,22 @@ export default function Editor({
                     <p className="muted mt-1">{voiceMismatch}</p>
                     <p className="muted mt-1.5">
                       {type === 'review'
-                        ? '센터가 1인칭으로 쓰는 글을 원하셨다면 위에서 글 유형을 「홍보글」로 바꾸고 다시 쓰세요.'
-                        : '방문객 시점으로 쓰려면 글 유형을 「후기글」로 바꾸세요. 유형이 맞다면 「검수 항목 고쳐 쓰기」로 화자를 되돌릴 수 있습니다.'}
+                        ? '센터가 1인칭으로 쓰는 글을 원하셨다면 위에서 글 유형을 「홍보글」로 바꾸세요.'
+                        : '유형이 맞다면 본문이 다른 유형으로 쓰인 것입니다 — 아래 버튼으로 이 유형에 맞게 새로 쓰거나, 「검수 항목 고쳐 쓰기」로 걸린 표현만 되돌릴 수 있습니다.'}
                     </p>
+                    {/*
+                      **한 번에 새로 쓰게 한다.** 유형을 바꿨는데 본문이 예전 유형인 상태가
+                      이 배너가 뜨는 가장 흔한 경우다. 그때 회원이 할 일은 본문을 손으로 비우고
+                      다시 쓰는 것이었는데, 그걸 버튼 하나로 만든다.
+                    */}
+                    <button
+                      type="button"
+                      onClick={rewriteForType}
+                      disabled={aiBusy}
+                      className="bg-brand-600 mt-2 rounded-full px-3 py-1.5 text-[11.5px] font-bold text-white disabled:opacity-50"
+                    >
+                      {aiBusy ? '쓰는 중…' : `본문 비우고 ${POST_TYPE_LABEL[type]}로 새로 쓰기`}
+                    </button>
                   </div>
                 )}
 

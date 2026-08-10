@@ -237,3 +237,61 @@ export function verdictFor(
   const stricter = kind === 'min' ? current > scan.pick.c : current < scan.pick.c
   return stricter ? 'stricter' : 'change'
 }
+
+// ─── 매일 쌓기 (app/api/cron/study) ─────────────────────────────────────────
+
+/**
+ * 본문 측정값을 며칠까지 재사용할지.
+ *
+ * **순위는 매일 바뀌고 본문은 거의 안 바뀐다.** 그래서 순위(SERP)만 매일 전부 받고, 본문은
+ * 묵은 것만 다시 받는다. 이 구분이 없으면 매일 160편을 다시 읽어야 하는데 함수 한 번에
+ * 들어가지 않는다 (로컬에서 2~4분).
+ *
+ * 7일로 둔 이유: 글이 수정되는 일은 드물지만 아예 안 보면 옛 수치가 굳는다 (로컬 캐시에서
+ * 실제로 그랬다). 순위 이력은 매일 온전하므로 유지 판정은 이 값에 영향을 받지 않는다.
+ */
+export const BODY_MAX_AGE_DAYS = 7
+
+/** 한 번의 크론에서 새로 읽을 본문 수 상한 — 넘치면 다음 날로 미룬다 (응답에 편수를 적는다) */
+export const BODY_BUDGET_PER_RUN = 60
+
+/** 저장해 둘 런 수 (하루 하나면 두 달) */
+export const STUDY_RUNS_KEEP = 60
+
+/** 저장해 둘 글 측정값 수 — 순위에서 사라진 글은 밀려 나간다 */
+export const STUDY_POSTS_KEEP = 600
+
+/** 측정한 날로부터 며칠 지났나 */
+export function measurementAgeDays(measuredAt: string, today: string): number {
+  const a = Date.parse(`${measuredAt}T00:00:00Z`)
+  const b = Date.parse(`${today}T00:00:00Z`)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.POSITIVE_INFINITY
+  return Math.max(0, Math.round((b - a) / 86_400_000))
+}
+
+/**
+ * 조사할 키워드를 정한다.
+ *
+ * `study/keywords.json` 의 목록을 그대로 쓴다. **그 파일을 여기서 들여오지는 않는다** —
+ * lib/ 이 저장소 최상단 데이터 파일에 매달리면 계층이 꼬이고, 테스트 컴파일에서도 걸린다.
+ * 파일을 읽어 넘기는 일은 부르는 쪽(app/api/cron/study)이 한다.
+ *
+ * 목록이 비어 있으면 앱이 아는 키워드로 물러선다 — 순위를 추적 중인 키워드와 지점 지역
+ * 키워드다. 크론이 조용히 아무것도 안 하는 것보다 낫다.
+ */
+export function studyKeywords(
+  db: {
+    rankTargets?: { keyword: string }[]
+    stores?: { localKeywords?: string[] }[]
+  },
+  configured: unknown[] = []
+): string[] {
+  const fromFile = configured.map((k) => String(k).trim()).filter(Boolean)
+  if (fromFile.length) return fromFile
+  return Array.from(
+    new Set([
+      ...(db.rankTargets ?? []).map((t) => t.keyword),
+      ...(db.stores ?? []).flatMap((s) => s.localKeywords ?? []),
+    ])
+  ).filter(Boolean)
+}

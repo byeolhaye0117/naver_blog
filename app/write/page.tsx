@@ -37,15 +37,31 @@ export default async function WritePage({
    * 그냥 「글 작성」을 눌러 들어온 경우엔 쓰던 초안을 바로 열어준다.
    * 발행 관리로 돌아가 글을 찾아 누르게 하지 않는다 — 대부분은 어제 쓰던 글을 이어 쓴다.
    * 새로 시작하려면 ?new=1 (헤더의 「새 글」 버튼이 이 주소를 쓴다).
+   *
+   * ─── 자동으로 열지 않는다 (2026-08-10) ─────────────────────────────
+   *
+   * 회원 요청: "차라리 처음 보이는 게 후기글이 아니라 홍보글로 선택될 수 있게 다시 해줘."
+   *
+   * 원인이 기본값이 아니었다. 기본 유형은 이미 홍보글인데, **예전에 만든 후기글 초안이
+   * 자동으로 열려서** 그 유형이 화면을 차지했다. 회원은 새 글을 쓰려고 들어왔는데 옛 후기글을
+   * 이어 쓰는 상태였고, 유형만 홍보글로 바꾸니 본문은 후기라서 화자 경고가 떴다.
+   *
+   * 처음엔 「오늘 손댄 초안만 열기」로 좁혔는데 그것도 부족했다 — 그 초안을 오늘 한 번이라도
+   * 저장했으면 다시 열린다. 「대부분은 어제 쓰던 글을 이어 쓴다」는 내 짐작이 틀렸으므로
+   * **자동으로 여는 것을 그만둔다.** 들어오면 항상 새 홍보글이다.
+   *
+   * 초안은 지우지도 감추지도 않는다 — 가장 최근 것을 배너로 알려 한 번에 열 수 있게 한다
+   * (resumable). 주소로 지목했을 때만(`?id=`) 그 글을 연다.
    */
-  const wantsNew = sp.new === '1' || Boolean(sp.type || sp.main || sp.store || sp.subs)
-  const latestDraft =
-    !sp.id && !wantsNew
-      ? [...db.posts]
-          .filter((p) => p.status !== 'published')
-          .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))[0]
-      : undefined
-  const existing = sp.id ? db.posts.find((p) => p.id === sp.id) : latestDraft
+  const drafts = [...db.posts]
+    .filter((p) => p.status !== 'published')
+    .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
+  const newest = !sp.id ? drafts[0] : undefined
+  /** 자동으로 열지 않은 초안 — 배너로만 알린다 */
+  const resumable = newest
+    ? { id: newest.id, title: newest.title, type: newest.type, updatedAt: newest.updatedAt ?? '' }
+    : undefined
+  const existing = sp.id ? db.posts.find((p) => p.id === sp.id) : undefined
 
   /**
    * 이 글의 메인 키워드로 분석해 둔 처방을 꺼낸다.
@@ -60,7 +76,7 @@ export default async function WritePage({
   return (
     <>
       <PageHeader
-        title={latestDraft ? '이어서 쓰기' : existing ? '글 수정' : '글 작성'}
+        title={existing ? '글 수정' : '글 작성'}
         desc="쓰는 동안 키워드 횟수·밀도·금칙어·이미지 배치를 실시간으로 검사합니다. 오른쪽 점수가 85점 이상이면 발행해도 좋은 상태입니다."
       />
       <StorageNotice />
@@ -84,7 +100,7 @@ export default async function WritePage({
         initialStoreId={sp.store}
         prescription={prescription}
         evidence={poolStoredRuns(db.factorRuns)}
-        autoOpened={Boolean(latestDraft)}
+        resumable={resumable}
       />
     </>
   )

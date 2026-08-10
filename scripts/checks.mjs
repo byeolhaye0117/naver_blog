@@ -4083,14 +4083,21 @@ const ctaItem = (n) => checkPost({ type:'promo', title:'쌍용동 헬스장 8월
   legalName:'MTO 피트니스 쌍용점' }).items.find((i) => i.id === 'cta-invite')
 
 ok(ctaItem(0).level === 'fail', '상담 유도가 없으면 수정필요', ctaItem(0).level)
-ok(ctaItem(0).hint.includes('가장 뚜렷한 순위 신호'), '왜 중요한지 말한다')
+ok(ctaItem(0).hint.includes('방향이 가장 일관됐던'), '왜 중요한지 말한다')
+/*
+ * 런 3회 중간값으로 다시 재니 구간이 겹쳤다 (content.ts 의 「정정」 항목).
+ * 방향은 세 표본 다 같았지만 「6회」라는 선은 표본 오차 안이다 — 힌트가 과장하지 않게 고정한다.
+ */
+ok(!ctaItem(0).hint.includes('가장 뚜렷한 순위 신호'), '단정하지 않는다 (구간이 겹쳤다)')
+ok(ctaItem(0).hint.includes('0회와 1회 사이'), '가장 큰 계단이 어디인지 알려준다')
+ok(ctaItem(2).target.includes('표본 오차 안'), '목표 문구도 정확한 선이 아니라고 밝힌다', ctaItem(2).target)
 ok(ctaItem(0).hint.includes('몰아넣으라는 뜻이 아닙니다'), '한 곳에 몰지 말라고 알려준다')
 ok(ctaItem(0).hint.includes('각 단락의 끝에'), '어디에 넣으라고 알려준다')
 ok(ctaItem(1).level === 'warn', '3회면 주의 (하한 6의 절반)', `${ctaItem(1).value} ${ctaItem(1).level}`)
 ok(ctaItem(2).level === 'pass', '6회면 통과', `${ctaItem(2).value} ${ctaItem(2).level}`)
 ok(ctaItem(3).level === 'pass', '더 써도 통과 — 상한은 두지 않는다 (근거가 없다)')
 ok(ctaItem(2).value.includes('상담 2'), '낱말별 횟수를 보여준다', ctaItem(2).value)
-ok(ctaItem(2).target.includes('60%'), '목표에 실측을 적는다', ctaItem(2).target)
+ok(ctaItem(2).target.includes('45~60%'), '목표에 실측 범위를 적는다', ctaItem(2).target)
 ok(ctaItem(2).weight === 4, '구간이 갈린 신호라 가중치를 높게', String(ctaItem(2).weight))
 
 /*
@@ -4196,6 +4203,135 @@ const g74rev = checkPost({ type:'review', title:'쌍용동 헬스장 등록 후�
   mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] })
 ok(!g74rev.items.some((i) => i.id === 'intro-greeting'),
   '후기글에는 이 항목을 만들지 않는다 — 방문객이 센터 이름으로 인사하면 틀린다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[75] 조사 캐시는 하루만 듣는다')
+/*
+ * **캐시가 영구적이면 측정값이 굳는다.** 사흘 전에 받아둔 본문이 그대로 재사용되고 있었다 —
+ * 순위(SERP)는 매번 새로 받으니 순위 변화는 보이는데 내용은 안 변하는, 조용히 어긋나는
+ * 조사가 된다. 그동안 글이 수정됐으면 옛 수치가 영구히 남는다.
+ *
+ * 규칙 자체(날짜 비교)는 scripts/study.mjs 에 있지만, 그 규칙이 지켜야 하는 성질을
+ * 여기서 고정한다 — 날짜 문자열 비교가 맞는 방향인지.
+ */
+const cacheStamp = (offsetDays) =>
+  new Date(Date.UTC(2026, 7, 10) + offsetDays * 86_400_000).toISOString().slice(0, 10)
+const wouldReuse = (fileOffset, cacheDays) => cacheStamp(fileOffset) >= cacheStamp(-cacheDays)
+
+ok(wouldReuse(0, 0), '오늘 받은 것은 재사용한다 (같은 날 재실행을 싸게)')
+ok(!wouldReuse(-1, 0), '어제 받은 것은 다시 받는다 — 기본값에서')
+ok(!wouldReuse(-3, 0), '사흘 전 것도 다시 받는다 (실제로 이게 문제였다)')
+ok(wouldReuse(-3, 3), '--cache-days=3 이면 사흘 전 것까지 재사용')
+ok(!wouldReuse(-4, 3), '--cache-days=3 이면 나흘 전은 다시 받는다')
+ok(wouldReuse(0, 7), '넉넉히 줘도 오늘 것은 당연히 재사용')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[76] 하루씩 쌓기 — 순위는 매일, 본문은 묵은 것만')
+/*
+ * 회원이 물었다 — "일주일 뒤까지 모으지 않아도 하루씩 모이게 할 수 있지 않아?"
+ *
+ * 된다. 유지 판정에 필요한 것은 런 개수가 아니라 **기간**이고, 하루씩 쌓으면 이 주면
+ * 14개 런이 14일을 덮는다. 문제는 비용이었다 — 키워드 22개 × 상위 10편이면 매일 본문
+ * 160편을 읽어야 하고 함수 한 번에 안 들어간다.
+ *
+ * 그래서 나눴다: **순위는 매일 전부(22콜), 본문은 7일 넘게 묵은 것만.**
+ * 순위는 매일 바뀌고 본문은 거의 안 바뀌므로 유지 판정이 흐려지지 않는다.
+ */
+const {
+  BODY_MAX_AGE_DAYS,
+  BODY_BUDGET_PER_RUN,
+  STUDY_RUNS_KEEP,
+  STUDY_POSTS_KEEP,
+  measurementAgeDays,
+  studyKeywords,
+} = require(`${OUT}/analysis/study.js`)
+
+ok(BODY_MAX_AGE_DAYS === 7, '본문은 7일까지 재사용', String(BODY_MAX_AGE_DAYS))
+ok(BODY_BUDGET_PER_RUN >= 40 && BODY_BUDGET_PER_RUN <= 100, '한 번에 읽을 본문에 상한을 둔다', String(BODY_BUDGET_PER_RUN))
+ok(STUDY_RUNS_KEEP >= 30, '하루 하나면 한 달 이상 남는다', String(STUDY_RUNS_KEEP))
+ok(STUDY_POSTS_KEEP >= 300, '상위 글 수보다 넉넉하게 둔다', String(STUDY_POSTS_KEEP))
+
+// ─── 측정값 나이 ───
+ok(measurementAgeDays('2026-08-10', '2026-08-10') === 0, '같은 날이면 0일')
+ok(measurementAgeDays('2026-08-03', '2026-08-10') === 7, '이레 전이면 7일')
+ok(measurementAgeDays('2026-08-03', '2026-08-10') >= BODY_MAX_AGE_DAYS, '7일이면 다시 받는다')
+ok(measurementAgeDays('2026-08-04', '2026-08-10') < BODY_MAX_AGE_DAYS, '6일이면 재사용한다')
+ok(measurementAgeDays('2026-07-31', '2026-08-10') === 10, '달을 넘겨도 센다')
+ok(!Number.isFinite(measurementAgeDays('', '2026-08-10')), '날짜가 없으면 무한 — 무조건 다시 받는다')
+ok(!Number.isFinite(measurementAgeDays('망가진 값', '2026-08-10')), '깨진 값도 다시 받는다')
+// 미래 날짜(시계가 어긋난 경우)를 음수로 돌려주면 영원히 재사용된다
+ok(measurementAgeDays('2026-08-20', '2026-08-10') === 0, '미래 날짜는 0으로 (음수를 돌려주지 않는다)')
+
+// ─── 조사 키워드 ───
+const kwDb = {
+  rankTargets: [{ keyword: '쌍용동 헬스장' }, { keyword: '천안 PT' }],
+  stores: [{ localKeywords: ['쌍용동 헬스장', '봉명동 헬스장'] }],
+}
+ok(studyKeywords(kwDb, ['두정동 헬스장', '성정동 헬스장']).length === 2, '파일 목록이 있으면 그것만 쓴다')
+ok(studyKeywords(kwDb, ['두정동 헬스장'])[0] === '두정동 헬스장', '파일 목록을 그대로 쓴다')
+ok(studyKeywords(kwDb, ['  ', '']).length === 3, '빈 항목만 있으면 앱 키워드로 물러선다', String(studyKeywords(kwDb, ['  ']).length))
+ok(studyKeywords(kwDb, []).includes('쌍용동 헬스장'), '물러설 때 순위 추적 키워드를 쓴다')
+ok(studyKeywords(kwDb, []).includes('봉명동 헬스장'), '지점 지역 키워드도 쓴다')
+ok(new Set(studyKeywords(kwDb, [])).size === studyKeywords(kwDb, []).length, '중복을 없앤다')
+ok(studyKeywords({}, []).length === 0, '아무것도 없으면 빈 목록 (크론이 400 으로 알려준다)')
+
+/*
+ * 크론 런에는 문단 구조가 없다 (se-component 쪼개기는 로컬 스크립트에만 있다).
+ * 그래도 합치기·판정이 깨지지 않아야 한다 — 문단 항목만 대상에서 빠지면 된다.
+ */
+const cronPost = {
+  url: 'x', blogId: 'b', title: 't', ranks: { k: 2 },
+  chars: 2000, images: 8, videos: 0,
+  info: 6, promo: 3, experience: 2, infoFound: [], promoFound: [], cta: 7,
+  topEnding: '~요', topEndingShare: 40,
+}
+const cronMerged = mergeRuns([
+  { date: '2026-08-09', keywords: ['k'], top: 10, posts: [cronPost] },
+  { date: '2026-08-10', keywords: ['k'], top: 10, posts: [{ ...cronPost, ranks: { k: 3 } }] },
+])
+ok(cronMerged.length === 1, '문단 필드가 없어도 합쳐진다')
+ok(cronMerged[0].held === true, '유지 판정은 순위만으로 된다 (문단 없이도)')
+ok(cronMerged[0].longestPara === undefined, '없는 값은 없는 채로 둔다 (0 으로 꾸미지 않는다)')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[77] 화자 경고는 걸린 말을 그대로 보여준다')
+/*
+ * 회원이 유형을 홍보글로 바꿨는데 본문은 예전 후기글이 남아 있었다. 그 상태에서 빨간
+ * 배너를 보고 「유형은 홍보글이고 화자도 센터가 맞는데 왜 어긋났다고 하나」로 읽었다.
+ *
+ * 배너가 **패턴 목록**을 읊고 있었기 때문이다 — 「제목의 「후기」나 「다녀왔다」·
+ * 「괜찮더라고요」는…」. 무엇 때문에 걸렸는지 알려주지 않으면 맞는 경고도 버그로 읽힌다.
+ * 이제 실제로 걸린 구절을 뽑아 보여준다.
+ */
+const v77 = (title, tail) => checkPost({ type:'promo', title,
+  body: ['[이미지: 대표]', '안녕하세요, MTO 피트니스 쌍용점입니다. 쌍용동 헬스장입니다.', '',
+    '[이미지: 2]', '## 소제목', '자세와 호흡, 무게를 봅니다. ' + '가'.repeat(1700), tail].join('\n'),
+  mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[], legalName:'MTO 피트니스 쌍용점' })
+  .items.find((i) => i.id === 'voice')
+
+const v77body = v77('쌍용동 헬스장 8월 혜택 안내', '지난주에 직접 다녀왔습니다.')
+ok(v77body.level === 'fail', '방문자 말투는 그대로 잡는다')
+ok(v77body.value.includes('다녀왔'), '걸린 말을 value 에 넣는다', v77body.value)
+ok(v77body.hint.includes('본문의 「다녀왔'), '힌트도 걸린 말을 짚는다', v77body.hint)
+ok(!v77body.hint.includes('괜찮더라고요'), '걸리지도 않은 패턴을 나열하지 않는다')
+
+const v77title = v77('쌍용동 헬스장 등록 후기, 3주 다녀보고', '오시면 안내드립니다.')
+ok(v77title.hint.includes('제목의 「후기」'), '제목에서 걸렸으면 제목이라고 말한다', v77title.hint)
+
+const v77both = v77('쌍용동 헬스장 체험 후기', '내돈내산으로 다녀왔습니다.')
+ok(v77both.hint.includes('제목의') && v77both.hint.includes('본문의'), '둘 다면 둘 다 짚는다')
+
+ok(v77('쌍용동 헬스장 8월 혜택 안내', '오시면 안내드립니다.').level === 'pass',
+  '깨끗하면 통과 (센터 말투는 홍보글에서 정상)')
+
+// 후기글 쪽도 같은 방식
+const v77rev = checkPost({ type:'review', title:'쌍용동 헬스장 등록 후기, 3주 다녀보고',
+  body: ['[이미지: 대표]', '등록한 지 3주 됐어요. 쌍용동 헬스장 후기예요.', '', '[이미지: 2]',
+    '## 소제목', '자세를 봐주셨어요. ' + '가'.repeat(1700), '저희 센터는 24시간 운영합니다.'].join('\n'),
+  mainKeyword:'쌍용동 헬스장', subKeywords:[], tags:[] }).items.find((i) => i.id === 'voice')
+ok(v77rev.level === 'fail', '후기글에 센터 말투가 새면 잡는다')
+ok(v77rev.value.includes('저희 센터'), '걸린 말을 보여준다', v77rev.value)
+ok(v77rev.hint.includes('본문에 「저희 센터'), '힌트도 그 말을 짚는다', v77rev.hint)
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
