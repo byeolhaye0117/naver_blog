@@ -84,6 +84,7 @@ export default function Editor({
   prescription,
   evidence,
   resumable,
+  ai,
 }: {
   stores: Store[]
   posts: Post[]
@@ -109,6 +110,8 @@ export default function Editor({
    * 홍보글이고, 초안은 이 배너로만 알린다 — 지우지도 감추지도 않는다.
    */
   resumable?: { id: string; title: string; type: PostType; updatedAt: string }
+  /** 지금 쓰는 AI 키와 자료 검색 가능 여부 (서버에서 판단해 넘긴다 — 키 값은 넘기지 않는다) */
+  ai?: { label: string | null; canSearch: boolean }
 }) {
   const router = useRouter()
 
@@ -1117,6 +1120,28 @@ export default function Editor({
                     }`}
                   >
                     {aiMsg}
+                  </p>
+                )}
+
+                {/*
+                  **어떤 키로 도는지 버튼 옆에서 보이게.**
+
+                  회원이 물었다 — "지금 어떤 키 쓰는지 알아봐." 그건 글을 쓰기 **전에** 알아야
+                  하는 정보다: 검색이 되는 키(Anthropic·Gemini)에서만 정보글에 출처가 붙는다.
+                  키 값은 서버에서도 안 넘긴다 — 회사 이름과 검색 가능 여부만.
+                */}
+                {ai?.label && (
+                  <p className="muted mb-3 text-[11.5px] leading-relaxed">
+                    지금 <b>{ai.label}</b> 키로 씁니다 ·{' '}
+                    {ai.canSearch ? (
+                      <b className="text-emerald-700 dark:text-emerald-300">자료 검색 가능</b>
+                    ) : (
+                      <b className="text-amber-700 dark:text-amber-300">자료 검색 안 됨</b>
+                    )}
+                    {type === 'info' &&
+                      (ai.canSearch
+                        ? ' — 기관·학회 자료를 찾아 출처와 함께 인용합니다 (못 찾으면 인용 없이 상담 경험으로).'
+                        : ' — 이 키로는 자료를 찾을 수 없어 연구·수치 인용 없이 상담 경험으로만 씁니다. 「휴대폰에서 쓰기 · 배포」 화면을 보세요.')}
                   </p>
                 )}
 

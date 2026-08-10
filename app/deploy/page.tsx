@@ -1,10 +1,68 @@
 import Link from 'next/link'
 import { keyStatus } from '@/lib/naver/client'
+import { aiStatus, canSearchWeb } from '@/lib/ai/llm'
 import { PageHeader } from '@/components/AppShell'
 import { Badge, Card } from '@/components/ui'
 import CopyButton from '@/components/CopyButton'
 import BackupBox from '@/components/BackupBox'
 import { StorageStatusCard } from '@/components/StorageNotice'
+
+/**
+ * 지금 어떤 AI 키로 돌고 있는지.
+ *
+ * 회원이 물었다 — "지금 어떤 키 쓰는지 알아봐." 나는 회원의 Vercel 환경변수를 읽을 수 없다.
+ * 그래서 **앱이 스스로 말하게** 만든다. 키 값은 절대 찍지 않고, 어느 회사인지와
+ * **자료 검색이 되는지**만 보여준다 — 검색이 되는 키(Anthropic·Gemini)에서만 정보글이
+ * 자료를 찾아 인용하기 때문에, 이 한 줄이 「내 글에 출처가 붙는가」의 답이다.
+ */
+function AiKeyCard() {
+  const ai = aiStatus()
+  const search = canSearchWeb()
+  return (
+    <Card
+      title="지금 쓰는 AI 키"
+      subtitle="키 값은 보여주지 않습니다 — 어느 회사 키인지와 자료 검색이 되는지만 확인합니다"
+      right={
+        <Badge tone={!ai.ready ? 'bad' : search ? 'good' : 'warn'}>
+          {!ai.ready ? '없음' : search ? '검색 가능' : '검색 안 됨'}
+        </Badge>
+      }
+    >
+      {!ai.ready ? (
+        <p className="text-[12.5px] leading-relaxed">
+          AI 키가 없습니다. 아래 <strong>Environment Variables</strong> 안내대로 넷 중 하나를 넣고 다시
+          배포하면 「AI로 본문 쓰기」가 켜집니다.
+        </p>
+      ) : (
+        <>
+          <p className="text-[12.5px] leading-relaxed">
+            <strong>{ai.label}</strong> 키로 돌고 있습니다.
+          </p>
+          <p className="muted mt-2 text-[11.5px] leading-relaxed">
+            {search ? (
+              <>
+                이 키는 <strong>자료 검색이 됩니다.</strong> 정보글을 쓸 때 기관·학회 자료를 직접 찾아
+                출처와 함께 인용합니다 (찾은 것만 씁니다 — 못 찾으면 인용하지 않습니다).
+              </>
+            ) : (
+              <>
+                이 키는 <strong>자료 검색이 안 됩니다</strong> (OpenAI 호환·CLOVA 는 표준 검색 도구가
+                없습니다). 그래서 정보글에서 연구·수치 인용을 하지 않고 상담 경험으로만 씁니다 — 확인할
+                방법이 없는 상태에서 인용하면 지어내는 것이 되기 때문입니다. 출처가 붙은 정보글을
+                원하시면 <Env name="ANTHROPIC_API_KEY" /> 또는 <Env name="GEMINI_API_KEY" /> 를 넣고 다시
+                배포하세요.
+              </>
+            )}
+          </p>
+          <p className="muted mt-2 text-[11px] leading-relaxed">
+            키가 여러 개면 <Env name="AI_PROVIDER" /> 에 적은 회사를 씁니다. 환경변수를 바꿨으면{' '}
+            <strong>다시 배포</strong>해야 반영됩니다.
+          </p>
+        </>
+      )}
+    </Card>
+  )
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -146,6 +204,8 @@ export default function DeployPage() {
             <StorageStatusCard />
           </div>
         </Card>
+
+        <AiKeyCard />
 
         {/* ─────────── 1단계: 네이버 API 키 ─────────── */}
         <Card

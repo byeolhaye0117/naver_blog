@@ -5,6 +5,7 @@ import type { PostType } from '@/lib/types'
 import StorageNotice from '@/components/StorageNotice'
 import { findPrescription } from '@/lib/analysis/prescription'
 import { poolStoredRuns } from '@/lib/analysis/factors'
+import { aiStatus, canSearchWeb } from '@/lib/ai/llm'
 
 export const dynamic = 'force-dynamic'
 
@@ -101,6 +102,12 @@ export default async function WritePage({
         prescription={prescription}
         evidence={poolStoredRuns(db.factorRuns)}
         resumable={resumable}
+        /*
+         * 어떤 키로 도는지, 자료 검색이 되는지를 **버튼 옆에서** 보이게 넘긴다.
+         * 회원이 "지금 어떤 키 쓰는지 알아봐"라고 물었는데, 그건 글을 쓰기 전에 알아야 하는
+         * 정보다 — 검색이 되는 키에서만 정보글에 출처가 붙는다.
+         */
+        ai={{ label: aiStatus().label, canSearch: canSearchWeb() }}
       />
     </>
   )
