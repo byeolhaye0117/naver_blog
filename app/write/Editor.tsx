@@ -44,7 +44,8 @@ import CopyRichButton from '@/components/CopyRichButton'
  */
 const SPEAKER_LABEL: Record<PostType, string> = {
   promo: '센터',
-  info: '아는 사람',
+  // 정보글 화자도 센터다 (2026-08-10 회원 요청). 목적이 다를 뿐이라 그 차이를 라벨에 적는다.
+  info: '센터 · 정보 전달',
   review: '방문객',
 }
 
