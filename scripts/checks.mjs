@@ -9,7 +9,7 @@ if (!OUT) {
 const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange, findLatinWords, LATIN_ALLOWED } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
-const { buildCopyPackage, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, normalizeTag, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
+const { buildCopyPackage, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, normalizeTag, stripBold, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
 const { parsePastedReviews, analyzeReviews, placeReviewUrl, verifyReviewQuotes } = require(`${OUT}/analysis/reviews.js`)
 const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parsePlaceList } = require(
@@ -5053,6 +5053,70 @@ for (const t of ['promo', 'info', 'review']) {
   const tpl = buildTemplate(t, { mainKeyword: '쌍용동 헬스장', subKeywords: ['A'], localKeyword: '쌍용동 헬스장' })
   ok(tpl.includes('**제목·본문 전부 한국어로.**'), `${t} 골격에도 적혀 있다`)
 }
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[87] 굵게 표시와 평소 쓰는 말')
+const { findHardWords, HARD_WORDS } = require(`${OUT}/writing/plainwords.js`)
+
+/*
+ * ① 굵게 표시 — 회원 지적: "**이 붙은 게 있어. 이게 아마 서식 굵은 글자 같은데 복사
+ * 붙여넣기 할 때 반영이 안 돼." 반영이 안 되는 게 맞았다. 별표를 그대로 내보내고 있었다.
+ */
+const BOLD_BODY = '## 실제로 순서를 바꾸는 방법\n**첫 번째, 점심 식사 순서를 바꿔보세요.** 밥부터 먹지 말고 채소를 먼저 드세요.'
+const boldPkg = toBlocks(BOLD_BODY)
+const boldHtml2 = blocksToHtml(boldPkg)
+ok(boldHtml2.includes('<strong>첫 번째, 점심 식사 순서를 바꿔보세요.</strong>'), '별표를 굵게 서식으로 바꾼다')
+ok(!boldHtml2.includes('**'), 'HTML 에 별표가 안 남는다')
+const boldText = blocksToText(boldPkg, false)
+ok(!boldText.includes('**') && boldText.includes('첫 번째, 점심 식사 순서를 바꿔보세요.'), '글자만 복사할 때는 별표를 뗀다')
+ok(stripBold('**굵게** 아님') === '굵게 아님', '별표만 떼고 글자는 남긴다')
+ok(stripBold('별표 * 하나는 그대로') === '별표 * 하나는 그대로', '한 개짜리 별표는 건드리지 않는다')
+// 이스케이프 순서 — 태그를 넣은 뒤 escape 하면 우리 태그가 깨진다
+ok(blocksToHtml(toBlocks('**<b>꺾쇠</b>**')).includes('<strong>&lt;b&gt;꺾쇠&lt;/b&gt;</strong>'), '이스케이프 뒤에 굵게를 넣는다')
+// 검수에서는 별표를 글자수·키워드에서 뺀다 (발행되는 글자가 아니다)
+const boldParsed = parseBody('**쌍용동 헬스장**을 찾으시면')
+ok(!boldParsed.prose.includes('**'), '검수도 별표를 뺀다')
+ok(boldParsed.prose.includes('쌍용동 헬스장을 찾으시면'), '별표 안의 글자는 남는다')
+const withBoldPkg = buildCopyPackage({ ...goodPromo, id:'x', status:'draft', storeId:'s', createdAt:'', updatedAt:'', body: goodPromo.body + '\n**굵게 쓴 문장입니다.**' }, { legalName:'a', location:'b', phone:'c' })
+ok(!withBoldPkg.body.includes('**'), '「그대로」 본문에도 별표가 안 남는다')
+ok(!withBoldPkg.bodyMobile.includes('**'), '모바일 본문에도 안 남는다')
+
+/*
+ * ② 평소 쓰는 말 — 회원 지적: "낙폭이란 단어를 별로 쓰지 않아서 네이버에 치니까 주식 용어인
+ * 거 같더라고. 글은 평소 우리가 많이 쓰는 단어들로 사람들이 이해하기 쉽게."
+ */
+const hw = findHardWords('폭식은 배고픔이 아니라 혈당 낙폭에서 온다')
+ok(hw.length === 1 && hw[0].word === '낙폭', `주식 용어를 잡는다 — ${hw[0]?.found}`)
+ok(hw[0].found === '낙폭에서', '조사가 붙은 모양을 그대로 보여준다')
+ok(hw[0].easy === '떨어지는 폭', '바꿀 말을 준다')
+ok(hw[0].why === '다른 분야 용어', '왜 걸렸는지 알려준다')
+ok(findHardWords('원리를 알면 방해가 안 됩니다').length === 0, '쉬운 말은 안 걸린다')
+// 앞이 한글이면 안 잡는다 — 「반등」을 막으면서 「일반등급」까지 잡히면 안 된다
+ok(findHardWords('일반등급으로 나눕니다').length === 0, '낱말 중간에 든 것은 안 잡는다')
+ok(findHardWords('사용이 편합니다').length === 0, '「사용이」를 「용이」로 잡지 않는다')
+// 목록에서 뺀 것 — 어려워 보인다고 다 막으면 정보가 얕아진다
+ok(!HARD_WORDS.some((w) => w.word === '개선'), '「개선」은 우리도 쓰는 말이라 안 막는다')
+ok(!HARD_WORDS.some((w) => ['코르티솔', '렙틴', '그렐린', '인슐린'].includes(w.word)), '다이어트에서 실제로 쓰는 말은 안 막는다')
+ok(HARD_WORDS.length <= 35, `목록을 짧게 유지한다 — ${HARD_WORDS.length}개`)
+
+const pwItem = (patch) => checkPost({ ...goodPromo, ...patch }).items.find((i) => i.id === 'plain-words')
+ok(pwItem({}).level === 'pass', '기준 글은 통과')
+const hardPost = pwItem({ body: goodPromo.body.replace('세트 사이에 호흡만', '혈당 낙폭이 크면 힘들고, 세트 사이에 호흡만') })
+ok(hardPost.level === 'fail', `어려운 낱말이 있으면 수정필요 — ${hardPost.value}`)
+ok(hardPost.value.includes('낙폭'), '어떤 낱말인지 보여준다')
+ok(hardPost.hint.includes('떨어지는 폭'), '바꿀 말을 알려준다')
+ok(hardPost.hint.includes('다른 분야'), '왜 문제인지 알려준다')
+ok(pwItem({ title: '쌍용동 헬스장 혈당 낙폭 관리법' }).level === 'fail', '제목도 본다')
+
+// 지시문·골격
+for (const t of ['promo', 'info', 'review']) {
+  ok(buildSystemPrompt(t).includes('평소 쓰는 말로 쓴다'), `${t} 지시문에 규칙이 있다`)
+  ok(buildSystemPrompt(t).includes('강조는 `**말**` 로 한다'), `${t} 지시문이 굵게 표시 방법을 알려준다`)
+}
+ok(buildSystemPrompt('promo').includes('낙폭·반등·급락·변동성·지지선은 주식 용어'), '회원이 짚은 낱말을 그대로 예로 든다')
+ok(buildSystemPrompt('promo').includes('상담 오신 분께 말로 설명할 때 쓸 낱말인가'), '판단 기준을 하나 준다')
+ok(buildSystemPrompt('info').includes('중학생도 아는 말로 쓴다'), '정보글 톤에도 적었다')
+ok(buildTemplate('info', { mainKeyword: 'a', subKeywords: ['b'] }).includes('**평소 쓰는 말로.**'), '골격에도 적혀 있다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
