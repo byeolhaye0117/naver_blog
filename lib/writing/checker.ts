@@ -8,6 +8,7 @@ import {
 } from '../analysis/content'
 import { TITLE_SHAPE_LABEL, titleAdvice, titleShape } from '../analysis/title'
 import { analyzeReviews, placeReviewUrl, verifyReviewQuotes } from '../analysis/reviews'
+import { findHardWords } from './plainwords'
 import type { PlaceReview } from '../analysis/reviews'
 import { evidenceHeadline, itemEvidence } from './evidence'
 import type { PooledFactor } from '../analysis/factors'
@@ -270,7 +271,14 @@ export interface ParsedBody {
 }
 
 export function parseBody(body: string): ParsedBody {
-  const lines = body.split(/\r?\n/)
+  /*
+   * 굵게 표시(`**말**`)는 **글자수·키워드 계산에서 뺀다.**
+   *
+   * AI 가 강조하려고 별표를 쓴다 (회원 글에 「**첫 번째, 점심 식사 순서를 바꿔보세요.**」가
+   * 있었다). 별표는 발행되는 글자가 아니므로 세면 분량이 실제보다 많아 보인다.
+   * 서식으로는 살린다 — export.ts 가 `<strong>` 으로 바꿔 붙여넣기에 반영한다.
+   */
+  const lines = body.replace(/\*\*([^*\n]+)\*\*/g, '$1').split(/\r?\n/)
   const headings: string[] = []
   const images: string[] = []
   const videos: string[] = []
@@ -1285,6 +1293,40 @@ export function checkPost(input: CheckInput): CheckResult {
       weight: 3,
     })
   }
+
+  /*
+   * ─── 평소 쓰는 말로 쓰였는가 ───────────────────────────────────
+   *
+   * 회원 지적 — "낙폭이란 단어를 별로 쓰지 않아서 네이버에 치니까 주식 용어인 거 같더라고.
+   * 글은 평소 우리가 많이 쓰는 단어들로 사람들이 이해하기 쉽게 말이야."
+   *
+   * **순위 기준이 아니다.** 읽는 사람은 동네 손님이고, 모르는 낱말 하나에서 글을 놓는다.
+   * 목록은 짧게 유지한다 (lib/writing/plainwords.ts 주석) — 어려워 보이는 말을 다 막으면
+   * 정보가 얕아진다. 막는 것은 **딴 분야 말**과 **굳이 어렵게 쓴 말** 둘뿐이다.
+   */
+  const hard = findHardWords(`${input.title}\n${scanText}`)
+  add({
+    id: 'plain-words',
+    group: 'AI 티 제거',
+    label: '평소 쓰는 말로 쓰기',
+    level: hard.length === 0 ? 'pass' : 'fail',
+    value:
+      hard.length === 0
+        ? '통과'
+        : hard.map((h) => `${h.found} (${h.why})`).slice(0, 3).join(' · '),
+    target: '다른 분야 용어·어렵게 쓴 말 없음',
+    hint: hard.length
+      ? `${hard
+          .slice(0, 3)
+          .map((h) => `「${h.found}」→ ${h.easy}`)
+          .join(' · ')} 로 바꾸세요. ${
+          hard.some((h) => h.why === '다른 분야 용어')
+            ? '검색하면 다른 분야 얘기가 나오는 낱말입니다 — 읽는 분이 「이게 무슨 말이지」에서 글을 놓습니다.'
+            : '뜻이 같은 쉬운 말이 있으면 그걸 씁니다.'
+        }`
+      : undefined,
+    weight: 3,
+  })
 
   /*
    * ─── 한국어로만 쓰였는가 ──────────────────────────────────────

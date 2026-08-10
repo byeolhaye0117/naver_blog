@@ -207,6 +207,24 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+/**
+ * 굵게 표시를 서식으로 바꾼다 (`**말**` → `<strong>말</strong>`).
+ *
+ * 회원 지적 — "**이 붙은 게 있어. 이게 아마 서식 굵은 글자 같은데 복사 붙여넣기 할 때
+ * 반영이 안 돼." 반영이 안 되는 게 맞았다. 우리는 소제목(`##`)과 이미지 지시문만 처리하고
+ * 별표는 그대로 내보냈다 — 네이버는 별표를 서식으로 안 읽으니 별표가 글에 박힌 채 발행된다.
+ *
+ * **반드시 이스케이프 뒤에** 부른다. 순서가 바뀌면 우리가 넣은 태그의 꺾쇠까지 escape 된다.
+ */
+function bold(escaped: string): string {
+  return escaped.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+}
+
+/** 글자만 붙여넣을 때는 별표를 지운다 — 서식이 아니라 글자로 박히기 때문이다 */
+export function stripBold(s: string): string {
+  return (s ?? '').replace(/\*\*([^*\n]+)\*\*/g, '$1')
+}
+
 /** 소제목을 어떤 서식으로 낼지 */
 export type HeadingStyle = 'quote' | 'bold'
 
@@ -233,15 +251,20 @@ const RULE = 'border:0;border-top:1px solid #dddddd;'
 export function blocksToHtml(blocks: BodyBlock[], style: HeadingStyle = 'quote'): string {
   const para = (groups: string[][]) =>
     groups
-      .map((g) => `<p style="font-size:16px;line-height:1.9;margin:0 0 26px;">${g.map(esc).join('<br />')}</p>`)
+      .map(
+        (g) =>
+          `<p style="font-size:16px;line-height:1.9;margin:0 0 26px;">${g
+            .map((line) => bold(esc(line)))
+            .join('<br />')}</p>`
+      )
       .join('\n')
 
   const heading = (text: string) =>
     style === 'bold'
-      ? `<h3 style="font-size:19px;font-weight:700;line-height:1.6;margin:34px 0 14px;">${esc(text)}</h3>`
+      ? `<h3 style="font-size:19px;font-weight:700;line-height:1.6;margin:34px 0 14px;">${bold(esc(text))}</h3>`
       : [
           `<hr style="${RULE}margin:40px 0 0;" />`,
-          `<blockquote style="border:0;margin:0;padding:22px 0 20px;font-size:19px;font-weight:700;line-height:1.6;">${esc(text)}</blockquote>`,
+          `<blockquote style="border:0;margin:0;padding:22px 0 20px;font-size:19px;font-weight:700;line-height:1.6;">${bold(esc(text))}</blockquote>`,
           `<hr style="${RULE}margin:0 0 28px;" />`,
         ].join('\n')
 
@@ -255,13 +278,15 @@ export function blocksToHtml(blocks: BodyBlock[], style: HeadingStyle = 'quote')
  * 눈에 보이고, 네이버에서 그 줄을 지우고 구분선 서식을 넣기만 하면 된다.
  */
 export function blocksToText(blocks: BodyBlock[], rule = true): string {
-  return blocks
-    .map((b) =>
-      b.kind === 'heading' && rule
-        ? `───────────────\n${b.groups[0]?.[0] ?? ''}\n───────────────`
-        : b.groups.map((g) => g.join('\n')).join('\n\n')
-    )
-    .join('\n\n')
+  return stripBold(
+    blocks
+      .map((b) =>
+        b.kind === 'heading' && rule
+          ? `───────────────\n${b.groups[0]?.[0] ?? ''}\n───────────────`
+          : b.groups.map((g) => g.join('\n')).join('\n\n')
+      )
+      .join('\n\n')
+  )
 }
 
 export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
@@ -269,13 +294,15 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
   const parsed = parseBody(cleaned)
 
   // 이미지 지시문과 소제목 마크업을 뺀 본문
-  const body = cleaned
+  const bodyRaw = cleaned
     .split(/\r?\n/)
     .filter((l) => !/^\s*\[(?:이미지|영상)\s*:?[^\]]*\]\s*$/.test(l))
     .map((l) => l.replace(/^\s*##+\s*/, ''))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+  // 「그대로」로 붙여넣을 때도 별표는 글자로 박힌다 — 여기서도 뗀다
+  const body = stripBold(bodyRaw)
 
   const blocks = toBlocks(cleaned)
   const reviewUrl = placeReviewUrl(store?.placeId)
