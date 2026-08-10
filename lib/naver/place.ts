@@ -195,6 +195,35 @@ export function findMyPlaceIndex(
  * 플레이스 주소에서 동네 이름을 뽑는다.
  * commonAddress("충남 천안시 서북구 쌍용동")와 지번 주소("쌍용동 1149") 둘 다 본다.
  */
+/**
+ * 붙여넣은 주소(또는 숫자)에서 플레이스 id 를 뽑는다.
+ *
+ * 회원이 물었다 — "플레이스 아이디 어디서 확인해?" 확인하는 곳은 플레이스 주소창인데,
+ * 주소 모양이 여러 가지다. 그래서 **주소를 통째로 붙여넣어도 되게** 한다:
+ *
+ *   https://m.place.naver.com/place/1234567890/home
+ *   https://pcmap.place.naver.com/place/1234567890/review/visitor
+ *   https://map.naver.com/p/entry/place/1234567890?c=...
+ *   https://map.naver.com/v5/entry/place/1234567890
+ *   https://m.place.naver.com/restaurant/1234567890/home   (옛 형식)
+ *   1234567890                                              (숫자만)
+ *
+ * **단축주소(naver.me)는 못 뽑는다.** 숫자가 안 들어 있어서 서버가 한 번 따라가야 알 수 있고,
+ * 그건 이 함수의 일이 아니다 — 화면에서 「한 번 열어서 주소창의 숫자를 복사하세요」로 안내한다.
+ */
+export function extractPlaceId(input: string): string | null {
+  const raw = (input ?? '').trim()
+  if (!raw) return null
+  // 업종 경로가 여러 가지다 (place·restaurant·hairshop…). 숫자 앞의 마지막 경로만 본다.
+  const path = raw.match(/(?:place|restaurant|hairshop|hospital|attraction|accommodation|cafe)\/(\d{4,})/i)
+  if (path) return path[1]
+  const query = raw.match(/[?&](?:placeId|id|entryId)=(\d{4,})/i)
+  if (query) return query[1]
+  // 숫자만 붙여넣은 경우 — 주소가 섞여 있으면 여기서 잡지 않는다 (엉뚱한 숫자를 집는다)
+  if (/^\d{4,}$/.test(raw)) return raw
+  return null
+}
+
 export function areasFromPlace(place: Pick<PlaceInfo, 'commonAddress' | 'address'>): string[] {
   const pool = `${place.commonAddress} ${place.address}`
   const found = Array.from(pool.matchAll(/([가-힣]{2,10}?(?:동|읍|면))(?=[\s,·/()[\]]|$)/g)).map(
