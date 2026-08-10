@@ -4656,17 +4656,37 @@ const infoSys = buildSystemPrompt('info')
 ok(infoSys.includes('화자는 센터(사장·운영자) 본인이다'), '정보글 화자도 센터다')
 ok(infoSys.includes('파는 글이 아니다'), '그래도 파는 글은 아니라고 못 박는다')
 ok(infoSys.includes('정보 8 : 홍보 2'), '비중을 숫자로 적는다')
-ok(infoSys.includes('마지막 구간에서만 쓴다'), '홍보를 마지막 구간에 가둔다')
-ok(infoSys.includes('센터 소개 + 상담 유도 350~450자'), '마지막 구간 분량을 늘렸다')
-ok(infoSys.includes('1~4단계에는 시설·가격·이벤트·상호명을 쓰지 않는다'), '앞에 안 섞어서 비중을 맞추라고 한다')
+ok(infoSys.includes('시설·가격·이벤트는 마지막 구간에서만'), '시설·가격·이벤트를 마지막 구간에 가둔다')
+ok(infoSys.includes('센터 소개 + 상담 유도 400~500자'), '마지막 구간 분량을 늘렸다')
+ok(infoSys.includes('1~4단계에는 시설·가격·이벤트를 쓰지 않는다'), '앞에 안 섞어서 비중을 맞추라고 한다')
 ok(!infoSys.includes('아는 사람이 옆에서 알려주듯'), '「아는 사람」 화자를 지웠다')
-// 홍보글 화자와 헷갈리게 만들지 않는다
-ok(!infoSys.includes('인사와 상호명으로 열'.slice(0, 6) + '어라'), '인사로 열라고 하지는 않는다')
-ok(infoSys.includes('인사와 상호명으로 열지 않는다'), '인사로 여는 것은 홍보글 문법이라고 적는다')
 
-const infoSkeleton = buildTemplate('info', { mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], localKeyword: '천안헬스장' })
-ok(infoSkeleton.includes('**화자는 센터다.**'), '골격도 화자를 센터로 적는다')
-ok(infoSkeleton.includes('센터 소개 + 상담 유도 (350~450자)'), '골격의 마무리 분량도 같이 옮겼다')
+/*
+ * **인사 + 상호명을 다시 넣었다** (2026-08-10, 같은 날 두 번째 판). 회원:
+ * "맨 처음에 내가 누군지 없어. 화자는 센타로 해서 해주고 상호명도 함께 소개될 수 있게."
+ * 앞 판은 「인사와 상호명으로 열지 않는다」였는데, 검수(`intro-greeting`)는 처음부터
+ * 정보글에도 인사 + 정식 상호명을 요구하고 있었다 — 지시와 검사가 서로 반대였다.
+ */
+ok(infoSys.includes('첫 문장에서 인사와 정식 상호명으로 누가 말하는지 밝힌다'), '누가 쓴 글인지 밝히라고 한다')
+ok(infoSys.includes('「안녕하세요, (정식 상호명)입니다」'), '인사 문장을 그대로 준다')
+ok(!infoSys.includes('인사와 상호명으로 열지 않는다'), '「인사로 열지 말라」는 지웠다')
+ok(infoSys.includes('누가 쓴 글인지 밝히는 것은 홍보가 아니다'), '인사가 홍보가 아니라는 것을 구분해준다')
+// 정보글 검수도 같은 것을 요구해야 한다 (앞 판에서는 지시와 검사가 반대였다)
+const greetInfo = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터 바꿔보세요', body: '제가 상담할 때 이 질문을 제일 많이 받습니다.\n\n## 왜\n혈당이 낮게 유지되다 떨어지면서 생깁니다.', mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' })
+const greetItem = greetInfo.items.find((i) => i.id === 'intro-greeting')
+ok(greetItem && greetItem.level !== 'pass', '정보글도 첫 문장 인사 + 상호명을 검사한다')
+
+// 분량 — 회원: "정보성 글 분량이 부족한 거 같아 늘려서 업데이트 해줘"
+ok(SPECS.info.charMin === 2200 && SPECS.info.charMax === 3000, `정보글 분량 2,200~3,000자 — ${SPECS.info.charMin}~${SPECS.info.charMax}`)
+ok(SPECS.info.legalNameMin === 2, '정보글도 정식 상호명 2회 (도입 + 마지막 구간)')
+ok(infoSys.includes('방법 800~1,000자'), '정보 본문 최대 구간을 늘렸다')
+ok(infoSys.includes('종류를 늘리지 말고 깊이를 늘린다'), '자수만 늘리지 말라고 한다')
+
+const infoSkeleton = buildTemplate('info', { mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], localKeyword: '천안헬스장', store: { id: 's', name: 'MTO 쌍용점', legalName: 'MTO 피트니스 쌍용점', localKeywords: ['천안헬스장'], phone: '010-2455-2896' } })
+ok(infoSkeleton.includes('안녕하세요, MTO 피트니스 쌍용점입니다'), '골격 첫 문장이 인사 + 상호명이다')
+ok(infoSkeleton.includes('상담에서 들은 질문이다'), '골격도 화자를 센터로 적는다')
+ok(infoSkeleton.includes('센터 소개 + 상담 유도 (400~500자)'), '골격의 마무리 분량도 같이 옮겼다')
+ok(infoSkeleton.includes('정보 본문 합계 1,600~2,000자'), '골격의 정보 본문도 늘렸다')
 ok(infoSkeleton.includes('정보 8 : 홍보 2'), '골격에도 비중을 적는다')
 ok(!infoSkeleton.includes('전화/문의 한 줄이면 충분'), '「한 줄이면 충분」을 지웠다')
 
