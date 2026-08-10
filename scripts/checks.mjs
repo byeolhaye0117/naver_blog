@@ -6,7 +6,7 @@ if (!OUT) {
   console.error('직접 실행하지 말고 `npm test` 를 쓰세요.')
   process.exit(1)
 }
-const { checkPost, parseBody, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange } = require(`${OUT}/writing/checker.js`)
+const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
 const { buildCopyPackage } = require(`${OUT}/writing/export.js`)
@@ -78,41 +78,74 @@ ok(r4.length === 0, '안전한 문장은 0건', `${r4.length}건: ${r4.map(x=>x.
 console.log('\n[4] 실제 홍보글 검수 (규칙을 지킨 글)')
 const goodPromo = {
   type: 'promo',
-  title: '쌍용동 헬스장 새벽 운동 자리, 이번 달 50분까지만',
+  title: '쌍용동 헬스장 3개월 9.9만원, 새벽에도 갈 수 있을까?',
   mainKeyword: '쌍용동 헬스장',
-  subKeywords: ['쌍용동 24시헬스장', '봉명동 PT'],
+  subKeywords: ['쌍용동 24시헬스장'],
   legalName: 'MTO 피트니스 쌍용점',
   womenOnly: false,
-  tags: ['쌍용동 헬스장','쌍용동 24시헬스장','봉명동 PT','천안헬스장','쌍용동PT','새벽운동','교대근무','헬스장추천','운동기록'],
+  tags: ['쌍용동 헬스장','쌍용동 24시헬스장','천안헬스장','쌍용동PT','새벽운동','교대근무','헬스장추천','MTO피트니스','쌍용동헬스','천안24시헬스장'],
   body: `[이미지: 새벽 시간대 시설 전경 + 이번 달 등록 혜택 배지]
-야간 근무 끝나고 집에 가는 길, 운동하려고 마음먹었는데 문 열린 곳이 없어서 그냥 지나친 날이 있으셨을 거예요. 안녕하세요, MTO 피트니스 쌍용점입니다. 쌍용동 헬스장을 알아보면서 시간이 안 맞아 접어두셨다면 이 글이 도움이 될 것 같아요. 이번 달 새로 오시는 분들께 3개월 등록비를 크게 낮춘 등록 이벤트를 열었는데, 선착순 50분까지만 받습니다.
+안녕하세요, MTO 피트니스 쌍용점입니다.
+
+쌍용동 헬스장 찾으시는 분들께 먼저 드릴 말씀이 있어요. 야간 근무 끝나고 집에 가는 길에 운동하려고 마음먹었는데, 문 열린 곳이 없어서 그냥 지나친 날이 있으셨을 거예요. 저한테 제일 먼저 물으시는 것도 늘 이 시간 문제입니다.
+
+이번 달에는 그 시간대에 오시는 분들을 위한 혜택을 걸었어요. 3개월 이용권을 10만 원 아래로 맞췄고 인원은 정해뒀습니다. 정확한 조건은 아래에서 정리해 드릴게요.
 
 [이미지: 새벽 시간대 운동하는 회원]
 ## 상담 때 가장 자주 듣는 첫마디
-"제 시간에 문 여는 데가 없어요." 이 말을 정말 많이 듣습니다. 3교대로 근무하시는 분, 새벽에 퇴근하시는 분, 아이 재우고 나서야 겨우 한 시간이 나는 분. 운동할 마음은 있는데 시간이 맞지 않아 포기하신 경우가 대부분이었어요. 등록만 하고 세 번 가고 끝났다는 말씀도 자주 듣습니다. 돈이 아까운 것보다 스스로에 대한 실망이 더 크다고 하시더라고요. 몇 달 지나 다시 오셨을 때 "이번엔 진짜 다닐 수 있을까요" 하고 물으시는 분도 계십니다. 그 마음, 저희도 압니다. 그래서 저희가 먼저 바꿔야 한다고 생각했어요.
+"제 시간에 문 여는 데가 없어요." 이 말을 정말 많이 듣습니다. 3교대로 근무하시는 분, 새벽에 퇴근하시는 분, 아이 재우고 나서야 겨우 한 시간이 나는 분.
+
+그런데 상담해 보면 진짜 걸림돌은 다른 데 있었어요. 시간이 안 맞는 게 아니라, 어렵게 시간 내서 갔는데 기구 앞에서 기다리다 그냥 나온 날이 쌓여서 그만두시는 겁니다. 돈이 아까운 것보다 스스로에 대한 실망이 더 크다고 하시더라고요.
+
+그래서 상담 오시면 저는 이 얘기부터 합니다. 몇 시에 오실 수 있는지가 아니라, 그 시간에 뭘 하실 건지요.
+
+[이미지: 새벽에 유산소존에서 걷는 장면]
+## 새벽 운동, 이 순서면 40분에 끝납니다
+새벽에 오시는 분들께 드리는 순서가 하나 있어요. 몸이 덜 풀린 상태라 순서가 중요합니다. 잘못 잡으면 어깨가 안 열려요.
+
+트레드밀에서 경사 3도로 15분 걷습니다. 속도는 옆 사람과 대화가 되는 정도면 맞아요. 숨이 차면 속도보다 경사를 먼저 낮추시고요.
+
+그다음 스쿼트 세 세트. 무릎이 안쪽으로 말리면 무게가 무겁다는 신호니까 한 단계 내리고 자세부터 잡습니다. 마무리로 랫풀다운을 8회씩 세 세트, 팔로 당기지 말고 어깨뼈를 아래로 내리는 느낌으로 하면 등에 자극이 옵니다.
+
+세트 사이에 호흡만 정리하면 여기까지 40분이면 끝나요. 늘리지 않아도 됩니다.
+
+[영상: 랫풀다운 동작 — 어깨뼈가 내려가는 게 보이게 10~20초, 편집 없이 세로로]
 
 [이미지: 프리웨이트실과 웨이트실 분리 구조]
-## 문을 닫지 않기로 했습니다
-그래서 24시간 운영을 택했습니다. 새벽 세 시에 오셔도 불이 켜져 있어요. 쌍용동 24시헬스장을 찾으시는 분들이 실제로 가장 많이 오시는 시간이 새벽 다섯 시에서 일곱 시 사이입니다. 기다리는 시간이 없어야 운동이 된다고 생각해서 구조도 바꿨습니다. 프리웨이트실과 웨이트실을 아예 분리했어요. 랙과 스미스머신이 네 대, 리니어 로우와 핵스쿼트 머신도 따로 있습니다. 인기 있는 펙덱플라이와 랫풀다운, 롱풀, 레그익스텐션은 두 대 이상 놓았습니다. 한 대뿐이면 결국 누군가는 기다려야 하니까요. 천국의 계단은 네 대라 줄 서는 일이 없습니다.
+## 기다리지 않게 공간을 나눴습니다
+위 순서를 새벽에 그대로 할 수 있는 이유가 시설에 있습니다. 24시간 운영이라 새벽 세 시에 오셔도 불이 켜져 있어요.
 
-무동력 트레드밀, 아크트레이너, 제로러너, 스텝퍼도 있어서 유산소가 지겨워지지 않아요. 청소업체가 주 세 번 들어옵니다. 새벽에 오셔도 바닥이 끈적하지 않다는 말씀을 자주 들어요. 쌍용동 헬스장 중에 새벽에 사람이 있는 곳을 찾으셨다면 여기가 맞을 겁니다.
+프리웨이트실과 웨이트실을 아예 분리했습니다. 랙과 스미스머신은 프리웨이트실에, 케이블과 머신류는 웨이트실에 있어요. 스쿼트 하러 오신 분과 가볍게 도는 분이 섞이지 않아서 랙 앞에 줄 서는 일이 잘 없습니다.
+
+인기 있는 펙덱플라이와 랫풀다운은 두 대 이상 놓았고 천국의 계단도 네 대입니다. 유산소는 무동력 트레드밀과 제로러너까지 있어서 무릎이 불편하신 분은 그쪽으로 고르시면 되고요. 쌍용동 24시헬스장 알아보시는 분은 예약하고 오시면 시간대별로 사람이 얼마나 있는지 직접 보실 수 있습니다.
 
 [이미지: 샤워시설]
-## 28년을 한자리에서
-MTO 피트니스 쌍용점은 이 자리에서 28년 넘게 운영했습니다. 그동안 동네 헬스장 여럿이 문을 열고 닫는 걸 봤어요. 오래 버틴다는 건 회원님들이 계속 오셨다는 뜻이라고 생각합니다. 샤워실은 열 명이 동시에 쓸 수 있고 드라이기와 바디드라이기도 갖췄습니다. 출근 전에 운동하고 씻고 바로 나가시는 분들이 많아서 여기에 특히 신경을 썼어요. 새 기구도 계속 들입니다. 아래까지 안 내려가셔도 됩니다. 지금 궁금한 게 있으시면 전화 주셔도 돼요.
+## 눈으로 확인되는 것만 말씀드립니다
+운동하다 자세가 무너지면 무게를 먼저 내려서 다시 잡습니다. 무리해서 버티다 다치면 회복이 더 오래 걸리니까요.
+
+쌍용동 헬스장 중에 이렇게 관리하는 곳이 많지는 않아요. 샤워실은 열 명이 동시에 쓸 수 있고 드라이기와 바디드라이기도 갖췄습니다. 청소업체가 주 세 번 들어와서 바닥과 머신 손잡이를 관리해요. 오셔서 직접 보시면 됩니다. 그게 제일 빠릅니다.
 
 [이미지: 이벤트 안내]
-## 이번 달 등록 혜택
-이번 달 새로 등록하시는 분께 3개월 등록비를 낮춰 드립니다. 선착순 50분까지고, 이번 달이 지나면 마감됩니다. 봉명동 PT를 알아보시던 분들도 같은 조건으로 상담받으실 수 있어요. 정확한 금액과 조건은 방문 상담 때 안내드립니다. 전화로 여쭤보셔도 됩니다. 조건이 복잡하지 않아서 통화 한 번이면 정리됩니다.
+## 이번 달 등록 혜택 — 3개월 9.9만원
+3개월 이용권을 99,000원에 드립니다. 하루로 나누면 커피 한 잔 값이 안 됩니다.
+
+선착순 50분까지만 받습니다. MTO 피트니스 쌍용점에서 이번 달 안에 시작하시는 분까지 적용됩니다. 쌍용동 헬스장 가격만 비교하다 시간대를 놓치는 경우가 많은데, 두 개를 같이 보셔야 오래 다니십니다. 이미 다니시던 분들의 재등록에도 같은 조건으로 넣어드리고 있어요.
+
+쌍용동 24시헬스장 알아보시면서 이번 달에 시작을 고민하셨다면 지금이 타이밍입니다. 남은 자리는 상담 때 바로 확인해 드립니다.
 
 [이미지: 상담 데스크]
-## 구경만 하고 가셔도 됩니다
-등록하실 마음이 없어도 괜찮습니다. 시설만 보고 가시는 분도 많아요. 저희가 붙잡지 않습니다. 쌍용동 헬스장 알아보시는 중이라면 편하게 들러서 보시고, 아니면 그냥 나가시면 됩니다. 선착순 50분 마감이라 자리 확인은 미리 해두시는 게 좋아요. MTO 피트니스 쌍용점은 신협 뒷건물 4층입니다. 전화 010-2455-2896 으로 주시면 바로 안내드립니다.
+## 상담 예약은 이렇게 하시면 됩니다
+등록하실 마음이 없어도 괜찮습니다. 시설만 보고 가시는 분도 많아요. 저희가 붙잡지 않습니다.
+
+쌍용동 헬스장 알아보시는 중이라면 편하게 들러서 보시고, 아니면 그냥 나가시면 됩니다. 전화나 예약 링크로 편하신 시간 말씀 주시면 대기 없이 둘러보실 수 있어요.
+
+MTO 피트니스 쌍용점은 신협 뒷건물 4층입니다. 전화 010-2455-2896 으로 주시면 상담 예약 문의 바로 안내드립니다.
 `,
 }
 const c1 = checkPost(goodPromo)
 console.log(`  점수 ${c1.score} · ${c1.stats.charCount}자 · 메인KW ${c1.stats.mainKeywordCount}회 (밀도 ${c1.stats.mainKeywordDensity}%) · 상호명 ${c1.stats.legalNameCount}회 · 소제목 ${c1.stats.headings.length} · 이미지 ${c1.stats.imageCount} · 태그 ${c1.stats.tagCount}`)
 console.log(`  전화 ${c1.stats.phoneCount}회 · 링크 ${c1.stats.linkCount}개 · 등간격 ${c1.stats.evenSpacing} · 어미 ${JSON.stringify(c1.stats.sentenceEndings)}`)
+const sum1 = summarize(c1)
 const failed = c1.items.filter(i => i.level === 'fail')
 const warned = c1.items.filter(i => i.level === 'warn')
 console.log(`  수정필요: ${failed.map(f=>`${f.label}(${f.value})`).join(' / ') || '없음'}`)
@@ -127,13 +160,22 @@ const trueName = (flatAll.match(/MTO피트니스쌍용점/g) ?? []).length
 ok(c1.stats.mainKeywordCount === trueKw, '메인 키워드 카운트 정확', `검수기 ${c1.stats.mainKeywordCount} = 실제 ${trueKw}`)
 ok(c1.stats.legalNameCount === trueName, '상호명 카운트 정확', `검수기 ${c1.stats.legalNameCount} = 실제 ${trueName}`)
 ok(c1.stats.phoneCount === 1, '전화번호 1회 인식')
-ok(c1.stats.imageCount === 6 && c1.stats.headings.length === 5, '이미지 6 / 소제목 5')
-ok(c1.score <= PUBLISH_THRESHOLD - 6, '수정필요가 있으면 발행 구간 아래로 캡', `${c1.score} (캡 ${PUBLISH_THRESHOLD - 6})`)
+ok(c1.stats.imageCount === 7 && c1.stats.headings.length === 6, '이미지 7 / 소제목 6 (홍보글은 구간이 8단계라 소제목 6개)')
+/*
+ * **기준 글은 통과해야 한다** (2026-08-10).
+ *
+ * 기준을 올리는 동안 이 예시 글을 안 고쳐서 1 fail · 10 warn 까지 낡아 있었다. 그때
+ * 단정문을 `score <= 79` 로 느슨하게 바꿔 놓은 게 나였다 — 낡은 것을 덮은 셈이다.
+ * 지금 기준(정보 5종류 · 상담 6회 · 첫 문장 인사+상호명 · 소제목 세기)에 맞게 다시 쓰고,
+ * 단정문도 「좋은 글은 통과한다」로 되돌린다. 이게 이 글이 존재하는 이유다.
+ */
+ok(sum1.fail === 0, '기준 글에 수정필요가 없다', `수정필요 ${sum1.fail}`)
+ok(c1.score >= PUBLISH_THRESHOLD, '기준 글은 발행 구간이다', `${c1.score}점 (기준 ${PUBLISH_THRESHOLD})`)
 // 미달 항목을 정확히 지적하는지
 // 하한을 실측에 맞춰 3회로 내렸으므로 4회는 통과다 (예전 5회 하한에서는 warn 이었다)
-ok(c1.items.find(i => i.id === 'mainCount')?.level === 'warn', '메인KW 4회는 warn (하한 5회에 1회 미달)', c1.items.find(i => i.id === 'mainCount')?.value)
+ok(c1.items.find(i => i.id === 'mainCount')?.level === 'pass', '메인KW 5회 pass', c1.items.find(i => i.id === 'mainCount')?.value)
 // 통과 하한을 1,750자로 내렸으므로 1,558자는 fail 이 아니라 warn 이다 (하한-250 = 1,500)
-ok(c1.items.find(i => i.id === 'charCount')?.level === 'warn', '1,558자는 warn (하한 1,750자에 조금 미달)', c1.items.find(i => i.id === 'charCount')?.value)
+ok(c1.items.find(i => i.id === 'charCount')?.level === 'pass', '통과 구간 안의 분량', c1.items.find(i => i.id === 'charCount')?.value)
 ok(c1.items.find(i => i.id === 'titleKeyword')?.level === 'pass', '제목 앞쪽 키워드 pass')
 ok(c1.items.find(i => i.id === 'first100')?.level === 'pass', '첫 100자 키워드 pass')
 ok(c1.items.find(i => i.id === 'imagePlacement')?.level === 'pass', '이미지 배치 pass')
@@ -171,7 +213,7 @@ const pkg = buildCopyPackage({ ...goodPromo, id:'x', status:'draft', storeId:'s'
 ok(!pkg.body.includes('[이미지'), '복사 본문에 이미지 지시문 없음')
 ok(!pkg.body.includes('##'), '복사 본문에 소제목 마크업 없음')
 ok(pkg.body.includes('상담 때 가장 자주 듣는 첫마디'), '소제목 텍스트는 남음')
-ok(pkg.imagePlan.length === 6, `이미지 배치표 ${pkg.imagePlan.length}행`)
+ok(pkg.imagePlan.length === 7, `이미지 배치표 ${pkg.imagePlan.length}행 (대표 1 + 소제목 6)`)
 ok(pkg.imagePlan[0].slot.includes('대표'), '첫 이미지는 대표이미지')
 ok(pkg.imagePlan[1].slot.includes('상담 때'), '2번째는 첫 소제목 위', pkg.imagePlan[1].slot)
 ok(pkg.tags.startsWith('#'), '태그에 # 붙음')
@@ -4408,6 +4450,68 @@ const slots = buildSystemPrompt('promo')
 ok(slots.includes('자리를 먼저 정하고'), '자리를 정해서 넣으라고 한다')
 ok(slots.includes('①제목'), '자리를 번호로 짚어준다')
 ok(slots.includes('소제목에 넣은 것도 세어진다'), '소제목이 세어진다고 알려준다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[80] 고쳐 쓰기가 반영되지 않던 이유 — 점수 상한')
+/*
+ * 회원: "검수항목 고쳐쓰기 하는데 반영이 안돼 왜그런거야?"
+ * 화면 메시지: "79점으로 나왔습니다 (고쳐 써도 나아지지 않아 원래 글을 두었습니다)"
+ *
+ * 고쳐 쓰기는 돌아갔다. 버려진 것이다. 채택 조건이 `새 점수 > 옛 점수` 였는데,
+ * **점수는 수정필요가 하나라도 있으면 79점(PUBLISH_THRESHOLD − 6)으로 상한이 걸린다.**
+ * 그래서 수정필요를 2개 → 1개로 줄여도 79 → 79 이고, 개선된 글이 매번 버려졌다.
+ *
+ * 회원이 본 79점이 바로 그 상한값이다.
+ */
+ok(PUBLISH_THRESHOLD - 6 === 79, '상한값이 79 — 회원 화면의 그 숫자다', String(PUBLISH_THRESHOLD - 6))
+
+/*
+ * 수정필요가 여러 개일 때와 하나일 때 점수가 **같다**는 것을 고정한다.
+ * 이 성질이 있는 한 점수 비교만으로는 개선을 알 수 없다.
+ */
+/*
+ * 통과하는 글에서 항목을 하나씩 깨뜨려 본다. **깨진 개수가 달라도 점수는 상한에 붙는다** —
+ * 이 성질이 있는 한 점수 비교만으로는 개선을 알 수 없다.
+ */
+const cap80Clean = checkPost(goodPromo)
+ok(summarize(cap80Clean).fail === 0 && cap80Clean.score > PUBLISH_THRESHOLD - 6,
+  '깨끗한 글은 상한 위에 있다', `${cap80Clean.score}점 · 수정필요 ${summarize(cap80Clean).fail}`)
+
+// 제목에서 키워드를 빼면 여러 항목이 함께 걸린다 (횟수·제목 앞쪽·제목 유형)
+const cap80Broken = checkPost({ ...goodPromo, title: '이번 달 등록 혜택 안내드립니다' })
+// 전화번호까지 지우면 하나 더 걸린다 (같은 방향으로 더 나빠진 글)
+const cap80Worse = checkPost({
+  ...goodPromo,
+  title: '이번 달 등록 혜택 안내드립니다',
+  body: goodPromo.body.replace(/MTO 피트니스 쌍용점/g, '저희 지점'),
+})
+ok(summarize(cap80Broken).fail > 0, '하나 깨면 수정필요가 생긴다', String(summarize(cap80Broken).fail))
+ok(summarize(cap80Worse).fail > summarize(cap80Broken).fail, '더 깨면 수정필요가 늘어난다',
+  `${summarize(cap80Broken).fail} → ${summarize(cap80Worse).fail}`)
+ok(cap80Broken.score === PUBLISH_THRESHOLD - 6, '수정필요가 있으면 점수가 상한에 붙는다',
+  `${cap80Broken.score}점`)
+ok(cap80Worse.score === cap80Broken.score,
+  '수정필요 개수가 달라도 점수는 같다 — 점수 비교로는 개선이 안 보인다',
+  `${cap80Worse.score} vs ${cap80Broken.score}`)
+
+/*
+ * 그래서 채택 규칙을 「수정필요 개수 먼저, 같으면 점수」로 바꿨다.
+ * 규칙 자체는 라우트에 있지만 그 규칙이 성립해야 하는 조건을 여기서 고정한다.
+ */
+const betterBy = (aFail, aScore, bFail, bScore) => bFail < aFail || (bFail === aFail && bScore > aScore)
+ok(betterBy(2, 79, 1, 79), '수정필요가 줄면 채택한다 (예전에는 버렸다)')
+ok(betterBy(1, 79, 0, 92), '수정필요가 0이 되면 상한이 풀려 점수도 오른다')
+ok(!betterBy(1, 79, 2, 79), '수정필요가 늘면 버린다')
+ok(betterBy(1, 79, 1, 79) === false, '아무것도 안 바뀌면 버린다')
+ok(betterBy(0, 88, 0, 91), '수정필요가 없을 때는 점수로 가른다')
+
+// 고쳐 쓰기 지시문 — 수정필요 우선, 나머지는 건드리지 않기
+const fix80Prompt = buildFixPrompt(['[수정필요] 메인 키워드: 지금 2회 / 기준 5회'], 1800, { charMin: 1750, charMax: 2400 })
+ok(fix80Prompt.includes('글을 새로 쓰지 말고'), '전체를 다시 쓰지 말라고 한다')
+ok(fix80Prompt.includes('[수정필요] 부터 반드시 해결한다'), '수정필요를 먼저 고치라고 한다')
+ok(fix80Prompt.includes('이미 통과한 것은 건드리지 않는다'), '맞던 것을 깨지 말라고 한다')
+ok(fix80Prompt.includes('문장을 새로 만들지 말고'), '키워드를 억지로 늘리지 않는 방법을 준다')
+ok(fix80Prompt.includes('[주의] 는 남아도 발행할 수 있으니'), '주의는 남겨도 된다고 알려준다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

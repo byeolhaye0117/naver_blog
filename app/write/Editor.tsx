@@ -482,6 +482,8 @@ export default function Editor({
         draft?: Draft
         revised?: boolean
         improved?: number
+        failsBefore?: number
+        failsAfter?: number
         needsRevise?: boolean
         fixIssues?: string[]
         provider?: string
@@ -508,11 +510,33 @@ export default function Editor({
       const left = (json.check?.issues ?? []).length
       // 고칠 거리가 남아 있으면 버튼을 띄운다 (두 번째 호출은 회원이 시작한다)
       setFixIssues(score < PUBLISH_THRESHOLD && json.fixIssues?.length ? json.fixIssues : null)
+      /*
+       * **점수만 말하면 안 된다** (2026-08-10).
+       *
+       * 점수는 「수정필요」가 하나라도 있으면 79점에 붙어 있다. 그래서 고쳐 쓰기가
+       * 수정필요를 2개 → 1개로 줄여도 화면에는 「79점」 그대로라 회원이 「반영이 안 된다」고
+       * 읽었다. 수정필요 개수 변화를 함께 말한다 — 그게 실제로 움직인 값이다.
+       */
+      const fixNote = () => {
+        if (!fixing) return ''
+        const before = json.failsBefore
+        const after = json.failsAfter
+        if (typeof before === 'number' && typeof after === 'number' && after !== before) {
+          return ` (수정필요 ${before}개 → ${after}개${json.improved ? `, ${json.improved}점 올랐습니다` : ''})`
+        }
+        if (json.revised) return ` (고쳐서 ${json.improved}점 올랐습니다)`
+        return ' (고쳐 써도 나아지지 않아 원래 글을 두었습니다 — 한 번 더 누르면 다시 시도합니다)'
+      }
+      const fails = (json.check?.issues ?? []).filter(
+        (i) => (i as { level?: string }).level === 'fail'
+      ).length
       setAiMsg(
         `${score}점으로 나왔습니다` +
-          (fixing ? (json.revised ? ` (고쳐서 ${json.improved}점 올랐습니다)` : ' (고쳐 써도 나아지지 않아 원래 글을 두었습니다)') : '') +
+          fixNote() +
           '. ' +
-          (left ? `아직 ${left}개 항목이 남았습니다.` : '검수 항목을 모두 통과했습니다.') +
+          (left
+            ? `아직 ${left}개 항목이 남았습니다${fails ? ` (그중 수정필요 ${fails}개 — 점수는 이걸 다 없애야 올라갑니다)` : ' (전부 주의라서 발행해도 됩니다)'}.`
+            : '검수 항목을 모두 통과했습니다.') +
           (json.provider ? ` · ${json.provider}` : '')
       )
     } catch (e) {
