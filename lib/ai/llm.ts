@@ -66,6 +66,35 @@ export function detectProvider(): Conf | null {
   return found[0]
 }
 
+/**
+ * 자료를 **직접 찾게 하는** 도구 (순수 함수 — 테스트 대상).
+ *
+ * 회원 지적 — "내가 자료를 찾으면 안 되고 너가 알아서 자료를 찾아서 작성해줘야지."
+ * 맞는 말이다. 앞 판에서는 사람이 출처를 붙여넣게 만들었는데, 그건 일을 회원에게 넘긴 것이다.
+ *
+ * 회사마다 방식이 다르다:
+ *   anthropic — 서버 도구 `web_search`. 응답에 검색 결과 블록이 섞이지만 `extractText` 가
+ *               `type === 'text'` 만 골라내므로 본문 추출은 그대로 된다.
+ *   gemini    — `google_search` 도구.
+ *   openai·clova — chat/completions 에는 표준 검색 도구가 없다 (OpenAI 는 Responses API 나
+ *               검색 전용 모델이 필요하다). 그래서 **검색 없이** 돌고, 지시문이 「자료를 못
+ *               찾으면 인용하지 말라」로 바뀐다. 못 하는 것을 되는 척하지 않는다.
+ *
+ * 도구를 붙였다가 400 이 나면 그 필드만 빼고 다시 부른다 (`thinking` 과 같은 방식) —
+ * 계정·모델에 따라 검색이 안 열려 있을 수 있고, 그때 글쓰기 자체가 막히면 안 된다.
+ */
+export function searchTools(provider: Provider): unknown[] | null {
+  if (provider === 'anthropic') return [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }]
+  if (provider === 'gemini') return [{ google_search: {} }]
+  return null
+}
+
+/** 지금 키로 자료를 찾아올 수 있는가 (화면에서 「찾아서 인용합니다」를 말할 때 쓴다) */
+export function canSearchWeb(): boolean {
+  const c = detectProvider()
+  return Boolean(c && searchTools(c.provider))
+}
+
 export function aiStatus(): { ready: boolean; provider: Provider | null; label: string | null } {
   const c = detectProvider()
   return {
@@ -186,17 +215,31 @@ function errorText(raw: string): string {
  * 회원은 1분을 기다린 뒤 오류를 보므로, 여기서 한 번 더 시도하는 값이 크다.
  * 두 번째도 비면 그때는 증거를 담아 던진다 — describeEmpty 참고.
  */
-export async function askLlm(system: string, messages: AiMessage[], maxTokens = 8192): Promise<string> {
+export async function askLlm(
+  system: string,
+  messages: AiMessage[],
+  maxTokens = 8192,
+  /** 자료를 직접 찾아 인용하게 할지 (정보글) */
+  search = false
+): Promise<string> {
   try {
-    return await askOnce(system, messages, maxTokens)
+    return await askOnce(system, messages, maxTokens, false, search)
   } catch (e) {
+    /*
+     * 검색 도구를 못 받는 계정·모델이 있다. 그때 글쓰기 자체가 막히면 안 되므로 도구만 빼고
+     * 다시 부른다 — 지시문은 「자료를 못 찾으면 인용하지 않는다」를 이미 담고 있다.
+     */
+    if (search && e instanceof AiError && e.status === 400 && /tool|web_search|google_search/i.test(e.message)) {
+      console.warn('[ai] 이 계정·모델은 검색 도구를 못 쓴다 — 검색 없이 다시 부른다')
+      return await askOnce(system, messages, maxTokens, false, false)
+    }
     /*
      * 모델이 「생각하기 끄기」를 거부하면(회사·모델마다 규칙이 다르다) 그 필드만 빼고
      * 한 번 다시 부른다 — 이름으로 걸러낸 목록이 최신이 아닐 수 있으므로 실패로 배운다.
      */
     if (e instanceof AiError && e.status === 400 && /thinking/i.test(e.message)) {
       console.warn('[ai] 이 모델은 생각하기를 끌 수 없다 — 그 설정을 빼고 다시 부른다')
-      return await askOnce(system, messages, maxTokens, true)
+      return await askOnce(system, messages, maxTokens, true, search)
     }
     const empty = e instanceof AiError && e.status === 502
     if (!empty) throw e
@@ -212,7 +255,7 @@ export async function askLlm(system: string, messages: AiMessage[], maxTokens = 
       throw e
     }
     console.warn('[ai] 빈 응답 — 한 번 다시 부른다:', e instanceof Error ? e.message : e)
-    return await askOnce(system, messages, maxTokens)
+    return await askOnce(system, messages, maxTokens, false, search)
   }
 }
 
@@ -221,7 +264,9 @@ async function askOnce(
   messages: AiMessage[],
   maxTokens: number,
   /** 400 이 「thinking」을 문제 삼으면 이 필드만 빼고 한 번 더 부른다 */
-  omitThinking = false
+  omitThinking = false,
+  /** 자료를 직접 찾게 할지 — 회사별 도구는 searchTools 가 만든다 */
+  search = false
 ): Promise<string> {
   const c = detectProvider()
   if (!c) throw new AiError('AI 키가 설정되지 않았습니다.', 400)
@@ -253,12 +298,14 @@ async function askOnce(
      * opus-5 는 effort 가 xhigh/max 일 때만 400 이다(우리는 effort 를 안 보내므로 기본 high
      * → 허용). 이름으로 걸러내고, 그래도 400 이 나면 이 필드만 빼고 한 번 다시 부른다.
      */
+    const tools = search ? searchTools('anthropic') : null
     body = {
       model,
       max_tokens: maxTokens,
       system,
       messages,
       ...(!omitThinking && supportsDisabledThinking(model) ? { thinking: { type: 'disabled' } } : {}),
+      ...(tools ? { tools } : {}),
     }
   } else if (c.provider === 'gemini') {
     url = `${c.base}/models/${model}:generateContent?key=${c.key}`
@@ -269,6 +316,7 @@ async function askOnce(
         parts: [{ text: m.content }],
       })),
       generationConfig: { maxOutputTokens: maxTokens },
+      ...(search && searchTools('gemini') ? { tools: searchTools('gemini') } : {}),
     }
   } else {
     // OpenAI 호환 (OpenAI·Groq·Together…) 와 CLOVA 는 같은 chat/completions 모양을 쓴다
