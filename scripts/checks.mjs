@@ -9,7 +9,7 @@ if (!OUT) {
 const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
-const { buildCopyPackage, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, LINE_MIN, LINE_MAX } = require(`${OUT}/writing/export.js`)
+const { buildCopyPackage, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, normalizeTag, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
 const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parsePlaceList } = require(
   `${OUT}/analysis/paste.js`
@@ -218,7 +218,26 @@ ok(pkg.body.includes('상담 때 가장 자주 듣는 첫마디'), '소제목 �
 ok(pkg.imagePlan.length === 7, `이미지 배치표 ${pkg.imagePlan.length}행 (대표 1 + 소제목 6)`)
 ok(pkg.imagePlan[0].slot.includes('대표'), '첫 이미지는 대표이미지')
 ok(pkg.imagePlan[1].slot.includes('상담 때'), '2번째는 첫 소제목 위', pkg.imagePlan[1].slot)
-ok(pkg.tags.startsWith('#'), '태그에 # 붙음')
+/*
+ * 태그 — 회원이 「#태그 #태그」 한 줄을 네이버 태그 칸에 붙이고 「태그가 안 먹힌다」고 했다.
+ * 안 먹히는 게 맞다. 태그 칸은 한 칸에 하나씩이고, 공백이 든 태그는 거기서 끊긴다.
+ */
+ok(pkg.tags.startsWith('#'), '보여주기용에는 # 붙음')
+ok(!pkg.tagsPlain.includes('#'), '붙여넣기용에는 # 없음')
+ok(pkg.tagsPlain.includes(','), '붙여넣기용은 쉼표로 구분')
+ok(pkg.tagList.every((t) => !/\s/.test(t)), '태그에 공백이 없다 (공백은 태그를 끊는 자리다)')
+ok(pkg.tagList.includes('쌍용동헬스장'), `「쌍용동 헬스장」이 붙어서 들어간다 — ${pkg.tagList[0]}`)
+ok(pkg.tagFixes.some((f) => f.from === '쌍용동 헬스장' && f.to === '쌍용동헬스장'), '무엇을 고쳤는지 알려준다')
+ok(pkg.tagList.length === new Set(pkg.tagList).size, '공백을 붙인 뒤 생긴 중복을 지운다')
+ok(normalizeTag('#MTO피트니스 쌍용점') === 'MTO피트니스쌍용점', `# 과 공백을 뗀다 — ${normalizeTag('#MTO피트니스 쌍용점')}`)
+ok(normalizeTag('쌍용동·헬스') === '쌍용동헬스', '가운뎃점 같은 기호를 지운다')
+ok(normalizeTag('  ') === '', '빈 태그는 빈 문자열')
+// 긴 태그는 **자르지 않는다** — 잘린 태그는 틀린 태그다. 화면에서 경고만 한다
+const longTag = 'ㄱ'.repeat(TAG_MAX_LEN + 5)
+ok(normalizeTag(longTag).length === TAG_MAX_LEN + 5, '긴 태그를 조용히 자르지 않는다')
+const dupTags = buildCopyPackage({ ...goodPromo, id:'x', status:'draft', storeId:'s', createdAt:'', updatedAt:'', tags:['쌍용동 헬스장','쌍용동헬스장','#쌍용동 헬스장'] })
+ok(dupTags.tagList.length === 1, `같은 태그 세 형태가 하나로 합쳐진다 — ${dupTags.tagList.join(',')}`)
+ok(pkg.checklist.some((c) => c.label.includes('한 칸에 하나씩')), '체크리스트가 넣는 방법을 알려준다')
 console.log(`  파일명 예: ${pkg.imagePlan[0].fileName} / alt: ${pkg.imagePlan[0].altText}`)
 
 /*

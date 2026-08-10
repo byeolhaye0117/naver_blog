@@ -21,8 +21,37 @@ export interface CopyPackage {
   blocks: BodyBlock[]
   /** 이미지 몇 번째 자리에 무엇을 올려야 하는지 */
   imagePlan: { order: number; slot: string; description: string; fileName: string; altText: string }[]
+  /** 보여주기용 — `#태그 #태그` (붙여넣기용이 아니다) */
   tags: string
+  /** 네이버 태그 칸에 붙여넣는 형태 — `#` 없이 쉼표로 구분 */
+  tagsPlain: string
+  /** 하나씩 붙여넣을 수 있게 정리한 태그 (공백 제거 · 중복 제거) */
+  tagList: string[]
+  /** 우리가 손본 태그 (무엇을 왜 바꿨는지 화면에 보여준다) */
+  tagFixes: { from: string; to: string }[]
   checklist: { label: string; detail?: string }[]
+}
+
+/** 네이버 태그 한 개 최대 글자수 (넘으면 잘리지 않고 경고만 한다) */
+export const TAG_MAX_LEN = 25
+/** 네이버 태그 최대 개수 */
+export const TAG_MAX_COUNT = 30
+
+/**
+ * 태그 하나를 네이버가 받는 형태로 정리한다.
+ *
+ * **공백이 들어간 태그는 안 먹힌다.** 회원이 「#MTO피트니스 쌍용점」이 든 목록을 붙여넣고
+ * 태그가 안 걸린다고 했다 — 태그 안의 공백은 태그를 끊는 자리라서, 「MTO피트니스」와
+ * 「쌍용점」으로 갈리거나 아예 버려진다. 그래서 태그 안의 공백은 **붙여** 쓴다
+ * (「쌍용동 헬스장」 → 「쌍용동헬스장」). 검수도 이미 공백을 뺀 형태로 태그를 맞춰본다.
+ *
+ * 한글·영문·숫자·밑줄만 남긴다. 가운뎃점·마침표 같은 기호는 태그에서 지운다.
+ */
+export function normalizeTag(raw: string): string {
+  return (raw ?? '')
+    .replace(/^#+/, '')
+    .replace(/\s+/g, '')
+    .replace(/[^0-9A-Za-z가-힣ㄱ-ㅎㅏ-ㅣ_]/g, '')
 }
 
 /** 붙여넣을 본문의 한 덩어리 */
@@ -258,7 +287,23 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     altText: i === 0 ? `${post.mainKeyword} 대표 이미지` : `${localKw} ${desc || '시설'}`.slice(0, 60),
   }))
 
-  const tags = post.tags.map((t) => (t.startsWith('#') ? t : `#${t}`)).join(' ')
+  /*
+   * 태그를 정리해서 세 가지 형태로 낸다.
+   *
+   * 예전에는 `#` 만 붙여 한 줄로 줬는데, 그대로 네이버 태그 칸에 붙이면 안 걸린다.
+   * 태그 칸은 한 칸에 하나씩 넣는 곳이고, 공백이 든 태그는 거기서 끊긴다.
+   */
+  const tagFixes: { from: string; to: string }[] = []
+  const tagList: string[] = []
+  for (const raw of post.tags) {
+    const clean = normalizeTag(raw)
+    if (!clean) continue
+    if (clean !== raw.replace(/^#+/, '')) tagFixes.push({ from: raw.replace(/^#+/, ''), to: clean })
+    // 공백을 붙이면 중복이 생길 수 있다 (「쌍용동 헬스장」 + 「쌍용동헬스장」)
+    if (!tagList.includes(clean)) tagList.push(clean)
+  }
+  const tags = tagList.map((t) => `#${t}`).join(' ')
+  const tagsPlain = tagList.join(',')
 
   const checklist: { label: string; detail?: string }[] = [
     { label: '제목을 붙여넣고 30~40자인지 확인', detail: `현재 ${post.title.length}자` },
@@ -296,7 +341,15 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
       detail:
         '작성 화면의 「맞춤법 · 띄어쓰기」로 먼저 보고, 「못 읽음」이 뜨면 네이버 맞춤법 검사기(검색창에 "맞춤법검사기")에 본문을 직접 붙여넣으세요. 상호명·기구 이름은 엉뚱한 제안이 나오므로 그대로 바꾸지 마세요',
     },
-    { label: `해시태그 ${post.tags.length}개 입력`, detail: '8~12개 권장' },
+    /*
+     * 태그 붙여넣기 방법을 적는다 — 회원이 `#태그 #태그` 한 줄을 태그 칸에 붙이고
+     * 「태그가 안 먹힌다」고 했다. 태그 칸은 한 칸에 하나씩 넣는 곳이다.
+     */
+    {
+      label: `해시태그 ${tagList.length}개 입력 — 한 칸에 하나씩`,
+      detail:
+        '「#태그 #태그」 한 줄을 그대로 붙이면 안 걸립니다. 태그 칸에 하나 붙이고 Enter, 다음 것 붙이고 Enter로 넣으세요 (아래 태그 카드에 하나씩 복사 버튼이 있습니다). 태그 안에 공백이 있으면 거기서 끊기니 붙여 씁니다',
+    },
     {
       label: '네이버 지도 위치 첨부',
       detail: store ? `${store.legalName} — ${store.location}` : '플레이스 연결로 지역 신호 확보',
@@ -333,6 +386,9 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     blocks,
     imagePlan,
     tags,
+    tagsPlain,
+    tagList,
+    tagFixes,
     checklist,
   }
 }

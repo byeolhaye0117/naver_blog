@@ -13,7 +13,16 @@ import { explainNonJson } from '@/lib/ai/httperror'
 type Draft = { title: string; body: string; tags?: string[] }
 
 import { adviseRotation, ANGLES, INFO_FORMATS, INTRO_TYPES, REVIEW_INTRO_TYPES, TOPIC_GROUPS } from '@/lib/writing/rotation'
-import { blocksToHtml, blocksToText, buildCopyPackage, postLogLine, LINE_MAX, LINE_MIN } from '@/lib/writing/export'
+import {
+  blocksToHtml,
+  blocksToText,
+  buildCopyPackage,
+  postLogLine,
+  LINE_MAX,
+  LINE_MIN,
+  TAG_MAX_COUNT,
+  TAG_MAX_LEN,
+} from '@/lib/writing/export'
 import type { HeadingStyle } from '@/lib/writing/export'
 import { isPrescriptionStale, prescriptionAgeDays, prescriptionKey } from '@/lib/analysis/prescription'
 import type { PooledFactor } from '@/lib/analysis/factors'
@@ -1453,9 +1462,7 @@ function CopyPane({
         )}
       </Card>
 
-      <Card title="4. 해시태그" right={<CopyButton text={pkg.tags} />} subtitle={`${post.tags.length}개`}>
-        <p className="bd rounded-xl border px-3 py-2.5 text-[12px] break-words">{pkg.tags || '(태그 없음)'}</p>
-      </Card>
+      <TagCard pkg={pkg} />
 
       <Card title="5. 발행 체크리스트" subtitle="이 순서를 지키는 것이 노출의 절반입니다">
         <ul className="space-y-2.5">
@@ -1487,6 +1494,94 @@ function CopyPane({
         )}
       </Card>
     </div>
+  )
+}
+
+/**
+ * 해시태그.
+ *
+ * 회원이 「#태그 #태그」 한 줄을 그대로 네이버 태그 칸에 붙이고 말했다 — "태그가 안 먹혀."
+ * 안 먹히는 게 맞다. 태그 칸은 **한 칸에 하나씩** 넣는 곳이고, 한 줄을 통째로 넣으면
+ * 태그 하나(또는 아무것도)로 들어간다. 게다가 목록에 「MTO피트니스 쌍용점」처럼 **공백이 든
+ * 태그**가 있었는데, 공백은 태그를 끊는 자리라서 그 태그는 어차피 깨진다.
+ *
+ * 그래서 「한 줄 복사」를 주는 대신 **하나씩 복사**를 기본으로 놓고, 공백을 붙인 것을 보여준다.
+ */
+function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
+  const [copied, setCopied] = useState<number | null>(null)
+  const over = pkg.tagList.filter((t) => t.length > TAG_MAX_LEN)
+
+  async function copyOne(tag: string, i: number) {
+    try {
+      await navigator.clipboard.writeText(tag)
+    } catch {
+      /* 클립보드가 막힌 환경 — 아래 쉼표 목록을 쓰면 된다 */
+    }
+    setCopied(i)
+    setTimeout(() => setCopied((c) => (c === i ? null : c)), 1400)
+  }
+
+  return (
+    <Card
+      title="4. 해시태그"
+      subtitle={`${pkg.tagList.length}개 · 태그 칸에 하나씩 넣으세요`}
+      right={<CopyButton text={pkg.tagsPlain} label="쉼표로 전부" className="bg-slate-500/15 !text-inherit" />}
+    >
+      {pkg.tagList.length === 0 ? (
+        <p className="muted text-sm">태그가 없습니다. 위에서 태그를 먼저 넣어주세요.</p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-1.5">
+            {pkg.tagList.map((t, i) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => copyOne(t, i)}
+                title="눌러서 이 태그만 복사"
+                className={`bd rounded-xl border px-2.5 py-1 text-[12px] font-semibold transition ${
+                  copied === i ? 'border-emerald-500 bg-emerald-500/15' : 'hover:bg-slate-500/8'
+                }`}
+              >
+                {copied === i ? '복사됨' : t}
+              </button>
+            ))}
+          </div>
+
+          <p className="muted mt-2.5 text-[11px] leading-relaxed">
+            <b>「#태그 #태그」 한 줄을 그대로 붙이면 안 걸립니다.</b> 네이버 태그 칸은 한 칸에 하나씩
+            넣는 곳이라, 한 줄을 통째로 넣으면 태그 하나로 들어가거나 버려집니다. 위 태그를{' '}
+            <b>눌러서 복사 → 태그 칸에 붙이고 Enter</b>를 반복하세요. 「쉼표로 전부」는 쉼표를 구분자로
+            받는 화면(모바일 앱 등)에서 한 번에 넣을 때 쓰세요 — 안 나뉘면 하나씩 넣는 쪽이 확실합니다.
+          </p>
+
+          {pkg.tagFixes.length > 0 && (
+            <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
+              <b>공백·기호를 붙였습니다.</b> 태그 안의 공백은 태그를 끊는 자리라서 그대로 두면
+              깨집니다 —{' '}
+              {pkg.tagFixes.map((f, i) => (
+                <span key={f.from}>
+                  {i > 0 && ' · '}
+                  <span className="line-through opacity-70">{f.from}</span> → <b>{f.to}</b>
+                </span>
+              ))}
+            </p>
+          )}
+
+          {over.length > 0 && (
+            <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
+              <b>{TAG_MAX_LEN}자를 넘는 태그가 있습니다</b> ({over.join(', ')}). 네이버에서 잘릴 수
+              있으니 짧게 줄이세요 — 자동으로 자르지는 않았습니다.
+            </p>
+          )}
+
+          {pkg.tagList.length > TAG_MAX_COUNT && (
+            <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-900 dark:text-amber-200">
+              태그가 {TAG_MAX_COUNT}개를 넘습니다 ({pkg.tagList.length}개). 뒤쪽은 안 들어갈 수 있습니다.
+            </p>
+          )}
+        </>
+      )}
+    </Card>
   )
 }
 
