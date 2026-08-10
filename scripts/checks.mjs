@@ -6,7 +6,7 @@ if (!OUT) {
   console.error('직접 실행하지 말고 `npm test` 를 쓰세요.')
   process.exit(1)
 }
-const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange } = require(`${OUT}/writing/checker.js`)
+const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange, findLatinWords, LATIN_ALLOWED } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
 const { buildCopyPackage, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, normalizeTag, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
@@ -4936,6 +4936,60 @@ ok(!/24시간/.test(String(srcItem({ body: FACILITY_ONLY })?.value ?? '')), '운
 ok(srcItem({ body: infoBody('전화 010-2455-2896 으로 주세요.') }) === undefined || srcItem({ body: infoBody('전화 010-2455-2896 으로 주세요.') }).level === 'pass', '전화번호를 금액으로 착각하지 않는다')
 // 홍보글·후기글에는 이 항목이 없다 (홍보글은 이벤트 칸이 따로 검사된다)
 ok(checkPost({ ...goodPromo }).items.every((i) => i.id !== 'info-promo-source'), '홍보글에는 항목이 안 생긴다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[86] 한국어로만 쓰기')
+/*
+ * 회원 지적 — "글에 영문이 들어가. 모든 글은 한국어로 작성될 수 있게 해줘."
+ * 나온 문장: "혈당이 천천히 올라가서 addictive한 느낌이 덜합니다."
+ *
+ * 순위 기준이 아니다. 읽는 분들은 동네 손님이고, 모르는 영어 낱말 하나가 「번역기 돌린 글」로
+ * 읽히게 만든다. 다만 **정말 필요한 로마자**는 있으므로 허용 목록을 둔다.
+ */
+ok(findLatinWords('혈당이 천천히 올라가서 addictive한 느낌이 덜합니다.')[0] === 'addictive', '섞인 영어 낱말을 찾는다')
+ok(findLatinWords('한글만 있는 문장입니다.').length === 0, '한글만 있으면 빈 배열')
+// 필요한 로마자는 통과 — 이걸 걸면 아무 글도 못 쓴다
+ok(findLatinWords('PT 10회와 OT 1회, 체중 3kg 감량, 칼로리는 300kcal 정도입니다.').length === 0, '약어·단위는 허용한다')
+ok(findLatinWords('예약은 https://vo.la/Zbynx 로 주세요.').length === 0, '링크는 세지 않는다')
+ok(findLatinWords('문의는 hello@mto.kr 로 주세요.').length === 0, '메일도 세지 않는다')
+ok(findLatinWords('안녕하세요, MTO 피트니스 쌍용점입니다.', ['MTO']).length === 0, '상호명은 허용 목록으로 넘긴다')
+ok(findLatinWords('안녕하세요, MTO 피트니스입니다.')[0] === 'MTO', '허용 목록에 없으면 상호명도 잡힌다 (지점 설정을 보게)')
+ok(findLatinWords('L사이즈와 A타입').length === 0, '한 글자는 보지 않는다 (기호에 가깝다)')
+ok(findLatinWords('routine 과 healthy 를 섞어 씀').length === 2, '여러 개면 여러 개를 돌려준다')
+ok(findLatinWords('addictive 하고 addictive 합니다').length === 1, '같은 낱말은 한 번만')
+ok(LATIN_ALLOWED.includes('PT') && LATIN_ALLOWED.includes('kg'), '허용 목록에 PT·kg 이 있다')
+
+// ─── 검수 항목
+const koItem = (patch) => checkPost({ ...goodPromo, ...patch }).items.find((i) => i.id === 'korean-only')
+ok(koItem({}).level === 'pass', '기준 글은 통과')
+const withEnglish = koItem({ body: goodPromo.body.replace('세트 사이에 호흡만', 'addictive한 느낌이 덜하고, 세트 사이에 호흡만') })
+ok(withEnglish.level === 'fail', `영어가 섞이면 수정필요 — ${withEnglish.value}`)
+ok(withEnglish.value.includes('addictive'), '어떤 낱말인지 보여준다')
+ok(withEnglish.hint.includes('중독성'), '바꿀 예를 준다')
+ok(withEnglish.group === 'AI 티 제거', 'AI 티 제거로 분류한다 (모델이 흘리는 말이다)')
+// 제목도 본다
+ok(koItem({ title: 'Best 쌍용동 헬스장 3개월 9.9만원' }).level === 'fail', '제목의 영어도 잡는다')
+// 키워드에 로마자가 있으면 허용한다 — 쓰라고 시켜놓고 걸면 안 된다
+const ptPost = koItem({ subKeywords: ['쌍용동PT'], body: goodPromo.body.replace('쌍용동 24시헬스장 알아보시는 분은', '쌍용동PT 알아보시는 분은') })
+ok(ptPost.level === 'pass', 'PT 가 든 키워드는 통과 (애초에 PT 는 허용 목록에도 있다)')
+const brandPost = checkPost({ ...goodPromo, legalName: 'MTO 피트니스 쌍용점' }).items.find((i) => i.id === 'korean-only')
+ok(brandPost.level === 'pass', '정식 상호명의 로마자는 통과')
+// 세 유형 모두 검사한다 (회원 요청은 "모든 글")
+for (const t of ['promo', 'info', 'review']) {
+  const item = checkPost({ type: t, title: 'Best 쌍용동 헬스장', body: 'addictive한 느낌', mainKeyword: '쌍용동 헬스장', subKeywords: [], tags: [] }).items.find((i) => i.id === 'korean-only')
+  ok(item && item.level === 'fail', `${t} 도 검사한다`)
+}
+
+// ─── 지시문·골격
+for (const t of ['promo', 'info', 'review']) {
+  ok(buildSystemPrompt(t).includes('제목과 본문을 전부 한국어로 쓴다'), `${t} 지시문에 한국어 규칙이 있다`)
+}
+ok(buildSystemPrompt('promo').includes('addictive(X) → 중독성(O)'), '바꾸는 예를 준다')
+ok(buildSystemPrompt('promo').includes('굳어진 약어(PT·OT·GX·VAT·CCTV)'), '예외를 정확히 알려준다')
+for (const t of ['promo', 'info', 'review']) {
+  const tpl = buildTemplate(t, { mainKeyword: '쌍용동 헬스장', subKeywords: ['A'], localKeyword: '쌍용동 헬스장' })
+  ok(tpl.includes('**제목·본문 전부 한국어로.**'), `${t} 골격에도 적혀 있다`)
+}
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
