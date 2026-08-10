@@ -161,6 +161,7 @@ export default function Editor({
   const [revisedAt, setRevisedAt] = useState(existing?.revisedAt ?? '')
   const [eventText, setEventText] = useState(existing?.eventText ?? '')
   const [promoNote, setPromoNote] = useState(existing?.promoNote ?? '')
+  const [sourceNote, setSourceNote] = useState(existing?.sourceNote ?? '')
   /*
    * 회원 요청 두 개 (2026-08-10).
    *   "정보성란을 내가 원하는 주제로 넣을 수 있는지"        → infoTopic
@@ -330,6 +331,7 @@ export default function Editor({
         eventText,
         // 정보글 마지막 홍보가 「적어둔 것」인지 대조한다
         promoNote,
+        sourceNote,
         // 실제 리뷰를 인용했는지 / 없는 리뷰를 지어냈는지 잰다
         placeReviews: store?.placeReviews,
         placeId: store?.placeId,
@@ -365,6 +367,7 @@ export default function Editor({
     // 유형을 바꿔도 적어둔 이벤트 정보는 잃지 않게 그대로 저장한다 (정보글에서는 쓰이지 않음)
     eventText: eventText.trim() || undefined,
     promoNote: promoNote.trim() || undefined,
+    sourceNote: sourceNote.trim() || undefined,
     infoTopic: infoTopic.trim() || undefined,
     request: request.trim() || undefined,
     publishedUrl: publishedUrl || undefined,
@@ -386,6 +389,7 @@ export default function Editor({
     sponsorship,
     eventText,
     promoNote,
+    sourceNote,
     infoTopic,
     request,
   ])
@@ -493,6 +497,7 @@ export default function Editor({
           localKeyword: localKeyword || store.localKeywords[0],
           eventText,
           promoNote,
+          sourceNote,
           infoTopic,
           request,
           sponsorship,
@@ -882,6 +887,33 @@ export default function Editor({
                         정보 8 : 홍보 2 에서 <b>홍보 2 에 해당하는 자리</b>입니다 (400~500자). 앞의 정보
                         구간에는 안 들어갑니다. <b>적지 않은 금액이 글에 나오면 검수가 잡습니다</b> — 확인
                         안 된 가격은 거짓 광고가 되기 때문입니다.
+                      </p>
+                    </Field>
+                  )}
+
+                  {/*
+                    회원 지적: "정보글인데 내용 자체는 팩트로 써야 하잖아. 실제 연구 결과 등이
+                    있으면 출처도 함께 인용해서 쓰는 게 좋을 거 같아." AI 는 자료를 찾아볼 수
+                    없으니 인용할 자료는 여기 넣고, AI 는 그 안에서만 옮긴다.
+                  */}
+                  {type === 'info' && (
+                    <Field
+                      label="근거 · 출처 (인용할 자료)"
+                      hint="여기 있는 것만 인용하고 출처를 함께 씁니다. 비워두면 연구·수치 주장을 하지 않고 현장 경험으로만 씁니다"
+                    >
+                      <textarea
+                        value={sourceNote}
+                        onChange={(e) => setSourceNote(e.target.value)}
+                        rows={3}
+                        className={inputClass}
+                        placeholder={
+                          '대한비만학회 2024 비만 진료지침 — 하루 500kcal 줄이면 주당 0.5kg 감량 권고\n질병관리청 국민건강영양조사 2023 — 성인 아침 결식률 34%\nhttps://... (링크가 있으면 함께)'
+                        }
+                      />
+                      <p className="muted mt-1.5 text-[11px] leading-relaxed">
+                        <b>기관 이름·자료명·연도</b>를 같이 적어주세요 — 글에 그대로 인용하고 문장
+                        끝에 출처를 붙입니다. 링크가 있으면 더 좋습니다. <b>여기 없는 연구는 만들지
+                        않습니다</b> — 출처 없는 인용은 검수에서 즉시수정으로 잡힙니다.
                       </p>
                     </Field>
                   )}
