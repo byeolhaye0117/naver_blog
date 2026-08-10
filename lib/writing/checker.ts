@@ -1,4 +1,10 @@
-import { contentBalance, INFO_MIN_BY_TYPE, PROMO_MAX_BY_TYPE } from '../analysis/content'
+import {
+  contentBalance,
+  countCta,
+  CTA_MIN_BY_TYPE,
+  INFO_MIN_BY_TYPE,
+  PROMO_MAX_BY_TYPE,
+} from '../analysis/content'
 import { TITLE_SHAPE_LABEL, titleAdvice, titleShape } from '../analysis/title'
 import { evidenceHeadline, itemEvidence } from './evidence'
 import type { PooledFactor } from '../analysis/factors'
@@ -320,14 +326,21 @@ function keywordPositions(text: string, keyword: string): number[] {
   return out
 }
 
-function splitSentences(text: string): string[] {
+/**
+ * 문장 쪼개기.
+ *
+ * 상위노출 조사(scripts/study.mjs)가 **이 함수를 그대로** 쓴다 — 검수는 A 로 세고
+ * 조사는 B 로 세면 기준이 조용히 어긋난다.
+ */
+export function splitSentences(text: string): string[] {
   return text
     .split(/(?<=[.!?。…])\s+|\n+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 1)
 }
 
-function endingOf(sentence: string): string {
+/** 문장의 어미 갈래 (조사와 검수가 같은 기준을 쓰도록 내보낸다) */
+export function endingOf(sentence: string): string {
   const s = sentence.replace(/[.!?…\s]+$/, '')
   if (/습니다$|입니다$|됩니다$|립니다$|십니다$/.test(s)) return '~습니다'
   if (/어요$|아요$|에요$|예요$|해요$|세요$|요$/.test(s)) return '~요'
@@ -465,12 +478,22 @@ export function checkPost(input: CheckInput): CheckResult {
     id: 'headings',
     group: '분량·구조',
     label: '소제목 개수',
-    level: level(
-      parsed.headings.length >= 4 && parsed.headings.length <= 5,
-      parsed.headings.length >= 3 && parsed.headings.length <= 6
-    ),
+    /*
+     * 홍보글만 5~6개다 — 「해결」 한 구간을 「운동 정보」와 「시설 소개」로 쪼개면서
+     * 구간이 하나 늘었다 (lib/ai/prompt.ts 의 STRUCTURE.promo 주석).
+     */
+    level:
+      input.type === 'promo'
+        ? level(
+            parsed.headings.length >= 5 && parsed.headings.length <= 6,
+            parsed.headings.length >= 4 && parsed.headings.length <= 7
+          )
+        : level(
+            parsed.headings.length >= 4 && parsed.headings.length <= 5,
+            parsed.headings.length >= 3 && parsed.headings.length <= 6
+          ),
     value: `${parsed.headings.length}개`,
-    target: '4~5개',
+    target: input.type === 'promo' ? '5~6개' : '4~5개',
     hint: '소제목은 스캔 가능성 = 체류시간입니다. `## 소제목` 형식으로 적으세요.',
     weight: 2,
   })
@@ -854,11 +877,11 @@ export function checkPost(input: CheckInput): CheckResult {
   /*
    * ─── 내용 균형 ───────────────────────────────────────────────
    *
-   * 상위 글 11편을 실제로 세보고 넣은 두 항목이다 (content.ts 주석).
-   *   1~3위 평균: 정보 5.2종류 · 홍보 2.0종류
-   *   4위 이하  : 정보 3.6종류 · 홍보 3.8종류
-   * 정보가 모자란 것과 홍보가 과한 것은 고칠 방법이 달라서(더하기 / 덜어내기)
-   * 한 항목으로 묶지 않고 따로 낸다.
+   * 141편 재측정으로 두 항목의 무게가 뒤바뀌었다 (content.ts 주석).
+   *   정보 종류: 3~4종류 1~3위 17% / 5종류 이상 40~43%  ← 이 앱에서 가장 센 신호 중 하나
+   *   홍보 종류: 1~2 36% · 3 32% · 4 19% · 5 47% · 6 43% · 7 이상 14%  ← 7 전까지 무의미
+   * 그래서 정보는 4→5, 홍보는 3→2 로 가중치를 옮겼다. 항목을 묶지 않는 이유는 그대로다 —
+   * 고치는 방향이 반대(더하기 / 합치기)이기 때문이다.
    */
   const balance = contentBalance(scanText, input.type)
   const infoMin = INFO_MIN_BY_TYPE[input.type]
@@ -877,19 +900,67 @@ export function checkPost(input: CheckInput): CheckResult {
     target:
       input.type === 'review'
         ? `${infoMin}종류면 충분 (후기는 순위보다 신뢰를 만드는 글)`
-        : `${infoMin}종류 이상 (상위 1~3위 평균 5.2)`,
+        : `${infoMin}종류 이상 (3~4종류 1~3위 17% / 5종류 이상 40~43%)`,
     hint: balance.level === 'thin' || balance.level === 'both' ? balance.infoNote : undefined,
+    weight: 5,
+  })
+  /*
+   * ─── 상담 유도 (이 앱에서 찾은 가장 센 신호) ────────────────
+   *
+   * 「상담·예약·문의」 등장 **횟수**가 순위를 갈랐다 (content.ts 의 CTA_WORDS 주석):
+   *   0~1회 1~3위 14% (평균 6.45위) / 6회 이상 60% (3.30위) · 세 표본에서 재현 · 구간 갈림
+   *
+   * 바로 위의 「홍보 표현 절제」와 모순이 아니다 — 그건 **종류 수**(할인·특가·선착순…)이고
+   * 이건 **횟수**다. 종류를 늘리는 것은 전단지가 되고, 상담을 여러 번 권하는 것은 「오시라」는
+   * 말이다. 회원이 말한 이 글의 목적과도 같은 방향이다.
+   */
+  const cta = countCta(scanText)
+  const ctaMin = CTA_MIN_BY_TYPE[input.type]
+  add({
+    id: 'cta-invite',
+    group: '내용 균형',
+    label: '상담 유도 횟수',
+    level: level(cta.count >= ctaMin, cta.count >= Math.ceil(ctaMin / 2)),
+    value: `${cta.count}회${
+      Object.keys(cta.found).length
+        ? ` (${Object.entries(cta.found).map(([w, n]) => `${w} ${n}`).join(' · ')})`
+        : ''
+    }`,
+    target:
+      input.type === 'promo'
+        ? `${ctaMin}회 이상 (6회 이상 1~3위 60% / 0~1회 14%)`
+        : `${ctaMin}회 이상 (이 유형은 순위보다 글의 목적을 우선합니다)`,
+    hint:
+      cta.count < ctaMin
+        ? input.type === 'promo'
+          ? `이 앱에서 확인한 가장 뚜렷한 순위 신호입니다 — 「상담·예약·문의」를 6회 이상 쓴 글이 1~3위 60%(평균 3.3위)였고, 0~1회인 글은 14%(6.5위)였습니다. 마지막 단락에 몰아넣으라는 뜻이 아닙니다: 이벤트 단락에 「상담 때 조건 안내드릴게요」, 시설 단락에 「예약하고 오시면 대기 없이 보실 수 있어요」처럼 각 단락의 끝에 자연스럽게 한 번씩 얹으세요.`
+          : `${ctaMin}회는 넘기세요 — 읽는 사람이 다음에 무엇을 하면 되는지 모릅니다.`
+        : undefined,
+    /*
+     * 가중치 4. 구간이 갈린 신호가 이 앱에 몇 개 없다 (제목 키워드 · 정보 종류 · 이것).
+     * 다만 후기글·정보글에서는 하한 자체가 낮아 사실상 통과한다.
+     */
     weight: 4,
   })
+
   add({
     id: 'promo-restraint',
     group: '내용 균형',
     label: '홍보 표현 절제',
-    level: level(balance.signals.promo <= promoMax, balance.signals.promo <= promoMax + 2),
+    /*
+     * 상한을 넘긴 정도로 등급을 나눈다. 다만 이 상한은 **순위 근거가 없다** — 두 번 재는
+     * 동안 홍보 종류 수는 순위를 가르지 않았고, 7종류 이상 칸은 14% → 44% 로 뒤집혔다
+     * (각각 7편·9편). 그래서 넘겨도 곧바로 실패로 몰지 않는다 (+1 까지 주의).
+     */
+    level: level(balance.signals.promo <= promoMax, balance.signals.promo <= promoMax + 1),
     value: `${balance.signals.promo}종류`,
-    target: `${promoMax}종류 이하 (상위 1~3위 평균 2.0)`,
+    target: `${promoMax}종류 이하 (순위 기준이 아니라 글의 목적 기준)`,
     hint: balance.level === 'pushy' || balance.level === 'both' ? balance.promoNote : undefined,
-    weight: 3,
+    /*
+     * 가중치 3 → 2. 홍보 종류 수는 순위를 가르지 않았다 (content.ts 재측정 표).
+     * 그래도 0 은 아니다 — 상한을 크게 넘긴 글은 전단지로 읽힌다.
+     */
+    weight: 2,
   })
 
   // ─── 저품질 위험 ─────────────────────────────────────────────
@@ -963,6 +1034,98 @@ export function checkPost(input: CheckInput): CheckResult {
         : undefined,
     weight: 2,
   })
+
+  /*
+   * ─── 톤 (딱딱함 ↔ 가벼움) ─────────────────────────────────────
+   *
+   * **순위 기준이 아니다.** 방문자 화자를 걸러낸 81편에서 톤 지표는 전부 |ρ| ≤ 0.22 이고
+   * 95% 구간이 겹쳤다 (느낌표 +0.13 · 이모지 -0.05 · 1인칭 -0.04 · 감정 낱말 -0.09).
+   * 그래서 이 항목의 가중치는 2 이고, 목표 문구에도 순위 기준이 아니라고 밝힌다.
+   *
+   * 그래도 넣는 이유는 회원이 말한 문제가 실재하기 때문이다 — "업체 화자니까 너무 가벼워
+   * 보여도 안 되지만, 너무 무거워서 가까워지기 어려운 톤이면 안 된다." 양쪽 극단만 잡는다.
+   *   딱딱한 쪽: 센터 1인칭(「제가」·「저는」)이 한 번도 없음 → 회사 공지문이 된다
+   *   가벼운 쪽: 느낌표·이모지 남발 (상위권 중간값의 두 배를 넘김)
+   */
+  const per1k = (n: number) => (charCount ? (n / charCount) * 1000 : 0)
+  const bangRate = per1k((prose.match(/!/g) ?? []).length)
+  const emojiRate = per1k((prose.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu) ?? []).length)
+  /*
+   * 「저희」는 세지 않는다 — 그게 소속 1인칭이고, 그것만 반복하는 글이 회사 공지문이다.
+   * 다만 「저한테」·「저에게」는 사람이 말하는 1인칭이라 센다 (실제 초안에서 「저한테 제일
+   * 먼저 물으시는 게」를 놓쳐 통과해야 할 글에 주의를 줬다).
+   */
+  const firstPerson = (prose.match(/제가|저는|저도|저한테|저에게|저희가 보기/g) ?? []).length
+  // 후기글 화자는 방문객이라 「저희 센터」가 없는 게 정상이다 — 센터 1인칭은 홍보·정보만 본다
+  const stiff = input.type !== 'review' && firstPerson === 0
+  const loud = bangRate > 6 || emojiRate > 8
+  add({
+    id: 'tone',
+    group: 'AI 티 제거',
+    label: '톤 (딱딱함 · 가벼움)',
+    level: stiff && loud ? 'fail' : stiff || loud ? 'warn' : 'pass',
+    value: loud
+      ? `느낌표 ${bangRate.toFixed(1)} · 이모지 ${emojiRate.toFixed(1)} (1,000자당)`
+      : stiff
+        ? '센터 1인칭 0회'
+        : '통과',
+    target: '순위 기준이 아니라 우리 톤 기준입니다 (실측에서 톤은 순위와 무관했습니다)',
+    hint: stiff
+      ? '「저희 센터는」만 반복하면 회사 공지문이 됩니다. 「제가」를 넣어 운영하는 사람이 말하고 있다는 걸 드러내세요 — 예) "제가 상담할 때 가장 많이 듣는 말이 이겁니다."'
+      : loud
+        ? `느낌표·이모지가 많습니다 (상위권 중간값은 1,000자당 느낌표 3.3개 · 이모지 3.9개). 업체 글에서 남발하면 전단지로 읽힙니다 — 느낌표는 문단당 1개 이하, 이모지는 구간마다 1개까지로 줄이세요.`
+        : undefined,
+    weight: 2,
+  })
+
+  /*
+   * ─── 첫 문장이 인사 + 정식 상호명인가 ───────────────────────
+   *
+   * **순위 기준이 아니다** (인사로 시작 27% / 아닌 글 32%, 구간 겹침). 우리 규칙이다.
+   *
+   * 회원이 실제 결과물을 보고 말했다 — "첫 문장이 「안녕하세요 MTO 피트니스 쌍용점」이
+   * 아니라 뭐 이상한 문장이야. 업체명을 제대로 쓴 것도 아니고 「쌍용점」이라고만 나오고."
+   * 나온 문장이 「저희는 쌍용점입니다」였다. 정식 상호명 횟수 검사는 이걸 못 잡는다 —
+   * 뒤쪽에서 세 번 채우면 통과하기 때문이다. 그래서 **첫 문장만** 따로 본다.
+   *
+   * 후기글은 건너뛴다 — 화자가 방문객이라 센터 이름으로 인사하면 오히려 틀린다.
+   */
+  if (input.type !== 'review') {
+    const opening = prose.slice(0, 80)
+    const greeted = /안녕하세[요셔]|반갑습니다/.test(opening)
+    /*
+     * 상호명은 countLoose 와 같은 기준으로 본다 — 띄어쓰기 차이로 못 찾으면 거짓 경고가 된다
+     * (「MTO 피트니스 쌍용점」 vs 「MTO피트니스 쌍용점」).
+     */
+    const legal = input.legalName?.trim() ?? ''
+    const flat = (t: string) => t.replace(/\s+/g, '')
+    const namedInOpening = legal ? flat(opening).includes(flat(legal)) : false
+    add({
+      id: 'intro-greeting',
+      group: '분량·구조',
+      label: '첫 문장 인사 + 정식 상호명',
+      level: greeted && namedInOpening ? 'pass' : greeted || namedInOpening ? 'warn' : 'fail',
+      value: greeted
+        ? namedInOpening
+          ? '통과'
+          : '인사는 있는데 정식 상호명이 없음'
+        : namedInOpening
+          ? '상호명은 있는데 인사가 없음'
+          : '없음',
+      target: '「안녕하세요, (정식 상호명)입니다」로 시작 (순위 기준이 아니라 우리 규칙)',
+      hint:
+        greeted && namedInOpening
+          ? undefined
+          : legal
+            ? `글 맨 처음을 「안녕하세요, ${legal}입니다」로 여세요. 「저희는 ○○점입니다」처럼 줄이면 읽는 사람이 상호를 못 알아보고 검색도 못 합니다.`
+            : '지점 정보에 정식 상호명이 없습니다. 지점 설정에서 먼저 채워주세요.',
+      /*
+       * 가중치 2. 순위 근거가 없는 항목이라 낮게 두지만, 0 은 아니다 —
+       * 상호를 못 알아보면 상담 전화가 올 곳을 모른다.
+       */
+      weight: 2,
+    })
+  }
 
   const lengths = sentences.map((s) => s.length)
   const meanLen = lengths.reduce((a, b) => a + b, 0) / total
@@ -1053,7 +1216,21 @@ export function checkPost(input: CheckInput): CheckResult {
    */
   const VISITOR_TONE = [
     { p: /다녀왔|다녀온|가봤더니|(제가|저는|직접)\s*[^.!?\n]{0,12}(갔|가봤|가보니)/, label: '「다녀왔다」류 방문 서술' },
-    { p: /괜찮더라고요|좋더라고요|만족했어요|추천드려요/, label: '방문자 감상 말투' },
+    /*
+     * **「추천드려요」를 뺐다** (2026-08-07).
+     *
+     * 회원이 직접 쓴 홍보글이 이 항목에서 수정필요를 맞았다 — 「그다음 리니어 로우로
+     * 넘어가는 순서를 추천드려요」. 센터가 운동 순서를 권하는 말이고, 방문자 말투가 아니다.
+     *
+     * 방문자 티가 나는 것은 **장소를 평가하며** 권하는 말이다 (「여기 추천드려요」).
+     * 그래서 대상을 요구하도록 좁혔다. 이 검사에서 벌써 세 번째 오탐이라
+     * (「남들 다 자는 새벽에 갔는데」 · 「저한테 물으시는」 · 이번), 낱말만 보면 안 된다.
+     */
+    { p: /괜찮더라고요|좋더라고요|만족했어요/, label: '방문자 감상 말투' },
+    {
+      p: /(헬스장|센터|지점|여기|이곳|이 곳)[^.!?\n]{0,12}추천드려요/,
+      label: '장소를 평가하며 권하는 말투',
+    },
     { p: /내돈내산|제 돈으로|직접 결제/, label: '「내돈내산」류' },
     { p: /등록했어요|등록하게 됐|상담받아보니/, label: '방문자 등록 서술' },
   ]

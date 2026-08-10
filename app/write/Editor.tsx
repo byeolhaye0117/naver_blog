@@ -14,7 +14,7 @@ type Draft = { title: string; body: string; tags?: string[] }
 
 import { adviseRotation, ANGLES, INFO_FORMATS, INTRO_TYPES, REVIEW_INTRO_TYPES, TOPIC_GROUPS } from '@/lib/writing/rotation'
 import { buildCopyPackage, postLogLine } from '@/lib/writing/export'
-import { isPrescriptionStale, prescriptionAgeDays } from '@/lib/analysis/prescription'
+import { isPrescriptionStale, prescriptionAgeDays, prescriptionKey } from '@/lib/analysis/prescription'
 import type { PooledFactor } from '@/lib/analysis/factors'
 import type { IntentSuggestion } from '@/lib/analysis/intent'
 import { Badge, Card, Field, inputClass } from '@/components/ui'
@@ -24,6 +24,18 @@ import SimilarityCard from '@/components/SimilarityCard'
 import MineOverlapCard from '@/components/MineOverlapCard'
 import SpellCard from '@/components/SpellCard'
 import CopyButton from '@/components/CopyButton'
+
+/**
+ * 글쓰기 버튼에 박는 화자 — **누르기 전에 보이게 하려고 만들었다.**
+ *
+ * 유형을 잘못 두고 「AI로 본문 쓰기」를 누르면, 요청한 것과 다른 화자의 글이 나오는데
+ * 그게 결과물을 다 읽고 나서야 드러났다. 버튼에 화자를 박으면 그 전에 눈에 걸린다.
+ */
+const SPEAKER_LABEL: Record<PostType, string> = {
+  promo: '센터',
+  info: '아는 사람',
+  review: '방문객',
+}
 
 const TYPE_HINT: Record<PostType, string> = {
   promo: '센터가 1인칭으로 쓰는 홍보글. 목표는 방문 상담 예약입니다. 메인 키워드 5~7회, 정식 상호명 3회.',
@@ -68,7 +80,14 @@ export default function Editor({
   const router = useRouter()
 
   const [id, setId] = useState(existing?.id ?? '')
-  const [type, setType] = useState<PostType>(existing?.type ?? initialType ?? 'info')
+  /*
+   * 기본값을 정보글 → **홍보글**로 바꿨다 (2026-08-07).
+   *
+   * 회원이 홍보글을 뽑았다고 생각했는데 후기글 구조가 나온 일이 있었다. 유형이 무엇이든
+   * 화면에서 안 보이면 같은 일이 또 난다 — 기본값을 가장 많이 쓰는 유형으로 두고,
+   * 아래 「AI로 … 쓰기」 버튼에 유형과 화자를 함께 박아 누르기 전에 보이게 했다.
+   */
+  const [type, setType] = useState<PostType>(existing?.type ?? initialType ?? 'promo')
   const [status, setStatus] = useState<PostStatus>(existing?.status ?? 'draft')
   const [storeId, setStoreId] = useState(existing?.storeId ?? initialStoreId ?? stores[0]?.id ?? '')
   const [title, setTitle] = useState(existing?.title ?? '')
@@ -154,8 +173,96 @@ export default function Editor({
     }
   }, [mainKeyword])
 
-  const rxAge = prescription ? prescriptionAgeDays(prescription.date) : 0
-  const rxStale = prescription ? isPrescriptionStale(prescription.date) : false
+  /*
+   * 처방을 **state 로 들고 있는다.**
+   *
+   * 예전에는 서버에서 받은 prop 을 그대로 그렸고, 「다시 분석」은 /serp 화면으로 넘기는
+   * 링크였다. 회원 요청: "이 화면에서 다시 분석되게 바꿔줘, 화면 이동 없이."
+   * 쓰다 만 제목·본문을 들고 딴 화면으로 갔다 오는 것이 실제로 번거로운 흐름이었다.
+   */
+  const [rx, setRx] = useState<Prescription | undefined>(prescription)
+  const [rxBusy, setRxBusy] = useState(false)
+  const [rxMsg, setRxMsg] = useState<string | null>(null)
+  const rxAge = rx ? prescriptionAgeDays(rx.date) : 0
+  const rxStale = rx ? isPrescriptionStale(rx.date) : false
+  /*
+   * **처방이 지금 메인 키워드의 것인지.**
+   *
+   * 처방은 페이지를 열 때의 키워드로 서버에서 받아온다. 그 뒤에 회원이 메인 키워드를 바꾸면
+   * 카드에는 옛 키워드의 처방이 남아 있고, 그게 그대로 AI 지시문에 실렸다 — 「봉명동
+   * 헬스장」을 쓰면서 「쌍용동 헬스장」 상위 글의 제목·분량을 맞추라고 시키는 셈이다.
+   * 원래도 있던 구멍인데, 이 화면에서 다시 분석하게 만들면서 더 눈에 띄게 됐다.
+   *
+   * 어긋나면 **지시문에 넣지 않고**, 왜 안 넣는지 화면에 적는다 (조용히 빼지 않는다).
+   */
+  const rxMatches = Boolean(rx && mainKeyword.trim() && prescriptionKey(mainKeyword) === rx.key)
+
+  /*
+   * 이 화면에서 바로 다시 분석한다.
+   *
+   * `/api/serp` 가 이미 분석과 저장을 다 한다 (keepPrescription). 그래서 여기서는
+   * 부르고 결과만 갈아끼우면 된다 — 저장은 서버가 했으므로 새로고침해도 남아 있다.
+   *
+   * 분석하는 키워드는 **지금 화면의 메인 키워드**다. 처방에 붙어 있던 옛 키워드가 아니다 —
+   * 키워드를 바꿔 놓고 「다시 분석」을 누르면 바뀐 쪽을 봐야 한다.
+   */
+  async function reanalyze() {
+    const kw = mainKeyword.trim()
+    if (!kw) {
+      setRxMsg('메인 키워드를 먼저 넣어주세요.')
+      return
+    }
+    setRxBusy(true)
+    setRxMsg('상위 글을 다시 읽고 있습니다… 30초쯤 걸립니다.')
+    try {
+      const ctl = new AbortController()
+      const bell = setTimeout(() => ctl.abort(), 90_000)
+      const res = await fetch('/api/serp', {
+        signal: ctl.signal,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: kw }),
+      }).finally(() => clearTimeout(bell))
+      const raw = await res.text()
+      let json: { analysis?: { prescription?: string[]; items?: unknown[]; mock?: boolean }; error?: string }
+      try {
+        json = JSON.parse(raw)
+      } catch {
+        setRxMsg(explainNonJson(res, raw))
+        return
+      }
+      if (!res.ok || !json.analysis) {
+        setRxMsg(json.error ?? '분석에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+        return
+      }
+      const items = json.analysis.prescription ?? []
+      if (!items.length) {
+        setRxMsg('상위 글에서 처방을 뽑지 못했습니다. 분석 화면에서 「붙여넣어 분석」으로 진행해 보세요.')
+        return
+      }
+      setRx({
+        key: prescriptionKey(kw),
+        keyword: kw,
+        items,
+        date: new Date().toISOString().slice(0, 10),
+        sampled: json.analysis.items?.length ?? 0,
+      })
+      setUseRx(true)
+      setRxMsg(
+        json.analysis.mock
+          ? '표본 데이터로 분석했습니다 — 실제 순위가 아닙니다.'
+          : `다시 분석했습니다 — 처방 ${items.length}개를 갱신했습니다.`
+      )
+    } catch (e) {
+      setRxMsg(
+        e instanceof Error && e.name === 'AbortError'
+          ? '분석이 오래 걸려 중단했습니다. 잠시 후 다시 눌러주세요.'
+          : '분석 중 오류가 발생했습니다.'
+      )
+    } finally {
+      setRxBusy(false)
+    }
+  }
 
   const store = stores.find((s) => s.id === storeId)
   const subKeywords = [sub1, legacySub].filter(Boolean)
@@ -308,7 +415,7 @@ export default function Editor({
           eventText,
           sponsorship,
           // 상위노출 분석에서 나온 처방 — 이게 빠지면 분석이 글에 반영되지 않는다
-          prescription: useRx ? prescription?.items : undefined,
+          prescription: useRx && rxMatches ? rx?.items : undefined,
           ...extra,
         }),
       }).finally(() => clearTimeout(bell))
@@ -393,6 +500,16 @@ export default function Editor({
     const all = Array.from(new Set([...base, ...extra, ...generic, ...sponsorTag])).slice(0, 12)
     setTagText(all.join(', '))
   }
+
+  /*
+   * 화자 검사(checker 의 voice 항목)가 걸렸는지. 본문이 있을 때만 본다 —
+   * 빈 화면에 경고를 띄우면 소음이 된다.
+   */
+  const voiceMismatch = useMemo(() => {
+    if (!body.trim()) return null
+    const v = result.items.find((i) => i.id === 'voice')
+    return v && v.level !== 'pass' ? (v.hint ?? v.value) : null
+  }, [body, result])
 
   const tone = result.score >= 85 ? 'good' : result.score >= 65 ? 'warn' : 'bad'
 
@@ -763,7 +880,7 @@ export default function Editor({
                       <span className="block size-[14px]">
                         <IconSpark />
                       </span>
-                      {aiBusy ? '쓰는 중…' : 'AI로 본문 쓰기'}
+                      {aiBusy ? '쓰는 중…' : `AI로 ${POST_TYPE_LABEL[type]} 쓰기 (화자: ${SPEAKER_LABEL[type]})`}
                     </button>
                     {/* 두 번째 호출 — 초안이 85점 미만일 때만 보인다 */}
                     {fixIssues && (
@@ -799,22 +916,44 @@ export default function Editor({
                 )}
 
                 {/*
+                  **화자가 어긋났으면 여기서 먼저 말한다.**
+
+                  회원이 홍보글을 뽑았다고 생각했는데 후기글 구조·말투로 나온 일이 있었다.
+                  검수기는 그걸 잡고 있었지만(voice 항목) 검수 탭을 열어야 보였고, 회원은
+                  본문을 다 읽고 나서 알았다. 유형이 틀렸든 모델이 어긋났든, 결과물 바로
+                  위에서 눈에 걸려야 한다.
+                */}
+                {voiceMismatch && (
+                  <div className="mb-3 rounded-[14px] border border-red-500/40 bg-red-500/10 px-3.5 py-3 text-[12px] leading-relaxed">
+                    <p className="font-bold text-red-700 dark:text-red-200">
+                      화자가 어긋났습니다 — 지금 유형은 「{POST_TYPE_LABEL[type]}」(화자: {SPEAKER_LABEL[type]})입니다
+                    </p>
+                    <p className="muted mt-1">{voiceMismatch}</p>
+                    <p className="muted mt-1.5">
+                      {type === 'review'
+                        ? '센터가 1인칭으로 쓰는 글을 원하셨다면 위에서 글 유형을 「홍보글」로 바꾸고 다시 쓰세요.'
+                        : '방문객 시점으로 쓰려면 글 유형을 「후기글」로 바꾸세요. 유형이 맞다면 「검수 항목 고쳐 쓰기」로 화자를 되돌릴 수 있습니다.'}
+                    </p>
+                  </div>
+                )}
+
+                {/*
                   상위노출 분석에서 나온 처방을 여기서 보여주고 AI 지시문에 함께 보낸다.
                   예전에는 분석 화면에만 있어서 회원이 외워 옮겨 적어야 했다 — 즉 분석
                   결과가 글에 반영되는 경로가 하나도 없었다.
                 */}
-                {prescription && (
+                {rx && (
                   <div
                     data-rx="card"
                     className={`mb-3 rounded-[14px] border px-3.5 py-3 ${
-                      useRx
+                      useRx && rxMatches
                         ? 'border-brand-500/30 bg-brand-500/8'
                         : 'bd surface opacity-70'
                     }`}
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[12.5px] font-bold">
-                        「{prescription.keyword}」 상위노출 처방 {prescription.items.length}개
+                        「{rx.keyword}」 상위노출 처방 {rx.items.length}개
                       </span>
                       {rxStale ? (
                         <Badge tone="warn">{rxAge}일 전 분석 — 다시 보는 게 좋습니다</Badge>
@@ -833,7 +972,7 @@ export default function Editor({
                       </label>
                     </div>
                     <ul className="mt-2 space-y-1">
-                      {prescription.items.map((it, i) => (
+                      {rx.items.map((it, i) => (
                         <li key={i} className="flex gap-1.5 text-[11.5px] leading-relaxed">
                           <span className="muted shrink-0">·</span>
                           <span>{it}</span>
@@ -841,17 +980,88 @@ export default function Editor({
                       ))}
                     </ul>
                     <p className="muted mt-2 text-[11px] leading-relaxed">
-                      상위 {prescription.sampled}개 글을 분석한 결과입니다.{' '}
-                      {useRx
-                        ? '「AI로 본문 쓰기」를 누르면 이 내용을 지시문에 함께 넣습니다.'
-                        : '체크를 켜면 AI 지시문에 함께 넣습니다.'}{' '}
-                      <a
-                        href={`/serp?keyword=${encodeURIComponent(prescription.keyword)}`}
-                        className="text-brand-600 dark:text-brand-100 font-semibold underline"
-                      >
-                        다시 분석
-                      </a>
+                      상위 {rx.sampled}개 글을 분석한 결과입니다.{' '}
+                      {!rxMatches
+                        ? ''
+                        : useRx
+                          ? '「AI로 본문 쓰기」를 누르면 이 내용을 지시문에 함께 넣습니다.'
+                          : '체크를 켜면 AI 지시문에 함께 넣습니다.'}
                     </p>
+                    {!rxMatches && (
+                      <p className="mt-1.5 rounded-[10px] bg-amber-500/12 px-2.5 py-1.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-100">
+                        지금 메인 키워드는 「{mainKeyword.trim() || '(비어 있음)'}」인데 이 처방은
+                        「{rx.keyword}」의 것입니다. <b>그래서 글에 반영하지 않습니다</b> — 다른 키워드의 상위 글
+                        기준을 맞추면 오히려 어긋납니다. 아래 「지금 다시 분석」을 누르면 이 키워드로 갈아끼웁니다.
+                      </p>
+                    )}
+                    {/*
+                      **여기서 바로 다시 분석한다.** 예전에는 /serp 화면으로 넘기는 링크였고,
+                      쓰다 만 글을 들고 딴 화면에 갔다 와야 했다. 분석 화면으로 가는 길은
+                      옆에 남겨 둔다 — 처방 말고 상위 글 목록·유사문서까지 볼 때 필요하다.
+                    */}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={reanalyze}
+                        disabled={rxBusy}
+                        className="bd rounded-full border px-3 py-1.5 text-[11.5px] font-bold hover:bg-slate-500/8 disabled:opacity-50"
+                      >
+                        {rxBusy ? '분석 중…' : '지금 다시 분석'}
+                      </button>
+                      <a
+                        href={`/serp?keyword=${encodeURIComponent(mainKeyword.trim() || rx.keyword)}`}
+                        className="muted text-[11px] underline"
+                      >
+                        분석 화면에서 자세히 보기
+                      </a>
+                    </div>
+                    {rxMsg && (
+                      <p
+                        className={`mt-2 rounded-[10px] px-2.5 py-1.5 text-[11px] leading-relaxed ${
+                          rxBusy ? 'surface muted' : 'bg-brand-500/10 text-brand-700 dark:text-brand-100'
+                        }`}
+                      >
+                        {rxMsg}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/*
+                  처방이 아예 없을 때도 이 화면에서 만들 수 있어야 한다 — 예전에는 분석
+                  화면에 먼저 다녀오지 않으면 이 카드가 나타나지 않았다.
+                */}
+                {!rx && mainKeyword.trim() && (
+                  <div className="bd surface mb-3 rounded-[14px] border px-3.5 py-3">
+                    <p className="text-[12px] leading-relaxed">
+                      「{mainKeyword.trim()}」로 분석해 둔 상위노출 처방이 없습니다. 지금 분석하면 상위 글의
+                      제목·분량·이미지 수·쓰는 말을 뽑아 AI 지시문에 함께 넣습니다.
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={reanalyze}
+                        disabled={rxBusy}
+                        className="bg-brand-600 rounded-full px-3 py-1.5 text-[11.5px] font-bold text-white disabled:opacity-50"
+                      >
+                        {rxBusy ? '분석 중…' : '상위노출 분석하기'}
+                      </button>
+                      <a
+                        href={`/serp?keyword=${encodeURIComponent(mainKeyword.trim())}`}
+                        className="muted text-[11px] underline"
+                      >
+                        분석 화면에서 자세히 보기
+                      </a>
+                    </div>
+                    {rxMsg && (
+                      <p
+                        className={`mt-2 rounded-[10px] px-2.5 py-1.5 text-[11px] leading-relaxed ${
+                          rxBusy ? 'surface muted' : 'bg-brand-500/10 text-brand-700 dark:text-brand-100'
+                        }`}
+                      >
+                        {rxMsg}
+                      </p>
+                    )}
                   </div>
                 )}
                 <Field
