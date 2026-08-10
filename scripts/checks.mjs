@@ -3586,7 +3586,7 @@ ok(pmInfo5.promoNote.includes('상한은 4종류'), '유형 상한을 밝힌다'
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[58] 맞춤법 검사 — 0건과 「못 읽음」을 섞지 않는다')
-const { parsePassportKey, parseSpellResult, chunkForSpell, spellHeadline, CHUNK_MAX } =
+const { parsePassportKey, parseSpellResult, chunkForSpell, spellHeadline, dropOurWords, GYM_WORDS, CHUNK_MAX } =
   require(`${OUT}/naver/speller.js`)
 
 ok(
@@ -3635,6 +3635,69 @@ const spPartial = spellHeadline([{ before: 'a', after: 'b', kind: '맞춤법' }]
 ok(spPartial.includes('2덩어리는'), '일부만 읽었으면 몇 개를 못 읽었는지 말한다', spPartial)
 ok(spPartial.includes('눈으로 한 번 보세요'), '그럼 어떻게 하라고 알려준다')
 ok(spellHeadline([{ before:'a', after:'b', kind:'맞춤법' },{ before:'c', after:'d', kind:'띄어쓰기' }], 2, 0).includes('맞춤법 1건 · 띄어쓰기 1건'), '종류별로 센다')
+
+/*
+ * ─── 쓸 수 없는 제안 걸러내기 (2026-08-10) ─────────────────────
+ *
+ * 회원 지적: "맞춤법 검사를 했는데 오히려 제대로 안 되는 것도 있어. 3초쯤 / 5시~7시쯤 /
+ * 그릭요구르트 등 맞춤법, 띄어쓰기가 잘 될 수 있게 해줘."
+ * 실제 화면에 원문과 제안이 똑같은 줄, 엔티티가 안 풀린 줄, 따르면 키워드가 깨지는 줄이 있었다.
+ */
+// ① 원문과 제안이 같으면 버린다 — 화면에 띄우면 「뭘 고치라는 거지」가 된다
+const SP_NOOP = JSON.stringify({
+  message: {
+    result: {
+      errata_count: 2,
+      origin_html: "운동은 <span class='result_underline'>5시~7시쯤에</span> 하고 <span class='result_underline'>조으네요</span>",
+      html: "운동은 <em class='violet_text'>5시~7시쯤에</em> 하고 <em class='red_text'>좋네요</em>",
+    },
+  },
+})
+const spNoop = parseSpellResult(SP_NOOP)
+ok(spNoop.fixes.length === 1, `원문과 같은 제안을 버린다 — ${spNoop.fixes.length}건 남음`)
+ok(spNoop.fixes[0].before === '조으네요', '멀쩡한 제안은 남는다')
+ok(spNoop.skipped === 1, '버린 개수를 돌려준다 (조용히 지우지 않는다)')
+
+// 띄어쓰기 교정은 공백만 다르다 — 공백을 지워서 비교하면 이게 전부 버려진다
+const spSpace = parseSpellResult(JSON.stringify({
+  message: { result: { errata_count: 1, origin_html: "<span class='result_underline'>밥먹었어요</span>", html: "<em class='green_text'>밥 먹었어요</em>" } },
+}))
+ok(spSpace.fixes.length === 1 && spSpace.skipped === 0, '공백만 다른 띄어쓰기 제안은 버리지 않는다')
+
+// ② HTML 엔티티를 푼다 — 따옴표가 든 문장은 우리 글에 흔하다 (상담 대화·리뷰 인용)
+const spEnt = parseSpellResult(JSON.stringify({
+  message: { result: { errata_count: 1, origin_html: "<span class='result_underline'>무너진다&quot;</span>", html: "<em class='red_text'>무너진다&quot;라는</em>" } },
+}))
+ok(spEnt.fixes[0].before === '무너진다"', `엔티티를 푼다 — ${spEnt.fixes[0].before}`)
+ok(spEnt.fixes[0].after === '무너진다"라는', '제안 쪽도 푼다')
+ok(!spEnt.fixes[0].after.includes('&quot;'), '화면에 &quot; 가 안 보인다')
+
+// ③ 짝이 안 맞으면 버린다 — 어느 낱말 얘긴지 알 수 없다
+const spUnpaired = parseSpellResult(JSON.stringify({
+  message: { result: { errata_count: 2, origin_html: "<span class='result_underline'>조으네요</span>", html: "<em class='red_text'>좋네요</em> <em class='green_text'>밥 먹었어요</em>" } },
+}))
+ok(spUnpaired.fixes.length === 1 && spUnpaired.skipped === 1, '원문이 없는 제안은 버린다')
+
+// ④ 우리 낱말은 뺀다 — 특히 키워드는 붙여 써야 검색에 걸린다
+const SP_FIXES = [
+  { before: '쌍용동PT까지', after: '쌍용동 PT까지', kind: '띄어쓰기' },
+  { before: '랫풀다운을', after: '랫 풀다운을', kind: '띄어쓰기' },
+  { before: '조으네요', after: '좋네요', kind: '맞춤법' },
+]
+const dropped = dropOurWords(SP_FIXES, ['쌍용동PT', 'MTO 피트니스 쌍용점'])
+ok(dropped.kept.length === 1 && dropped.kept[0].before === '조으네요', `우리 낱말 제안을 뺀다 — ${dropped.kept.length}건 남음`)
+ok(dropped.ours === 2, '뺀 개수를 돌려준다')
+ok(GYM_WORDS.includes('랫풀다운'), '기구 이름 목록에 랫풀다운이 있다')
+// 두 글자 미만은 목록에 넣지 않는다 — 너무 흔해서 멀쩡한 제안까지 지운다
+ok(dropOurWords([{ before: '조으네요', after: '좋네요', kind: '맞춤법' }], ['조']).kept.length === 1, '한 글자는 무시 목록에 안 넣는다')
+ok(dropOurWords(SP_FIXES, []).kept.length === 2, '키워드를 안 넘기면 기구 이름만 빠진다')
+
+// 버린 것을 머리말에서 말한다 — 조용히 지우면 「검사기가 놓쳤다」로 읽힌다
+const spDropHead = spellHeadline([{ before: 'a', after: 'b', kind: '맞춤법' }], 3, 0, 2, 1)
+ok(spDropHead.includes('원문과 같거나 짝이 안 맞은 제안 2건'), '버린 이유를 밝힌다', spDropHead)
+ok(spDropHead.includes('우리 낱말'), '우리 낱말로 뺀 것도 밝힌다')
+ok(!spellHeadline([{ before: 'a', after: 'b', kind: '맞춤법' }], 3, 0).includes('빼고 보여줍니다'), '버린 게 없으면 그 말을 안 한다')
+ok(spellHeadline([], 5, 0, 3, 0).includes('교정할 곳이 없습니다'), '0건일 때도 버린 것을 말한다')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[59] 제목 유형 — 전국 판에서 통하는 방식을 우리 판에서 재본다')

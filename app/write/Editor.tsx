@@ -1423,7 +1423,21 @@ export default function Editor({
               storeId={storeId}
               postId={id || undefined}
             />
-            <SpellCard text={body} />
+            {/*
+              검사기가 모르는 우리 낱말을 함께 넘긴다 — 상호명·지역 키워드·검색 키워드.
+              키워드는 붙여 써야 검색에 걸리므로 「쌍용동PT → 쌍용동 PT」를 따르면 안 된다.
+            */}
+            <SpellCard
+              text={body}
+              ignore={[
+                store?.legalName ?? '',
+                store?.name ?? '',
+                mainKeyword,
+                ...subKeywords,
+                localKeyword,
+                ...(store?.localKeywords ?? []),
+              ].filter(Boolean)}
+            />
           </div>
         </div>
       </div>
