@@ -477,7 +477,17 @@ export default function Editor({
     if (!store) return
     const fixing = Boolean(extra.draft)
     setAiBusy(true)
-    setAiMsg(fixing ? '검수에서 걸린 항목을 고치는 중입니다… 1분쯤 걸립니다.' : '글을 쓰는 중입니다… 1분쯤 걸립니다.')
+    /*
+     * 정보글은 자료를 먼저 검색하고 쓴다 (회원 지적: "너가 알아서 자료를 찾아서 작성해줘야지").
+     * 검색이 붙으면 시간이 더 걸리므로 무엇을 하고 있는지 밝힌다 — 안 그러면 멈춘 줄 안다.
+     */
+    setAiMsg(
+      fixing
+        ? '검수에서 걸린 항목을 고치는 중입니다… 1분쯤 걸립니다.'
+        : type === 'info'
+          ? '자료를 찾아보고 글을 쓰는 중입니다… 2분쯤 걸릴 수 있습니다.'
+          : '글을 쓰는 중입니다… 1분쯤 걸립니다.'
+    )
     try {
       /*
        * 브라우저가 무한정 매달려 있지 않게 스스로 끊는다. 한 번 호출이 1분 안팎이라
@@ -516,6 +526,8 @@ export default function Editor({
         needsRevise?: boolean
         fixIssues?: string[]
         provider?: string
+        /** 정보글에서 자료를 찾아 인용했는지 */
+        searched?: boolean
         error?: string
         check?: { score?: number; issues?: unknown[] }
       }
@@ -566,6 +578,7 @@ export default function Editor({
           (left
             ? `아직 ${left}개 항목이 남았습니다${fails ? ` (그중 수정필요 ${fails}개 — 점수는 이걸 다 없애야 올라갑니다)` : ' (전부 주의라서 발행해도 됩니다)'}.`
             : '검수 항목을 모두 통과했습니다.') +
+          (json.searched ? ' · 자료를 찾아 인용했습니다 (출처가 맞는지 한 번 확인해 주세요)' : '') +
           (json.provider ? ` · ${json.provider}` : '')
       )
     } catch (e) {
@@ -898,8 +911,8 @@ export default function Editor({
                   */}
                   {type === 'info' && (
                     <Field
-                      label="근거 · 출처 (인용할 자료)"
-                      hint="여기 있는 것만 인용하고 출처를 함께 씁니다. 비워두면 연구·수치 주장을 하지 않고 현장 경험으로만 씁니다"
+                      label="근거 · 출처 (비워두면 AI 가 찾습니다)"
+                      hint="정보글은 AI 가 먼저 자료를 검색해서 출처와 함께 인용합니다. 반드시 넣어야 하는 자료가 있을 때만 여기 적으세요"
                     >
                       <textarea
                         value={sourceNote}
@@ -911,9 +924,15 @@ export default function Editor({
                         }
                       />
                       <p className="muted mt-1.5 text-[11px] leading-relaxed">
-                        <b>기관 이름·자료명·연도</b>를 같이 적어주세요 — 글에 그대로 인용하고 문장
-                        끝에 출처를 붙입니다. 링크가 있으면 더 좋습니다. <b>여기 없는 연구는 만들지
-                        않습니다</b> — 출처 없는 인용은 검수에서 즉시수정으로 잡힙니다.
+                        <b>비워두시면 됩니다.</b> 정보글을 쓸 때 AI 가 기관·학회 자료를 검색해서
+                        찾은 것만 인용하고 출처를 함께 적습니다 (대한비만학회·질병관리청·세계보건기구
+                        같은 곳). <b>찾은 자료가 없으면 인용하지 않고</b> 상담 경험으로 씁니다 —
+                        기억으로 지어내지 않습니다.
+                      </p>
+                      <p className="muted mt-1 text-[11px] leading-relaxed">
+                        여기 적으시면 <b>검색 결과보다 먼저</b> 그 자료를 씁니다. 기관 이름·자료명·연도를
+                        같이 적어주세요. <b>발행 전에 출처가 맞는지 한 번 눌러 확인해 주세요</b> —
+                        검색으로 찾았어도 사람이 보는 게 맞습니다.
                       </p>
                     </Field>
                   )}

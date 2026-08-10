@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { readDB } from '@/lib/store'
 import { poolStoredRuns } from '@/lib/analysis/factors'
-import { AiError, aiStatus, askLlm, extractJson } from '@/lib/ai/llm'
+import { AiError, aiStatus, askLlm, canSearchWeb, extractJson } from '@/lib/ai/llm'
 import { buildFixPrompt, buildSystemPrompt, buildUserPrompt } from '@/lib/ai/prompt'
 import { PUBLISH_THRESHOLD, SPECS, checkPost, summarize } from '@/lib/writing/checker'
 import type { PostType } from '@/lib/types'
@@ -182,6 +182,11 @@ async function handle(req: Request, ms: () => string) {
       sponsorship: body.sponsorship,
       recent,
       prescription: body.prescription,
+      /*
+       * 정보글은 **자료를 직접 찾아** 인용한다 (회원 지적: "내가 자료를 찾으면 안 되고 너가
+       * 알아서 자료를 찾아서 작성해줘야지"). 키가 검색을 못 하면 인용하지 않게 지시가 바뀐다.
+       */
+      canSearch: type === 'info' && canSearchWeb(),
     }
 
     const system = buildSystemPrompt(type)
@@ -283,7 +288,7 @@ async function handle(req: Request, ms: () => string) {
 
     // 문단을 12개 이상으로 쪼개게 한 뒤 본문이 길어졌다 — 기본 8192 로는 잘릴 수 있다
     console.log('[write] 초안 생성 시작', ms())
-    const draft = asDraft(extractJson(await askLlm(system, messages, WRITE_MAX_TOKENS)))
+    const draft = asDraft(extractJson(await askLlm(system, messages, WRITE_MAX_TOKENS, request.canSearch)))
     console.log('[write] 초안 생성 끝', ms(), draft ? `본문 ${draft.body.length}자` : '파싱 실패')
     if (!draft) {
       return NextResponse.json({ error: '글 형식을 읽지 못했습니다. 다시 시도해 주세요.' }, { status: 502 })
@@ -297,6 +302,8 @@ async function handle(req: Request, ms: () => string) {
       needsRevise: result.score < PUBLISH_THRESHOLD,
       fixIssues: fixList(result),
       provider: ai.label,
+      // 자료를 찾아 인용했는지 — 화면에서 회원에게 밝힌다 (못 찾는 키도 있다)
+      searched: request.canSearch === true,
       check: {
         score: result.score,
         ...summarize(result),

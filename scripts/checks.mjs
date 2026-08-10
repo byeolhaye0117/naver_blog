@@ -953,7 +953,7 @@ ok(
 )
 
 console.log('\n[31] AI 글쓰기 — 응답 파싱과 지시문')
-const { extractJson, extractText, pickModel } = require(`${OUT}/ai/llm.js`)
+const { extractJson, extractText, pickModel, searchTools } = require(`${OUT}/ai/llm.js`)
 const { buildSystemPrompt, buildUserPrompt, buildFixPrompt } = require(`${OUT}/ai/prompt.js`)
 
 // 모델이 코드펜스·설명을 붙여 보내도 JSON 만 뽑아야 한다
@@ -5273,6 +5273,59 @@ ok(!buildSystemPrompt('promo').includes('이 글은 팩트가 우선이다'), '�
 const factPkg = buildCopyPackage({ ...goodPromo, type: 'info', id:'x', status:'draft', storeId:'s', createdAt:'', updatedAt:'' }, { legalName:'a', location:'b', phone:'c' })
 ok(factPkg.checklist.some((c) => c.label.includes('숫자와 단정 문장')), '정보글 체크리스트에 팩트 확인이 있다')
 ok(buildCopyPackage({ ...goodPromo, id:'x', status:'draft', storeId:'s', createdAt:'', updatedAt:'' }, { legalName:'a', location:'b', phone:'c' }).checklist.every((c) => !c.label.includes('숫자와 단정 문장')), '홍보글에는 안 넣는다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[90] 자료를 AI 가 직접 찾는다')
+/*
+ * 회원 지적 — "내가 자료를 찾으면 안 되고 너가 알아서 자료를 찾아서 작성해줘야지."
+ * 앞 판에서는 사람이 출처를 붙여넣게 만들었다. 그건 일을 회원에게 넘긴 것이다.
+ */
+const anthTools = searchTools('anthropic')
+ok(Array.isArray(anthTools) && anthTools[0].type === 'web_search_20250305', 'Anthropic 은 서버 검색 도구를 쓴다')
+ok(anthTools[0].max_uses > 0, '검색 횟수에 상한을 둔다 (비용)')
+ok(searchTools('gemini')?.[0]?.google_search !== undefined, 'Gemini 는 google_search 를 쓴다')
+// 못 하는 것을 되는 척하지 않는다 — chat/completions 에는 표준 검색 도구가 없다
+ok(searchTools('openai') === null, 'OpenAI 호환은 검색 도구가 없다')
+ok(searchTools('clova') === null, 'CLOVA 도 없다')
+
+// 검색 결과 블록이 섞여 와도 본문만 뽑아야 한다
+const withSearchBlocks = JSON.stringify({
+  content: [
+    { type: 'server_tool_use', id: 'x', name: 'web_search' },
+    { type: 'web_search_tool_result', content: [{ type: 'web_search_result', title: '지침', url: 'https://e.kr' }] },
+    { type: 'text', text: '{"title":"제목","body":"본문"}' },
+  ],
+})
+ok(extractText(withSearchBlocks) === '{"title":"제목","body":"본문"}', '검색 블록을 걸러내고 본문만 읽는다')
+
+// ─── 지시문: 찾을 수 있을 때 / 없을 때 / 회원이 지정했을 때
+const srcBase = { type: 'info', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'] }
+const searchPrompt = buildUserPrompt({ ...srcBase, canSearch: true })
+ok(searchPrompt.includes('검색 도구로 직접 찾아서 인용한다'), '찾아서 인용하라고 한다')
+ok(searchPrompt.includes('먼저 검색해서'), '쓰기 전에 찾으라고 한다')
+ok(searchPrompt.includes('대한비만학회'), '어디서 찾을지 알려준다')
+ok(searchPrompt.includes('개인 블로그·카페·쇼핑몰·광고 글은 근거로 쓰지 않는다'), '쓰면 안 되는 출처도 알려준다')
+ok(searchPrompt.includes('검색으로 확인한 것만 쓴다'), '기억으로 채우지 말라고 한다')
+ok(searchPrompt.includes('빈손으로 오는 것이 지어내는 것보다 낫다'), '못 찾았을 때 무엇이 옳은지 못 박는다')
+ok(searchPrompt.includes('인용이 아니라 장식이다'), '주제와 어긋난 인용을 막는다')
+ok(!searchPrompt.includes('자료를 찾을 수 없는 상태다'), '찾을 수 있으면 못 한다고 하지 않는다')
+
+const noSearchPrompt = buildUserPrompt({ ...srcBase, canSearch: false })
+ok(noSearchPrompt.includes('자료를 찾을 수 없는 상태다'), '못 찾으면 그렇다고 밝힌다')
+ok(noSearchPrompt.includes('연구·논문·전문가 인용과 효과 수치를 쓰지 않는다'), '그때는 인용을 막는다')
+ok(!noSearchPrompt.includes('검색 도구로 직접 찾아서'), '못 하는 것을 시키지 않는다')
+
+// 회원이 지정한 자료는 검색 결과보다 먼저
+const bothPrompt = buildUserPrompt({ ...srcBase, canSearch: true, sourceNote: '대한비만학회 2024 진료지침' })
+ok(bothPrompt.includes('### 반드시 포함할 자료 (회원이 직접 지정했다)'), '지정한 자료를 따로 낸다')
+ok(bothPrompt.includes('검색 결과보다 **먼저** 쓴다'), '지정한 것을 우선한다')
+ok(bothPrompt.includes('검색 도구로 직접 찾아서 인용한다'), '지정이 있어도 검색은 계속한다')
+// 검색이 안 되는 키인데 회원이 자료를 넣었으면 그 자료만 쓴다
+const onlyNotePrompt = buildUserPrompt({ ...srcBase, canSearch: false, sourceNote: '대한비만학회 2024 진료지침' })
+ok(onlyNotePrompt.includes('인용은 이 안에서만 한다'), '검색이 없으면 적어준 자료만 쓴다')
+ok(onlyNotePrompt.includes('대한비만학회 2024 진료지침'), '적은 것을 그대로 넣는다')
+// 홍보글·후기글은 대상이 아니다
+ok(!buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], canSearch: true }).includes('검색 도구로'), '홍보글에는 검색 지시를 안 낸다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
