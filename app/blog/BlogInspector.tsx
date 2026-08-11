@@ -12,6 +12,7 @@ import {
   type BlogProfile,
   type Competition,
 } from '@/lib/analysis/blogscore'
+import type { ActivityResult } from '@/lib/analysis/activity'
 import {
   VERDICT_LABEL,
   VERDICT_TONE,
@@ -30,6 +31,7 @@ import { Badge, Card, Empty, Field, Progress, inputClass } from '@/components/ui
 interface Result {
   profile: BlogProfile
   grade: BlogGradeResult
+  activity?: ActivityResult | null
   indexedRate?: number
   exposureRate?: number
   firstPageRate?: number
@@ -325,21 +327,20 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
                   나란히 비교할 수 없었습니다 — 지금은 방향이 같습니다.
                 </p>
                 <p>
-                  <b>시중 도구 대부분은 활동 지표로 점수를 냅니다</b> — 개설일·운영 기간·평균 방문자·
-                  스크랩 수·한 달 발행 수·총 게시물. 블로그가 얼마나 크고 부지런한지를 봅니다.
-                  그 축은 이 앱에서도 아래 <b>「추정 힘 N점」</b> 칸으로 따로 보여줍니다 — 저쪽 점수와
-                  비교할 자리는 그 칸입니다.
+                  <b>시중 도구 대부분은 활동 지표로 점수를 냅니다</b> — 방문자·이웃·공감·댓글·발행 수·
+                  운영 기간. 블로그가 얼마나 크고 부지런한지를 봅니다. <b>이제 그 축도 이 앱에서
+                  같이 잽니다</b> — 아래 「활동 지표」 칸이 저쪽 점수와 비교할 자리입니다.
                 </p>
                 <p>
-                  <b>이 앱은 실제 검색 노출을 표본으로 잽니다</b> — 최근 글 제목을 검색해서 색인이
-                  됐는지, 30위·1페이지에 걸리는지. 방문자 수는 밖에서 볼 수 없으니 아예 안 씁니다
-                  (못 재는 것을 추측해 점수에 섞으면 숫자 전체가 거짓이 됩니다).
+                  <b>이 앱의 등급은 실제 검색 노출로 냅니다</b> — 최근 글 제목을 검색해서 색인이
+                  됐는지, 30위·1페이지에 걸리는지. 활동 지표는 <b>등급에 섞지 않습니다.</b> 우리 판에서
+                  재봤을 때 상위 5편이 블로그 등급 순서로 줄을 서지 않았기 때문입니다 — 등급이 가장
+                  높은 블로그가 5위였습니다.
                 </p>
                 <p>
-                  그래서 <b>방문자는 많은데 검색 노출이 약한 블로그</b>는 저쪽이 높게, 이쪽이 낮게
-                  나옵니다. 반대로 <b>규모는 작아도 쓰는 글이 잘 걸리는 블로그</b>는 이쪽이 높게
-                  나옵니다. 우리 목적(검색 상위노출)에는 이쪽 축이 직접 쓸모가 있고, 블로그가
-                  전체적으로 얼마나 자랐는지는 저쪽이 잘 보여줍니다.
+                  그래서 <b>방문자는 많은데 검색 노출이 약한 블로그</b>는 저쪽이 높게, 이쪽 등급이 낮게
+                  나옵니다. 반대로 <b>규모는 작아도 쓰는 글이 잘 걸리는 블로그</b>는 이쪽 등급이 높게
+                  나옵니다. 두 숫자를 나란히 보시면 어느 쪽 이야기인지 바로 갈립니다.
                 </p>
               </div>
             </details>
@@ -380,6 +381,59 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
             )}
           </Card>
 
+          {/*
+            **활동 지표 — 시중 도구와 같은 축.**
+
+            회원이 「우리도 저기서만 볼 수 있는 걸 분석하면 되지 않냐」고 했고, 찔러보니
+            방문자·이웃·글 수·댓글·공감이 로그인 없이 다 나왔다. 그래서 저쪽 점수와
+            **비교할 자리**를 만들었다. 등급과 합치지 않고 나란히 둔다.
+          */}
+          {data.activity && (
+            <Card
+              title={`활동 지표 ${data.activity.score}점 · ${data.activity.size}`}
+              subtitle="라블로그·블덱스 같은 시중 도구가 점수를 내는 축입니다. 여기 값과 저쪽 값을 비교하세요 — 위쪽 등급은 검색 노출로만 냅니다."
+              right={
+                <Badge tone={data.activity.score >= 70 ? 'good' : data.activity.score >= 45 ? 'info' : 'warn'}>
+                  {data.activity.size}
+                </Badge>
+              }
+            >
+              <Progress value={data.activity.score} />
+              <ul className="mt-3 space-y-2">
+                {data.activity.axes.map((a) => (
+                  <li key={a.label} className="panel bd rounded-xl border px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12.5px] font-bold">{a.label}</span>
+                      {/* 관찰값과 점수를 갈라 놓는다 — 앞은 사실, 뒤는 우리 해석이다 */}
+                      <span className="text-[12px]">{a.observed}</span>
+                      <span className="tnum muted ml-auto text-[11.5px]">
+                        {a.value} / {a.max}
+                      </span>
+                    </div>
+                    <p className="muted mt-1 text-[11px] leading-relaxed">{a.note}</p>
+                  </li>
+                ))}
+              </ul>
+              <p className="muted mt-2.5 text-[11px] leading-relaxed">
+                <b>굵은 숫자는 관찰값이고 점수는 우리 해석입니다.</b> 네이버도 시중 도구도 구간 기준을
+                공개하지 않으므로, 위 경계는 이 앱이 임의로 나눈 것입니다. 저쪽 점수와 몇 점 차이가 나는
+                것은 구간을 다르게 잡았기 때문이고, 관찰값(방문자·이웃·글 수)은 같은 숫자여야 합니다.
+              </p>
+              {Boolean(data.activity.facts.unsearchable) && (
+                <p className="muted mt-1.5 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-[11.5px] leading-relaxed">
+                  최근 글 가운데 <b>{data.activity.facts.unsearchable}편이 「검색 허용 안 함」</b>으로
+                  올라가 있습니다. 그 글은 검색에 안 나오는 게 정상이라 색인 검사에서 뺐습니다 —
+                  누락과는 다른 문제입니다.
+                </p>
+              )}
+              <p className="muted mt-1.5 text-[11px] leading-relaxed">
+                밖에서 볼 수 없어 넣지 않은 것: {data.activity.blind.join(' · ')}. 이건 「네이버 블로그
+                통계」 안에 있어서 <b>블로그 주인이 로그인해야</b> 열립니다 (시중 도구가 데스크톱 프로그램을
+                쓰는 이유입니다).
+              </p>
+            </Card>
+          )}
+
           <Card
             title={`추정 힘 ${p.score}점`}
             subtitle="네이버가 매기는 블로그 지수는 공개되지 않습니다. 이 점수는 밖에서 관찰할 수 있는 것만으로 만든 추정값이니, 숫자보다 아래 항목을 보세요."
@@ -405,7 +459,8 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
               </p>
             )}
             <p className="muted mt-2 text-[11px] leading-relaxed">
-              이웃 수·방문자 수·체류시간은 밖에서 볼 수 없어 아예 넣지 않았습니다.
+              이 점수는 <b>RSS 로 보이는 것만</b>으로 만든 옛 항목입니다. 방문자·이웃·공감은 위쪽
+              「활동 지표」 칸에서 실제 값으로 잽니다.
             </p>
           </Card>
 

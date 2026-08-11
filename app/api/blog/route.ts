@@ -14,9 +14,11 @@ import { checkUnifiedIndexed } from '@/lib/naver/unified'
 import { buildIndexCheck, summarizeIndex, type IndexCheck } from '@/lib/analysis/indexcheck'
 import { judgeAgency, scanSponsorship, type SponsorScan } from '@/lib/analysis/agency'
 import { fetchPublishedPost } from '@/lib/naver/blogpost'
+import { fetchBlogStat, fetchPostPage, fetchSympathyCount, type PostRow } from '@/lib/naver/blogstat'
+import { measureActivity } from '@/lib/analysis/activity'
 
 export const dynamic = 'force-dynamic'
-// RSS 1회 + 색인 검사 3회 × 2곳 + 노출력 표본 10회 + 본문 3편
+// RSS 1회 + 활동 지표(첫 화면 1 · 글 목록 2 · 공감 5) + 색인 3회 × 2곳 + 노출 10회 + 본문 3편
 export const maxDuration = 150
 
 /**
@@ -37,6 +39,18 @@ const INDEX_SAMPLE = 3
  * 블로그인지 가늠하기에 충분하고(표기하는 블로거는 매 글에 넣는다), 조회도 3번뿐이다.
  */
 const SPONSOR_SAMPLE = 3
+/**
+ * 공감 수를 읽을 글 수.
+ *
+ * 글마다 조회가 한 번씩 들어가므로 많이 볼 수 없다. 5편이면 「글당 반응이 어느
+ * 자리인지」는 잡힌다 — 소수점까지 맞출 일이 아니다.
+ */
+const SYMPATHY_SAMPLE = 5
+
+/** 오늘 날짜 (YYYY-MM-DD, 한국 시간) */
+function todayKst(): string {
+  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
+}
 
 export async function POST(req: Request) {
   try {
@@ -58,6 +72,54 @@ export async function POST(req: Request) {
         { status: 404 }
       )
     }
+
+    /*
+     * 활동 지표 — **시중 도구가 보는 축**.
+     *
+     * 회원이 「우리도 저기서만 볼 수 있는 걸 분석하면 되지 않냐」고 해서 찔러봤더니
+     * 방문자·이웃·글 수·댓글·공감이 **로그인 없이 다 나왔다** (blogstat.ts 주석).
+     * 그동안 화면에 「방문자는 밖에서 볼 수 없다」고 적어둔 것이 틀렸던 것이다.
+     *
+     * 이건 등급에 넣지 않는다. 규모와 검색 노출은 다른 축이고, 우리 판에서 이미
+     * 「등급 순서로 줄을 서지 않는다」를 실측했다 (factors.ts). 나란히 보여준다.
+     */
+    const today = todayKst()
+    const [stat, firstPage] = await Promise.all([fetchBlogStat(id), fetchPostPage(id, 1, 30)])
+
+    /** 주인이 「검색 허용 안 함」으로 올린 글 — 색인 검사에서 빼야 오판하지 않는다 */
+    const unsearchable = new Set((firstPage?.posts ?? []).filter((p) => !p.searchable).map((p) => p.logNo))
+
+    /*
+     * 첫 글 날짜로 운영 기간을 추정한다. 마지막 쪽만 한 번 더 읽으면 된다 —
+     * 416편짜리 블로그도 조회 한 번이다 (실측: 14쪽 마지막 글이 2010년이었다).
+     */
+    let firstPost: string | null = null
+    let deepPosts: PostRow[] = []
+    if (firstPage?.total && firstPage.total > 30) {
+      const lastPage = Math.ceil(firstPage.total / 30)
+      const deep = await fetchPostPage(id, lastPage, 30)
+      deepPosts = deep?.posts ?? []
+      const dates = deepPosts.map((p) => p.date).filter(Boolean).sort()
+      firstPost = dates[0] ?? null
+    } else if (firstPage?.posts.length) {
+      const dates = firstPage.posts.map((p) => p.date).filter(Boolean).sort()
+      firstPost = dates[0] ?? null
+    }
+
+    /** 글별 공감 수 — 앞쪽 몇 편만 (글마다 조회 한 번씩 든다) */
+    const sympathy = firstPage
+      ? await Promise.all(
+          firstPage.posts.slice(0, SYMPATHY_SAMPLE).map((p) => fetchSympathyCount(id, p.logNo).catch(() => null))
+        )
+      : []
+
+    const activity = measureActivity({
+      stat,
+      posts: firstPage?.posts ?? [],
+      firstPost,
+      sympathy,
+      today,
+    })
 
     /**
      * 노출력 — 최근 글 몇 개가 실제로 상위에 걸리는지.
@@ -83,7 +145,13 @@ export async function POST(req: Request) {
        * 통합검색 자리만 못 얻은 글"과 "검색에서 아예 빠진 글"이 같아 보인다 —
        * 앞은 키워드를 바꿀 문제, 뒤는 블로그를 살릴 문제다 (indexcheck.ts 주석).
        */
-      const idxPicks = feed.items.filter((i) => i.title.length >= 8).slice(0, INDEX_SAMPLE)
+      /*
+       * **주인이 검색을 막아둔 글은 뺀다.** 「검색 허용 안 함」으로 올린 글이 검색에
+       * 안 나오는 건 당연한데, 그걸 색인 검사에 넣으면 정상 블로그를 누락으로 오판한다.
+       */
+      const idxPicks = feed.items
+        .filter((i) => i.title.length >= 8 && ![...unsearchable].some((no) => i.link.includes(no)))
+        .slice(0, INDEX_SAMPLE)
       const idxGot: IndexCheck[] = []
       for (const it of idxPicks) {
         // 두 조회는 서로 무관하므로 같이 던진다 (한 표본에 2초씩 더 쓰지 않게)
@@ -179,6 +247,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       profile,
       grade,
+      activity,
       indexedRate,
       exposure,
       exposureRate: exposure?.exposureRate,

@@ -5436,5 +5436,102 @@ ok(gNone.grade === 'normal', '판정을 미룬다')
 ok(gNone.reason.includes('경쟁이 거의 없는 검색어'), '왜 못 쟀는지 밝힌다', gNone.reason)
 ok(gNone.reason.includes('상호명·가게 이름이 제목 앞에 오면'), '어떤 경우인지 예를 든다')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[92] 활동 지표 — 시중 도구가 보는 축을 우리도 읽는다')
+/*
+ * 회원이 우리 등급(준최 5)과 라블로그(준최 1)를 놓고 「우리도 저기서만 볼 수 있는 걸
+ * 분석하면 되지 않냐」고 물었다. 라블로그 코드에서 무엇을 긁는지 확인하고 같은 것을
+ * 로그인 없이 읽을 수 있는지 실측했다 (2026-08-11) — **전부 나왔다.**
+ *
+ *   hyoni2_  오늘 51 · 누적 90,159 · 이웃 640 · 글 416 (첫 글 2010-11-12)
+ *   pnpgym   오늘  1 · 누적  6,699 · 이웃  74 · 글 146
+ *
+ * 그래서 그동안 화면에 적어둔 「방문자는 밖에서 볼 수 없다」가 틀린 말이었다.
+ */
+const { parseBlogStat, parsePostList, parseSympathy, postDate, statEmpty } = require(`${OUT}/naver/blogstat.js`)
+const { measureActivity, band } = require(`${OUT}/analysis/activity.js`)
+
+// 모바일 블로그 첫 화면에 박힌 상태값 (실제 응답에서 잘라온 모양)
+const STAT_HTML =
+  '{"alert":{"todayVisitor":0,"totalVisitor":0},"blogInfo":{"dayVisitorCount":51,' +
+  '"subscriberCount":640,"totalVisitorCount":90159},"blogContentsCount":{"hyoni2_":' +
+  '{"data":{"postCount":416,"marketPostCount":0,"momentCount":11}}}}'
+const ST = parseBlogStat(STAT_HTML)
+ok(ST.dayVisitors === 51 && ST.totalVisitors === 90159, '오늘·누적 방문자를 읽는다', `${ST.dayVisitors}/${ST.totalVisitors}`)
+ok(ST.buddies === 640 && ST.postCount === 416, '이웃·글 수를 읽는다', `${ST.buddies}/${ST.postCount}`)
+// 같은 이름이 알림용 0 으로 먼저 나온다 — 0 을 집으면 「방문자 없는 블로그」가 된다
+ok(parseBlogStat('{"todayVisitor":0,"dayVisitorCount":0,"dayVisitorCount":51}').dayVisitors === 51,
+  '0 이 먼저 나와도 실제 값을 집는다')
+ok(parseBlogStat('<html>구조가 바뀌었다</html>') === null, '못 읽으면 null (0 으로 만들지 않는다)')
+ok(statEmpty(null) === true && statEmpty(ST) === false, '빈 값 판정')
+
+// 글 목록 — JSON.parse 로는 못 읽는다 (제목에 잘못된 \u 이스케이프가 섞여 온다)
+const LIST_JSON =
+  '{"resultCode":"S","countPerPage":"30","totalCount":"416","postList":[' +
+  '{"sellerServiceStatus":"","logNo":"224372893152","title":"%EC%B2%9C%EC%95%88+%EB%A7%9B%EC%A7%91",' +
+  '"categoryNo":"19","commentCount":"1","readCount":"","addDate":"2026. 8. 9.","openType":"2","searchYn":"true"},' +
+  '{"logNo":"224372519097","title":"%EB%B9%84%EA%B3%B5%EA%B0%9C+%EA%B8%80","categoryNo":"7",' +
+  '"commentCount":"10","addDate":"2026. 7. 30.","openType":"0","searchYn":"false"}]}'
+const PL = parsePostList(LIST_JSON)
+ok(PL.total === 416, '전체 글 수 — RSS 는 50편만 주니 이게 있어야 규모를 안다', String(PL.total))
+ok(PL.posts.length === 2, '글 2편')
+ok(PL.posts[0].title === '천안 맛집', '제목을 디코딩한다 (+ 는 공백)', PL.posts[0].title)
+ok(PL.posts[0].date === '2026-08-09', '날짜를 YYYY-MM-DD 로', PL.posts[0].date)
+ok(PL.posts[0].commentCount === 1 && PL.posts[1].commentCount === 10, '댓글 수를 읽는다')
+// **검색 허용 안 함**을 구분해야 정상 블로그를 누락으로 오판하지 않는다
+ok(PL.posts[0].searchable === true && PL.posts[1].searchable === false, '검색 허용 설정을 읽는다')
+ok(PL.posts[0].open === true && PL.posts[1].open === false, '공개 범위를 읽는다')
+ok(parsePostList('').posts.length === 0 && parsePostList('<html>').total === null, '못 읽으면 빈 값')
+ok(postDate('2010. 11. 12.') === '2010-11-12', '한 자리 월·일도 채운다', postDate('2010. 11. 12.'))
+ok(postDate('없는날짜') === '', '못 읽으면 빈 문자열')
+
+// 공감 수
+ok(parseSympathy('{"isSuccess":true,"result":{"totalCount":21,"postTitle":"x"}}') === 21, '공감 수를 읽는다')
+ok(parseSympathy('{"isSuccess":false}') === null, '실패 응답은 null')
+
+// 구간 나누기
+ok(band(0, [50, 200]) === 0 && band(50, [50, 200]) === 0.5 && band(999, [50, 200]) === 1, '구간 → 0~1')
+
+// hyoni2_ 실측값으로 활동 지수를 낸다
+const ACT = measureActivity({
+  stat: ST,
+  posts: [
+    { logNo: '1', title: 'a', date: '2026-08-09', categoryNo: '19', commentCount: 1, searchable: true, open: true },
+    { logNo: '2', title: 'b', date: '2026-08-05', categoryNo: '19', commentCount: 3, searchable: true, open: true },
+    { logNo: '3', title: 'c', date: '2024-01-01', categoryNo: '19', commentCount: 2, searchable: false, open: true },
+  ],
+  firstPost: '2010-11-12',
+  sympathy: [21, 2, null],
+  today: '2026-08-11',
+})
+ok(ACT.score > 0 && ACT.score <= 100, '0~100 점수를 낸다', String(ACT.score))
+ok(ACT.axes.length === 5, '다섯 축', String(ACT.axes.length))
+ok(ACT.axes.every((a) => a.observed && a.note), '축마다 관찰값과 근거를 함께 준다')
+ok(ACT.facts.ageDays > 5000, '첫 글 날짜로 운영 기간을 센다', String(ACT.facts.ageDays))
+ok(ACT.facts.avgVisitors === Math.round(90159 / ACT.facts.ageDays), '누적 ÷ 운영일수 = 하루 평균', String(ACT.facts.avgVisitors))
+ok(ACT.facts.last30 === 2, '최근 30일 발행만 센다 (2024년 글은 빼고)', String(ACT.facts.last30))
+ok(ACT.facts.unsearchable === 1, '검색 허용 안 함인 글을 센다')
+// 못 읽은 것을 0점으로 넣으면 「이웃을 못 읽은 블로그」가 「이웃이 없는 블로그」가 된다
+const PARTIAL = measureActivity({
+  stat: { dayVisitors: 51, totalVisitors: null, buddies: null, postCount: null, moments: null },
+  posts: [],
+  today: '2026-08-11',
+})
+ok(PARTIAL.axes.length === 1 && PARTIAL.score === Math.round((PARTIAL.axes[0].value / PARTIAL.axes[0].max) * 100),
+  '못 읽은 항목은 배점에서 뺀다', `${PARTIAL.axes.length}축 ${PARTIAL.score}점`)
+ok(measureActivity({ stat: null, posts: [], today: '2026-08-11' }) === null, '아무것도 못 읽으면 null')
+// 규모가 다른 블로그는 다른 점수가 나와야 한다 (pnpgym 실측값)
+const SMALL = measureActivity({
+  stat: { dayVisitors: 1, totalVisitors: 6699, buddies: 74, postCount: 146, moments: 0 },
+  posts: [],
+  firstPost: '2021-03-01',
+  today: '2026-08-11',
+})
+ok(SMALL.score < ACT.score, '작은 블로그가 낮게 나온다', `${SMALL.score} < ${ACT.score}`)
+ok(SMALL.size === '작은 편' || SMALL.size === '아주 작은 편', '구간 이름도 최적·준최과 겹치지 않는다', SMALL.size)
+// 밖에서 못 보는 것은 못 본다고 밝힌다
+ok(ACT.blind.some((b) => b.includes('유입경로')) && ACT.blind.some((b) => b.includes('체류시간')),
+  '로그인해야 보이는 것을 명시한다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
