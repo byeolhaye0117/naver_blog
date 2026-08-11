@@ -886,52 +886,67 @@ export function checkPost(input: CheckInput): CheckResult {
       weight: 2,
     })
 
+  }
+
+  /*
+   * ─── 상호명을 줄여 쓰지 않았는가 ─────────────────────────────
+   *
+   * 회원 요청 (2026-08-11): "센터를 단순 지역명 + 「점」이 아니라 제대로 상호명이 들어갈
+   * 수 있게 해줘." 나온 글이 「두정점입니다」·「두정점에서는」으로 도배돼 있었다.
+   *
+   * **`legalNameMin` 조건 밖에 둔다** (2026-08-11 두 번째 판). 처음엔 상호명 횟수 검사
+   * 안에 넣었는데 후기글은 `legalNameMin: 0` 이라(방문객이 상호를 반복하면 광고 티가
+   * 난다는 이유 — 그건 그대로 맞다) **검사가 아예 안 돌았다.** 회원이 지적한 글이 바로
+   * 후기글이었다. 「몇 번 쓰라」와 「줄여 쓰지 마라」는 다른 규칙이다.
+   *
+   * 판정 방법: 정식 상호명의 **마지막 낱말**이 줄여 쓴 꼴이다 (「MTO 피트니스 두정점」 →
+   * 「두정점」). 그 낱말이 **혼자** 쓰인 자리를 센다.
+   *
+   * **브랜드가 남은 축약은 세지 않는다.** 「여성전용 착한헬스 두정점」을 「착한헬스 두정점」
+   * 으로 줄이는 것은 스킬(stores.md)이 일부러 허용한 형태다 — 방문객이 정식 명칭을 세 번
+   * 다 읊으면 광고 티가 가장 크게 난다. 막아야 하는 것은 **브랜드가 사라진** 「두정점」이다.
+   */
+  const full = (input.legalName ?? '').trim()
+  const nameParts = full.split(/\s+/).filter(Boolean)
+  const shortForm = nameParts.length >= 2 ? nameParts[nameParts.length - 1] : ''
+  if (shortForm.length >= 2) {
     /*
-     * ─── 상호명을 줄여 쓰지 않았는가 ───────────────────────────
+     * **바로 앞에 붙어 있어야** 브랜드가 남은 형태다.
      *
-     * 회원 요청 (2026-08-11): "센터를 단순 지역명 + 「점」이 아니라 제대로 상호명이 들어갈
-     * 수 있게 해줘." 나온 글이 「두정점입니다」·「두정점에서는」으로 도배돼 있었다.
-     *
-     * **위의 `legalName` 검사로는 안 잡혔다.** 그건 정식 상호명이 몇 번 나오는지만 세니까,
-     * 세 번만 제대로 쓰고 나머지를 「두정점」으로 써도 통과였다.
-     *
-     * 판정 방법: 정식 상호명의 **마지막 낱말**이 줄여 쓴 꼴이다 (「MTO 피트니스 두정점」 →
-     * 「두정점」). 그 낱말이 나온 횟수에서 정식 상호명이 나온 횟수를 빼면 **혼자 쓴 횟수**가
-     * 나온다. 그게 정식 상호명 횟수보다 많으면 글이 사실상 줄임말로 쓰인 것이다.
-     *
-     * 왜 지역명+점 만으로는 안 되나 — 독자가 검색해도 우리 가게를 못 찾는다. 「두정점」은
-     * 이 동네에 여러 업종이 쓰는 말이고, 플레이스에서도 브랜드 이름으로 찾는다.
+     * 처음엔 앞쪽 12자 안에 브랜드 낱말이 있으면 통과시켰는데, 그러면 앞 문장의 정식
+     * 상호명에 묻혀서 놓친다 — 「…MTO 피트니스 두정점입니다. 두정점에서는…」의 두 번째
+     * 「두정점」이 통과됐다. 창을 두지 않고 **바로 앞이 브랜드 낱말인지**만 본다.
      */
-    const full = (input.legalName ?? '').trim()
-    const parts = full.split(/\s+/).filter(Boolean)
-    const shortForm = parts.length >= 2 ? parts[parts.length - 1] : ''
-    if (shortForm.length >= 2) {
-      const shortHits = countLoose(scanText, shortForm)
-      // 정식 상호명 안에도 그 낱말이 들어 있으므로 뺀다 — 남는 것이 혼자 쓴 횟수다
-      const alone = Math.max(0, shortHits - legalNameCount)
-      const level: CheckLevel = alone === 0 ? 'pass' : alone > legalNameCount ? 'fail' : 'warn'
-      add({
-        id: 'legalNameShort',
-        group: '키워드',
-        label: '상호명을 줄여 쓰지 않았는가',
-        level,
-        value:
-          alone === 0
-            ? `줄임말 없음 (정식 상호명 ${legalNameCount}회)`
-            : `「${shortForm}」만 쓴 자리 ${alone}곳 (정식 상호명 ${legalNameCount}회)`,
-        target: `「${full}」을 글자 그대로 — 「${shortForm}」만으로 줄여 쓰지 않는다`,
-        hint:
-          level === 'pass'
-            ? undefined
-            : `「${shortForm}」만 쓰면 독자가 **어느 브랜드인지 모릅니다** — 검색해도 우리 가게가 안 나오고, 그 이름은 이 동네 다른 업종도 씁니다. 「${shortForm}」이라고 쓴 자리를 「${full}」으로 바꾸세요. 문장이 길어지는 게 부담이면 처음 한 번은 정식 상호명으로 쓰고 그다음부터 「저희」·「우리 센터」로 받으면 됩니다 — 줄인 상호명보다 그게 낫습니다.`,
-        /*
-         * 가중치 3. 순위 근거는 없다 (`legalName` 주석의 161편 실측 — 상호명 유무로 순위가
-         * 갈리지 않았다). 회원이 직접 요청한 자리이고 「찾아올 수 있게」에 걸린 항목이라
-         * 상호명 횟수(2)보다는 무겁게, 순위를 만드는 항목보다는 가볍게 뒀다.
-         */
-        weight: 3,
-      })
+    const brandWords = nameParts.slice(0, -1).filter((w) => w.length >= 2)
+    const flat = scanText.replace(/\s+/g, '')
+    const flatShort = shortForm.replace(/\s+/g, '')
+    const flatBrands = brandWords.map((w) => w.replace(/\s+/g, ''))
+    let alone = 0
+    for (let at = flat.indexOf(flatShort); at !== -1; at = flat.indexOf(flatShort, at + flatShort.length)) {
+      const kept = flatBrands.some((b) => at >= b.length && flat.slice(at - b.length, at) === b)
+      if (!kept) alone += 1
     }
+    const level: CheckLevel = alone === 0 ? 'pass' : alone > legalNameCount ? 'fail' : 'warn'
+    add({
+      id: 'legalNameShort',
+      group: '키워드',
+      label: '상호명을 줄여 쓰지 않았는가',
+      level,
+      value:
+        alone === 0
+          ? `줄임말 없음 (정식 상호명 ${legalNameCount}회)`
+          : `「${shortForm}」만 쓴 자리 ${alone}곳 (정식 상호명 ${legalNameCount}회)`,
+      target: `「${full}」 또는 브랜드가 남은 축약 — 「${shortForm}」만으로 줄여 쓰지 않는다`,
+      hint:
+        level === 'pass'
+          ? undefined
+          : `「${shortForm}」만 쓰면 독자가 **어느 브랜드인지 모릅니다** — 검색해도 우리 가게가 안 나오고, 그 이름은 이 동네 다른 업종도 씁니다. 「${full}」으로 바꾸거나, 브랜드가 남는 축약(「${brandWords.slice(-1)[0] ?? ''} ${shortForm}」)까지는 괜찮습니다. 문장이 길어지는 게 부담이면 「저희」·「여기」로 받으세요 — 줄인 상호명보다 그게 낫습니다.`,
+      /*
+       * 가중치 3. 순위 근거는 없다 (`legalName` 주석의 161편 실측). 「독자가 찾아올 수
+       * 있게」에 걸린 항목이라 상호명 횟수(2)보다는 무겁게 뒀다.
+       */
+      weight: 3,
+    })
   }
 
   if (spec.requireLocalKeyword) {

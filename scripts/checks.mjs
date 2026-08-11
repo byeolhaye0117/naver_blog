@@ -6166,9 +6166,41 @@ const mostly = `안녕하세요, MTO 피트니스 두정점입니다. ` + '두�
 ok(shortItem(mostly)?.level === 'fail', '줄임말이 정식 상호명보다 많으면 즉시수정', shortItem(mostly)?.value)
 ok(shortItem(mostly)?.hint.includes('어느 브랜드인지 모릅니다'), '왜 안 되는지 알려준다')
 ok(shortItem(mostly)?.hint.includes('MTO 피트니스 두정점'), '무엇으로 바꾸라고 알려준다')
-ok(shortItem(mostly)?.hint.includes('「저희」·「우리 센터」로 받으면'), '길어지는 부담에 대한 답도 준다')
+ok(shortItem(mostly)?.hint.includes('「저희」·「여기」로 받으세요'), '길어지는 부담에 대한 답도 준다')
 // 상호명이 한 낱말이면 줄임말이 있을 수 없다 — 항목을 만들지 않는다
 ok(shortItem(properly, { legalName: '헬스장' }) === undefined, '한 낱말 상호명은 검사하지 않는다')
+
+/*
+ * **후기글에서도 돌아야 한다** (2026-08-11 두 번째 판).
+ *
+ * 처음엔 이 검사를 상호명 횟수 검사(`legalName`) 안에 넣었는데, 후기글은
+ * `legalNameMin: 0` 이라(방문객이 상호를 반복하면 광고 티가 난다 — 그 이유는 그대로
+ * 맞다) **검사가 아예 안 돌았다.** 회원이 「두정점」을 지적한 글이 바로 후기글이었다.
+ * 「몇 번 쓰라」와 「줄여 쓰지 마라」는 다른 규칙이다.
+ */
+ok(SPECS.review.legalNameMin === 0, '후기글은 상호명 횟수를 요구하지 않는다 (그대로 둔다)')
+const revShort = (body) =>
+  checkPost({ ...shortBase, type: 'review', sponsorship: 'own', body }).items.find((i) => i.id === 'legalNameShort')
+ok(revShort(properly) !== undefined, '후기글에서도 검사가 돈다')
+ok(revShort('여성전용 착한헬스 두정점에 다녀왔어요. ' + '두정점은 좋았어요. '.repeat(3) + filler)?.level === 'fail',
+  '후기글의 줄임말도 잡는다')
+
+/*
+ * **브랜드가 남은 축약은 세지 않는다.** 「여성전용 착한헬스 두정점」을 「착한헬스 두정점」
+ * 으로 줄이는 것은 스킬(stores.md)이 일부러 허용한 형태다 — 방문객이 정식 명칭을 세 번
+ * 다 읊으면 광고 티가 가장 크게 난다. 막아야 하는 것은 **브랜드가 사라진** 「두정점」이다.
+ */
+const wsBase = { ...shortBase, type: 'review', sponsorship: 'own', legalName: '여성전용 착한헬스 두정점' }
+const wsItem = (body) => checkPost({ ...wsBase, body }).items.find((i) => i.id === 'legalNameShort')
+ok(wsItem('여성전용 착한헬스 두정점에 다녀왔어요. ' + '착한헬스 두정점은 좋았어요. '.repeat(2) + filler)?.level === 'pass',
+  '브랜드가 남은 축약은 통과한다')
+ok(wsItem('여성전용 착한헬스 두정점에 다녀왔어요. ' + '두정점은 좋았어요. '.repeat(2) + filler)?.level === 'fail',
+  '브랜드가 사라진 축약은 잡는다')
+// **바로 앞에 붙어 있어야** 브랜드가 남은 것이다 — 앞 문장의 상호명에 묻히면 안 된다
+const adjacency = shortItem('안녕하세요, MTO 피트니스 두정점입니다. 두정점에서는 이렇게 합니다. ' + filler)
+ok(adjacency?.value.includes('1곳'), '앞 문장의 상호명에 묻히지 않는다', adjacency?.value)
+ok(wsItem('여성전용 착한헬스 두정점입니다. ' + filler)?.hint === undefined, '통과면 힌트가 없다')
+ok(wsItem('두정점입니다. ' + filler)?.hint.includes('착한헬스 두정점'), '브랜드가 남는 축약을 대안으로 알려준다')
 
 /*
  * 지시문도 같은 말을 해야 한다. **예시가 「○○점입니다」였던 게 원인의 절반이다** —
