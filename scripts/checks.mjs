@@ -5323,8 +5323,63 @@ ok(orgItem.level === 'pass', '「세계보건기구(WHO)」는 영문 검사를 
 ok(checkPost({ ...goodPromo, body: goodPromo.body.replace('운동하다 자세가', '연구에 따르면 그렇습니다. 운동하다 자세가') }).items.some((i) => i.id === 'fact-source'), '홍보글도 검사한다')
 ok(checkPost({ ...goodPromo }).items.every((i) => i.id !== 'fact-source'), '주장이 없으면 항목이 안 생긴다')
 
+/*
+ * ─── 출처를 **문장 앞에** 세웠는가 ─────────────────────────────
+ *
+ * 회원 지적 (캡처와 함께): "내가 원하는 건 「대한비만학회 무슨무슨 결과에 따르면 단맛 나는
+ * 음식은 혈당을 빠르게 올리고…」인데, 그냥 내용을 쓰고 괄호로 출처를 쓰고 있어. 나는 이런
+ * 걸 원한 게 아니야."
+ *
+ * fact-source 는 이걸 못 잡았다 — 「출처가 있나」만 봤으니 괄호로 붙어도 통과였다.
+ */
+const leadItem = (line) =>
+  checkPost({
+    type: 'info',
+    title: '폭식 멈추는 방법, 순서부터 바꿔보세요',
+    body: factBody(line),
+    mainKeyword: '폭식 멈추는 방법',
+    subKeywords: ['다이어트 폭식'],
+    localKeyword: '천안헬스장',
+    tags: ['폭식멈추는방법'],
+    legalName: 'MTO 피트니스 쌍용점',
+  }).items.find((i) => i.id === 'source-lead')
+
+// 회원이 캡처로 보여준 그 문장 그대로
+const tailCite = leadItem(
+  '단맛 나는 음식은 혈당을 빠르게 올리고 다시 빠르게 떨어뜨리는데, 혈당이 떨어지면 공복감을 느끼고 과식 또는 폭식으로 이어지기 쉽다고 합니다 (대한비만학회 일반인 홈페이지).'
+)
+ok(tailCite && tailCite.level === 'fail', `괄호로 뒤에 붙인 출처는 즉시수정 — ${tailCite?.value}`)
+ok(tailCite.group === 'AI 티 제거', '기계가 쓴 티로 분류한다 (사실이 틀린 게 아니라 모양이 틀렸다)')
+ok(tailCite.hint.includes('문장 맨 앞으로 옮기면'), '어디로 옮기라고 알려준다')
+ok(tailCite.hint.includes('단정으로 끝냅니다'), '「~라고 합니다」를 겹치지 말라고 알려준다')
+
+// 회원이 원한 모양
+const leadCite = leadItem(
+  '대한비만학회가 일반인용 자료에서 밝힌 내용을 보면, 단맛 나는 음식은 혈당을 빠르게 올렸다가 다시 빠르게 떨어뜨립니다.'
+)
+ok(leadCite && leadCite.level === 'pass', `출처를 앞에 세우면 통과 — ${leadCite?.value}`)
+ok(leadItem('세계보건기구가 2020년 지침에서 권고한 내용을 보면 주 150분입니다.').level === 'pass', '기관 + 권고 형태도 통과')
+ok(leadItem('질병관리청 국민건강영양조사에 따르면 아침 결식률이 34%였습니다.').level === 'pass', '「에 따르면」도 통과')
+
+// 앞에도 세우고 괄호로도 적었으면 통과다 (괄호 자체를 금지하는 게 아니다)
+ok(
+  leadItem('대한비만학회 자료에 따르면 혈당이 빠르게 떨어집니다. 확인은 대한비만학회 홈페이지에서 하실 수 있어요 (대한비만학회).').level === 'pass',
+  '앞에 세웠으면 괄호가 더 있어도 통과'
+)
+// 괄호 안 기관 이름이 뒷문장의 「보면」과 붙어 통과로 오판하면 안 된다
+ok(
+  leadItem('혈당이 빠르게 떨어진다고 합니다 (대한비만학회 홈페이지) 그러니 순서를 보면 좋습니다').level === 'fail',
+  '괄호를 지운 뒤에 앞 출처를 찾는다'
+)
+// 출처가 아예 없으면 이 항목은 안 만든다 — fact-source 가 이미 말한다
+ok(leadItem('연구에 따르면 그렇습니다.') === undefined, '출처가 없으면 여기서 또 말하지 않는다')
+ok(leadItem('제가 상담하면서 보면 그런 분이 많으셨어요.') === undefined, '주장·출처가 없으면 항목이 없다')
+
 // 지시문
 const factPrompt = buildSystemPrompt('info')
+ok(factPrompt.includes('출처는 문장 맨 앞에 세운다'), '지시문이 출처를 앞에 세우라고 시킨다')
+ok(factPrompt.includes('괄호로 출처를 뒤에 붙이지 않는다'), '괄호 각주를 막는다')
+ok(factPrompt.includes('단정으로 끝낸다'), '출처를 앞에 세웠으면 단정으로 끝내라고 한다')
 ok(factPrompt.includes('이 글은 팩트가 우선이다'), '정보글 지시문에 팩트 우선을 적었다')
 ok(factPrompt.includes('「감으로 이렇게 했더니 이렇게 되더라」로 쓰면 안 된다'), '회원 말을 그대로 규칙으로 옮겼다')
 ok(factPrompt.includes('두 갈래 중 하나여야 한다'), '현장 근거 / 출처 있는 사실로 갈래를 나눈다')
