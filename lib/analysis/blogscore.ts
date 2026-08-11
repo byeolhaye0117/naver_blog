@@ -287,157 +287,379 @@ export function queryFromTitle(title: string): string {
  * 업계에서 말하는 「최적 / 준최 / 저품질」 — 흉내낸 추정 등급.
  *
  * **네이버가 만든 등급이 아니다.** 이 말들은 블로그 마케팅 업계의 은어이고, 네이버는
- * 그런 등급을 발표한 적이 없다. 시중 도구들이 붙이는 등급도 결국 "이 블로그 글이
- * 검색에 걸리는지" 를 표본으로 재서 이름을 붙인 것이다. 그래서 우리도 같은 원리로
- * 재되, **무엇으로 그렇게 판정했는지 표본을 다 보여준다.**
+ * 그런 등급을 발표한 적이 없다. 시중 도구들이 붙이는 등급도 결국 자기 추정치다.
+ * 그래서 우리도 같은 이름을 쓰되, **무엇으로 그렇게 판정했는지 표본을 다 보여준다.**
  *
- * 두 신호를 쓴다. 섞어 쓰면 안 되는 이유가 있다.
+ * ── 이름과 방향을 업계 표기에 맞췄다 (2026-08-11) ─────────────────
+ * 회원이 우리 진단(「최적 3」)과 시중 도구(「준최 · 44/100」)를 나란히 놓고 물었다.
+ * 우리 쪽 이름이 **업계와 반대 방향**이었다. 업계 표기는
  *
- *  1) **색인 검사** — 글 제목을 그대로 검색해 그 글이 나오는지. 제목 완전일치인데도
- *     안 나오면 검색에서 빠진 것이다(업계에서 말하는 "저품질" 의 실체). 실측으로
- *     확인했다: 제목을 그대로 넣으면 그 글이 1위로 나온다.
+ *     저품질 < 일반 < 준최 1 … 준최 7 < 최적 1 < 최적 2 < 최적 3
  *
- *  2) **노출력** — 제목 앞부분을 검색어로 써서 30위 안에 걸리는 비율. 이건 그 글이
- *     노린 키워드의 난이도에 좌우된다. 실제로 hyoni2_ 는 표본 3개가 전부 30위 밖으로
- *     나와 0점이 됐는데, 정작 "쌍용동 헬스장" 에서는 1위였다 — 표본이 여행·맛집처럼
- *     경쟁이 센 키워드였기 때문이다. 그래서 **노출력만으로 저품질을 말하면 안 된다.**
+ * 로 **숫자가 커질수록 강하다.** 우리는 「최적 1 이 최상단」으로 썼으니, 같은 말이
+ * 정반대를 뜻했다. 회원이 두 화면을 비교할 수 없는 상태였다 — 그래서 뒤집었다.
+ *
+ * ── 칸 폭은 공개된 실제 분포에 맞췄다 ────────────────────────────
+ * 시중 통계에 따르면 등급 분포가 크게 치우쳐 있다: 최적 6.1%, 준최 2 가 혼자 61.3%,
+ * 저품질 2.0%. 즉 **보통 블로그는 준최 2 다.** 우리 옛 기준은 30위 안 70%면 최적을
+ * 줬는데, 그러면 6%짜리 칸에 회원 블로그가 들어간다. 그래서 준최 2 칸을 가장 넓게
+ * 두고(점수 25~44), 최적은 「경쟁 있는 검색어에서 대부분 1페이지」일 때만 준다.
+ *
+ * ── 세 축 ────────────────────────────────────────────────────
+ *  1) **색인** — 제목 완전일치로 검색했을 때 그 글이 나오는지. 안 나오면 검색에서
+ *     빠진 것이다(업계에서 말하는 "저품질" 의 실체). 순위가 낮은 것과는 다른 문제다.
+ *  2) **30위 안 진입** — 제목 앞부분을 검색어로 써서 30위 안에 걸리는지.
+ *  3) **1페이지 진입** — 그중 10위 안에 걸리는지. 30위에 겨우 걸리는 블로그와
+ *     1페이지를 먹는 블로그를 갈라야 최적과 준최이 갈린다.
+ *
+ * 2·3 은 **검색어 경쟁 강도로 가중한다** (competitionOf 주석 참고). 쉬운 검색어에서
+ * 1위 하는 것으로는 최적을 증명할 수 없다.
  */
 export type BlogGrade =
-  | 'optimal1'
-  | 'optimal2'
   | 'optimal3'
-  | 'semi1'
-  | 'semi2'
+  | 'optimal2'
+  | 'optimal1'
+  | 'semi7'
+  | 'semi6'
+  | 'semi5'
+  | 'semi4'
   | 'semi3'
+  | 'semi2'
+  | 'semi1'
   | 'normal'
-  | 'weak'
-  | 'partial'
   | 'dropped'
   | 'unknown'
 
 export const GRADE_LABEL: Record<BlogGrade, string> = {
-  optimal1: '최적 1',
-  optimal2: '최적 2',
   optimal3: '최적 3',
-  semi1: '준최 1',
-  semi2: '준최 2',
+  optimal2: '최적 2',
+  optimal1: '최적 1',
+  semi7: '준최 7',
+  semi6: '준최 6',
+  semi5: '준최 5',
+  semi4: '준최 4',
   semi3: '준최 3',
+  semi2: '준최 2',
+  semi1: '준최 1',
   normal: '일반',
-  weak: '노출 약함',
-  partial: '부분 누락',
-  dropped: '검색 누락 의심',
+  dropped: '저품질 의심',
   unknown: '판정 불가',
 }
 
 /**
  * 강한 것부터 약한 것 순서 — 화면에서 사다리로 보여준다.
- * 업계 관례대로 숫자가 작을수록 강하다 (최적 1 > 최적 2 > 최적 3).
+ * 업계 표기대로 **숫자가 클수록 강하다** (최적 3 > 최적 2 > 최적 1 > 준최 7 > …).
  */
 export const GRADE_LADDER: BlogGrade[] = [
-  'optimal1',
-  'optimal2',
   'optimal3',
-  'semi1',
-  'semi2',
+  'optimal2',
+  'optimal1',
+  'semi7',
+  'semi6',
+  'semi5',
+  'semi4',
   'semi3',
+  'semi2',
+  'semi1',
   'normal',
-  'weak',
-  'partial',
   'dropped',
 ]
 
+/** 시중에 공개된 등급 분포(참고용) — 화면에서 「내 칸이 어디쯤인지」 보여줄 때 쓴다 */
+export const GRADE_SHARE: Partial<Record<BlogGrade, number>> = {
+  optimal3: 6.1,
+  optimal2: 6.1,
+  optimal1: 6.1,
+  semi7: 3.8,
+  semi6: 5.6,
+  semi5: 7.8,
+  semi4: 7.8,
+  semi3: 5.2,
+  semi2: 61.3,
+  dropped: 2.0,
+}
+
+// ─── 검색어 경쟁 강도 ─────────────────────────────────────────
+
 /**
- * 등급을 매긴다.
+ * 이 검색어가 얼마나 센 자리인가.
  *
- * **두 축으로 나눈다.** 30위 안에 걸리는 비율만 보면 최적과 준최이 안 갈린다 —
- * 30위에 겨우 걸리는 블로그와 1페이지를 먹는 블로그가 같은 칸에 들어간다. 그래서
- * 1페이지(10위) 비율을 두 번째 축으로 쓴다.
+ * **이게 없으면 등급이 부풀었다.** 회원 블로그의 실제 제목으로 재보니 표본마다
+ * 경쟁이 완전히 달랐다:
  *
- *   노출률  = 표본 글이 30위 안에 걸린 비율
- *   1페이지 = 표본 글이 10위 안에 걸린 비율
+ *   천안 신방동 맛집                     1,000편 이상   ← 진짜 경쟁 키워드
+ *   천안 생선구이 뭔맛집                    410편
+ *   천안 성심호수공원마당 백년한방활산채탕       0편        ← 사실상 그 글 하나
+ *
+ * 0편짜리는 아예 뺐지만(isTrivialQuery), 30~300편짜리도 1,000편짜리와 같은 값으로
+ * 세면 안 된다. 그래서 **성공 크레딧에만 가중치를 준다** — 쉬운 검색어에서만 걸리는
+ * 블로그는 가중 점수가 절반 아래로 묶여 최적 칸에 못 들어간다.
  */
+export type Competition = 'high' | 'mid' | 'low' | 'none' | 'unknown'
+
+export const COMPETITION_LABEL: Record<Competition, string> = {
+  high: '경쟁 강함',
+  mid: '경쟁 보통',
+  low: '경쟁 약함',
+  none: '경쟁 없음',
+  unknown: '못 잼',
+}
+
+/** 성공 한 건이 몇 점어치인가 (경쟁 없음은 표본에서 아예 뺀다) */
+export const COMPETITION_WEIGHT: Record<Competition, number> = {
+  high: 1,
+  mid: 0.75,
+  low: 0.45,
+  none: 0,
+  /** 발행량을 못 읽은 표본은 「보통」으로 놓는다 — 못 읽은 것을 유리하게도 불리하게도 안 쓴다 */
+  unknown: 0.75,
+}
+
+/** 「경쟁 없음」의 경계 — blogsection.ts 의 TRIVIAL_QUERY_MAX 와 같은 값을 쓴다 */
+export const COMPETITION_LOW = 30
+export const COMPETITION_MID = 300
+export const COMPETITION_HIGH = 1000
+
+export function competitionOf(total: number | null | undefined): Competition {
+  if (typeof total !== 'number') return 'unknown'
+  if (total < COMPETITION_LOW) return 'none'
+  if (total < COMPETITION_MID) return 'low'
+  if (total < COMPETITION_HIGH) return 'mid'
+  return 'high'
+}
+
+export interface ExposureMeasure {
+  /** 경쟁이 있어서 계산에 쓴 표본 수 */
+  real: number
+  /** 경쟁이 없어서 뺀 표본 수 */
+  trivial: number
+  /** 30위 안에 걸린 비율(%) — 있는 그대로 (화면에 함께 보여준다) */
+  exposureRate?: number
+  /** 1페이지(10위) 안에 걸린 비율(%) — 있는 그대로 */
+  firstPageRate?: number
+  /** 경쟁 강도로 가중한 30위 점수(0~100) — 등급에 쓰는 값 */
+  weightedExposure?: number
+  /** 경쟁 강도로 가중한 1페이지 점수(0~100) — 등급에 쓰는 값 */
+  weightedFirstPage?: number
+  /** 표본이 어느 경쟁 구간에 있었나 */
+  tiers: Record<Competition, number>
+}
+
+/**
+ * 표본 목록 하나로 노출 지표를 다 낸다 (순수 함수 — 테스트 대상).
+ *
+ * 가중 방식: **분자에만 가중치를 준다.** 분모는 표본 수 그대로다. 그래서 약한
+ * 검색어에서만 걸리는 블로그는 최대 45점까지만 오른다 — 「쉬운 자리에서만 1위」를
+ * 최적으로 오해하지 않게 하는 장치다.
+ */
+export function measureExposure(
+  samples: { rank: number | null; total?: number | null }[]
+): ExposureMeasure {
+  const tiers: Record<Competition, number> = { high: 0, mid: 0, low: 0, none: 0, unknown: 0 }
+  const real: { rank: number | null; weight: number }[] = []
+  for (const s of samples) {
+    const tier = competitionOf(s.total)
+    tiers[tier] += 1
+    if (tier === 'none') continue
+    real.push({ rank: s.rank, weight: COMPETITION_WEIGHT[tier] })
+  }
+  const out: ExposureMeasure = { real: real.length, trivial: tiers.none, tiers }
+  if (!real.length) return out
+
+  const hit = real.filter((r) => r.rank !== null)
+  const first = real.filter((r) => r.rank !== null && r.rank <= 10)
+  out.exposureRate = Math.round((hit.length / real.length) * 100)
+  out.firstPageRate = Math.round((first.length / real.length) * 100)
+  out.weightedExposure = Math.round(
+    (hit.reduce((s, r) => s + r.weight, 0) / real.length) * 100
+  )
+  out.weightedFirstPage = Math.round(
+    (first.reduce((s, r) => s + r.weight, 0) / real.length) * 100
+  )
+  return out
+}
+
+// ─── 등급 판정 ────────────────────────────────────────────────
+
+export interface GradeAxis {
+  label: string
+  value: number
+  max: number
+  note: string
+}
+
+export interface BlogGradeResult {
+  grade: BlogGrade
+  /** 추정 지수 0~100 — 시중 도구가 내는 「44/100」과 같은 자리에 놓고 보게 만든 값 */
+  score?: number
+  reason: string
+  axes: GradeAxis[]
+  /** 표본이 적거나 색인이 새서 이 칸 위로는 안 올린 경우, 그 상한 */
+  cappedAt?: BlogGrade
+}
+
+/** 점수 → 칸. 준최 2 칸이 가장 넓다 (실제 분포에서 61%가 여기다) */
+const SCORE_BANDS: { min: number; grade: BlogGrade }[] = [
+  { min: 93, grade: 'optimal3' },
+  { min: 87, grade: 'optimal2' },
+  { min: 80, grade: 'optimal1' },
+  { min: 73, grade: 'semi7' },
+  { min: 66, grade: 'semi6' },
+  { min: 59, grade: 'semi5' },
+  { min: 52, grade: 'semi4' },
+  { min: 45, grade: 'semi3' },
+  { min: 25, grade: 'semi2' },
+  { min: 1, grade: 'semi1' },
+  { min: 0, grade: 'normal' },
+]
+
+/** 아래쪽(약한 쪽)을 고른다 — 사다리에서 인덱스가 큰 쪽 */
+function weaker(a: BlogGrade, b: BlogGrade): BlogGrade {
+  return GRADE_LADDER.indexOf(a) >= GRADE_LADDER.indexOf(b) ? a : b
+}
+
+/**
+ * 표본 수로 정하는 상한.
+ *
+ * 표본 9편에서 6편이 걸린 것으로 「최적」을 말하면 안 된다 — 표본 하나가 바뀌면 한 칸이
+ * 움직이는 폭이다. 그래서 **표본이 쌓이기 전에는 위 칸을 잠근다.** 이건 겸손이 아니라
+ * 산수다: 9편이면 오차가 ±15%p 대다.
+ */
+export function sampleCap(real: number): { cap: BlogGrade; note: string } | null {
+  if (real >= 20) return null
+  if (real >= 10) return { cap: 'optimal1', note: `표본 ${real}편으로는 최적 1 위쪽까지만 말할 수 있습니다` }
+  if (real >= 5) return { cap: 'semi6', note: `표본 ${real}편으로는 준최 6 위쪽까지만 말할 수 있습니다` }
+  if (real >= 3) return { cap: 'semi4', note: `표본 ${real}편으로는 준최 4 위쪽까지만 말할 수 있습니다` }
+  return { cap: 'semi3', note: `표본 ${real}편은 너무 적어 준최 3 위쪽으로는 올리지 않았습니다` }
+}
+
 export function gradeBlog(input: {
   /** 제목 완전일치 검색에서 그 글이 나온 비율(%) — 색인 검사 */
   indexedRate?: number
-  /** 표본 글이 30위 안에 걸린 비율(%) — **경쟁이 있는 표본만으로 센 값** */
-  exposureRate?: number
-  /** 표본 글이 10위 안에 걸린 비율(%) */
-  firstPageRate?: number
-  /** 검색어에 경쟁이 없어서 계산에서 뺀 표본 수 */
-  trivialSamples?: number
+  /** 노출 표본 계산 결과 */
+  exposure?: ExposureMeasure
   /** 「경쟁 없음」의 기준 (화면 문구에 그대로 쓴다) */
   trivialMax?: number
-  /** 표본 수 */
+  /** 읽은 표본 수 전체 (색인 + 노출) */
   samples: number
-}): { grade: BlogGrade; reason: string } {
-  const { indexedRate, exposureRate, firstPageRate = 0, trivialSamples = 0, trivialMax = 30, samples } = input
-  /*
-   * 뺀 표본이 있으면 **판정 문장에 적는다.** 조용히 빼면 「이 숫자가 다 진짜」로 읽힌다.
-   * 회원이 우리 등급(최적 3)과 시중 도구(준최)가 다르다고 물었을 때, 차이의 절반이 이거였다.
-   */
-  const trivialNote = trivialSamples
-    ? ` (검색어에 경쟁이 거의 없던 표본 ${trivialSamples}편은 뺐습니다 — 최근 글 ${trivialMax}편 미만인 검색어에서 위에 걸리는 것은 블로그 힘과 무관합니다)`
-    : ''
+}): BlogGradeResult {
+  const { indexedRate, exposure, trivialMax = COMPETITION_LOW, samples } = input
 
   if (samples === 0 || typeof indexedRate !== 'number') {
-    return { grade: 'unknown', reason: '표본을 읽지 못해 등급을 낼 수 없습니다.' }
+    return { grade: 'unknown', reason: '표본을 읽지 못해 등급을 낼 수 없습니다.', axes: [] }
   }
 
   // 색인부터 본다. 제목을 그대로 넣어도 안 나오면 다른 지표는 의미가 없다.
   if (indexedRate === 0) {
     return {
       grade: 'dropped',
+      score: 0,
+      axes: [{ label: '색인', value: 0, max: 30, note: '제목을 그대로 검색해도 그 글이 안 나옵니다' }],
       reason:
         '글 제목을 그대로 검색해도 그 글이 나오지 않습니다. 검색에서 빠진 상태(업계에서 말하는 "저품질")로 의심됩니다 — 다만 방금 올린 글이면 색인 전일 수 있으니 며칠 뒤 다시 확인하세요.',
     }
   }
-  if (indexedRate < 100) {
-    return {
-      grade: 'partial',
-      reason: `제목을 그대로 검색했을 때 나오는 글이 ${indexedRate}% 뿐입니다. 일부 글이 검색에서 빠져 있습니다.`,
-    }
+
+  /*
+   * 뺀 표본이 있으면 **판정 문장에 적는다.** 조용히 빼면 「이 숫자가 다 진짜」로 읽힌다.
+   * 회원이 우리 등급과 시중 도구가 다르다고 물었을 때, 차이의 절반이 이거였다.
+   */
+  const trivial = exposure?.trivial ?? 0
+  const trivialNote = trivial
+    ? ` (검색어에 경쟁이 거의 없던 표본 ${trivial}편은 뺐습니다 — 최근 글 ${trivialMax}편 미만인 검색어에서 위에 걸리는 것은 블로그 힘과 무관합니다)`
+    : ''
+
+  /*
+   * 점수 배분: 색인 20 · 30위 40 · 1페이지 40.
+   *
+   * 색인을 20점으로 낮게 둔 이유가 있다. 색인은 **자격 요건**이지 실력이 아니다 —
+   * 정상 블로그는 다 100%다. 색인 배점이 크면 「색인만 정상이고 아무 데도 안 걸리는
+   * 블로그」가 중간 점수를 받아 준최 중반으로 올라간다. 지금 배분이면 그 블로그는
+   * 20점(준최 1)에서 시작해 걸리는 만큼만 올라간다.
+   */
+  const indexAxis: GradeAxis = {
+    label: '색인',
+    value: Math.round((indexedRate / 100) * 20),
+    max: 20,
+    note:
+      indexedRate >= 100
+        ? '제목으로 검색하면 다 나옵니다 — 검색에서 빠진 글이 없습니다'
+        : `제목으로 검색해서 나오는 글이 ${indexedRate}% 뿐입니다 — 일부가 검색에서 빠져 있습니다`,
   }
 
-  if (typeof exposureRate !== 'number') {
+  // 경쟁 있는 표본이 하나도 없으면 노출을 잴 수 없다 (없는 값을 0점으로 넣지 않는다)
+  if (!exposure || typeof exposure.weightedExposure !== 'number') {
     return {
       grade: 'normal',
-      reason: trivialSamples
-        ? `색인은 정상입니다. 다만 표본 ${trivialSamples}편이 **경쟁이 거의 없는 검색어**여서(최근 글 ${trivialMax}편 미만) 노출력을 잴 수 없었습니다 — 상호명·가게 이름이 제목 앞에 오면 그 검색어는 사실상 그 글 하나입니다. 경쟁 키워드를 제목 앞에 둔 글이 쌓이면 다시 재보세요.`
+      axes: [indexAxis],
+      reason: trivial
+        ? `색인은 정상입니다. 다만 표본 ${trivial}편이 **경쟁이 거의 없는 검색어**여서(최근 글 ${trivialMax}편 미만) 노출력을 잴 수 없었습니다 — 상호명·가게 이름이 제목 앞에 오면 그 검색어는 사실상 그 글 하나입니다. 경쟁 키워드를 제목 앞에 둔 글이 쌓이면 다시 재보세요.`
         : '색인은 정상입니다. 노출력을 재지 못해 그 이상은 판정하지 않았습니다.',
     }
   }
 
-  const both = `표본의 ${exposureRate}%가 30위 안, ${firstPageRate}%가 1페이지(10위 안)에 있습니다${trivialNote}`
+  const { weightedExposure, weightedFirstPage = 0, exposureRate = 0, firstPageRate = 0, real, tiers } = exposure
 
-  // 최적 구간 — 30위 안에 대부분 걸리고, 1페이지까지 먹는다
-  if (exposureRate >= 85 && firstPageRate >= 60) {
-    return { grade: 'optimal1', reason: `${both}. 거의 쓰는 대로 1페이지에 올라갑니다 — 업계에서 "최적" 최상단이라 부르는 상태에 가깝습니다.` }
-  }
-  if (exposureRate >= 80 && firstPageRate >= 40) {
-    return { grade: 'optimal2', reason: `${both}. 1페이지 진입이 절반 가까이 됩니다 — "최적" 구간에 가깝습니다.` }
-  }
-  if (exposureRate >= 70 && firstPageRate >= 20) {
-    return { grade: 'optimal3', reason: `${both}. 대부분 30위 안에 걸리고 1페이지도 나옵니다 — "최적" 진입 구간에 가깝습니다.` }
+  const axes: GradeAxis[] = [
+    indexAxis,
+    {
+      label: '30위 안 진입',
+      value: Math.round((weightedExposure / 100) * 40),
+      max: 40,
+      note: `표본의 ${exposureRate}%가 30위 안 (경쟁 강도로 가중하면 ${weightedExposure}점)`,
+    },
+    {
+      label: '1페이지 진입',
+      value: Math.round((weightedFirstPage / 100) * 40),
+      max: 40,
+      note: `표본의 ${firstPageRate}%가 1페이지(10위 안) (가중 ${weightedFirstPage}점)`,
+    },
+  ]
+  const score = Math.min(100, axes.reduce((s, a) => s + a.value, 0))
+
+  let grade = SCORE_BANDS.find((b) => score >= b.min)?.grade ?? 'normal'
+
+  // ── 상한들 ─────────────────────────────────────────────
+  const caps: { cap: BlogGrade; note: string }[] = []
+  const bySample = sampleCap(real)
+  if (bySample) caps.push(bySample)
+  if (indexedRate < 60) {
+    caps.push({ cap: 'normal', note: `색인율이 ${indexedRate}% 뿐이라 등급을 올리지 않았습니다` })
+  } else if (indexedRate < 100) {
+    caps.push({ cap: 'semi4', note: `검색에서 빠진 글이 있어(색인 ${indexedRate}%) 준최 4 위쪽으로는 올리지 않았습니다` })
   }
 
-  // 준최 구간 — 걸리기는 하는데 1페이지가 드물다
-  if (exposureRate >= 55) {
-    return { grade: 'semi1', reason: `${both}. 절반 이상 걸리지만 1페이지는 아직 드뭅니다 — "준최" 상단에 가깝습니다.` }
-  }
-  if (exposureRate >= 40) {
-    return { grade: 'semi2', reason: `${both}. "준최" 중간 구간에 가깝습니다.` }
-  }
-  if (exposureRate >= 25) {
-    return { grade: 'semi3', reason: `${both}. "준최" 진입 구간에 가깝습니다.` }
-  }
-  if (exposureRate >= 10) {
-    return { grade: 'normal', reason: `${both}. 아직 힘이 붙는 중입니다.` }
+  let cappedAt: BlogGrade | undefined
+  const capNotes: string[] = []
+  for (const c of caps) {
+    const limited = weaker(grade, c.cap)
+    // 상한이 실제로 걸렸을 때만 문장에 적는다 (안 걸린 상한을 말하면 겁만 준다)
+    if (limited !== grade) {
+      grade = limited
+      cappedAt = c.cap
+      capNotes.push(c.note)
+    }
   }
 
-  return {
-    grade: 'weak',
-    reason: `색인은 정상인데 ${both}. **저품질이 아닙니다** — 표본 글이 경쟁이 센 키워드를 노렸으면 이렇게 나옵니다. 아래 표본 목록의 검색어를 보고 판단하세요.`,
-  }
+  const tierMix = (['high', 'mid', 'low'] as const)
+    .filter((t) => tiers[t] > 0)
+    .map((t) => `${COMPETITION_LABEL[t]} ${tiers[t]}편`)
+    .join(' · ')
+
+  const reason =
+    `추정 지수 ${score}점 — ${GRADE_LABEL[grade]}. 표본의 ${exposureRate}%가 30위 안, ${firstPageRate}%가 1페이지(10위 안)에 있습니다${trivialNote}.` +
+    (tierMix ? ` 표본의 검색어 경쟁은 ${tierMix} 였고, 쉬운 검색어에서 걸린 것은 그만큼 낮게 셈했습니다.` : '') +
+    (capNotes.length ? ` ${capNotes.join('. ')}.` : '') +
+    /*
+     * **노출 0% 를 저품질로 읽지 않게 못을 박는다.** 실측으로 확인한 함정이다 —
+     * hyoni2_ 는 표본 노출률이 0% 로 나온 적이 있는데 정작 「쌍용동 헬스장」에서는
+     * 1위였다. 표본이 경쟁 센 키워드였을 뿐이다.
+     */
+    (exposureRate === 0
+      ? ' 색인은 정상이니 **저품질이 아닙니다** — 표본 글이 경쟁이 센 키워드를 노렸으면 이렇게 나옵니다. 아래 표본 목록의 검색어를 보고 판단하세요.'
+      : '')
+
+  return { grade, score, reason, axes, cappedAt }
 }
 
 /** 이 블로그를 상위에서 만났을 때 무엇을 뜻하는지 — 전략 한 줄 */
