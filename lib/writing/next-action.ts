@@ -10,6 +10,42 @@ import type { Post, RankTarget, Store } from '@/lib/types'
 
 export type ActionTone = 'good' | 'warn' | 'bad'
 
+/**
+ * 고쳐 쓰기에 넘길 항목 목록.
+ *
+ * **여기로 옮겼다** (2026-08-11). 라우트 안에 있어서 테스트가 없었고, 그 안에서 버그가
+ * 났다 — 회원이 "제목에 갑자기 홍보가 안 들어가"라고 했을 때 원인의 절반이 이것이었다.
+ * 걸린 항목을 가중치 순으로 6개만 넘기니 `titlePromo` 가 본문 항목들에 밀려 아예 전달되지
+ * 않았고, 모델은 제목 문제를 들은 적이 없으니 고칠 수도 없었다.
+ *
+ * 규칙은 셋이다.
+ *   ① **수정필요를 먼저.** 점수 상한을 푸는 것은 수정필요뿐이다.
+ *   ② **힌트를 함께.** 「지금 2회 / 기준 5회」만으로는 어디에 넣을지 모른다.
+ *   ③ **개수를 자른다.** 한 번에 다 고치라고 하면 아무것도 못 고친다 — 실제로 9개를
+ *      넘겼을 때 모델이 이미 맞던 것을 깨뜨렸다.
+ *
+ * 그리고 **제목은 따로 센다.** 제목은 본문과 다른 칸이라 고쳐도 본문 항목을 깨지 않으니
+ * ③의 제한에 넣을 이유가 없다. 다만 제목 한 줄에 네 가지를 동시에 시키는 것도 무리라
+ * 3개까지만 넘긴다.
+ */
+export function fixList(
+  items: { id: string; level: string; label: string; value: string; target: string; hint?: string; weight: number }[],
+  risks: { term: string; category: string; fix: string }[] = []
+): string[] {
+  const rank = (level: string) => (level === 'fail' ? 0 : 1)
+  const order = <T extends { level: string; weight: number }>(list: T[]) =>
+    [...list].sort((a, b) => rank(a.level) - rank(b.level) || b.weight - a.weight)
+  const pending = items.filter((i) => i.level !== 'pass')
+  const titles = order(pending.filter((i) => i.id.startsWith('title'))).slice(0, 3)
+  const rest = order(pending.filter((i) => !i.id.startsWith('title'))).slice(0, 6)
+  const lines = [...titles, ...rest].map((i) => {
+    const head = `[${i.level === 'fail' ? '수정필요' : '주의'}] ${i.label}: 지금 ${i.value} / 기준 ${i.target}`
+    return i.hint ? `${head}\n  → ${i.hint}` : head
+  })
+  // 위험 표현은 항목 수와 무관하게 전부 넘긴다 — 하나라도 남으면 발행할 수 없다
+  return lines.concat(risks.map((x) => `[위험 표현] "${x.term}" (${x.category}) — ${x.fix}`))
+}
+
 export interface NextAction {
   id: string
   /** 명령형 한 줄 — 무엇을 하는지 */

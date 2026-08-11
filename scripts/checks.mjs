@@ -4516,7 +4516,75 @@ ok(tpItem('review', '쌍용동 헬스장 등록하고 상담 문의까지 후기
 // 이벤트 칸에 적은 것이 있으면 그걸 가져오라고 한다
 const tpEv = tpItem('review', '쌍용동 헬스장 등록 후기, 처음인데 괜찮을까?', '8월 등록분 3개월 9.9만원, 락커 무료')
 ok(tpEv.hint.includes('8월 등록분 3개월 9.9만원'), '이벤트 칸 내용을 그대로 보여준다')
-ok(tpItem('review', '쌍용동 헬스장 등록 후기').hint.includes('금액을 지어내지 말고'), '이벤트 칸이 비면 지어내지 말라고 한다')
+/*
+ * **이벤트 칸이 비었을 때 빠져나갈 구멍을 막았다** (2026-08-11, 두 번째).
+ *
+ * 회원 지적: "제목에 갑자기 홍보가 안 들어가." 내가 만든 모순이었다 — 지시문은 「이벤트
+ * 정보가 없으면 「상담 받아본 후기」로 둔다」고 했는데 이 검사는 상담·등록을 홍보로 세지
+ * 않는다. 지시대로 쓰면 반드시 걸렸다. 금액을 지어내는 것과 홍보성을 넣는 것은 다른
+ * 얘기이므로, **금액 없이 쓸 수 있는 말**을 준다.
+ */
+const tpEmpty = tpItem('review', '쌍용동 헬스장 등록 후기')
+ok(tpEmpty.hint.includes('금액 없이 쓸 수 있는 말'), '금액 없이 넣는 방법을 준다')
+ok(tpEmpty.hint.includes('가격 궁금해서 상담 받아본 후기'), '예시를 준다')
+ok(tpEmpty.hint.includes('없는 금액을 만들 필요는 없습니다'), '지어내지 않아도 된다고 밝힌다')
+ok(tpEmpty.hint.includes('구별이 되지 않습니다'), '왜 상담·등록은 안 되는지 말한다')
+// 금액 없이 쓴 제목이 실제로 통과해야 한다 (이게 통과 안 되면 지시문과 검수가 또 싸운다)
+ok(tpItem('review', '쌍용동 헬스장 가격 궁금해서 상담 받아본 후기')?.level === 'pass', '「가격」이면 통과')
+ok(tpItem('review', '쌍용동 헬스장 이용권 알아보고 등록한 후기예요')?.level === 'pass', '「이용권」이면 통과')
+ok(tpItem('promo', '쌍용동 헬스장 비용 얼마나 드는지 알려드려요')?.level === 'pass', '「비용·얼마」면 통과')
+// 지시문도 같은 말을 해야 한다
+for (const t of ['promo', 'review']) {
+  const sp = buildSystemPrompt(t)
+  ok(sp.includes('이벤트 정보가 없어도 제목에 홍보 한 조각은 반드시 넣는다'), `${t} 지시문이 예외를 두지 않는다`)
+  ok(sp.includes('「상담 받아본 후기」·「등록한 후기」만으로는 홍보 조각이 없는 것으로 본다'), `${t} 지시문이 검수와 같은 기준을 말한다`)
+}
+ok(!buildSystemPrompt('review').includes('금액을 지어내지 말고 「상담 받아본 후기」'), '옛 빠져나갈 구멍이 사라졌다')
+ok(!buildSystemPrompt('info').includes('제목에 홍보 한 조각은 반드시'), '정보글에는 주지 않는다')
+
+/*
+ * ─── 고쳐 쓰기 목록에 제목 항목이 실제로 실리는가 ────────────────
+ *
+ * 회원 지적 "제목에 갑자기 홍보가 안 들어가" 의 나머지 절반이 여기였다. 걸린 항목을
+ * 가중치 순으로 6개만 넘기니 제목 항목이 본문 항목들에 밀려 **아예 전달되지 않았다.**
+ * 모델은 제목 문제를 들은 적이 없으니 고칠 수도 없었다.
+ *
+ * 이 함수는 라우트 안에 있어서 테스트가 없었다 — 그래서 lib 로 옮겼다.
+ */
+const { fixList } = require(`${OUT}/writing/next-action.js`)
+const heavyBody = Array.from({ length: 7 }, (_, i) => ({
+  id: `body${i}`, level: 'fail', label: `본문항목${i}`, value: 'x', target: 'y', weight: 5,
+}))
+const withTitle = fixList([
+  ...heavyBody,
+  { id: 'titlePromo', level: 'fail', label: '제목에 홍보 한 조각', value: '없음', target: '혜택 한 조각', hint: '넣으세요', weight: 4 },
+])
+ok(withTitle.some((l) => l.includes('제목에 홍보 한 조각')), '가중치가 낮아도 제목 항목은 반드시 실린다')
+ok(withTitle[0].includes('제목'), '제목을 앞에 둔다')
+ok(withTitle.filter((l) => l.includes('본문항목')).length === 6, '본문 항목은 6개까지', String(withTitle.filter((l) => l.includes('본문항목')).length))
+// 제목 항목도 무한정 넣지 않는다 — 한 줄에 네 가지를 동시에 시키면 그것도 무리다
+const manyTitles = fixList(
+  Array.from({ length: 5 }, (_, i) => ({ id: `title${i}`, level: 'fail', label: `제목항목${i}`, value: 'x', target: 'y', weight: 3 }))
+)
+ok(manyTitles.length === 3, '제목 항목은 3개까지', String(manyTitles.length))
+// 수정필요를 주의보다 먼저 (점수 상한을 푸는 것은 수정필요뿐이다)
+const flMixed = fixList([
+  { id: 'a', level: 'warn', label: '주의것', value: 'x', target: 'y', weight: 9 },
+  { id: 'b', level: 'fail', label: '수정필요것', value: 'x', target: 'y', weight: 1 },
+])
+ok(flMixed[0].includes('수정필요것'), '수정필요를 먼저 넘긴다')
+ok(flMixed[0].startsWith('[수정필요]'), '등급을 앞에 표시한다')
+// 통과한 항목은 넘기지 않는다
+ok(fixList([{ id: 'c', level: 'pass', label: '통과것', value: 'x', target: 'y', weight: 5 }]).length === 0, '통과 항목은 안 넘긴다')
+// 힌트가 있으면 함께 (「지금 2회 / 기준 5회」만으로는 어디에 넣을지 모른다)
+ok(fixList([{ id: 'd', level: 'fail', label: 'ㄱ', value: 'x', target: 'y', hint: '이렇게 하세요', weight: 5 }])[0].includes('이렇게 하세요'),
+  '힌트를 함께 넘긴다')
+// 위험 표현은 개수와 무관하게 전부
+const withRisks = fixList(heavyBody, [
+  { term: '무료', category: 'D. 상업 단어 도배', fix: '줄이세요' },
+  { term: '최고의', category: 'A. 최상급·단정', fix: '바꾸세요' },
+])
+ok(withRisks.filter((l) => l.startsWith('[위험 표현]')).length === 2, '위험 표현은 전부 넘긴다')
 // 정보글은 대상이 아니다 — 그 글의 홍보는 마지막 구간에만 모인다
 ok(tpItem('info', '폭식 멈추는 방법, 순서부터 바꿔보세요 정리') === undefined, '정보글은 검사하지 않는다')
 ok(tpItem('promo', '쌍용동 헬스장 추천').hint.includes('있음 1~3위 36% / 없음 29%'), '실측 근거를 붙인다')
