@@ -57,7 +57,8 @@ export function normalizeTag(raw: string): string {
 
 /** 붙여넣을 본문의 한 덩어리 */
 export interface BodyBlock {
-  kind: 'heading' | 'para'
+  /** rule = 구분선 (모델이 `---` 로 써 놓은 줄) */
+  kind: 'heading' | 'para' | 'rule'
   /** 빈 줄로 나뉘는 덩어리들. 덩어리 안의 줄은 줄바꿈으로 붙는다 (소제목은 [[한 줄]]) */
   groups: string[][]
 }
@@ -105,6 +106,16 @@ function breakable(word: string): boolean {
   return /(?:고|며|면|서|야|다가|는데|지만|니까|든지|한지|는지|인지|을지|까지|부터|한테|에게|에서|으로|처럼|보다|라며|자며|거나|어도|아도|해도)$/.test(w)
 }
 
+/**
+ * 줄 길이는 **눈에 보이는 글자로** 센다.
+ *
+ * `**` 는 서식으로 바뀌어 사라지므로 길이에 넣으면 그 줄만 짧아진다. 강조가 든 문장이
+ * 유난히 짧게 끊기던 원인이다.
+ */
+function visible(s: string): number {
+  return s.replace(/\*\*/g, '').length
+}
+
 /** 문장 하나를 마디에서 끊어 줄들로 만든다 (낱말은 자르지 않는다) */
 export function clauseLines(sentence: string): string[] {
   const words = sentence.trim().split(/\s+/).filter(Boolean)
@@ -114,7 +125,7 @@ export function clauseLines(sentence: string): string[] {
     const w = words[i]
     // 넘칠 낱말은 **붙이기 전에** 다음 줄로 내린다 (붙인 뒤 끊으면 그 줄이 상한을 넘는다)
     const joined = cur ? `${cur} ${w}` : w
-    if (cur && joined.length > LINE_MAX) {
+    if (cur && visible(joined) > LINE_MAX) {
       lines.push(cur)
       cur = w
     } else {
@@ -128,8 +139,19 @@ export function clauseLines(sentence: string): string[] {
      * 눈으로 안 잡힌다. 회원이 손으로 고칠 때도 인용은 통째로 한 줄에 뒀다.
      */
     const inQuote = ((cur.match(/["“”]/g) ?? []).length % 2) === 1
+    /*
+     * **굵게 표시가 열린 채로도 끊지 않는다.**
+     *
+     * 회원이 붙여넣은 결과에 별표가 그대로 박혀 있었다:
+     *   **대한비만학회가 일반인 홈페이지 자료에서
+     *   밝힌 내용을 보면**, 운동은 …
+     * 줄바꿈이 `**` 짝 사이를 갈랐고, 서식으로 바꾸는 자리에서는 한 줄씩만 보니 짝을 못
+     * 찾아 별표가 살아남았다. 따옴표와 같은 처리를 해야 한다 (아래 `bold` 도 함께 고쳤다 —
+     * 상한을 넘겨 어쩔 수 없이 갈리는 경우가 남는다).
+     */
+    const inBold = ((cur.match(/\*\*/g) ?? []).length % 2) === 1
     // 마디 끝이면 끊는다 — 남은 게 한두 낱말뿐이면 그냥 데리고 간다
-    if (rest && !inQuote && cur.length >= LINE_MIN && breakable(w) && rest.length >= ORPHAN_MIN) {
+    if (rest && !inQuote && !inBold && visible(cur) >= LINE_MIN && breakable(w) && visible(rest) >= ORPHAN_MIN) {
       lines.push(cur)
       cur = ''
     }
@@ -175,11 +197,71 @@ export function mobileGroups(paragraph: string): string[][] {
   return squash(groups.flat().join(' ')) === squash(text) ? groups : [[text]]
 }
 
-/** 정리된 본문을 소제목·문단으로 쪼갠다 (이미지·영상 지시문은 버린다) */
+/**
+ * 마크다운 구분선 줄인가 — `---` · `***` · `___` · `- - -`.
+ *
+ * 회원이 붙여넣은 결과에 `---` 가 글자로 박혀 있었다. 모델이 마크다운 습관으로 쓴 것이고,
+ * 우리는 소제목(`##`)과 이미지 지시문만 처리했으니 그대로 문단이 되어 나갔다.
+ */
+export function isRuleLine(line: string): boolean {
+  return /^\s*(?:-\s*){3,}$|^\s*(?:\*\s*){3,}$|^\s*(?:_\s*){3,}$/.test(line)
+}
+
+/** `**` 를 잠깐 치워둘 자리표 — 굵게는 서식으로 살릴 것이라 여기서 건드리면 안 된다 */
+const BOLD_KEEP = ' B '
+
+/**
+ * 네이버가 못 읽는 마크다운을 글자로 풀어놓는다 (순수 함수 — 테스트 대상).
+ *
+ * 회원 지적 — "아직도 마크다운 같은데 복사 붙여넣기 하면 제대로 반영이 안 돼."
+ * 우리가 서식으로 살릴 수 있는 것은 **소제목(`##`)·굵게(`**`)·구분선** 세 개뿐이다.
+ * 나머지 마크다운은 네이버에서 **글자로 박힌다.** 그래서 여기서 사람이 읽는 모양으로 푼다:
+ *
+ *   ![대체글](주소) → 버린다 (이미지는 회원이 직접 올린다)
+ *   [글자](주소)     → 글자 (주소)
+ *   `코드`          → 코드
+ *   *기울임*        → 기울임        (밑줄 `_` 은 건드리지 않는다 — 아이디에 들어간다)
+ *   > 인용          → 인용
+ *   - 목록          → · 목록
+ */
+export function inlineMarkdown(line: string): string {
+  let s = line.replace(/\*\*/g, BOLD_KEEP)
+  s = s.replace(/!\[[^\]\n]*\]\([^)\n]*\)/g, '')
+  s = s.replace(/\[([^\]\n]+)\]\(([^)\n]+)\)/g, '$1 ($2)')
+  s = s.replace(/`{1,3}([^`\n]+)`{1,3}/g, '$1')
+  // 한쪽만 있는 별표는 그대로 둔다 (곱하기·각주로 쓴 것일 수 있다)
+  s = s.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?;:]|$)/g, '$1$2')
+  s = s.replace(/^\s*>\s?/, '')
+  s = s.replace(/^\s*[-*+]\s+/, '· ')
+  return s.split(BOLD_KEEP).join('**').trim()
+}
+
+/** 목록으로 쓴 줄인가 — `- ` · `* ` · `+ ` 로 시작하는 줄 */
+function isListLine(line: string): boolean {
+  return /^\s*[-*+]\s+\S/.test(line) && !isRuleLine(line)
+}
+
+/** 정리된 본문을 소제목·문단·구분선으로 쪼갠다 (이미지·영상 지시문은 버린다) */
 export function toBlocks(cleaned: string): BodyBlock[] {
   const blocks: BodyBlock[] = []
   let buf: string[] = []
+  /*
+   * 목록 줄은 따로 모은다.
+   *
+   * 안 그러면 줄들이 한 문단으로 뭉쳐서 가운뎃점이 줄 한복판에 붙는다 — 실제로 이렇게 나왔다:
+   *   · 유산소 15분부터 시작하세요 ·
+   *   세 세트 사이에는 호흡만 고르세요
+   * 사람이 네이버에 목록을 쓸 때는 빈 줄 없이 **한 줄에 한 항목**이다. 그대로 만든다.
+   */
+  let listBuf: string[] = []
+  const flushList = () => {
+    if (!listBuf.length) return
+    const lines = listBuf.flatMap((item) => clauseLines(item))
+    listBuf = []
+    blocks.push({ kind: 'para', groups: [lines] })
+  }
   const flush = () => {
+    flushList()
     const joined = buf.join(' ').trim()
     buf = []
     if (joined) blocks.push({ kind: 'para', groups: mobileGroups(joined) })
@@ -191,15 +273,35 @@ export function toBlocks(cleaned: string): BodyBlock[] {
       flush()
       continue
     }
-    const heading = line.match(/^##+\s*(.+)$/)
-    if (heading) {
-      flush()
-      blocks.push({ kind: 'heading', groups: [[heading[1].trim()]] })
+    if (isListLine(line)) {
+      // 앞에 흐르던 문단이 있으면 먼저 닫는다 (목록은 그 문단에 섞이지 않는다)
+      const joined = buf.join(' ').trim()
+      buf = []
+      if (joined) blocks.push({ kind: 'para', groups: mobileGroups(joined) })
+      listBuf.push(inlineMarkdown(line))
       continue
     }
-    buf.push(line)
+    flushList()
+    // 구분선을 문단으로 만들지 않는다 — 서식으로 바꿔서 낸다
+    if (isRuleLine(line)) {
+      flush()
+      // 소제목 위아래 구분선과 겹치지 않게 (인용구 소제목이 이미 선을 두 줄 낸다)
+      if (blocks[blocks.length - 1]?.kind !== 'rule') blocks.push({ kind: 'rule', groups: [] })
+      continue
+    }
+    const heading = line.match(/^#+\s*(.+)$/)
+    if (heading) {
+      flush()
+      blocks.push({ kind: 'heading', groups: [[inlineMarkdown(heading[1].trim())]] })
+      continue
+    }
+    const text = inlineMarkdown(line)
+    if (text) buf.push(text)
   }
   flush()
+  // 맨 앞·맨 뒤 구분선은 버린다 (글 시작과 끝에 선만 남는다)
+  while (blocks[0]?.kind === 'rule') blocks.shift()
+  while (blocks[blocks.length - 1]?.kind === 'rule') blocks.pop()
   return blocks
 }
 
@@ -217,12 +319,21 @@ function esc(s: string): string {
  * **반드시 이스케이프 뒤에** 부른다. 순서가 바뀌면 우리가 넣은 태그의 꺾쇠까지 escape 된다.
  */
 function bold(escaped: string): string {
-  return escaped.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+  return escaped.replace(BOLD_PAIR, '<strong>$1</strong>')
 }
+
+/**
+ * 굵게 짝을 찾는 정규식 — **줄바꿈을 넘어간다.**
+ *
+ * `[^*\n]` 로 두었더니 줄바꿈으로 갈린 짝을 못 찾아 별표가 글에 박혀 나갔다 (회원 캡처).
+ * 줄 단위가 아니라 **덩어리 단위**로 걸어야 한다. 길이를 300자로 묶어 둔 것은, 짝이 안
+ * 맞는 별표 하나 때문에 글 전체가 한 덩어리로 묶여 사라지는 일을 막기 위해서다.
+ */
+const BOLD_PAIR = /\*\*([^*]{1,300}?)\*\*/g
 
 /** 글자만 붙여넣을 때는 별표를 지운다 — 서식이 아니라 글자로 박히기 때문이다 */
 export function stripBold(s: string): string {
-  return (s ?? '').replace(/\*\*([^*\n]+)\*\*/g, '$1')
+  return (s ?? '').replace(BOLD_PAIR, '$1')
 }
 
 /** 소제목을 어떤 서식으로 낼지 */
@@ -249,13 +360,17 @@ const RULE = 'border:0;border-top:1px solid #dddddd;'
  * `bold` 는 도망갈 구멍이다. 붙여넣기가 이상하게 되는 환경에서 예전 모양(h3)으로 돌아갈 수 있게.
  */
 export function blocksToHtml(blocks: BodyBlock[], style: HeadingStyle = 'quote'): string {
+  /*
+   * **줄을 먼저 붙이고 굵게를 찾는다.** 줄마다 따로 찾으면 줄바꿈으로 갈린 짝을 놓친다
+   * (`<br />` 에는 별표가 없으니 짝 찾기에 방해가 안 된다).
+   */
   const para = (groups: string[][]) =>
     groups
       .map(
         (g) =>
-          `<p style="font-size:16px;line-height:1.9;margin:0 0 26px;">${g
-            .map((line) => bold(esc(line)))
-            .join('<br />')}</p>`
+          `<p style="font-size:16px;line-height:1.9;margin:0 0 26px;">${bold(
+            g.map((line) => esc(line)).join('<br />')
+          )}</p>`
       )
       .join('\n')
 
@@ -268,7 +383,15 @@ export function blocksToHtml(blocks: BodyBlock[], style: HeadingStyle = 'quote')
           `<hr style="${RULE}margin:0 0 28px;" />`,
         ].join('\n')
 
-  return blocks.map((b) => (b.kind === 'heading' ? heading(b.groups[0]?.[0] ?? '') : para(b.groups))).join('\n')
+  return blocks
+    .map((b) =>
+      b.kind === 'heading'
+        ? heading(b.groups[0]?.[0] ?? '')
+        : b.kind === 'rule'
+          ? `<hr style="${RULE}margin:34px 0;" />`
+          : para(b.groups)
+    )
+    .join('\n')
 }
 
 /**
@@ -281,9 +404,13 @@ export function blocksToText(blocks: BodyBlock[], rule = true): string {
   return stripBold(
     blocks
       .map((b) =>
-        b.kind === 'heading' && rule
-          ? `───────────────\n${b.groups[0]?.[0] ?? ''}\n───────────────`
-          : b.groups.map((g) => g.join('\n')).join('\n\n')
+        b.kind === 'rule'
+          ? '───────────────'
+          : b.kind === 'heading' && rule
+            ? `───────────────\n${b.groups[0]?.[0] ?? ''}\n───────────────`
+            : b.kind === 'heading'
+              ? (b.groups[0]?.[0] ?? '')
+              : b.groups.map((g) => g.join('\n')).join('\n\n')
       )
       .join('\n\n')
   )
@@ -293,11 +420,16 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
   const cleaned = stripGuides(post.body)
   const parsed = parseBody(cleaned)
 
-  // 이미지 지시문과 소제목 마크업을 뺀 본문
+  /*
+   * 이미지 지시문·소제목 마크업·구분선·나머지 마크다운을 뺀 본문.
+   *
+   * 이 값이 「그대로 복사」의 내용이다. 여기에 마크다운이 남으면 네이버에 글자로 박힌다 —
+   * 회원이 `---` 와 `**` 가 박힌 화면을 두 번 캡처해 보냈다.
+   */
   const bodyRaw = cleaned
     .split(/\r?\n/)
-    .filter((l) => !/^\s*\[(?:이미지|영상)\s*:?[^\]]*\]\s*$/.test(l))
-    .map((l) => l.replace(/^\s*##+\s*/, ''))
+    .filter((l) => !/^\s*\[(?:이미지|영상)\s*:?[^\]]*\]\s*$/.test(l) && !isRuleLine(l))
+    .map((l) => inlineMarkdown(l.replace(/^\s*#+\s*/, '')))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
