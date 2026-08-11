@@ -522,6 +522,9 @@ export default function Editor({
         failsBefore?: number
         failsAfter?: number
         needsRevise?: boolean
+        /** 분량이 기준 미만이면 앱이 스스로 한 번 더 고쳐 쓴다 */
+        charCount?: number
+        charMin?: number
         fixIssues?: string[]
         provider?: string
         /** 정보글에서 자료를 찾아 인용했는지 */
@@ -545,6 +548,29 @@ export default function Editor({
       if (Array.isArray(json.draft.tags) && json.draft.tags.length) {
         setTagText(json.draft.tags.join(', '))
       }
+      /*
+       * **분량이 기준 미만이면 버튼을 기다리지 않고 곧바로 한 번 더 부른다** (2026-08-11).
+       *
+       * 회원 지적: "글이 882자만 나와. 최소 1,500자는 나와야 하고." 기준이 1,700자인데
+       * 절반쯤 온 것은 다듬을 문제가 아니라 생성이 실패한 것이다. 회원이 「고쳐 쓰기」를
+       * 누를 때까지 짧은 글을 들고 있을 이유가 없다.
+       *
+       * 한 번만 한다 — 이 두 번째 호출은 `fixing` 이므로 여기 다시 들어오지 않는다.
+       */
+      if (
+        !fixing &&
+        typeof json.charCount === 'number' &&
+        typeof json.charMin === 'number' &&
+        json.charCount < json.charMin &&
+        json.fixIssues?.length
+      ) {
+        setAiMsg(
+          `본문이 ${json.charCount.toLocaleString()}자로 나왔습니다 (기준 ${json.charMin.toLocaleString()}자). ` +
+            '짧아서 곧바로 늘려 쓰는 중입니다… 1분쯤 더 걸립니다.'
+        )
+        return await callWrite({ draft: json.draft, issues: json.fixIssues })
+      }
+
       const score = json.check?.score ?? 0
       const left = (json.check?.issues ?? []).length
       // 고칠 거리가 남아 있으면 버튼을 띄운다 (두 번째 호출은 회원이 시작한다)
