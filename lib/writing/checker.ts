@@ -885,6 +885,53 @@ export function checkPost(input: CheckInput): CheckResult {
        */
       weight: 2,
     })
+
+    /*
+     * ─── 상호명을 줄여 쓰지 않았는가 ───────────────────────────
+     *
+     * 회원 요청 (2026-08-11): "센터를 단순 지역명 + 「점」이 아니라 제대로 상호명이 들어갈
+     * 수 있게 해줘." 나온 글이 「두정점입니다」·「두정점에서는」으로 도배돼 있었다.
+     *
+     * **위의 `legalName` 검사로는 안 잡혔다.** 그건 정식 상호명이 몇 번 나오는지만 세니까,
+     * 세 번만 제대로 쓰고 나머지를 「두정점」으로 써도 통과였다.
+     *
+     * 판정 방법: 정식 상호명의 **마지막 낱말**이 줄여 쓴 꼴이다 (「MTO 피트니스 두정점」 →
+     * 「두정점」). 그 낱말이 나온 횟수에서 정식 상호명이 나온 횟수를 빼면 **혼자 쓴 횟수**가
+     * 나온다. 그게 정식 상호명 횟수보다 많으면 글이 사실상 줄임말로 쓰인 것이다.
+     *
+     * 왜 지역명+점 만으로는 안 되나 — 독자가 검색해도 우리 가게를 못 찾는다. 「두정점」은
+     * 이 동네에 여러 업종이 쓰는 말이고, 플레이스에서도 브랜드 이름으로 찾는다.
+     */
+    const full = (input.legalName ?? '').trim()
+    const parts = full.split(/\s+/).filter(Boolean)
+    const shortForm = parts.length >= 2 ? parts[parts.length - 1] : ''
+    if (shortForm.length >= 2) {
+      const shortHits = countLoose(scanText, shortForm)
+      // 정식 상호명 안에도 그 낱말이 들어 있으므로 뺀다 — 남는 것이 혼자 쓴 횟수다
+      const alone = Math.max(0, shortHits - legalNameCount)
+      const level: CheckLevel = alone === 0 ? 'pass' : alone > legalNameCount ? 'fail' : 'warn'
+      add({
+        id: 'legalNameShort',
+        group: '키워드',
+        label: '상호명을 줄여 쓰지 않았는가',
+        level,
+        value:
+          alone === 0
+            ? `줄임말 없음 (정식 상호명 ${legalNameCount}회)`
+            : `「${shortForm}」만 쓴 자리 ${alone}곳 (정식 상호명 ${legalNameCount}회)`,
+        target: `「${full}」을 글자 그대로 — 「${shortForm}」만으로 줄여 쓰지 않는다`,
+        hint:
+          level === 'pass'
+            ? undefined
+            : `「${shortForm}」만 쓰면 독자가 **어느 브랜드인지 모릅니다** — 검색해도 우리 가게가 안 나오고, 그 이름은 이 동네 다른 업종도 씁니다. 「${shortForm}」이라고 쓴 자리를 「${full}」으로 바꾸세요. 문장이 길어지는 게 부담이면 처음 한 번은 정식 상호명으로 쓰고 그다음부터 「저희」·「우리 센터」로 받으면 됩니다 — 줄인 상호명보다 그게 낫습니다.`,
+        /*
+         * 가중치 3. 순위 근거는 없다 (`legalName` 주석의 161편 실측 — 상호명 유무로 순위가
+         * 갈리지 않았다). 회원이 직접 요청한 자리이고 「찾아올 수 있게」에 걸린 항목이라
+         * 상호명 횟수(2)보다는 무겁게, 순위를 만드는 항목보다는 가볍게 뒀다.
+         */
+        weight: 3,
+      })
+    }
   }
 
   if (spec.requireLocalKeyword) {

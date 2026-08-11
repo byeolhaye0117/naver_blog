@@ -6137,6 +6137,67 @@ ok(ACT.blind.some((b) => b.includes('유입경로')) && ACT.blind.some((b) => b.
   '로그인해야 보이는 것을 명시한다')
 
 // ─────────────────────────────────────────────────────────────
+console.log('\n[94] 상호명을 줄여 쓰지 않았는가')
+/*
+ * 회원 요청 (2026-08-11): "센터를 단순 지역명 + 「점」이 아니라 제대로 상호명이 들어갈 수
+ * 있게 해줘." 나온 글이 「두정점입니다」·「두정점에서는」으로 도배돼 있었다.
+ *
+ * **기존 `legalName` 검사로는 안 잡혔다.** 그건 정식 상호명이 몇 번 나오는지만 세니까,
+ * 세 번만 제대로 쓰고 나머지를 줄임말로 써도 통과였다.
+ */
+const shortBase = {
+  type: 'promo',
+  mainKeyword: '두정동 헬스장',
+  subKeywords: ['두정동PT'],
+  tags: ['두정동헬스장'],
+  legalName: 'MTO 피트니스 두정점',
+  title: '두정동 헬스장 3개월 9.9만원, 새벽에도 갈까?',
+}
+const shortItem = (body, patch = {}) =>
+  checkPost({ ...shortBase, ...patch, body }).items.find((i) => i.id === 'legalNameShort')
+const filler = '운동 얘기입니다. '.repeat(28)
+const properly = `안녕하세요, MTO 피트니스 두정점입니다. `.repeat(3) + filler
+ok(shortItem(properly)?.level === 'pass', '정식 상호명만 쓰면 통과', shortItem(properly)?.value)
+// 정식 상호명 안에도 「두정점」이 들어 있다 — 그걸 줄임말로 세면 통과가 불가능해진다
+ok(shortItem(properly)?.value.includes('줄임말 없음'), '정식 상호명 속의 낱말을 줄임말로 세지 않는다')
+const once = `안녕하세요, MTO 피트니스 두정점입니다. `.repeat(3) + '두정점에서는 이렇게 합니다. ' + filler
+ok(shortItem(once)?.level === 'warn', '한두 곳 줄여 쓰면 주의', shortItem(once)?.value)
+const mostly = `안녕하세요, MTO 피트니스 두정점입니다. ` + '두정점은 이렇습니다. '.repeat(5) + filler
+ok(shortItem(mostly)?.level === 'fail', '줄임말이 정식 상호명보다 많으면 즉시수정', shortItem(mostly)?.value)
+ok(shortItem(mostly)?.hint.includes('어느 브랜드인지 모릅니다'), '왜 안 되는지 알려준다')
+ok(shortItem(mostly)?.hint.includes('MTO 피트니스 두정점'), '무엇으로 바꾸라고 알려준다')
+ok(shortItem(mostly)?.hint.includes('「저희」·「우리 센터」로 받으면'), '길어지는 부담에 대한 답도 준다')
+// 상호명이 한 낱말이면 줄임말이 있을 수 없다 — 항목을 만들지 않는다
+ok(shortItem(properly, { legalName: '헬스장' }) === undefined, '한 낱말 상호명은 검사하지 않는다')
+
+/*
+ * 지시문도 같은 말을 해야 한다. **예시가 「○○점입니다」였던 게 원인의 절반이다** —
+ * 줄여 쓴 꼴을 예시로 주고 있었으니 모델은 그대로 따랐다.
+ */
+const nameSys = buildSystemPrompt('promo')
+ok(!nameSys.includes('"안녕하세요, ○○점입니다"'), '줄여 쓴 예시를 빼냈다')
+ok(nameSys.includes('정식 상호명 전체로'), '정식 상호명 전체로 인사하라고 한다')
+ok(nameSys.includes('지역명+점 으로만 줄여 쓰지 않는다'), '줄여 쓰지 말라고 못 박는다')
+// 지점 정보의 「표시 이름」이 본문용으로 읽히지 않게 한다
+const namePrompt = buildUserPrompt({
+  type: 'promo',
+  store: { name: '두정점', legalName: 'MTO 피트니스 두정점', location: '천안 두정동', phone: '041-000-0000' },
+  mainKeyword: '두정동 헬스장',
+  subKeywords: [],
+})
+ok(namePrompt.includes('본문·제목에는 이것을 글자 그대로 쓴다'), '정식 상호명을 쓰라고 표시한다')
+ok(namePrompt.includes('본문에 쓰지 않는다'), '표시 이름을 본문에 쓰지 말라고 한다')
+ok(namePrompt.includes('「두정점입니다」처럼 줄여 쓰면'), '줄여 쓴 꼴을 그대로 보여주며 막는다')
+// 표시 이름과 정식 상호명이 같으면 그 줄을 두 번 낼 이유가 없다
+const sameName = buildUserPrompt({
+  type: 'promo',
+  store: { name: 'MTO 피트니스 두정점', legalName: 'MTO 피트니스 두정점', location: '천안', phone: '041' },
+  mainKeyword: '두정동 헬스장',
+  subKeywords: [],
+})
+ok(!sameName.includes('- 표시 이름:'), '이름이 같으면 표시 이름 줄을 내지 않는다')
+
+// ─────────────────────────────────────────────────────────────
 console.log('\n[93] 제목만 다시 쓰기 · 도배 낱말을 바꿔 쓸 말')
 /*
  * ─── 제목만 다시 쓰기 ─────────────────────────────────────────
