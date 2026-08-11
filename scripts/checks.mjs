@@ -3636,7 +3636,13 @@ ok(PROMO_MAX_BY_TYPE.promo === 6, '홍보글은 6종류까지 — 순위 근거�
  * 대신 조이는 곳을 **개수에서 자리로** 옮겼다 (`info-promo-tail`).
  */
 ok(PROMO_MAX_BY_TYPE.info === 4, '정보글은 4종류까지 — 마지막 구간에 홍보를 모으면 이만큼 된다')
-ok(PROMO_MAX_BY_TYPE.review === 3, '후기글은 3종류 (대가성 티가 저품질 위험)')
+/*
+ * review 3 → 4 (2026-08-11). 회원이 후기글 **제목에도 홍보성**을 넣어달라고 했다.
+ * 홍보 낱말은 제목+본문을 합쳐 세므로 제목 한 조각이 본문 예산을 깎는다 — 지시문과
+ * 검수기가 싸우지 않게 **제목 몫으로 한 칸만** 올렸다 (본문 예산은 전과 같이 3).
+ */
+ok(PROMO_MAX_BY_TYPE.review === 4, '후기글은 4종류 — 그중 한 칸은 제목 몫이다')
+ok(PROMO_MAX_BY_TYPE.review < PROMO_MAX_BY_TYPE.promo, '그래도 홍보글보다는 조인다 (대가성 티가 저품질 위험)')
 ok(INFO_RELEASE === 5, '정보 5종류 이상이면 홍보를 더 세도 순위가 안 내려갔다')
 /*
  * 회원이 반박한 지점을 그대로 고정한다 — "이벤트 문구는 줄이지 않아."
@@ -3831,7 +3837,7 @@ ok(tsDist.reduce((n, d) => n + d.count, 0) === TS_LOCAL.length, '분포 합계�
 ok(shapeDistribution([]).every((d) => d.share === 0), '빈 목록은 0%')
 
 // 조언은 「바꿔라」로 단정하지 않는다 — 판이 다르면 답도 다를 수 있다
-ok(titleAdvice('쌍용동 헬스장 추천!').includes('눈에 띄지 않습니다'), '후기형에 왜 아쉬운지 말한다')
+ok(titleAdvice('쌍용동 헬스장 추천!').includes('눈에 띄지 않습니다'), '후기형에 왜 약한지 말한다')
 ok(titleAdvice('쌍용동 헬스장 추천!').includes('궁금증'), '무엇을 얹으라고 알려준다')
 ok(titleAdvice('왜 안 빠질까?').includes('6편'), '질문형에는 실측 근거를 붙인다')
 ok(titleAdvice('쌍용동 헬스장 MTO 피트니스').includes('클릭할 이유가 제목에 없습니다'), '평서형에 문제를 짚는다')
@@ -4394,7 +4400,41 @@ const promoTitleRule = buildSystemPrompt('promo')
 ok(promoTitleRule.includes('제목에 혜택을 한 조각 넣는다'), '제목에 혜택을 넣으라고 한다')
 ok(promoTitleRule.includes('있음 1~3위 36% / 없음 29%'), '불리하지 않다는 실측을 붙인다')
 ok(promoTitleRule.includes('금액을 그대로 써도 된다'), '금액을 제목에 써도 된다 (회원 요청 · 반대 근거 없음)')
-ok(!buildSystemPrompt('review').includes('제목에 혜택을 한 조각'), '후기글에는 이 규칙을 주지 않는다')
+/*
+ * **후기글에도 제목 홍보성을 준다** (2026-08-11). 회원 요청: "제목도 홍보성이 별로 없어.
+ * 홍보성 있게 해줘." 다만 말투는 방문자 쪽이어야 한다 — 후기 제목에서 센터 말투로 혜택을
+ * 외치면 업체가 쓴 글로 읽혀 대가성 광고 자리로 간다.
+ */
+const revTitleRule = buildSystemPrompt('review')
+ok(revTitleRule.includes('제목에 혜택을 한 조각 넣되 방문자 말투로 쓴다'), '후기글 제목에도 홍보성을 넣으라고 한다')
+ok(revTitleRule.includes('3개월 9.9만원에 등록한 후기'), '방문자 말투 예시를 준다')
+ok(revTitleRule.includes('지금 신청하세요'), '센터 말투 제목을 막는다')
+ok(revTitleRule.includes('금액을 지어내지 말고'), '이벤트 정보가 없으면 금액을 만들지 않게 한다')
+ok(!revTitleRule.includes('상담을 받으려고 쓰는 글이니'), '홍보글 문구를 그대로 주지는 않는다')
+
+/*
+ * ─── 후기글에서 아쉬운 점을 뺀다 ────────────────────────────────
+ *
+ * 회원 요청 (2026-08-11): "후기글 뽑으면 아쉬운 점을 적는데 이 부분 삭제하고 좋은점,
+ * 만족한점으로 교체해줘."
+ *
+ * 전에는 「가벼운 아쉬움을 1~2개 반드시 남긴다 — 단점이 없는 후기는 광고로 읽힌다」로
+ * 시켰다. 그 걱정은 여전히 맞지만, 광고처럼 읽히지 않게 하는 것은 **단점이 아니라
+ * 구체성**이다. 그래서 단점을 빼는 대신 좋은 점을 뭉뚱그리지 못하게 조인다.
+ */
+ok(!revTitleRule.includes('아쉬움을 1~2개'), '아쉬움을 남기라는 지시가 사라졌다')
+ok(!revTitleRule.includes('솔직한 아쉬움'), '단계 설명에서도 아쉬움이 사라졌다')
+ok(revTitleRule.includes('아쉬웠던 점·단점은 쓰지 않는다'), '아쉬운 점을 쓰지 말라고 못 박는다')
+ok(revTitleRule.includes('좋았던 점·만족한 점'), '좋았던 점으로 바꿨다')
+ok(revTitleRule.includes('뭉뚱그리지 않는다'), '「다 좋았어요」를 막는다 — 그게 광고로 읽히는 지점이다')
+ok(revTitleRule.includes('샤워실이 두 칸이라'), '구체적인 장면 예시를 준다')
+// 홍보글·정보글에는 이 규칙이 필요 없다 (화자가 센터다)
+ok(!buildSystemPrompt('promo').includes('아쉬웠던 점·단점은 쓰지 않는다'), '홍보글에는 주지 않는다')
+// 골격에도 반영됐는지 (회원이 보는 화면이다)
+const revGoodTpl = buildTemplate('review', { mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], localKeyword: '쌍용동 헬스장' })
+ok(!revGoodTpl.includes('아쉬웠던 점 1가지'), '골격에서도 아쉬움이 사라졌다')
+ok(revGoodTpl.includes('좋았던 점·만족한 점'), '골격이 좋았던 점을 시킨다')
+ok(revGoodTpl.includes('없는 후기·사례 창작 금지'), '지어내지 말라는 말은 그대로 남긴다')
 ok(promoTitleRule.includes('소제목은 `## 소제목` 형식. 5~6개'), '홍보글 소제목은 5~6개 (구간이 늘었다)')
 ok(buildSystemPrompt('info').includes('소제목은 `## 소제목` 형식. 4~5개'), '다른 유형은 4~5개 그대로')
 
