@@ -160,7 +160,7 @@ async function handle(req: Request, ms: () => string) {
      * **최근에 안 쓴 것을 서버가 고른다** (rotation.ts 가 그 계산을 이미 한다).
      * 회원이 고른 값이 있으면 그게 이긴다.
      */
-    const rotation = adviseRotation(db.posts, store.id, type, store)
+    const rotation = adviseRotation(db.posts, store.id, type, store, body.request?.trim())
 
     const request = {
       type,

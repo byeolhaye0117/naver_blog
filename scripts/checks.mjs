@@ -4891,7 +4891,56 @@ ok(withTopic.includes('다른 주제로 새지 않는다'), '한 주제만 다�
 ok(withTopic.includes('5종류 이상'), '그 주제 안에서 정보 5종류를 요구한다 (실측 기준 유지)')
 
 const withReq = buildUserPrompt({ ...REQ79, request: '주차 얘기는 빼고 샤워실을 강조해주세요' })
-ok(withReq.includes('## 이번 글 요청 (다른 지시보다 우선한다)'), '요청 묶음이 들어간다')
+ok(withReq.includes('## 이번 글 요청 (이 문서의 다른 모든 지시보다 우선한다)'), '요청 묶음이 들어간다')
+/*
+ * **요청은 정말 맨 마지막에 있어야 한다** (2026-08-11 정정).
+ *
+ * 주석에는 「맨 마지막에」라고 적혀 있었는데 실제로는 아니었다 — 뒤에 로테이션·최근 글
+ * 묶음을 붙이면서 요청이 가운데로 밀렸다. 회원이 「24시 내용 빼고」라고 했는데 그 뒤에 온
+ * 「주력 앵글: 시간」이 이겨서 글이 온통 시간대 얘기가 됐다. 모델은 뒤쪽을 더 강하게
+ * 따르므로 **위치가 곧 우선순위다.**
+ */
+const reqOrder = buildUserPrompt({
+  ...REQ79,
+  request: '24시 내용은 빼주세요',
+  introType: '③ 비교형 — 몇 군데 알아보다가',
+  angle: '방법',
+  recent: [{ type: 'review', title: '지난 글', mainKeyword: 'k', introType: '① 검색 시작형', angle: '시간' }],
+})
+ok(
+  reqOrder.indexOf('## 이번 글 요청') > reqOrder.indexOf('## 이번 글의 도입·전개'),
+  '요청이 로테이션보다 뒤에 온다'
+)
+ok(reqOrder.indexOf('## 이번 글 요청') > reqOrder.indexOf('## 우리 블로그 최근 글'), '요청이 최근 글 묶음보다도 뒤에 온다')
+ok(reqOrder.includes('빼달라고 한 것은 제목·소제목·본문 어디에도 넣지 않는다'), '빼달란 것을 어디에도 넣지 말라고 한다')
+ok(reqOrder.includes('앵글을 버리고 요청을 따른다'), '앵글과 부딪히면 요청이 이긴다고 못 박는다')
+// 키워드에 그 말이 박혀 있으면 (「쌍용동 24시헬스장」) 낱말은 남기고 축으로만 쓰지 않게 가른다
+ok(reqOrder.includes('키워드로만 쓰고, 그 얘기를 설명하거나 소제목으로 세우지 않는다'), '키워드와 주제를 가른다')
+
+/*
+ * ─── 요청과 부딪히는 앵글은 **애초에 고르지 않는다** ─────────────
+ *
+ * 회원 지적: "24시 내용 빼고 작성해달라 했는데 이렇게 작성했어" (나온 글이 온통 시간대
+ * 얘기였다). 지시문에 「부딪히면 요청이 이긴다」를 적는 것보다, 로테이션이 그 앵글을
+ * 고르지 않게 하는 쪽이 확실하다 — 모델에게 모순을 주고 잘 풀기를 바라지 않는다.
+ */
+const { anglesToAvoid } = require(`${OUT}/writing/rotation.js`)
+ok(anglesToAvoid('24시 내용 빼고 작성해줘').includes('시간'), '「24시 빼고」면 시간 앵글을 뺀다')
+ok(anglesToAvoid('새벽 얘기는 제외해주세요').includes('시간'), '「새벽 제외」도 시간 앵글')
+ok(anglesToAvoid('시간대 얘기 말고 다른 걸로').includes('시간'), '「시간대 말고」도 시간 앵글')
+ok(anglesToAvoid('여성전용은 빼주세요').includes('안심(여성전용)'), '여성전용도 뺀다')
+ok(anglesToAvoid('초보 얘기 없이 써주세요').includes('초보 진입장벽'), '초보도 뺀다')
+// **그냥 언급한 것까지 빼면 요청을 거꾸로 읽는 셈이다**
+ok(anglesToAvoid('24시간 운영하는 걸 강조해주세요').length === 0, '강조해달란 것을 빼지 않는다')
+ok(anglesToAvoid('새벽에 오시는 분들 얘기를 넣어주세요').length === 0, '넣어달란 것을 빼지 않는다')
+ok(anglesToAvoid('').length === 0 && anglesToAvoid(undefined).length === 0, '요청이 없으면 빼는 것도 없다')
+// 로테이션이 실제로 그 앵글을 피하는지
+const avoidAdv = adviseRotation([], 's', 'review', undefined, '24시 내용 빼고 작성해줘')
+ok(avoidAdv.angle !== '시간', '로테이션이 시간 앵글을 고르지 않는다', avoidAdv.angle)
+ok(avoidAdv.avoidedAngles?.includes('시간'), '무엇을 뺐는지 알려준다')
+// 전부 걸러지면 원래 목록으로 돌아간다 (앵글이 없는 것보다는 낫다)
+const allAvoid = adviseRotation([], 's', 'review', undefined, '시간 빼고 지속 빼고 방법 빼고 초보 빼고')
+ok(Boolean(allAvoid.angle), '전부 걸러져도 앵글은 하나 준다', allAvoid.angle)
 ok(withReq.includes('주차 얘기는 빼고'), '적은 요청을 그대로 넣는다')
 /*
  * **형식 규칙은 요청보다 위다.** 「우선한다」만 적어두면 모델이 글자수·키워드 횟수까지
