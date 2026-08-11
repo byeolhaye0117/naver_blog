@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Post, PostStatus, PostType, Prescription, Sponsorship, Store } from '@/lib/types'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL, SPONSORSHIP_LABEL } from '@/lib/types'
@@ -162,6 +162,13 @@ export default function Editor({
    * 재본다. 네이버가 수정일을 반영하는지는 확인된 바 없다 (lib/analysis/revise.ts).
    */
   const [revisedAt, setRevisedAt] = useState(existing?.revisedAt ?? '')
+  /**
+   * 본문 입력칸 — 위험 표현을 찾아 커서를 놓는 데 쓴다.
+   *
+   * 회원 요청: "이런 거는 수정 버튼 있어서 바로 수정할 수 있게 해줘" (「무료 3회 / 허용
+   * 2회」 화면과 함께). 2,000자 본문에서 세 번째 「무료」를 눈으로 찾는 게 실제 일이었다.
+   */
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null)
   const [eventText, setEventText] = useState(existing?.eventText ?? '')
   const [promoNote, setPromoNote] = useState(existing?.promoNote ?? '')
   /*
@@ -472,6 +479,65 @@ export default function Editor({
    * 경우(게이트웨이 시간초과 페이지 등)를 따로 잡아 쓸 수 있는 안내로 바꾼다 —
    * 예전에는 그 상황에서 정체불명의 오류 문구만 떴다.
    */
+  /**
+   * 위험 표현을 본문에서 찾아 **커서를 그 자리에 놓는다.**
+   *
+   * 자동으로 지우지 않는 이유는 CheckPanel 의 `onFindRisk` 주석에 적어뒀다 — 「무료 방문
+   * 상담」에서 「무료」를 지우면 읽히지만 「혜택을 준비했어요」에서 「혜택」을 지우면 문장이
+   * 깨진다. 어느 쪽인지는 문장을 봐야 알기 때문에 판단은 회원이 한다.
+   *
+   * `nth` 는 몇 번째를 잡을지다. 음수를 주면 뒤에서부터 잡는다 (도배 항목은 마지막에 쓴
+   * 것부터 지우는 편이 앞 문단을 덜 건드린다).
+   */
+  function findRisk(
+    term: string,
+    nth: number,
+    action: 'find' | 'delete' = 'find'
+  ): { index: number; total: number } | null {
+    const ta = bodyRef.current
+    if (!ta || !term) return null
+    const spotsOf = (hay: string) => {
+      const out: number[] = []
+      for (let at = hay.indexOf(term); at !== -1; at = hay.indexOf(term, at + term.length)) out.push(at)
+      return out
+    }
+    const hay = ta.value
+    const spots = spotsOf(hay)
+    // 변칙 표기(「무.료」)로 걸린 항목은 본문에 그 글자가 붙어 있지 않다
+    if (!spots.length) return null
+    const i = ((nth % spots.length) + spots.length) % spots.length
+    const start = spots[i]
+
+    if (action === 'delete') {
+      /*
+       * 그 한 자리만 지운다. 낱말을 떼면 공백이 둘 남으므로 하나로 줄인다 —
+       * 「무료 방문 상담」 → 「방문 상담」.
+       */
+      const before = hay.slice(0, start)
+      const after = hay.slice(start + term.length)
+      const doubled = /[ \t]$/.test(before) && /^[ \t]/.test(after)
+      const next = before + (doubled ? after.replace(/^[ \t]/, '') : after)
+      setBody(next)
+      // 지운 자리에 커서를 둔다 — 문장이 깨지지 않았는지 바로 보이게
+      requestAnimationFrame(() => {
+        ta.focus()
+        ta.setSelectionRange(start, start)
+        ta.scrollTop = Math.max(0, (start / Math.max(1, next.length)) * ta.scrollHeight - ta.clientHeight / 2)
+      })
+      const left = spotsOf(next).length
+      return left ? { index: Math.min(i + 1, left), total: left } : null
+    }
+
+    ta.focus()
+    ta.setSelectionRange(start, start + term.length)
+    /*
+     * 그 자리로 스크롤한다. 줄바꿈 수로 계산하면 자동 줄바꿈 때문에 크게 어긋나므로
+     * **글자 위치의 비율**로 잡는다 — 정확하지는 않지만 화면 안에 들어온다.
+     */
+    ta.scrollTop = Math.max(0, (start / Math.max(1, hay.length)) * ta.scrollHeight - ta.clientHeight / 2)
+    return { index: i + 1, total: spots.length }
+  }
+
   async function callWrite(extra: { draft?: Draft; issues?: string[] }) {
     if (!store) return
     const fixing = Boolean(extra.draft)
@@ -1351,6 +1417,7 @@ export default function Editor({
                     <span className="muted tnum text-[11px]">{result.stats.charCount.toLocaleString()}자</span>
                   </div>
                   <textarea
+                    ref={bodyRef}
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
                     rows={22}
@@ -1473,7 +1540,7 @@ export default function Editor({
         {/* 오른쪽 — 검수 (데스크톱 고정) */}
         <div className={`${view === 'check' ? '' : 'hidden lg:block'} mt-4 lg:mt-0`}>
           <div className="space-y-4 lg:sticky lg:top-16">
-            <CheckPanel result={result} />
+            <CheckPanel result={result} onFindRisk={findRisk} />
             {/* 검수기는 내 글만 본다. 남의 글과 겹치는지는 네이버를 읽어야 알 수 있다 */}
             <SimilarityCard keyword={mainKeyword} text={stripGuides(body)} />
             {/*
