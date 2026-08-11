@@ -4,6 +4,7 @@ import { poolStoredRuns } from '@/lib/analysis/factors'
 import { AiError, aiStatus, askLlm, canSearchWeb, extractJson } from '@/lib/ai/llm'
 import { buildFixPrompt, buildSystemPrompt, buildUserPrompt } from '@/lib/ai/prompt'
 import { PUBLISH_THRESHOLD, SPECS, checkPost, summarize } from '@/lib/writing/checker'
+import { adviseRotation } from '@/lib/writing/rotation'
 import type { PostType } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -123,6 +124,17 @@ async function handle(req: Request, ms: () => string) {
       sponsorship?: 'own' | 'sponsored' | 'unset'
       prescription?: string[]
       /**
+       * 유사성 방지 로테이션 — 화면에서 고른 값.
+       *
+       * **여태 안 넘어오고 있었다** (2026-08-11). 회원 지적: "후기글 거의 처음이 등록
+       * 망설인 이유로 시작하고 있어." 화면에 「도입 유형」 칸이 있고 최근에 안 쓴 것을
+       * 권하기까지 했는데, 그 값을 글에 저장만 하고 여기로는 보내지 않았다.
+       */
+      introType?: string
+      angle?: string
+      format?: string
+      topicGroup?: string
+      /**
        * 이미 받은 초안 — 있으면 **고쳐 쓰기만** 한다.
        *
        * 예전에는 한 요청에서 두 번 썼다 (쓰고 → 검수해서 85점 미만이면 다시 쓰기).
@@ -167,10 +179,24 @@ async function handle(req: Request, ms: () => string) {
         storeName: db.stores.find((s) => s.id === p.storeId)?.name,
       }))
 
+    /*
+     * **비어 있으면 여기서 정한다.**
+     *
+     * 화면의 「도입 유형」 칸은 회원이 손대지 않으면 빈 값이다. 그 상태로 넘기면 예전과
+     * 똑같아진다 — 지정이 없으니 모델이 매번 같은 도입을 쓴다. 그래서 안 골랐으면
+     * **최근에 안 쓴 것을 서버가 고른다** (rotation.ts 가 그 계산을 이미 한다).
+     * 회원이 고른 값이 있으면 그게 이긴다.
+     */
+    const rotation = adviseRotation(db.posts, store.id, type, store)
+
     const request = {
       type,
       store,
       mainKeyword,
+      introType: body.introType?.trim() || rotation.introType,
+      angle: body.angle?.trim() || rotation.angle,
+      format: body.format?.trim() || rotation.format,
+      topicGroup: body.topicGroup?.trim() || rotation.topicGroup,
       subKeywords: (body.subKeywords ?? []).filter(Boolean),
       localKeyword: body.localKeyword?.trim() || undefined,
       eventText: body.eventText?.trim() || undefined,
@@ -306,6 +332,19 @@ async function handle(req: Request, ms: () => string) {
        */
       charCount: result.stats.charCount,
       charMin: SPECS[type].charMin,
+      /*
+       * **무엇으로 썼는지 되돌려준다.**
+       *
+       * 이게 없으면 로테이션이 한 자리에서 멈춘다 — 서버가 「③ 비교형」을 골라 써도 글에는
+       * 도입 유형이 빈 값으로 저장되고, 다음 글에서 「최근에 안 쓴 것」을 다시 계산하면
+       * 또 「③ 비교형」이 나온다. 도입이 매번 같아지는 것을 막으려면 **쓴 것을 기록**해야 한다.
+       */
+      rotation: {
+        introType: request.introType,
+        angle: request.angle,
+        format: request.format,
+        topicGroup: request.topicGroup,
+      },
       fixIssues: fixList(result),
       provider: ai.label,
       // 자료를 찾아 인용했는지 — 화면에서 회원에게 밝힌다 (못 찾는 키도 있다)
