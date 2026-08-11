@@ -297,6 +297,15 @@ async function handle(req: Request, ms: () => string) {
       revised: false,
       /** 85점 미만이면 앱이 「고쳐 쓰기」 버튼을 띄운다 (두 번째 호출) */
       needsRevise: result.score < PUBLISH_THRESHOLD,
+      /*
+       * **분량이 기준 미만이면 앱이 곧바로 고쳐 쓰기를 한 번 돌린다.**
+       *
+       * 회원 지적: "글이 882자만 나와. 최소 1,500자는 나와야 하고." 기준이 1,700자인데
+       * 절반쯤 왔다. 이건 다듬을 문제가 아니라 **생성이 실패한 것**이라 버튼을 기다릴 일이
+       * 아니다. 그래서 숫자를 함께 내려보내 앱이 스스로 한 번 더 부르게 한다 (한 번만).
+       */
+      charCount: result.stats.charCount,
+      charMin: SPECS[type].charMin,
       fixIssues: fixList(result),
       provider: ai.label,
       // 자료를 찾아 인용했는지 — 화면에서 회원에게 밝힌다 (못 찾는 키도 있다)
