@@ -4941,6 +4941,74 @@ ok(avoidAdv.avoidedAngles?.includes('시간'), '무엇을 뺐는지 알려준다
 // 전부 걸러지면 원래 목록으로 돌아간다 (앵글이 없는 것보다는 낫다)
 const allAvoid = adviseRotation([], 's', 'review', undefined, '시간 빼고 지속 빼고 방법 빼고 초보 빼고')
 ok(Boolean(allAvoid.angle), '전부 걸러져도 앵글은 하나 준다', allAvoid.angle)
+
+/*
+ * ─── 빼달란 낱말을 **프롬프트 전체에서** 걷어낸다 ──────────────────
+ *
+ * 회원 지적 (두 번째): "24시 내용 빼달라 그랬는데 더 홍보하고 있어."
+ *
+ * 앞 판에서 앵글만 걸렀더니 부족했다. 프롬프트 전체를 훑어보니 **다른 자리에서 24시를
+ * 밀고 있었다** — 가장 센 것이 상위노출 분석 처방이었다:
+ *     - 상위 제목에 반복되는 말: **24시**, PT, 후기, 추천
+ * 「이 말들을 제목에 넣어라」는 뜻이라 요청과 정면으로 부딪히고, 처방은 구체적이라 모델이
+ * 더 강하게 따른다. 지점 정보의 「24시간 운영: 예」도 같은 일을 한다.
+ */
+const { excludedWords } = require(`${OUT}/writing/rotation.js`)
+const { dropExcluded } = require(`${OUT}/analysis/prescription.js`)
+
+ok(excludedWords('24시 내용은 빼고 작성해주세요').includes('24시'), '빼달란 낱말을 뽑는다')
+ok(!excludedWords('24시 내용은 빼고 작성해주세요').includes('내용'), '「내용」같은 말은 주제가 아니다')
+ok(excludedWords('여성전용은 빼주세요').includes('여성전용'), '조사를 떼어낸다')
+ok(excludedWords('주차 얘기는 넣지 말아주세요').includes('주차'), '「넣지 말아」도 부정으로 읽는다 (마 ≠ 말)')
+ok(excludedWords('가격은 언급하지 마세요').includes('가격'), '「언급하지 마」도 읽는다')
+ok(excludedWords('').length === 0, '요청이 없으면 없다')
+// 넣어달란 것을 빼면 요청을 거꾸로 읽는 셈이다
+ok(excludedWords('24시간 운영을 강조해주세요').length === 0, '강조해달란 것은 뽑지 않는다')
+
+// 처방에서 그 낱말만 뺀다 (줄은 살린다 — 나머지 낱말은 쓸모가 있다)
+const rxDropped = dropExcluded(['상위 제목에 반복되는 말: 24시, PT, 후기, 추천. 반영하세요.'], ['24시'])
+ok(rxDropped[0].includes('PT') && !rxDropped[0].includes('24시'), '낱말 목록에서 그 말만 뺀다', rxDropped[0])
+// 줄 전체가 그 낱말 얘기면 줄을 버린다
+ok(dropExcluded(['24시 검색량이 큽니다. 제목에 넣으세요.', '제목은 31~39자'], ['24시']).length === 1, '그 낱말 얘기인 줄은 버린다')
+ok(dropExcluded(['제목은 31~39자'], ['24시'])[0] === '제목은 31~39자', '관계없는 줄은 그대로')
+ok(dropExcluded(['상위 제목에 반복되는 말: 24시. 반영하세요.'], ['24시']).length === 0, '남는 낱말이 없으면 줄을 버린다')
+ok(dropExcluded(['제목은 31~39자'], []).length === 1, '빼는 게 없으면 그대로')
+
+/*
+ * 프롬프트 전체 검사 — 빼달란 낱말이 **어디에도 남지 않아야** 한다.
+ * 예외는 두 곳뿐이다: 회원이 적은 요청 문장 그대로, 그리고 우리가 만든 「쓰지 않을 말」 목록.
+ */
+const excStore = {
+  id: 's', name: '두정점', legalName: 'MTO 피트니스 두정점', location: '천안 두정동', phone: '041-000-0000',
+  open24: true,
+  features: ['24시간 출입 가능', '샤워실 2칸'],
+  strengths: ['새벽에도 트레이너 상주'],
+  localKeywords: ['두정동 헬스장'],
+}
+const excPrompt = buildUserPrompt({
+  type: 'review', store: excStore, mainKeyword: '두정동 헬스장', subKeywords: ['두정동PT'],
+  request: '24시 내용은 빼고 작성해주세요',
+  angle: '지속', introType: '③ 비교형 — 몇 군데 알아보다가',
+  prescription: ['상위 제목에 반복되는 말: 24시, PT, 추천. 반영하세요.'],
+})
+const leaks = excPrompt
+  .split('\n')
+  .filter((l) => /24\s*시/.test(l))
+  .filter((l) => !l.includes('빼고 작성해주세요') && !l.includes('쓰지 않을 말'))
+ok(leaks.length === 0, `프롬프트에 24시를 미는 줄이 없다 — ${JSON.stringify(leaks)}`)
+ok(!excPrompt.includes('24시간 운영: 예'), '지점 정보의 24시간 운영 줄도 내지 않는다')
+ok(!excPrompt.includes('24시간 출입 가능'), '시설 특징에서도 그 항목을 뺀다')
+ok(excPrompt.includes('샤워실 2칸'), '관계없는 시설은 그대로 남긴다')
+ok(excPrompt.includes('이 글에서 쓰지 않을 말: 24시'), '쓰지 않을 말을 목록으로 못 박는다')
+ok(excPrompt.includes('같은 뜻으로 도는 말도 쓰지 않는다'), '돌려 쓰는 것도 막는다')
+ok(excPrompt.includes('시간대'), '무엇으로 돌려 쓰면 안 되는지 예를 든다')
+// 지시문의 부정 예시에도 그 낱말이 남아 있을 이유가 없다
+ok(!buildSystemPrompt('review').includes('"24시간 운영"'), '지시문 예시에서도 뺐다')
+// 요청이 없으면 지점 정보가 온전히 나온다 (거르기가 과하게 작동하면 안 된다)
+const noExc = buildUserPrompt({
+  type: 'review', store: excStore, mainKeyword: '두정동 헬스장', subKeywords: [],
+})
+ok(noExc.includes('24시간 운영: 예') && noExc.includes('24시간 출입 가능'), '요청이 없으면 지점 정보를 다 준다')
 ok(withReq.includes('주차 얘기는 빼고'), '적은 요청을 그대로 넣는다')
 /*
  * **형식 규칙은 요청보다 위다.** 「우선한다」만 적어두면 모델이 글자수·키워드 횟수까지

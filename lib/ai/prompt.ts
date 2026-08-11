@@ -11,7 +11,8 @@ import type { Post, PostType, Store } from '../types'
 import { POST_TYPE_LABEL } from '../types'
 import { SPECS } from '../writing/checker'
 import { RISK_TERMS } from '../writing/banned'
-import { prescriptionForType } from '../analysis/prescription'
+import { dropExcluded, prescriptionForType } from '../analysis/prescription'
+import { excludedWords } from '../writing/rotation'
 import { analyzeReviews, placeReviewUrl } from '../analysis/reviews'
 
 export interface WriteRequest {
@@ -497,7 +498,7 @@ export function buildSystemPrompt(type: PostType): string {
      */
     '## AI 티 제거 (아래 숫자는 상위 글 161편을 재서 얻은 값이다)',
     '- **어미를 섞는다. 한 어미가 55%를 넘지 않게.** 상위권 배합: "~습니다" 25~30% · "~요/~죠" 30~40% · "~다" 10~15% · 명사형 마침 15% 이하. 어미가 한쪽으로 70% 넘게 몰린 글은 평균 6.30위였다 (골고루 쓴 글은 4.22위).',
-    '- **명사형 마침을 남발하지 않는다.** "24시간 운영", "샤워실 완비" 같은 마침은 하위권 특징이다 (1~3위 13% / 6위 이하 18%). 스펙 나열체로 읽힌다.',
+    '- **명사형 마침을 남발하지 않는다.** "샤워실 완비", "주차 가능" 같은 마침은 하위권 특징이다 (1~3위 13% / 6위 이하 18%). 스펙 나열체로 읽힌다.',
     '- **숫자는 1,000자당 20개 미만.** 35개 이상 쓴 글은 평균 7.11위였다. 가격·개수를 늘어놓지 않는다.',
     /*
      * **예시 낱말을 유형별로 나눈다.** 예전에는 모든 유형에 "더라고요"를 예시로 줬는데,
@@ -719,15 +720,29 @@ export function buildUserPrompt(req: WriteRequest): string {
     lines.push('', '## 이벤트', '없음 — 이벤트 구간을 쓰지 말고 그 분량을 다른 구간에 나눈다.')
   }
 
+  /*
+   * 회원이 빼달라고 한 낱말 — 지점 정보·처방·요청 묶음에서 함께 쓴다.
+   * 「24시 내용 빼고」라고 했으면 「24시간 운영: 예」도 내지 않는다. 정보를 주면 쓰게 된다.
+   */
+  const banned = excludedWords(req.request)
+  const bannedHit = (line: string) => banned.some((w) => line.includes(w))
+
   if (s) {
     lines.push('', '## 지점 정보 (여기에 없는 것은 쓰지 않는다)')
     lines.push(`- 정식 상호명: ${s.legalName || s.name}`)
     lines.push(`- 표시 이름: ${s.name}`)
     if (s.womenOnly) lines.push('- 여성전용 지점 — 남성 대상 표현을 쓰지 않는다.')
-    lines.push(`- 24시간 운영: ${s.open24 ? '예' : '아니오'}`)
+    {
+      const h24 = `- 24시간 운영: ${s.open24 ? '예' : '아니오'}`
+      // 빼달라고 했으면 이 줄도 내지 않는다 — 있는 줄 알면 쓰게 된다
+      if (!bannedHit(h24)) lines.push(h24)
+    }
     if (s.location) lines.push(`- 위치: ${s.location}`)
-    if (s.features?.length) lines.push(`- 시설 특징:\n${s.features.map((f) => `  · ${f}`).join('\n')}`)
-    if (s.strengths?.length) lines.push(`- 고유 강점:\n${s.strengths.map((f) => `  · ${f}`).join('\n')}`)
+    const keep = (list: string[]) => list.filter((f) => !bannedHit(f))
+    if (s.features?.length && keep(s.features).length)
+      lines.push(`- 시설 특징:\n${keep(s.features).map((f) => `  · ${f}`).join('\n')}`)
+    if (s.strengths?.length && keep(s.strengths).length)
+      lines.push(`- 고유 강점:\n${keep(s.strengths).map((f) => `  · ${f}`).join('\n')}`)
     if (s.phone) lines.push(`- 전화: ${s.phone}`)
     if (s.reserveUrl) lines.push(`- 예약 링크: ${s.reserveUrl}`)
     if (s.memo) lines.push(`- 메모: ${s.memo}`)
@@ -742,7 +757,14 @@ export function buildUserPrompt(req: WriteRequest): string {
      * 걸러내지 않으면 「우리도 방문 후기 형태로 맞붙어라」가 홍보글 지시문으로 가고,
      * 실제로 그래서 홍보글이 후기 톤으로 나왔다 (prescriptionForType 주석 참고).
      */
-    const rx = prescriptionForType(req.prescription, req.type)
+    /*
+     * **회원이 빼달라고 한 낱말은 처방에서도 뺀다** (2026-08-11).
+     *
+     * 회원 지적: "24시 내용 빼달라 그랬는데 더 홍보하고 있어." 앵글만 걸렀더니 이 줄이
+     * 남아 있었다 — 「상위 제목에 반복되는 말: 24시, PT, 후기, 추천」. 처방은 구체적이라
+     * 모델이 더 강하게 따른다.
+     */
+    const rx = dropExcluded(prescriptionForType(req.prescription, req.type), excludedWords(req.request))
     if (rx.length) {
       lines.push('', '## 상위노출 분석 결과 (이 조건을 맞춘다)')
       for (const p of rx.slice(0, 6)) lines.push(`- ${p}`)
@@ -806,6 +828,15 @@ export function buildUserPrompt(req: WriteRequest): string {
        * 기계가 검사하므로 뺄 수 없다 — 낱말은 남기고 **이야기의 축으로 쓰지 말라고** 가른다.
        */
       '**주어진 키워드에 그 말이 들어 있으면 키워드는 그대로 쓴다** (횟수는 기계가 검사한다). 다만 그 낱말을 쓰는 것과 그 주제로 이야기를 끌고 가는 것은 다르다 — 키워드로만 쓰고, 그 얘기를 설명하거나 소제목으로 세우지 않는다.',
+      /*
+       * **빼야 하는 말을 목록으로 못박는다.** 문장으로만 적어두면 모델이 「24시」를 「시간대」·
+       * 「늦은 시간」으로 바꿔 쓰는 식으로 우회했다 (회원이 받은 글이 그 모양이었다).
+       */
+      ...(banned.length
+        ? [
+            `**이 글에서 쓰지 않을 말: ${banned.join(' · ')}.** 이 말과 **같은 뜻으로 도는 말도 쓰지 않는다** — 「24시」를 빼달라고 했으면 「시간대」·「늦은 시간」·「새벽」·「밤늦게」·「몇 시까지 여는지」로 바꿔 쓰는 것도 안 된다. 낱말을 바꾸는 게 아니라 **그 주제를 다루지 않는 것**이다.`,
+          ]
+        : []),
       '단, **형식 규칙**(글자수·키워드 횟수·소제목 수)과 **쓰지 말아야 하는 표현**은 그대로 지킨다 — 그건 기계가 검사한다.'
     )
   }
