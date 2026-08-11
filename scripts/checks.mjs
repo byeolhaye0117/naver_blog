@@ -4413,6 +4413,53 @@ ok(revTitleRule.includes('금액을 지어내지 말고'), '이벤트 정보가 
 ok(!revTitleRule.includes('상담을 받으려고 쓰는 글이니'), '홍보글 문구를 그대로 주지는 않는다')
 
 /*
+ * ─── 제목에 홍보 한 조각이 있는가 (검수) ────────────────────────
+ *
+ * 회원이 같은 말을 **두 번** 했다 — 홍보글에 대해("명색이 홍보글인데 제목에 홍보성이
+ * 하나도 없어"), 그리고 후기글에 대해("제목에 홍보 관련 내용이 없고").
+ *
+ * **지시문만으로는 안 붙었다.** 지시문에 넣고도 같은 말을 다시 들었으니 검수가 잡아야
+ * 한다 — `event-hook` 과 똑같은 경로다(지시문에는 있었는데 나온 글에 없었다).
+ */
+const tpItem = (type, title, eventText) =>
+  checkPost({
+    ...(type === 'review' ? { ...goodPromo, type: 'review', sponsorship: 'own' } : goodPromo),
+    type,
+    title,
+    eventText,
+  }).items.find((i) => i.id === 'titlePromo')
+
+ok(tpItem('promo', '쌍용동 헬스장 추천, 처음이라 걱정되시죠?')?.level === 'fail', '홍보성이 없으면 즉시수정')
+ok(tpItem('promo', '쌍용동 헬스장 8월 혜택 정리해드려요 새벽운동')?.level === 'pass', '「혜택」이 있으면 통과')
+ok(tpItem('promo', '쌍용동 헬스장 3개월 9.9만원, 새벽에도 갈까?')?.value.includes('3개월'), '금액·기간도 홍보로 센다')
+// 후기글도 본다 (회원이 이번에 말한 자리다)
+ok(tpItem('review', '천안 쌍용동 헬스장 상담 받아본 솔직 후기예요')?.level === 'fail', '후기 제목도 잡는다')
+ok(tpItem('review', '쌍용동 헬스장 3개월 9.9만원에 등록한 후기입니다')?.level === 'pass', '방문자 말투 + 금액이면 통과')
+ok(tpItem('review', '쌍용동 헬스장 상담 후기').hint.includes('방문자 말투로'), '후기에는 방문자 말투로 쓰라고 한다')
+ok(tpItem('review', '쌍용동 헬스장 상담 후기').hint.includes('지금 신청하세요'), '센터 말투 제목을 막는다')
+// 「상담·등록·문의」는 홍보로 세지 않는다 — 후기 제목에 거의 다 들어가서 검사가 무의미해진다
+ok(tpItem('review', '쌍용동 헬스장 등록하고 상담 문의까지 후기')?.level === 'fail', '상담·등록·문의는 홍보로 세지 않는다')
+// 이벤트 칸에 적은 것이 있으면 그걸 가져오라고 한다
+const tpEv = tpItem('review', '쌍용동 헬스장 등록 후기, 처음인데 괜찮을까?', '8월 등록분 3개월 9.9만원, 락커 무료')
+ok(tpEv.hint.includes('8월 등록분 3개월 9.9만원'), '이벤트 칸 내용을 그대로 보여준다')
+ok(tpItem('review', '쌍용동 헬스장 등록 후기').hint.includes('금액을 지어내지 말고'), '이벤트 칸이 비면 지어내지 말라고 한다')
+// 정보글은 대상이 아니다 — 그 글의 홍보는 마지막 구간에만 모인다
+ok(tpItem('info', '폭식 멈추는 방법, 순서부터 바꿔보세요 정리') === undefined, '정보글은 검사하지 않는다')
+ok(tpItem('promo', '쌍용동 헬스장 추천').hint.includes('있음 1~3위 36% / 없음 29%'), '실측 근거를 붙인다')
+ok(tpItem('promo', '쌍용동 헬스장 추천').hint.includes('최저가·파격가'), '광고심의 위험은 계속 막는다')
+
+/*
+ * 좋았던 점을 **홍보 관련으로** — 회원 요청: "좋았던점도 홍보관련해서 좋았던점을 적어주면
+ * 좋겠어." 앞 판에서 시설 예시만 줬더니(샤워실·기구) 후기가 시설 구경기로 끝났다.
+ */
+ok(revTitleRule.includes('하나는 반드시 혜택·가격·상담과 이어서 쓴다'), '좋았던 점 하나는 혜택·가격에 닿게 한다')
+ok(revTitleRule.includes('부담이 훨씬 덜했어요'), '가격 만족 예시를 준다')
+ok(revTitleRule.includes('락커를 같이 준다고 해서'), '혜택 만족 예시를 준다')
+ok(revTitleRule.includes('부담 없이 들어갔어요'), '상담 부담 예시를 준다')
+ok(revTitleRule.includes('없는 금액·기간을 만들지 않는다'), '이벤트 칸 밖의 금액을 만들지 않게 한다')
+ok(buildTemplate('review', { mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], localKeyword: '쌍용동 헬스장' }).includes('혜택·가격·상담과 이어서'), '골격에도 적었다')
+
+/*
  * ─── 후기글에서 아쉬운 점을 뺀다 ────────────────────────────────
  *
  * 회원 요청 (2026-08-11): "후기글 뽑으면 아쉬운 점을 적는데 이 부분 삭제하고 좋은점,
