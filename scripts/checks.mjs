@@ -5155,6 +5155,112 @@ ok(!withBoldPkg.body.includes('**'), '「그대로」 본문에도 별표가 안
 ok(!withBoldPkg.bodyMobile.includes('**'), '모바일 본문에도 안 남는다')
 
 /*
+ * ①-2 **줄바꿈으로 갈린 굵게 표시** — 회원이 두 번째로 캡처해 보낸 그 화면이다.
+ *
+ *   **대한비만학회가 일반인 홈페이지 자료에서
+ *   밝힌 내용을 보면**, 운동은 …
+ *
+ * 모바일 줄바꿈이 `**` 짝 사이를 갈랐고, 서식으로 바꾸는 자리에서 줄마다 따로 짝을 찾으니
+ * 못 찾아 별표가 살아남았다. 두 군데를 고쳤다 — 줄을 끊을 때 굵게 안쪽을 피하고(clauseLines),
+ * 짝은 줄을 붙인 뒤에 찾는다(blocksToHtml).
+ */
+const LONG_BOLD =
+  '**대한비만학회가 일반인 홈페이지 자료에서 밝힌 내용을 보면**, 운동은 스트레스 호르몬인 코티졸의 분비를 줄여주고 신체적, 정신적 긴장을 풀어줍니다.'
+/*
+ * 강조가 한 줄에 들어가는 길이면 마디에서 끊지 않는다.
+ *
+ * 상한(30자)을 넘는 강조는 어쩔 수 없이 갈린다 — 그래서 짝 찾기를 줄 단위에서 덩어리
+ * 단위로 옮긴 것이 진짜 고침이다. 여기서는 **피할 수 있는 갈림**만 막는지 본다.
+ */
+const shortBold = clauseLines('**대한비만학회 자료를 보면** 혈당이 빠르게 떨어지고 공복감이 옵니다.')
+ok(
+  !shortBold.find((l) => (l.match(/\*\*/g) ?? []).length % 2 === 1),
+  `한 줄에 들어가는 강조는 갈라놓지 않는다 — ${shortBold.join(' / ')}`
+)
+// 별표는 서식으로 사라지므로 길이에서 뺀다 (강조가 든 줄만 짧아지던 문제)
+ok(clauseLines(LONG_BOLD).every((l) => l.replace(/\*\*/g, '').length <= LINE_MAX), '눈에 보이는 글자로 상한을 잰다')
+const lbHtml = blocksToHtml(toBlocks(LONG_BOLD))
+ok(!lbHtml.includes('**'), `줄바꿈을 넘어가도 별표가 안 남는다 — ${lbHtml.slice(0, 90)}`)
+ok(lbHtml.includes('<strong>'), '굵게 서식으로 들어간다')
+ok(!blocksToText(toBlocks(LONG_BOLD), false).includes('**'), '글자 복사에도 안 남는다')
+// 상한을 넘겨 어쩔 수 없이 갈리는 경우에도 짝을 찾아야 한다
+const forced = blocksToHtml([
+  { kind: 'para', groups: [['**앞줄에서 열고', '뒷줄에서 닫는 아주 긴 강조입니다**']] },
+])
+ok(forced.includes('<strong>앞줄에서 열고<br />뒷줄에서 닫는 아주 긴 강조입니다</strong>'), '줄바꿈을 품은 짝도 찾는다', forced)
+// 짝이 안 맞는 별표 하나 때문에 글이 통째로 묶이면 안 된다
+ok(stripBold('**열고 안 닫음\n다음 문단입니다.') === '**열고 안 닫음\n다음 문단입니다.', '짝이 없으면 건드리지 않는다')
+
+/*
+ * ①-3 **구분선과 나머지 마크다운** — 회원 캡처에 `---` 가 글자로 박혀 있었다.
+ * 모델이 마크다운 습관으로 쓴 것이고, 우리는 소제목·이미지만 처리했으니 문단이 되어 나갔다.
+ */
+const { inlineMarkdown, isRuleLine } = require(`${OUT}/writing/export.js`)
+ok(isRuleLine('---') && isRuleLine('***') && isRuleLine('___') && isRuleLine('- - -'), '구분선 줄을 알아본다')
+ok(!isRuleLine('--') && !isRuleLine('-- 두 개') && !isRuleLine('· 목록'), '구분선이 아닌 줄은 아니다')
+const ruleBlocks = toBlocks('앞 문단입니다.\n\n---\n\n뒤 문단입니다.')
+ok(ruleBlocks.map((b) => b.kind).join(',') === 'para,rule,para', '구분선을 따로 떼어낸다', ruleBlocks.map((b) => b.kind).join(','))
+ok(blocksToHtml(ruleBlocks).includes('<hr'), '서식에서는 선으로 낸다')
+ok(!blocksToHtml(ruleBlocks).includes('---'), 'HTML 에 별표·하이픈이 안 남는다')
+ok(blocksToText(ruleBlocks).includes('───'), '글자 복사에서는 선 글자로 낸다')
+ok(!blocksToText(ruleBlocks).includes('---'), '글자 복사에도 하이픈이 안 남는다')
+// 글 맨 앞·맨 뒤 구분선은 버린다 (선만 남는 자리가 생긴다)
+ok(toBlocks('---\n본문입니다.\n---').map((b) => b.kind).join(',') === 'para', '앞뒤 구분선은 버린다')
+// 소제목 위아래 선과 겹치지 않게 연속 구분선은 하나로
+ok(toBlocks('앞.\n\n---\n***\n\n뒤.').filter((b) => b.kind === 'rule').length === 1, '연속 구분선은 하나로')
+
+// 나머지 마크다운은 글자로 풀어놓는다
+ok(inlineMarkdown('자세한 내용은 [대한비만학회](https://kso.or.kr) 에서') === '자세한 내용은 대한비만학회 (https://kso.or.kr) 에서', '링크는 글자 + 주소로', inlineMarkdown('자세한 내용은 [대한비만학회](https://kso.or.kr) 에서'))
+ok(inlineMarkdown('![대표사진](a.jpg) 사진 설명') === '사진 설명', '이미지 문법은 버린다')
+ok(inlineMarkdown('`유산소` 부터') === '유산소 부터', '코드 표시를 뗀다')
+ok(inlineMarkdown('- 채소를 먼저 드세요') === '· 채소를 먼저 드세요', '목록 기호를 가운뎃점으로')
+/*
+ * 목록은 **한 줄에 한 항목**이어야 한다. 처음 고쳤을 때는 줄들이 한 문단으로 뭉쳐서
+ * 가운뎃점이 줄 한복판에 붙었다 — 실제 결과물로 확인하고 잡았다:
+ *   · 유산소 15분부터 시작하세요 ·
+ *   세 세트 사이에는 호흡만 고르세요
+ */
+const listText = blocksToText(toBlocks('앞 문단입니다.\n- 유산소 15분부터\n- 세 세트 사이에는 호흡만\n\n뒤 문단입니다.'), false)
+ok(listText.includes('· 유산소 15분부터\n· 세 세트 사이에는 호흡만'), `목록은 한 줄에 한 항목 — ${JSON.stringify(listText)}`)
+ok(!/·[^\n]*·/.test(listText), '가운뎃점이 한 줄에 두 번 오지 않는다')
+ok(listText.startsWith('앞 문단입니다.'), '앞 문단과 섞이지 않는다')
+ok(listText.trim().endsWith('뒤 문단입니다.'), '뒤 문단도 따로 남는다')
+ok(inlineMarkdown('> 상담에서 들은 말') === '상담에서 들은 말', '인용 기호를 뗀다')
+ok(inlineMarkdown('*조금* 다릅니다') === '조금 다릅니다', '기울임을 뗀다')
+// **굵게는 건드리지 않는다** — 서식으로 살릴 것이다
+ok(inlineMarkdown('**굵게** 그대로') === '**굵게** 그대로', '굵게 표시는 남긴다')
+ok(inlineMarkdown('**굵게** 뒤에 *기울임*') === '**굵게** 뒤에 기울임', '굵게는 남기고 기울임만 뗀다')
+// 아이디에 든 밑줄을 기울임으로 오해하면 안 된다 (회원 블로그가 hyoni2_ 다)
+ok(inlineMarkdown('블로그 아이디는 _hyoni2_ 입니다') === '블로그 아이디는 _hyoni2_ 입니다', '밑줄은 건드리지 않는다')
+ok(inlineMarkdown('3 * 4 는 곱하기') === '3 * 4 는 곱하기', '한쪽만 있는 별표는 그대로')
+// 「그대로 복사」 본문에도 남지 않아야 한다
+const mdPkg = buildCopyPackage(
+  { ...goodPromo, id: 'x', status: 'draft', storeId: 's', createdAt: '', updatedAt: '', body: `${goodPromo.body}\n\n---\n\n- 목록 한 줄\n[글자](https://a.b)` },
+  { legalName: 'a', location: 'b', phone: 'c' }
+)
+ok(!mdPkg.body.includes('---') && !mdPkg.body.includes('](http'), '「그대로」 본문에 마크다운이 안 남는다')
+ok(!mdPkg.bodyMobile.includes('---'), '모바일 본문에도 안 남는다')
+ok(!mdPkg.bodyHtml.includes('---'), '서식 본문에도 안 남는다')
+
+// 검수도 알려준다 — 붙여넣고 나서 알면 늦다
+const mdItem = (body) =>
+  checkPost({ ...goodPromo, body }).items.find((i) => i.id === 'markdown-leak')
+// 남아 있을 때만 항목을 만든다 — 초록 줄이 매 글에 붙으면 공짜 통과 점수가 된다
+ok(mdItem(goodPromo.body) === undefined, '깨끗하면 항목이 안 생긴다')
+ok(mdItem(`${goodPromo.body}\n[글자](https://a.b)`).level === 'warn', '링크 문법을 잡는다')
+ok(mdItem(`${goodPromo.body}\n- 목록 한 줄`).level === 'warn', '목록 기호를 잡는다')
+ok(mdItem(`${goodPromo.body}\n| 가 | 나 |`).level === 'warn', '표 문법을 잡는다')
+ok(mdItem(`${goodPromo.body}\n**짝이 없습니다`).value.includes('짝이 안 맞는'), '짝 안 맞는 별표를 잡는다')
+// 우리가 살릴 수 있는 표기는 잡지 않는다
+ok(mdItem(`${goodPromo.body}\n## 소제목\n**굵게**\n\n---\n\n[이미지: 설명]`) === undefined, '소제목·굵게·구분선·이미지는 잡지 않는다')
+ok(mdItem(`${goodPromo.body}\n[글자](https://a.b)`).hint.includes('글자로 박힙니다'), '왜 안 되는지 알려준다')
+
+// 지시문
+const mdPrompt = buildSystemPrompt('info')
+ok(mdPrompt.includes('쓸 수 있는 표기는 네 개뿐이다'), '지시문이 쓸 수 있는 표기를 못 박는다')
+ok(mdPrompt.includes('한 문장 안에서 열고 닫는다'), '굵게를 한 문장 안에서 닫으라고 한다')
+
+/*
  * ② 평소 쓰는 말 — 회원 지적: "낙폭이란 단어를 별로 쓰지 않아서 네이버에 치니까 주식 용어인
  * 거 같더라고. 글은 평소 우리가 많이 쓰는 단어들로 사람들이 이해하기 쉽게."
  */
