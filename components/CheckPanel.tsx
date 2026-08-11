@@ -1,7 +1,15 @@
 'use client'
 
+import { useState } from 'react'
 import type { CheckGroup, CheckResult } from '@/lib/types'
 import { Badge, Progress, levelLabel, levelTone } from '@/components/ui'
+
+/** 본문에서 그 표현을 찾아 커서를 놓은 결과 */
+export interface RiskJump {
+  /** 몇 번째를 잡았나 (1부터) */
+  index: number
+  total: number
+}
 
 const GROUP_ORDER: CheckGroup[] = [
   '키워드',
@@ -24,9 +32,36 @@ const GROUP_NOTE: Record<CheckGroup, string> = {
   'AI 티 제거': '문장이 고르면 기계가 쓴 글로 읽힙니다.',
 }
 
-export default function CheckPanel({ result }: { result: CheckResult }) {
+export default function CheckPanel({
+  result,
+  onFindRisk,
+}: {
+  result: CheckResult
+  /**
+   * 위험 표현을 **본문에서 찾아 커서를 놓는다** (회원 요청: "이런 거는 수정 버튼 있어서
+   * 바로 수정할 수 있게 해줘").
+   *
+   * 자동으로 고쳐 주지는 않는다. 「무료 3회 → 2회」를 기계가 지우면 「무료 방문 상담」이
+   * 「방문 상담」이 되는 정도는 괜찮지만 「혜택을 준비했어요」가 「을 준비했어요」가 된다 —
+   * 어느 쪽인지는 문장을 봐야 안다. 그래서 **찾아서 커서를 놓는 것까지** 우리가 하고
+   * 지우는 판단은 회원이 한다. 긴 본문에서 세 번째 「무료」를 찾는 것이 실제로 번거로운
+   * 일이었다.
+   *
+   * 넘기지 않으면 버튼이 안 나온다 — 글 목록처럼 본문을 고칠 수 없는 화면을 위해서다.
+   */
+  onFindRisk?: (term: string, nth: number, action?: 'find' | 'delete') => RiskJump | null
+}) {
   const tone = result.score >= 85 ? 'good' : result.score >= 65 ? 'warn' : 'bad'
   const fails = result.items.filter((i) => i.level === 'fail')
+  /**
+   * 표현별로 지금 몇 번째를 잡고 있나.
+   *   없음   — 아직 안 눌렀다
+   *   'none' — 본문에 그 글자가 없다 (변칙 표기로 걸린 항목)
+   *   'gone' — 다 지웠다
+   */
+  const [jumps, setJumps] = useState<Record<string, RiskJump | 'none' | 'gone'>>({})
+  const isJump = (v: RiskJump | 'none' | 'gone' | undefined): v is RiskJump =>
+    typeof v === 'object' && v !== null
 
   return (
     <div className="space-y-4">
@@ -108,6 +143,62 @@ export default function CheckPanel({ result }: { result: CheckResult }) {
                 </div>
                 <p className="muted mt-1.5 text-[11px] leading-snug italic">{r.context}</p>
                 <p className="mt-1.5 text-[12px] leading-relaxed">{r.fix}</p>
+                {onFindRisk && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cur = jumps[r.term]
+                        /*
+                         * 도배 항목은 **뒤에서부터** 잡는다. 허용 횟수를 넘긴 것이 문제이니
+                         * 마지막에 쓴 것부터 지우는 편이 앞 문단을 덜 건드린다.
+                         */
+                        const first = r.category.startsWith('D.') ? -1 : 0
+                        const nth = isJump(cur) ? cur.index : first
+                        setJumps((p) => ({ ...p, [r.term]: onFindRisk(r.term, nth) ?? 'none' }))
+                      }}
+                      className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-[11.5px] font-bold text-rose-700 dark:text-rose-300"
+                    >
+                      본문에서 찾기
+                      {(() => {
+                        const j = jumps[r.term]
+                        return isJump(j) ? ` (${j.index}/${j.total})` : ''
+                      })()}
+                    </button>
+                    {/*
+                      **지우기는 찾은 뒤에만 나온다.** 어느 자리를 지울지 회원이 눈으로
+                      확인한 다음이어야 한다 — 도배 항목은 지워도 읽히는 자리(「무료 방문
+                      상담」)와 문장이 깨지는 자리(「혜택을 준비했어요」)가 섞여 있다.
+                    */}
+                    {(() => {
+                      const j = jumps[r.term]
+                      if (!isJump(j)) return null
+                      return (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setJumps((p) => ({
+                              ...p,
+                              [r.term]: onFindRisk(r.term, j.index - 1, 'delete') ?? 'gone',
+                            }))
+                          }
+                          className="rounded-lg border border-rose-500/60 bg-rose-600 px-2.5 py-1.5 text-[11.5px] font-bold text-white"
+                        >
+                          이 자리 지우기
+                        </button>
+                      )
+                    })()}
+                    <span className="muted text-[10.5px] leading-snug">
+                      {jumps[r.term] === 'none'
+                        ? '본문에서 못 찾았습니다 — 글자 사이에 기호가 끼어 있는 표기입니다.'
+                        : jumps[r.term] === 'gone'
+                          ? '다 지웠습니다. 문장이 어색해지지 않았는지 한 번 읽어보세요.'
+                          : jumps[r.term]
+                            ? '커서를 그 자리에 놓았습니다. 「찾기」를 다시 누르면 다음 자리로 갑니다.'
+                            : '누르면 본문에서 그 표현을 잡아 커서를 놓습니다.'}
+                    </span>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
