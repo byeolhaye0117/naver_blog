@@ -17,6 +17,18 @@ function optional(v: string | undefined): string | undefined {
 
 export const POST = guard('지점 저장에 실패했습니다.', async (req: Request) => {
   const input = (await req.json()) as Partial<Store>
+
+  /*
+   * **이름 없는 지점이 생기지 않게 막는다** (2026-08-11 전체 점검에서 찾았다).
+   *
+   * `{}` 를 보내면 「새 지점」이라는 이름으로 하나 저장됐다. 지점 화면은 이름과 정식
+   * 상호명을 둘 다 요구하지만, 그건 화면 쪽 검사라 요청이 직접 오면 통과했다.
+   * 이름 하나만 요구한다 — 정식 상호명까지 서버에서 막으면 예전에 만든 지점을 고칠 때
+   * 걸릴 수 있다 (화면이 이미 둘 다 요구한다).
+   */
+  if (!input.name?.trim()) {
+    return NextResponse.json({ error: '지점 이름을 넣어주세요.' }, { status: 400 })
+  }
   const store: Store = {
     id: input.id?.trim() || newId('store'),
     name: input.name ?? '새 지점',
