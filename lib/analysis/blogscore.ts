@@ -359,14 +359,25 @@ export const GRADE_LADDER: BlogGrade[] = [
 export function gradeBlog(input: {
   /** 제목 완전일치 검색에서 그 글이 나온 비율(%) — 색인 검사 */
   indexedRate?: number
-  /** 표본 글이 30위 안에 걸린 비율(%) */
+  /** 표본 글이 30위 안에 걸린 비율(%) — **경쟁이 있는 표본만으로 센 값** */
   exposureRate?: number
   /** 표본 글이 10위 안에 걸린 비율(%) */
   firstPageRate?: number
+  /** 검색어에 경쟁이 없어서 계산에서 뺀 표본 수 */
+  trivialSamples?: number
+  /** 「경쟁 없음」의 기준 (화면 문구에 그대로 쓴다) */
+  trivialMax?: number
   /** 표본 수 */
   samples: number
 }): { grade: BlogGrade; reason: string } {
-  const { indexedRate, exposureRate, firstPageRate = 0, samples } = input
+  const { indexedRate, exposureRate, firstPageRate = 0, trivialSamples = 0, trivialMax = 30, samples } = input
+  /*
+   * 뺀 표본이 있으면 **판정 문장에 적는다.** 조용히 빼면 「이 숫자가 다 진짜」로 읽힌다.
+   * 회원이 우리 등급(최적 3)과 시중 도구(준최)가 다르다고 물었을 때, 차이의 절반이 이거였다.
+   */
+  const trivialNote = trivialSamples
+    ? ` (검색어에 경쟁이 거의 없던 표본 ${trivialSamples}편은 뺐습니다 — 최근 글 ${trivialMax}편 미만인 검색어에서 위에 걸리는 것은 블로그 힘과 무관합니다)`
+    : ''
 
   if (samples === 0 || typeof indexedRate !== 'number') {
     return { grade: 'unknown', reason: '표본을 읽지 못해 등급을 낼 수 없습니다.' }
@@ -390,11 +401,13 @@ export function gradeBlog(input: {
   if (typeof exposureRate !== 'number') {
     return {
       grade: 'normal',
-      reason: '색인은 정상입니다. 노출력을 재지 못해 그 이상은 판정하지 않았습니다.',
+      reason: trivialSamples
+        ? `색인은 정상입니다. 다만 표본 ${trivialSamples}편이 **경쟁이 거의 없는 검색어**여서(최근 글 ${trivialMax}편 미만) 노출력을 잴 수 없었습니다 — 상호명·가게 이름이 제목 앞에 오면 그 검색어는 사실상 그 글 하나입니다. 경쟁 키워드를 제목 앞에 둔 글이 쌓이면 다시 재보세요.`
+        : '색인은 정상입니다. 노출력을 재지 못해 그 이상은 판정하지 않았습니다.',
     }
   }
 
-  const both = `표본의 ${exposureRate}%가 30위 안, ${firstPageRate}%가 1페이지(10위 안)에 있습니다`
+  const both = `표본의 ${exposureRate}%가 30위 안, ${firstPageRate}%가 1페이지(10위 안)에 있습니다${trivialNote}`
 
   // 최적 구간 — 30위 안에 대부분 걸리고, 1페이지까지 먹는다
   if (exposureRate >= 85 && firstPageRate >= 60) {

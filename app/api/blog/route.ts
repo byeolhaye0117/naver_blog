@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { blogIdFromInput, fetchBlogFeed } from '@/lib/naver/blogrss'
 import { buildBlogProfile, gradeBlog, meaningForUs, queryFromTitle } from '@/lib/analysis/blogscore'
-import { findBlogRank } from '@/lib/naver/blogsection'
+import { findBlogRank, isTrivialQuery, totalBlogCount, TRIVIAL_QUERY_MAX } from '@/lib/naver/blogsection'
 import { checkUnifiedIndexed } from '@/lib/naver/unified'
 import { buildIndexCheck, summarizeIndex, type IndexCheck } from '@/lib/analysis/indexcheck'
 import { judgeAgency, scanSponsorship, type SponsorScan } from '@/lib/analysis/agency'
@@ -58,7 +58,9 @@ export async function POST(req: Request) {
      * 블로그 힘의 핵심이므로 표본으로 확인한다. 시간이 걸려서 요청으로 켠다.
      */
     let exposureRate: number | undefined
-    let exposureDetail: { query: string; rank: number | null }[] | undefined
+    let exposureDetail: { query: string; rank: number | null; total: number | null; trivial: boolean }[] | undefined
+    /** 검색어에 경쟁이 없어서 노출률 계산에서 뺀 표본 수 */
+    let trivialSamples = 0
     let firstPageRate: number | undefined
     let indexedRate: number | undefined
     let indexDetail: IndexCheck[] | undefined
@@ -95,25 +97,48 @@ export async function POST(req: Request) {
         indexedRate = indexSummary.blogTabRate ?? undefined
       }
 
-      // ② 노출력 — 제목 앞부분을 검색어로 써서 30위 안에 걸리는지
+      /*
+       * ② 노출력 — 제목 앞부분을 검색어로 써서 30위 안에 걸리는지.
+       *
+       * **검색어의 난이도를 함께 잰다** (2026-08-11). 회원이 우리 진단(「최적 3」)과 시중
+       * 도구(「준최·44점」)가 너무 다르다고 해서 우리 쪽을 다시 봤더니, 이 계산에 구멍이
+       * 있었다. 표본마다 검색어 경쟁이 완전히 달랐다 — 회원 블로그의 실제 제목으로 재보니:
+       *
+       *   천안 신방동 맛집                    1,000편 이상   ← 진짜 경쟁 키워드
+       *   천안 생선구이 뭔맛집                  410편
+       *   천안 성심호수공원마당 백년한방활산채탕      0편        ← 사실상 그 글 하나
+       *
+       * **0편짜리 검색어에서 1위 하는 것은 블로그 힘의 증거가 아니다.** 그런 표본이 섞이면
+       * 노출률이 부풀고 등급이 후해진다. 그래서 경쟁이 없는 표본은 계산에서 빼고, 몇 편을
+       * 왜 뺐는지 화면에 밝힌다 (조용히 빼면 「이 숫자가 다 진짜」로 읽힌다).
+       */
       const picks = feed.items.filter((i) => queryFromTitle(i.title).length >= 4).slice(0, SAMPLE)
-      const got: { query: string; rank: number | null }[] = []
+      const got: { query: string; rank: number | null; total: number | null; trivial: boolean }[] = []
       for (const it of picks) {
         const q = queryFromTitle(it.title)
         try {
-          const r = await findBlogRank(q, it.link, SAMPLE_DEPTH)
-          if (r.ok) got.push({ query: q, rank: r.rank })
+          // 순위와 발행량은 서로 무관하므로 같이 던진다
+          const [r, total] = await Promise.all([
+            findBlogRank(q, it.link, SAMPLE_DEPTH),
+            totalBlogCount(q).catch(() => null),
+          ])
+          if (r.ok) got.push({ query: q, rank: r.rank, total, trivial: isTrivialQuery(total) })
         } catch {
           /* 한 표본이 실패해도 나머지로 센다 */
         }
       }
       if (got.length) {
         exposureDetail = got
-        exposureRate = Math.round((got.filter((g) => g.rank !== null).length / got.length) * 100)
-        // 1페이지 비율 — 30위 안에 겨우 걸리는 것과 1페이지를 먹는 것을 가른다
-        firstPageRate = Math.round(
-          (got.filter((g) => g.rank !== null && g.rank <= 10).length / got.length) * 100
-        )
+        // 경쟁이 있는 표본만으로 센다. 그것마저 없으면 노출률을 내지 않는다 (모르는 것을 만들지 않는다)
+        const real = got.filter((g) => !g.trivial)
+        trivialSamples = got.length - real.length
+        if (real.length) {
+          exposureRate = Math.round((real.filter((g) => g.rank !== null).length / real.length) * 100)
+          // 1페이지 비율 — 30위 안에 겨우 걸리는 것과 1페이지를 먹는 것을 가른다
+          firstPageRate = Math.round(
+            (real.filter((g) => g.rank !== null && g.rank <= 10).length / real.length) * 100
+          )
+        }
       }
     }
 
@@ -146,6 +171,8 @@ export async function POST(req: Request) {
       indexedRate,
       exposureRate,
       firstPageRate,
+      trivialSamples,
+      trivialMax: TRIVIAL_QUERY_MAX,
       samples: (exposureDetail?.length ?? 0) + (indexDetail?.length ?? 0),
     })
 
@@ -155,6 +182,8 @@ export async function POST(req: Request) {
       indexedRate,
       exposureRate,
       firstPageRate,
+      trivialSamples,
+      trivialMax: TRIVIAL_QUERY_MAX,
       indexDetail,
       indexSummary,
       meaning: meaningForUs(profile),

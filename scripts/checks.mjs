@@ -16,7 +16,7 @@ const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parse
   `${OUT}/analysis/paste.js`
 )
 const { parseManualRows, buildManualMetrics, buildMetric, areasFromStore, suffixesForStore, combineLocalKeywords, isRelevantKeyword, myRegionTokens, INTENT_SUFFIXES } = require(`${OUT}/analysis/keyword.js`)
-const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SECTION_CAP, normalizeBlogUrl, SECTION_PAGE_SIZE } = require(
+const { parseSectionTotal, parseSectionPosts, monthlyFromWeek, resolveRecent, SECTION_CAP, normalizeBlogUrl, SECTION_PAGE_SIZE, isTrivialQuery, TRIVIAL_QUERY_MAX } = require(
   `${OUT}/naver/blogsection.js`
 )
 const { parsePlaceRecords, areasFromPlace, findMyPlaceIndex, extractPlaceId } = require(`${OUT}/naver/place.js`)
@@ -5321,6 +5321,41 @@ ok(searchPrompt.includes('세계보건기구(WHO)'), '약어는 괄호에 넣는
 ok(searchPrompt.includes('발행 기관 이름'), '우리말 이름이 없으면 기관으로 밝히라고 한다')
 // 홍보글·후기글은 대상이 아니다
 ok(!buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], canSearch: true }).includes('검색 도구로'), '홍보글에는 검색 지시를 안 낸다')
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[91] 노출률에서 「경쟁 없는 검색어」를 뺀다')
+/*
+ * 회원이 우리 진단(「최적 3」)과 다른 사이트(「준최 · 44점」)를 나란히 놓고 물었다.
+ * 우리 쪽을 다시 보니 계산에 구멍이 있었다 — 노출률을 낼 때 쓰는 검색어(제목 앞 3낱말)의
+ * 난이도가 표본마다 완전히 달랐다. 회원 블로그의 실제 제목으로 재본 값(2026-08-11):
+ *
+ *   천안 신방동 맛집                    1,000편 이상   ← 진짜 경쟁 키워드
+ *   천안 생선구이 뭔맛집                  410편
+ *   천안 성심호수공원마당 백년한방활산채탕      0편        ← 사실상 그 글 하나
+ *
+ * 0편짜리 검색어에서 1위 하는 것은 블로그 힘의 증거가 아니다. 그런 표본이 섞이면 노출률이
+ * 부풀고 등급이 후해진다 — 시중 도구와 벌어진 차이의 절반이 이것이었다.
+ */
+ok(isTrivialQuery(0) === true, '0편 검색어는 경쟁 없음')
+ok(isTrivialQuery(29) === true, `${TRIVIAL_QUERY_MAX}편 미만은 경쟁 없음`)
+ok(isTrivialQuery(TRIVIAL_QUERY_MAX) === false, '기준값은 경쟁 있음으로 본다')
+ok(isTrivialQuery(410) === false, '410편은 경쟁 있음')
+// 못 읽은 것을 유리하게도 불리하게도 쓰지 않는다
+ok(isTrivialQuery(null) === false, '못 읽은 것(null)은 경쟁 없다고 보지 않는다')
+
+// 뺀 표본을 판정 문장에 밝힌다 — 조용히 빼면 「이 숫자가 다 진짜」로 읽힌다
+const gTrim = gradeBlog({ indexedRate: 100, exposureRate: 70, firstPageRate: 60, trivialSamples: 3, trivialMax: 30, samples: 10 })
+ok(gTrim.grade === 'optimal3', `계산은 남은 표본으로 한다 — ${GRADE_LABEL[gTrim.grade]}`)
+ok(gTrim.reason.includes('표본 3편은 뺐습니다'), '몇 편을 뺐는지 말한다', gTrim.reason)
+ok(gTrim.reason.includes('블로그 힘과 무관'), '왜 뺐는지도 말한다')
+const gClean = gradeBlog({ indexedRate: 100, exposureRate: 70, firstPageRate: 60, samples: 10 })
+ok(!gClean.reason.includes('뺐습니다'), '뺀 게 없으면 그 말을 안 한다')
+
+// 경쟁 있는 표본이 하나도 없으면 노출력을 판정하지 않는다 (모르는 것을 만들지 않는다)
+const gNone = gradeBlog({ indexedRate: 100, exposureRate: undefined, trivialSamples: 5, trivialMax: 30, samples: 5 })
+ok(gNone.grade === 'normal', '판정을 미룬다')
+ok(gNone.reason.includes('경쟁이 거의 없는 검색어'), '왜 못 쟀는지 밝힌다', gNone.reason)
+ok(gNone.reason.includes('상호명·가게 이름이 제목 앞에 오면'), '어떤 경우인지 예를 든다')
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
