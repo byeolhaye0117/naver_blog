@@ -610,7 +610,11 @@ export default function Editor({
         /** 정보글에서 자료를 찾아 인용했는지 */
         searched?: boolean
         error?: string
-        check?: { score?: number; issues?: unknown[] }
+        check?: {
+          score?: number
+          /** 걸린 항목 — `id` 로 제목 항목인지 가른다 (제목이 걸리면 곧바로 고쳐 쓴다) */
+          issues?: { id?: string; level?: string; label?: string; value?: string; target?: string }[]
+        }
       }
       try {
         json = JSON.parse(raw)
@@ -650,16 +654,28 @@ export default function Editor({
        *
        * 한 번만 한다 — 이 두 번째 호출은 `fixing` 이므로 여기 다시 들어오지 않는다.
        */
-      if (
-        !fixing &&
+      const tooShort =
         typeof json.charCount === 'number' &&
         typeof json.charMin === 'number' &&
-        json.charCount < json.charMin &&
-        json.fixIssues?.length
-      ) {
+        json.charCount < json.charMin
+      /*
+       * **제목이 걸린 것도 곧바로 고친다** (2026-08-11).
+       *
+       * 회원이 제목 홍보성을 세 번 말했다. 지시문·검수·고쳐 쓰기 목록을 다 이었는데도 마지막
+       * 구멍이 남아 있었다 — **회원이 「검수 항목 고쳐 쓰기」를 눌러야** 그 두 번째 호출이
+       * 일어난다. 누르지 않으면 제목은 그대로다.
+       *
+       * 제목은 한 줄이라 고치는 값이 싸고, 걸렸다는 것은 회원이 세 번 말한 그 상태다.
+       * 그래서 분량 미달과 같이 취급해 스스로 한 번 더 부른다.
+       */
+      const titleFail = (json.check?.issues ?? []).some(
+        (i) => i.level === 'fail' && i.id?.startsWith('title')
+      )
+      if (!fixing && (tooShort || titleFail) && json.fixIssues?.length) {
         setAiMsg(
-          `본문이 ${json.charCount.toLocaleString()}자로 나왔습니다 (기준 ${json.charMin.toLocaleString()}자). ` +
-            '짧아서 곧바로 늘려 쓰는 중입니다… 1분쯤 더 걸립니다.'
+          (tooShort
+            ? `본문이 ${json.charCount?.toLocaleString()}자로 나왔습니다 (기준 ${json.charMin?.toLocaleString()}자). 짧아서`
+            : '제목이 검수에 걸렸습니다.') + ' 곧바로 고쳐 쓰는 중입니다… 1분쯤 더 걸립니다.'
         )
         return await callWrite({ draft: json.draft, issues: json.fixIssues })
       }
@@ -685,9 +701,7 @@ export default function Editor({
         if (json.revised) return ` (고쳐서 ${json.improved}점 올랐습니다)`
         return ' (고쳐 써도 나아지지 않아 원래 글을 두었습니다 — 한 번 더 누르면 다시 시도합니다)'
       }
-      const fails = (json.check?.issues ?? []).filter(
-        (i) => (i as { level?: string }).level === 'fail'
-      ).length
+      const fails = (json.check?.issues ?? []).filter((i) => i.level === 'fail').length
       setAiMsg(
         `${score}점으로 나왔습니다` +
           fixNote() +

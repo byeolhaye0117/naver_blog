@@ -276,7 +276,7 @@ async function handle(req: Request, ms: () => string) {
           ...summarize(outResult),
           issues: outResult.items
             .filter((i) => i.level !== 'pass')
-            .map((i) => ({ level: i.level, label: i.label, value: i.value, target: i.target })),
+            .map((i) => ({ id: i.id, level: i.level, label: i.label, value: i.value, target: i.target })),
         },
         fixIssues: fixList(outResult.items, outResult.risks),
       })
@@ -327,7 +327,7 @@ async function handle(req: Request, ms: () => string) {
         ...summarize(result),
         issues: result.items
           .filter((i) => i.level !== 'pass')
-          .map((i) => ({ level: i.level, label: i.label, value: i.value, target: i.target })),
+          .map((i) => ({ id: i.id, level: i.level, label: i.label, value: i.value, target: i.target })),
       },
     })
   } catch (e) {
