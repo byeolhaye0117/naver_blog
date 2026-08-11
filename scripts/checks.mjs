@@ -1572,8 +1572,20 @@ ok(!unifiedHasPost('<a href="https://blog.naver.com/aaa/111">x</a>', 'https://bl
 // ─────────────────────────────────────────────────────────────
 console.log('\n[36] 블로그 성격 판별 · 추정 힘')
 const { blogIdFromInput, parseBlogRss, rssDate } = require(`${OUT}/naver/blogrss.js`)
-const { buildBlogProfile, classifyBlogger, queryFromTitle, meaningForUs, gradeBlog, KIND_LABEL, GRADE_LABEL, GRADE_LADDER } =
-  require(`${OUT}/analysis/blogscore.js`)
+const {
+  buildBlogProfile,
+  classifyBlogger,
+  queryFromTitle,
+  meaningForUs,
+  gradeBlog,
+  measureExposure,
+  competitionOf,
+  sampleCap,
+  KIND_LABEL,
+  GRADE_LABEL,
+  GRADE_LADDER,
+  GRADE_SHARE,
+} = require(`${OUT}/analysis/blogscore.js`)
 
 // 아이디는 아무 형태로 넣어도 받는다
 ok(blogIdFromInput('jiyun0361') === 'jiyun0361', '아이디만')
@@ -1632,43 +1644,104 @@ const WITH = buildBlogProfile({ ...FEED, blogId: 'me' }, '2026-08-04', 100)
 ok(WITH.scoreParts.some((s) => s.label === '노출력'), '재면 항목이 붙는다')
 ok(WITH.score > PROF.score - 30, '환산이 무너지지 않는다', `${PROF.score} → ${WITH.score}`)
 
-// 업계 은어(최적·준최·저품질)를 표본으로 흉내낸 등급 — 두 축(30위 내 / 1페이지)으로 쪼갠다
+// ── 검색어 경쟁 강도 ────────────────────────────────────────
+ok(competitionOf(0) === 'none' && competitionOf(29) === 'none', '30편 미만은 경쟁 없음')
+ok(competitionOf(30) === 'low' && competitionOf(299) === 'low', '30~300편은 약함')
+ok(competitionOf(300) === 'mid' && competitionOf(999) === 'mid', '300~1,000편은 보통')
+ok(competitionOf(1000) === 'high' && competitionOf(50000) === 'high', '1,000편 이상은 강함')
+ok(competitionOf(null) === 'unknown', '못 읽으면 못 잼')
+
+// ── 표본으로 노출 지표 만들기 ────────────────────────────────
+const mkS = (n, rank, total) => Array.from({ length: n }, () => ({ rank, total }))
+const GB_MIX = measureExposure([...mkS(5, 1, 2000), ...mkS(5, null, 2000)])
+ok(GB_MIX.real === 10 && GB_MIX.trivial === 0, '경쟁 있는 표본 10편')
+ok(GB_MIX.exposureRate === 50 && GB_MIX.firstPageRate === 50, '절반이 1위', `${GB_MIX.exposureRate}/${GB_MIX.firstPageRate}`)
+ok(GB_MIX.weightedExposure === 50, '경쟁 강한 검색어는 가중치 1 이라 그대로', String(GB_MIX.weightedExposure))
+
+// **핵심**: 쉬운 검색어에서만 걸리면 100% 라도 가중 점수가 낮다 (등급이 부풀지 않게 하는 장치)
+const GB_EASY = measureExposure(mkS(10, 1, 50))
+ok(GB_EASY.exposureRate === 100 && GB_EASY.weightedExposure === 45, '경쟁 약한 검색어 100% 는 가중 45점', String(GB_EASY.weightedExposure))
+const GB_HARD = measureExposure(mkS(10, 1, 5000))
+ok(GB_HARD.weightedExposure === 100, '경쟁 강한 검색어 100% 는 가중 100점', String(GB_HARD.weightedExposure))
+ok(GB_EASY.weightedExposure < GB_HARD.weightedExposure, '같은 100% 라도 쉬운 쪽이 낮다')
+
+// 경쟁 없는 표본은 아예 뺀다 (0편짜리 검색어에서 1위 하는 것은 힘의 증거가 아니다)
+const GB_TRIV = measureExposure([...mkS(3, 1, 0), ...mkS(3, null, 2000)])
+ok(GB_TRIV.trivial === 3 && GB_TRIV.real === 3, '0편짜리 3편을 뺀다', `${GB_TRIV.trivial}/${GB_TRIV.real}`)
+ok(GB_TRIV.exposureRate === 0, '남은 표본으로만 센다', String(GB_TRIV.exposureRate))
+ok(measureExposure(mkS(3, 1, 0)).weightedExposure === undefined, '전부 경쟁 없으면 노출률을 내지 않는다')
+// 30위에 걸렸지만 1페이지는 아닌 표본
+const GB_P2 = measureExposure(mkS(4, 15, 2000))
+ok(GB_P2.exposureRate === 100 && GB_P2.firstPageRate === 0, '11~30위는 1페이지가 아니다')
+
+// ── 표본 수 상한 ────────────────────────────────────────────
+ok(sampleCap(25) === null, '표본 20편 이상이면 상한 없음')
+ok(sampleCap(12).cap === 'optimal1' && sampleCap(7).cap === 'semi6', '표본이 적으면 위 칸을 잠근다')
+ok(sampleCap(2).cap === 'semi3', '2편은 준최 3 까지만')
+
+// ── 등급 판정 ───────────────────────────────────────────────
 ok(gradeBlog({ samples: 0 }).grade === 'unknown', '표본이 없으면 판정하지 않는다')
 
 // 색인부터 본다 — 제목 완전일치인데도 안 나오면 그게 "저품질" 의 실체다
-const DROP = gradeBlog({ indexedRate: 0, exposureRate: 0, samples: 5 })
-ok(DROP.grade === 'dropped', '제목 그대로 검색해도 안 나오면 누락 의심', DROP.grade)
-ok(DROP.reason.includes('색인 전일 수 있'), '방금 올린 글일 수 있다는 여지를 남긴다')
-const PART = gradeBlog({ indexedRate: 67, exposureRate: 90, firstPageRate: 80, samples: 6 })
-ok(PART.grade === 'partial', '일부만 색인되면 노출력이 좋아도 부분 누락', PART.grade)
+const GB_DROP = gradeBlog({ indexedRate: 0, samples: 5 })
+ok(GB_DROP.grade === 'dropped', '제목 그대로 검색해도 안 나오면 저품질 의심', GB_DROP.grade)
+ok(GB_DROP.reason.includes('색인 전일 수 있'), '방금 올린 글일 수 있다는 여지를 남긴다')
 
-// 최적 구간은 1페이지 비율로 갈린다
-ok(gradeBlog({ indexedRate: 100, exposureRate: 90, firstPageRate: 70, samples: 10 }).grade === 'optimal1', '최적 1')
-ok(gradeBlog({ indexedRate: 100, exposureRate: 90, firstPageRate: 45, samples: 10 }).grade === 'optimal2', '최적 2')
-ok(gradeBlog({ indexedRate: 100, exposureRate: 75, firstPageRate: 25, samples: 10 }).grade === 'optimal3', '최적 3')
-// 같은 노출률이어도 1페이지가 없으면 준최다 — 이게 쪼갠 이유다
-const SAME = gradeBlog({ indexedRate: 100, exposureRate: 90, firstPageRate: 0, samples: 10 })
-ok(SAME.grade === 'semi1', '30위 안에 다 걸려도 1페이지가 없으면 준최 1', SAME.grade)
+// 표본 20편 전부 경쟁 강한 검색어에서 1위 — 여기서만 최적 3 이 나온다
+const GB_TOP = gradeBlog({ indexedRate: 100, exposure: measureExposure(mkS(20, 1, 3000)), samples: 23 })
+ok(GB_TOP.grade === 'optimal3' && GB_TOP.score === 100, '경쟁 강한 검색어를 다 1페이지로 먹으면 최적 3', `${GB_TOP.grade}/${GB_TOP.score}`)
+ok(!GB_TOP.cappedAt, '표본이 충분하면 상한이 안 걸린다')
 
-ok(gradeBlog({ indexedRate: 100, exposureRate: 45, firstPageRate: 10, samples: 10 }).grade === 'semi2', '준최 2')
-ok(gradeBlog({ indexedRate: 100, exposureRate: 30, firstPageRate: 0, samples: 10 }).grade === 'semi3', '준최 3')
-ok(gradeBlog({ indexedRate: 100, exposureRate: 15, firstPageRate: 0, samples: 10 }).grade === 'normal', '일반')
+// 같은 성적인데 표본이 10편이면 최적 1 까지만 (표본 하나에 한 칸이 움직이는 폭이다)
+const GB_FEW = gradeBlog({ indexedRate: 100, exposure: measureExposure(mkS(10, 1, 3000)), samples: 13 })
+ok(GB_FEW.score === 100 && GB_FEW.grade === 'optimal1', '표본 10편이면 최적 1 로 잠근다', `${GB_FEW.grade}/${GB_FEW.score}`)
+ok(GB_FEW.cappedAt === 'optimal1' && GB_FEW.reason.includes('표본 10편'), '왜 잠겼는지 문장에 적는다')
 
-// **핵심**: 노출력만으로 저품질을 말하면 안 된다 (hyoni2_ 는 0% 였는데 우리 키워드 1위였다)
-const LOW = gradeBlog({ indexedRate: 100, exposureRate: 0, firstPageRate: 0, samples: 10 })
-ok(LOW.grade === 'weak', '색인 정상인데 노출률 0 이면 "약함" 이지 저품질이 아니다', LOW.grade)
-ok(LOW.reason.includes('저품질이 아닙니다'), '저품질이 아니라고 분명히 말한다')
+// 보통 블로그 — 30위 안 40%, 1페이지 10%, 경쟁 보통. 실제 분포에서 61% 가 여기(준최 2)다
+const GB_MID = gradeBlog({
+  indexedRate: 100,
+  exposure: measureExposure([...mkS(2, 3, 500), ...mkS(6, 15, 500), ...mkS(12, null, 500)]),
+  samples: 23,
+})
+ok(GB_MID.grade === 'semi2', '보통 성적은 준최 2', `${GB_MID.grade}/${GB_MID.score}`)
+
+// 색인이 새면 노출이 완벽해도 위 칸으로 안 올린다
+const GB_PART = gradeBlog({ indexedRate: 67, exposure: measureExposure(mkS(20, 1, 3000)), samples: 23 })
+ok(GB_PART.grade === 'semi4' && GB_PART.cappedAt === 'semi4', '색인 67% 면 준최 4 로 잠근다', GB_PART.grade)
+ok(GB_PART.reason.includes('색인 67%'), '색인율을 문장에 적는다')
+const GB_HALF = gradeBlog({ indexedRate: 50, exposure: measureExposure(mkS(20, 1, 3000)), samples: 23 })
+ok(GB_HALF.grade === 'normal', '색인이 절반이면 일반까지 내린다', GB_HALF.grade)
+
+// **핵심**: 노출률 0% 를 저품질로 읽지 않게 한다 (hyoni2_ 는 0% 였는데 우리 키워드 1위였다)
+const GB_LOW = gradeBlog({ indexedRate: 100, exposure: measureExposure(mkS(20, null, 3000)), samples: 23 })
+ok(GB_LOW.grade !== 'dropped', '색인 정상이면 저품질이 아니다', GB_LOW.grade)
+ok(GB_LOW.reason.includes('저품질이 아닙니다'), '저품질이 아니라고 분명히 말한다')
+
+// 경쟁 있는 표본이 없으면 노출을 아예 안 잰다 (없는 값을 0점으로 넣지 않는다)
+const GB_NOEXP = gradeBlog({ indexedRate: 100, exposure: measureExposure(mkS(4, 1, 0)), samples: 4 })
+ok(GB_NOEXP.grade === 'normal' && GB_NOEXP.score === undefined, '못 재면 점수를 내지 않는다', String(GB_NOEXP.score))
+ok(GB_NOEXP.reason.includes('경쟁이 거의 없는 검색어'), '왜 못 쟀는지 밝힌다')
 ok(gradeBlog({ indexedRate: 100, samples: 3 }).grade === 'normal', '노출력을 못 재면 색인만으로 일반')
 
-// 사다리는 강한 것부터 약한 것 순서여야 화면에서 위치가 읽힌다
-ok(GRADE_LADDER[0] === 'optimal1' && GRADE_LADDER[GRADE_LADDER.length - 1] === 'dropped', '사다리 순서')
-ok(GRADE_LADDER.length === 10, '10칸', String(GRADE_LADDER.length))
+// 판정 근거를 항목별로 돌려준다 (숫자만 주면 믿거나 못 믿거나 뿐이다)
+ok(GB_TOP.axes.length === 3 && GB_TOP.axes.every((a) => a.label && a.note), '세 축을 근거와 함께 돌려준다')
+ok(GB_TOP.axes.reduce((s, a) => s + a.max, 0) === 100, '배점 합이 100', String(GB_TOP.axes.reduce((s, a) => s + a.max, 0)))
+
+// 사다리는 **업계 표기 방향**이어야 한다 — 숫자가 클수록 강하다 (전에는 반대였다)
+ok(GRADE_LADDER[0] === 'optimal3' && GRADE_LADDER[GRADE_LADDER.length - 1] === 'dropped', '사다리 순서')
+ok(GRADE_LADDER.length === 12, '12칸', String(GRADE_LADDER.length))
 ok(GRADE_LADDER.every((g) => GRADE_LABEL[g]), '모든 칸에 한국어 이름이 있다')
-ok(GRADE_LABEL['optimal1'] === '최적 1' && GRADE_LABEL['semi3'] === '준최 3', '이름 표기')
+ok(GRADE_LABEL['optimal3'] === '최적 3' && GRADE_LABEL['semi2'] === '준최 2', '이름 표기')
+ok(GRADE_LABEL['dropped'] === '저품질 의심', '저품질 표기')
+ok(
+  GRADE_LADDER.indexOf('optimal3') < GRADE_LADDER.indexOf('optimal1') &&
+    GRADE_LADDER.indexOf('semi7') < GRADE_LADDER.indexOf('semi2'),
+  '숫자가 클수록 강하다 (업계 표기)'
+)
+ok(GRADE_SHARE.semi2 > GRADE_SHARE.semi3 && GRADE_SHARE.semi2 > 50, '준최 2 가 가장 흔한 칸이다')
 // 사다리 순서가 실제 판정 강도와 맞는지 (위 칸이 더 좋은 조건에서 나와야 한다)
-const strong = gradeBlog({ indexedRate: 100, exposureRate: 90, firstPageRate: 70, samples: 10 }).grade
-const weaker = gradeBlog({ indexedRate: 100, exposureRate: 30, firstPageRate: 0, samples: 10 }).grade
-ok(GRADE_LADDER.indexOf(strong) < GRADE_LADDER.indexOf(weaker), '좋은 조건이 사다리 위쪽에 온다')
+ok(GRADE_LADDER.indexOf(GB_TOP.grade) < GRADE_LADDER.indexOf(GB_MID.grade), '좋은 조건이 사다리 위쪽에 온다')
+ok(GRADE_LADDER.indexOf(GB_MID.grade) < GRADE_LADDER.indexOf(GB_LOW.grade), '노출 0% 는 더 아래에 온다')
 
 // 제목에서 검색어 만들기
 ok(queryFromTitle('천안 쌍용동 헬스장 미녀와야수짐 봉명점 후기') === '천안 쌍용동 헬스장', '앞 세 낱말', queryFromTitle('천안 쌍용동 헬스장 미녀와야수짐 봉명점 후기'))
@@ -5343,16 +5416,22 @@ ok(isTrivialQuery(410) === false, '410편은 경쟁 있음')
 // 못 읽은 것을 유리하게도 불리하게도 쓰지 않는다
 ok(isTrivialQuery(null) === false, '못 읽은 것(null)은 경쟁 없다고 보지 않는다')
 
+// 경쟁 구간을 가르는 값이 blogsection 과 blogscore 에서 어긋나면 계산이 갈린다
+ok(competitionOf(TRIVIAL_QUERY_MAX - 1) === 'none' && competitionOf(TRIVIAL_QUERY_MAX) === 'low',
+  '두 파일의 「경쟁 없음」 경계가 같다')
+
 // 뺀 표본을 판정 문장에 밝힌다 — 조용히 빼면 「이 숫자가 다 진짜」로 읽힌다
-const gTrim = gradeBlog({ indexedRate: 100, exposureRate: 70, firstPageRate: 60, trivialSamples: 3, trivialMax: 30, samples: 10 })
-ok(gTrim.grade === 'optimal3', `계산은 남은 표본으로 한다 — ${GRADE_LABEL[gTrim.grade]}`)
+const trimEx = measureExposure([...mkS(3, 1, 0), ...mkS(7, 5, 2000), ...mkS(3, null, 2000)])
+const gTrim = gradeBlog({ indexedRate: 100, exposure: trimEx, trivialMax: 30, samples: 13 })
+ok(trimEx.real === 10 && trimEx.trivial === 3, '남은 표본 10편으로 센다', `${trimEx.real}/${trimEx.trivial}`)
 ok(gTrim.reason.includes('표본 3편은 뺐습니다'), '몇 편을 뺐는지 말한다', gTrim.reason)
 ok(gTrim.reason.includes('블로그 힘과 무관'), '왜 뺐는지도 말한다')
-const gClean = gradeBlog({ indexedRate: 100, exposureRate: 70, firstPageRate: 60, samples: 10 })
+ok(gTrim.reason.includes('경쟁 강함'), '표본의 경쟁 강도도 밝힌다')
+const gClean = gradeBlog({ indexedRate: 100, exposure: measureExposure(mkS(10, 5, 2000)), samples: 13 })
 ok(!gClean.reason.includes('뺐습니다'), '뺀 게 없으면 그 말을 안 한다')
 
 // 경쟁 있는 표본이 하나도 없으면 노출력을 판정하지 않는다 (모르는 것을 만들지 않는다)
-const gNone = gradeBlog({ indexedRate: 100, exposureRate: undefined, trivialSamples: 5, trivialMax: 30, samples: 5 })
+const gNone = gradeBlog({ indexedRate: 100, exposure: measureExposure(mkS(5, 1, 0)), trivialMax: 30, samples: 5 })
 ok(gNone.grade === 'normal', '판정을 미룬다')
 ok(gNone.reason.includes('경쟁이 거의 없는 검색어'), '왜 못 쟀는지 밝힌다', gNone.reason)
 ok(gNone.reason.includes('상호명·가게 이름이 제목 앞에 오면'), '어떤 경우인지 예를 든다')

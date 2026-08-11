@@ -1,7 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { GRADE_LABEL, GRADE_LADDER, KIND_LABEL, type BlogGrade, type BlogProfile } from '@/lib/analysis/blogscore'
+import {
+  COMPETITION_LABEL,
+  GRADE_LABEL,
+  GRADE_LADDER,
+  GRADE_SHARE,
+  KIND_LABEL,
+  type BlogGrade,
+  type BlogGradeResult,
+  type BlogProfile,
+  type Competition,
+} from '@/lib/analysis/blogscore'
 import {
   VERDICT_LABEL,
   VERDICT_TONE,
@@ -19,7 +29,7 @@ import { Badge, Card, Empty, Field, Progress, inputClass } from '@/components/ui
 
 interface Result {
   profile: BlogProfile
-  grade: { grade: BlogGrade; reason: string }
+  grade: BlogGradeResult
   indexedRate?: number
   exposureRate?: number
   firstPageRate?: number
@@ -28,7 +38,13 @@ interface Result {
   meaning: string
   agency?: AgencyJudgement
   sponsorScans?: { title: string; url: string; level: SponsorLevel; found: string[]; note: string }[]
-  exposureDetail?: { query: string; rank: number | null; total?: number | null; trivial?: boolean }[]
+  exposureDetail?: {
+    query: string
+    rank: number | null
+    total?: number | null
+    trivial?: boolean
+    competition?: Competition
+  }[]
   /** 검색어에 경쟁이 없어서 노출률 계산에서 뺀 표본 수 */
   trivialSamples?: number
   trivialMax?: number
@@ -37,9 +53,9 @@ interface Result {
 
 function gradeTone(g: BlogGrade) {
   if (g.startsWith('optimal')) return 'good'
+  if (g === 'dropped') return 'bad'
+  if (g === 'normal') return 'warn'
   if (g.startsWith('semi')) return 'info'
-  if (g === 'dropped' || g === 'partial') return 'bad'
-  if (g === 'weak') return 'warn'
   return 'default'
 }
 
@@ -214,27 +230,63 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
           )}
 
           <Card
-            title={`등급 추정 · ${GRADE_LABEL[data.grade.grade]}`}
-            subtitle="「최적·준최·저품질」은 네이버가 만든 등급이 아니라 업계에서 쓰는 말입니다. 여기 값도 표본으로 흉내낸 추정이니, 아래 근거를 함께 보세요."
+            title={
+              typeof data.grade.score === 'number'
+                ? `등급 추정 · ${GRADE_LABEL[data.grade.grade]} · ${data.grade.score}/100`
+                : `등급 추정 · ${GRADE_LABEL[data.grade.grade]}`
+            }
+            subtitle="「최적·준최·저품질」은 네이버가 만든 등급이 아니라 업계에서 쓰는 말입니다. 이름과 순서는 업계 표기(숫자가 클수록 강함)에 맞췄고, 값은 표본으로 낸 추정이니 아래 근거를 함께 보세요."
             right={<Badge tone={gradeTone(data.grade.grade)}>{GRADE_LABEL[data.grade.grade]}</Badge>}
           >
             <p className="text-[13px] leading-relaxed">{data.grade.reason}</p>
+
+            {typeof data.grade.score === 'number' && <Progress value={data.grade.score} />}
+
+            {/* 무엇으로 그 점수가 됐는지 항목별로 — 숫자만 보여주면 믿거나 못 믿거나 뿐이다 */}
+            {data.grade.axes.length > 0 && (
+              <ul className="mt-3 space-y-2">
+                {data.grade.axes.map((a) => (
+                  <li key={a.label} className="panel bd rounded-xl border px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12.5px] font-bold">{a.label}</span>
+                      <span className="tnum muted ml-auto text-[11.5px]">
+                        {a.value} / {a.max}
+                      </span>
+                    </div>
+                    <p className="muted mt-1 text-[11px] leading-relaxed">{a.note}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
 
             {/* 어느 칸인지 눈으로 보이게 — 숫자만 보면 위아래 폭을 알 수 없다 */}
             <div className="mt-3 flex flex-wrap gap-1">
               {GRADE_LADDER.map((g) => (
                 <span
                   key={g}
+                  title={GRADE_SHARE[g] ? `전체 블로그의 약 ${GRADE_SHARE[g]}%` : undefined}
                   className={`rounded-full px-2 py-1 text-[10.5px] font-bold ${
                     g === data.grade.grade
                       ? 'bg-brand-600 text-white'
-                      : 'muted surface'
+                      : g === data.grade.cappedAt
+                        ? 'border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                        : 'muted surface'
                   }`}
                 >
                   {GRADE_LABEL[g]}
                 </span>
               ))}
             </div>
+            <p className="muted mt-1.5 text-[11px] leading-relaxed">
+              업계 표기 그대로 <b>오른쪽으로 갈수록 약합니다</b> (최적 3 이 가장 강하고 준최 1 이 가장 약합니다).
+              시중 통계로는 <b>준최 2 가 전체의 61%</b>, 최적 계열이 6% 뿐이라 준최 2 칸이 가장 넓습니다.
+              {data.grade.cappedAt && (
+                <>
+                  {' '}노란 칸(<b>{GRADE_LABEL[data.grade.cappedAt]}</b>)은 <b>표본·색인 때문에 잠근 상한</b>입니다 —
+                  표본이 쌓이면 그 위로 올라갈 수 있습니다.
+                </>
+              )}
+            </p>
             {typeof data.exposureRate === 'number' && (
               <p className="muted mt-2 text-[11px] leading-relaxed">
                 30위 안 <b>{data.exposureRate}%</b> · 1페이지 <b>{data.firstPageRate ?? 0}%</b> 로 계산했습니다.
@@ -267,8 +319,16 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
                   것이 정상입니다 — 어느 쪽이 맞는지가 아니라 <b>무엇을 쟀는지</b>를 봐야 합니다.
                 </p>
                 <p>
+                  <b>이름과 순서는 업계 표기에 맞췄습니다</b> (2026-08-11 수정). 예전에는 이 앱이
+                  「최적 1」을 최상단으로 썼는데, 업계 표기는 <b>숫자가 클수록 강합니다</b>
+                  (준최 2 &lt; 준최 7 &lt; 최적 1 &lt; 최적 3). 같은 말이 정반대를 뜻해서 두 화면을
+                  나란히 비교할 수 없었습니다 — 지금은 방향이 같습니다.
+                </p>
+                <p>
                   <b>시중 도구 대부분은 활동 지표로 점수를 냅니다</b> — 개설일·운영 기간·평균 방문자·
                   스크랩 수·한 달 발행 수·총 게시물. 블로그가 얼마나 크고 부지런한지를 봅니다.
+                  그 축은 이 앱에서도 아래 <b>「추정 힘 N점」</b> 칸으로 따로 보여줍니다 — 저쪽 점수와
+                  비교할 자리는 그 칸입니다.
                 </p>
                 <p>
                   <b>이 앱은 실제 검색 노출을 표본으로 잽니다</b> — 최근 글 제목을 검색해서 색인이
@@ -399,6 +459,9 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
                         : e.total >= 1000
                           ? '경쟁 1,000편+'
                           : `경쟁 ${e.total.toLocaleString()}편`}
+                      {e.competition && e.competition !== 'none' && e.competition !== 'unknown' && (
+                        <> · {COMPETITION_LABEL[e.competition]}</>
+                      )}
                     </span>
                     {e.trivial && (
                       <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200">
@@ -416,6 +479,11 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
                 그 검색어는 사실상 그 글 하나여서(실측: 어떤 표본은 <b>0편</b>) 30위 안에 걸리는 게
                 당연합니다. 그런 표본은 <b>노출률 계산에서 뺐습니다</b> — 넣으면 등급이 실제보다 후하게
                 나옵니다.
+              </p>
+              <p className="muted mt-1.5 text-[11px] leading-relaxed">
+                남은 표본도 <b>경쟁 강도에 따라 무게를 달리 셈합니다</b> — 1,000편 이상(경쟁 강함)에서
+                걸린 것은 그대로, 300편 안팎(보통)은 0.75, 30~300편(약함)은 0.45 로 셉니다. 쉬운 검색어에서만
+                걸리는 블로그는 이 계산으로 최적 칸에 들어갈 수 없습니다.
               </p>
             </Card>
           )}

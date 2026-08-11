@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
 import { blogIdFromInput, fetchBlogFeed } from '@/lib/naver/blogrss'
-import { buildBlogProfile, gradeBlog, meaningForUs, queryFromTitle } from '@/lib/analysis/blogscore'
+import {
+  buildBlogProfile,
+  competitionOf,
+  gradeBlog,
+  measureExposure,
+  meaningForUs,
+  queryFromTitle,
+  type ExposureMeasure,
+} from '@/lib/analysis/blogscore'
 import { findBlogRank, isTrivialQuery, totalBlogCount, TRIVIAL_QUERY_MAX } from '@/lib/naver/blogsection'
 import { checkUnifiedIndexed } from '@/lib/naver/unified'
 import { buildIndexCheck, summarizeIndex, type IndexCheck } from '@/lib/analysis/indexcheck'
@@ -57,11 +65,10 @@ export async function POST(req: Request) {
      * 이게 없으면 지수는 "얼마나 부지런한가" 만 재는 셈이다. 실제로 검색에 걸리는지가
      * 블로그 힘의 핵심이므로 표본으로 확인한다. 시간이 걸려서 요청으로 켠다.
      */
-    let exposureRate: number | undefined
-    let exposureDetail: { query: string; rank: number | null; total: number | null; trivial: boolean }[] | undefined
-    /** 검색어에 경쟁이 없어서 노출률 계산에서 뺀 표본 수 */
-    let trivialSamples = 0
-    let firstPageRate: number | undefined
+    let exposure: ExposureMeasure | undefined
+    let exposureDetail:
+      | { query: string; rank: number | null; total: number | null; trivial: boolean; competition: string }[]
+      | undefined
     let indexedRate: number | undefined
     let indexDetail: IndexCheck[] | undefined
     let indexSummary: ReturnType<typeof summarizeIndex> | undefined
@@ -113,7 +120,8 @@ export async function POST(req: Request) {
        * 왜 뺐는지 화면에 밝힌다 (조용히 빼면 「이 숫자가 다 진짜」로 읽힌다).
        */
       const picks = feed.items.filter((i) => queryFromTitle(i.title).length >= 4).slice(0, SAMPLE)
-      const got: { query: string; rank: number | null; total: number | null; trivial: boolean }[] = []
+      const got: { query: string; rank: number | null; total: number | null; trivial: boolean; competition: string }[] =
+        []
       for (const it of picks) {
         const q = queryFromTitle(it.title)
         try {
@@ -122,23 +130,17 @@ export async function POST(req: Request) {
             findBlogRank(q, it.link, SAMPLE_DEPTH),
             totalBlogCount(q).catch(() => null),
           ])
-          if (r.ok) got.push({ query: q, rank: r.rank, total, trivial: isTrivialQuery(total) })
+          if (r.ok) {
+            got.push({ query: q, rank: r.rank, total, trivial: isTrivialQuery(total), competition: competitionOf(total) })
+          }
         } catch {
           /* 한 표본이 실패해도 나머지로 센다 */
         }
       }
       if (got.length) {
         exposureDetail = got
-        // 경쟁이 있는 표본만으로 센다. 그것마저 없으면 노출률을 내지 않는다 (모르는 것을 만들지 않는다)
-        const real = got.filter((g) => !g.trivial)
-        trivialSamples = got.length - real.length
-        if (real.length) {
-          exposureRate = Math.round((real.filter((g) => g.rank !== null).length / real.length) * 100)
-          // 1페이지 비율 — 30위 안에 겨우 걸리는 것과 1페이지를 먹는 것을 가른다
-          firstPageRate = Math.round(
-            (real.filter((g) => g.rank !== null && g.rank <= 10).length / real.length) * 100
-          )
-        }
+        // 경쟁 강도까지 함께 셈한다 (measureExposure 주석 — 쉬운 검색어의 1위는 낮게 센다)
+        exposure = measureExposure(got)
       }
     }
 
@@ -159,7 +161,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const profile = buildBlogProfile(feed, undefined, exposureRate)
+    const profile = buildBlogProfile(feed, undefined, exposure?.exposureRate)
     const agency = judgeAgency({
       scans,
       tradeGroups: profile.tradeGroups.length,
@@ -169,9 +171,7 @@ export async function POST(req: Request) {
     })
     const grade = gradeBlog({
       indexedRate,
-      exposureRate,
-      firstPageRate,
-      trivialSamples,
+      exposure,
       trivialMax: TRIVIAL_QUERY_MAX,
       samples: (exposureDetail?.length ?? 0) + (indexDetail?.length ?? 0),
     })
@@ -180,9 +180,10 @@ export async function POST(req: Request) {
       profile,
       grade,
       indexedRate,
-      exposureRate,
-      firstPageRate,
-      trivialSamples,
+      exposure,
+      exposureRate: exposure?.exposureRate,
+      firstPageRate: exposure?.firstPageRate,
+      trivialSamples: exposure?.trivial ?? 0,
       trivialMax: TRIVIAL_QUERY_MAX,
       indexDetail,
       indexSummary,
