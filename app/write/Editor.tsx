@@ -577,6 +577,18 @@ export default function Editor({
           sponsorship,
           // 상위노출 분석에서 나온 처방 — 이게 빠지면 분석이 글에 반영되지 않는다
           prescription: useRx && rxMatches ? rx?.items : undefined,
+          /*
+           * **유사성 방지 로테이션을 함께 보낸다.**
+           *
+           * 회원 지적: "후기글 거의 처음이 등록 망설인 이유로 시작하고 있어. 이러면
+           * 유사성에 겹칠 것 같아." 이 값들이 여태 안 넘어갔다 — 글에 저장만 하고 AI 에게는
+           * 말하지 않았으니 모델은 골격에 박힌 한 가지 도입으로 계속 돌아왔다.
+           * 비워두면 서버가 최근에 안 쓴 것을 골라 넣는다.
+           */
+          introType,
+          angle,
+          format,
+          topicGroup,
           ...extra,
         }),
       }).finally(() => clearTimeout(bell))
@@ -591,6 +603,8 @@ export default function Editor({
         /** 분량이 기준 미만이면 앱이 스스로 한 번 더 고쳐 쓴다 */
         charCount?: number
         charMin?: number
+        /** 서버가 실제로 쓴 로테이션 — 글에 기록해야 다음 글에서 다른 도입이 나온다 */
+        rotation?: { introType?: string; angle?: string; format?: string; topicGroup?: string }
         fixIssues?: string[]
         provider?: string
         /** 정보글에서 자료를 찾아 인용했는지 */
@@ -611,6 +625,19 @@ export default function Editor({
       if (!res.ok || !json.draft) throw new Error(json.error ?? '글 생성에 실패했습니다.')
       setTitle(json.draft.title)
       setBody(json.draft.body)
+      /*
+       * **서버가 고른 로테이션을 화면에도 채운다.**
+       *
+       * 이게 없으면 회전이 한 자리에서 멈춘다 — 서버가 「③ 비교형」으로 써도 글에는 빈
+       * 값으로 저장되고, 다음 글에서 「최근에 안 쓴 것」을 계산하면 또 「③ 비교형」이 나온다.
+       * 회원이 직접 고른 값은 건드리지 않는다.
+       */
+      if (json.rotation) {
+        if (json.rotation.introType && !introType) setIntroType(json.rotation.introType)
+        if (json.rotation.angle && !angle) setAngle(json.rotation.angle)
+        if (json.rotation.format && !format) setFormat(json.rotation.format)
+        if (json.rotation.topicGroup && !topicGroup) setTopicGroup(json.rotation.topicGroup)
+      }
       if (Array.isArray(json.draft.tags) && json.draft.tags.length) {
         setTagText(json.draft.tags.join(', '))
       }

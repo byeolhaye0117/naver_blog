@@ -1266,6 +1266,73 @@ const u3 = buildUserPrompt({
 ok(u3.includes('지난 글') && u3.includes('④상황묘사'), '최근 글을 유사문서 방지용으로 넘긴다')
 ok(u3.includes('제목은 31~39자'), '상위노출 분석 처방을 넘긴다')
 
+/*
+ * ─── 도입 로테이션이 **AI 에게 전달되는가** ──────────────────────
+ *
+ * 회원 지적 (2026-08-11): "후기글 거의 처음이 등록 망설인 이유로 시작하고 있어. 이러면
+ * 유사성에 겹칠 것 같아. 서로 다르게 도입부를 시작할 수 있게 해줘."
+ *
+ * **장치는 진작 있었고 선이 안 이어져 있었다.** 화면에 「도입 유형」 고르는 칸이 있고
+ * 최근에 안 쓴 것을 권하기까지 했는데, 그 값이 `/api/write` 로 넘어가지 않았다. 글에
+ * 저장만 하고 AI 에게는 말하지 않았으니 모델은 골격에 박힌 「망설임·고민으로 시작」만
+ * 보고 매번 같은 도입을 썼다.
+ */
+const rotPrompt = buildUserPrompt({
+  type: 'review',
+  store: { legalName: 'MTO 피트니스 쌍용점', location: '천안 쌍용동', phone: '041-000-0000' },
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: ['쌍용동PT'],
+  introType: '③ 비교형 — 몇 군데 알아보다가',
+  angle: '시간',
+})
+ok(rotPrompt.includes('이번 글의 도입·전개'), '도입·전개 묶음을 넘긴다')
+ok(rotPrompt.includes('도입 방식: ③ 비교형'), '지정한 도입 방식을 그대로 적는다')
+ok(rotPrompt.includes('다른 방식으로 열지 않는다'), '그 방식으로만 열라고 못 박는다')
+ok(rotPrompt.includes('주력 앵글: 시간'), '앵글도 넘긴다')
+// 지정이 없으면 그 묶음을 만들지 않는다 (빈 제목만 있는 묶음은 소음이다)
+const noRot = buildUserPrompt({
+  type: 'review',
+  store: { legalName: 'MTO 피트니스 쌍용점', location: '천안 쌍용동', phone: '041-000-0000' },
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: [],
+})
+ok(!noRot.includes('이번 글의 도입·전개'), '지정이 없으면 묶음이 없다')
+// 정보글은 형식·소재도 넘긴다
+const infoRot = buildUserPrompt({
+  type: 'info',
+  store: { legalName: 'MTO 피트니스 쌍용점', location: '천안 쌍용동', phone: '041-000-0000' },
+  mainKeyword: '폭식 멈추는 방법',
+  subKeywords: [],
+  format: '② Q&A형 — 자주 받는 질문 3~4개에 답',
+  topicGroup: 'B. 다이어트',
+})
+ok(infoRot.includes('서술 형식: ② Q&A형'), '정보글 형식을 넘긴다')
+ok(infoRot.includes('소재 묶음: B. 다이어트'), '소재 묶음을 넘긴다')
+
+/*
+ * **골격에서 「망설임·고민으로 시작」을 뺐다.** 여기 한 줄이 원인이었다 — 골격이 도입을
+ * 한 가지로 못 박아 뒀으니 로테이션이 무슨 값을 넘겨도 모델은 매번 망설임으로 열었다.
+ */
+const revSys = buildSystemPrompt('review')
+ok(!revSys.includes('화자 본인의 망설임·고민으로 시작'), '골격이 도입을 한 가지로 못 박지 않는다')
+ok(revSys.includes('도입 방식은 위 「이번 글의 도입·전개」에 지정된 것을 따른다'), '도입은 로테이션을 따르라고 한다')
+ok(revSys.includes('지정이 없을 때만 화자의 고민으로 연다'), '지정이 없을 때의 기본값은 남겨둔다')
+ok(revSys.includes('어느 방식이든 화자는 방문객 1인칭이다'), '도입이 바뀌어도 화자는 안 바뀐다')
+
+// 후기글 도입 다섯 가지가 서로 다른 방식이어야 로테이션이 의미가 있다
+const { REVIEW_INTRO_TYPES, INTRO_TYPES, adviseRotation } = require(`${OUT}/writing/rotation.js`)
+ok(REVIEW_INTRO_TYPES.length === 5 && new Set(REVIEW_INTRO_TYPES).size === 5, '후기 도입 5가지')
+ok(!REVIEW_INTRO_TYPES.some((t) => t.includes('망설')), '「망설임」이 유일한 도입이 아니다')
+// 최근에 쓴 것을 피해 고른다 (같은 도입이 연달아 나오지 않게)
+const usedPosts = [
+  { id: '1', storeId: 's', type: 'review', mainKeyword: 'a', body: '', createdAt: '2026-08-01', introType: REVIEW_INTRO_TYPES[0] },
+  { id: '2', storeId: 's', type: 'review', mainKeyword: 'b', body: '', createdAt: '2026-08-02', introType: REVIEW_INTRO_TYPES[1] },
+]
+const advised = adviseRotation(usedPosts, 's', 'review')
+ok(advised.introType && !advised.introType.includes(REVIEW_INTRO_TYPES[0]), '최근에 쓴 도입은 다시 권하지 않는다', advised.introType)
+ok(REVIEW_INTRO_TYPES.includes(advised.introType), '후기글에는 후기 도입 목록에서 고른다')
+ok(!INTRO_TYPES.includes(advised.introType), '홍보글 도입 목록을 후기에 쓰지 않는다')
+
 const fix = buildFixPrompt(['본문 글자수: 지금 1,500자 / 기준 1,900~2,100자'], 1500, { charMin: 1900, charMax: 2100 })
 ok(fix.includes('1,500') && fix.includes('1,900'), '고쳐 쓰기 지시에 현재값과 기준이 들어간다')
 ok(fix.includes('JSON'), '고쳐 쓸 때도 JSON 으로 받는다')
