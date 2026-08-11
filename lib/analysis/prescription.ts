@@ -154,3 +154,40 @@ export function prescriptionForType(items: string[], type: PostType): string[] {
   }
   return out
 }
+
+/**
+ * 회원이 빼달라고 한 낱말을 처방에서 걸러낸다 (순수 함수 — 테스트 대상).
+ *
+ * 회원 지적 (2026-08-11): "24시 내용 빼달라 그랬는데 더 홍보하고 있어." 프롬프트 전체를
+ * 훑어보니 가장 센 자리가 여기였다:
+ *
+ *   - 상위 제목에 반복되는 말: **24시**, PT, 후기, 추천
+ *
+ * 「이 말들을 제목에 넣어라」는 뜻이라 요청과 정면으로 부딪힌다. 앵글을 바꿔도 이 줄이
+ * 남아 있으면 모델은 24시를 쓴다 — 그리고 **처방은 구체적이라 더 강하게 따른다.**
+ *
+ * 낱말 목록에서는 그 말만 빼고 줄은 살린다 (나머지 낱말은 여전히 쓸모가 있다).
+ * 줄 전체가 그 낱말 얘기면 줄을 버린다.
+ */
+export function dropExcluded(items: string[], excluded: string[]): string[] {
+  const words = excluded.filter((w) => w && w.length >= 2)
+  if (!words.length) return items
+  const out: string[] = []
+  for (const line of items) {
+    // ① 반영하라는 낱말 목록 — 그 말만 뺀다
+    const m = line.match(/^(상위 (?:제목에 반복되는 말|1~5위가 모두 쓴 말): )([^.]+)(\..*)$/)
+    if (m) {
+      const kept = m[2]
+        .split(',')
+        .map((w) => w.trim())
+        .filter((w) => w && !words.some((x) => w.includes(x)))
+      if (!kept.length) continue
+      out.push(`${m[1]}${kept.join(', ')}${m[3]}`)
+      continue
+    }
+    // ② 줄 전체가 그 낱말 얘기면 버린다 (「24시 검색량이 큽니다」 같은 조언)
+    if (words.some((w) => line.includes(w))) continue
+    out.push(line)
+  }
+  return out
+}
