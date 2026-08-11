@@ -305,8 +305,15 @@ console.log('\n[8] 후기글 협찬 표기')
 const rev = { type:'review', title:'쌍용동 헬스장 3개월 다녀본 후기', mainKeyword:'쌍용동 헬스장', subKeywords:['쌍용동PT'], tags:['쌍용동 헬스장','쌍용동PT'], body:'쌍용동 헬스장을 알아보다 다녀왔습니다.', sponsorship:'sponsored' }
 const c4 = checkPost(rev)
 ok(c4.items.find(i=>i.id==='sponsorship')?.level === 'fail', '협찬인데 표기 없으면 fail')
+/*
+ * **태그만으로는 통과가 아니게 바뀌었다** (2026-08-11). 회원 요청으로 표기 자리를 「맨
+ * 아래」로 정했고(공정위 지침: 게시물의 처음 또는 끝), 검사가 **위치까지** 본다.
+ * 태그에만 있으면 주의 — 본문 맨 마지막에 한 줄이 있어야 통과다.
+ */
 const c5 = checkPost({ ...rev, tags:[...rev.tags,'협찬후기'] })
-ok(c5.items.find(i=>i.id==='sponsorship')?.level === 'pass', '#협찬후기 있으면 pass')
+ok(c5.items.find(i=>i.id==='sponsorship')?.level === 'warn', '#협찬후기 만 있으면 주의')
+const c5b = checkPost({ ...rev, tags:[...rev.tags,'협찬후기'], body: `${rev.body}\n이 글은 제공받아 작성했습니다.` })
+ok(c5b.items.find(i=>i.id==='sponsorship')?.level === 'pass', '본문 맨 아래에 한 줄까지 있으면 pass')
 const c6 = checkPost({ ...rev, sponsorship:'unset' })
 ok(c6.items.find(i=>i.id==='sponsorship')?.level === 'warn', '미지정이면 warn')
 ok(checkPost({...rev, title:'쌍용동 헬스장 3개월 다녀본 기록'}).items.find(i=>i.id==='reviewWord')?.level === 'warn', '제목에 "후기" 없으면 warn')
@@ -4960,9 +4967,67 @@ ok(offerOnly?.level === 'warn', `혜택만 있으면 주의 — ${offerOnly?.val
 const emptyTease = hookItem({ ...goodPromo, body: stripHook.replace('오늘은 그 시간 문제를', '이벤트도 진행 중입니다. 오늘은 그 시간 문제를') })
 ok(emptyTease?.level === 'warn', `「이벤트 진행 중입니다」만으로는 통과 못 한다 — ${emptyTease?.value}`)
 
-// 홍보글만 본다 — 후기글의 예고는 방문자 시점 한 줄이면 되고, 정보글은 이벤트 글이 아니다
-ok(hookItem({ ...goodPromo, type: 'info' }) === undefined, '정보글에는 항목이 안 생긴다')
-ok(hookItem({ ...goodPromo, type: 'review' }) === undefined, '후기글에는 항목이 안 생긴다')
+/*
+ * **후기글도 본다** (2026-08-11). 회원 요청: "후기글도 도입부에 이벤트 홍보성을 넣어야
+ * 하고." 전에는 「후기글의 예고는 방문자 시점 한 줄이면 된다」며 검사에서 뺐는데, 그 「한
+ * 줄」이 실제로는 「혜택이 있었어요」로 끝나 아무 정보가 없었다.
+ */
+ok(hookItem({ ...goodPromo, type: 'info' }) === undefined, '정보글에는 항목이 안 생긴다 (이벤트 글이 아니다)')
+const revHook = hookItem({ ...goodPromo, type: 'review', sponsorship: 'own' })
+ok(revHook !== undefined, '후기글에도 항목이 생긴다')
+const revHookMissing = hookItem({ ...goodPromo, type: 'review', sponsorship: 'own', body: stripHook })
+ok(revHookMissing?.level === 'fail', `후기글도 훅이 없으면 잡는다 — ${revHookMissing?.value}`)
+ok(revHookMissing?.hint.includes('방문객 말투로'), '후기글에는 방문객 말투로 쓰라고 한다')
+ok(revHookMissing?.hint.includes('지금 신청하세요'), '센터 말투를 막는다')
+ok(!hookItem({ ...goodPromo, body: stripHook })?.hint.includes('방문객 말투로'), '홍보글에는 그 말을 하지 않는다')
+// 지시문에도 적혀 있어야 한다
+const revHookSys = buildSystemPrompt('review')
+ok(revHookSys.includes('마지막 한두 문장은 이벤트 훅이다'), '후기글 골격이 이벤트 훅을 시킨다')
+ok(revHookSys.includes('센터 말투로 외치지 않는다'), '말투를 방문객 쪽으로 못 박는다')
+
+/*
+ * ─── 협찬 표기는 **맨 아래** ────────────────────────────────
+ *
+ * 회원 요청: "협찬 문구는 제일 하단에 표시될 수 있도록 해줘."
+ * 공정위 「추천·보증 심사지침」은 표시문구를 게시물의 **처음 또는 끝**에 두게 하므로 끝도
+ * 문제없다. 다만 정말 끝이어야 한다 — 더보기로 접히거나 댓글로 밀리면 표기가 아니다.
+ */
+const spItem = (body) =>
+  checkPost({ ...goodPromo, type: 'review', sponsorship: 'sponsored', body, tags: ['쌍용동헬스장', '협찬후기'] })
+    .items.find((i) => i.id === 'sponsorship')
+const revBody = goodPromo.body
+ok(spItem(`${revBody}\n이 글은 MTO 피트니스 쌍용점에서 시설 이용을 제공받아 작성했습니다.`)?.level === 'pass',
+  '맨 아래에 있으면 통과')
+ok(spItem(`이 글은 제공받아 작성했습니다.\n${revBody}`)?.level === 'warn', '위쪽에 있으면 주의로 내린다')
+ok(spItem(`이 글은 제공받아 작성했습니다.\n${revBody}`)?.hint.includes('맨 마지막 구간으로 내리세요'), '어디로 옮기라고 말한다')
+ok(spItem(`이 글은 제공받아 작성했습니다.\n${revBody}`)?.hint.includes('처음 또는 끝'), '왜 끝이어도 되는지 근거를 준다')
+// 태그에만 있으면 주의다 — 「본문에도 밝히세요」라고 조언하면서 통과를 주면 고칠 이유가 없다
+const spTagOnly = spItem(revBody)
+ok(spTagOnly?.level === 'warn', '태그에만 있으면 주의', spTagOnly?.value)
+ok(spTagOnly?.hint.includes('태그만으로는'), '태그만으로 부족한 이유를 말한다')
+// 아무 데도 없으면 즉시수정 (표시광고법)
+const spNone = checkPost({ ...goodPromo, type: 'review', sponsorship: 'sponsored', body: revBody, tags: ['쌍용동헬스장'] })
+  .items.find((i) => i.id === 'sponsorship')
+ok(spNone?.level === 'fail', '아무 데도 없으면 즉시수정', spNone?.value)
+ok(spNone?.hint.includes('표시광고법'), '법 위반이라고 밝힌다')
+// 지시문
+ok(revHookSys.includes('본문 맨 마지막에') || buildUserPrompt({
+  type: 'review',
+  store: { legalName: 'MTO 피트니스 쌍용점', location: '천안', phone: '041' },
+  mainKeyword: '쌍용동 헬스장',
+  subKeywords: [],
+  sponsorship: 'sponsored',
+}).includes('본문 맨 마지막에'), '지시문이 맨 마지막에 쓰라고 한다')
+
+/*
+ * ─── 2단계도 망설임에서 풀어준다 ────────────────────────────
+ *
+ * 회원 지적: "완전 도입부가 아니라 도입부 바로 아래는 망설이는 이유로 시작하는 거 같아."
+ * 1단계만 로테이션에 붙였더니 망설임이 한 칸 아래로 밀려났을 뿐이었다.
+ */
+ok(!revHookSys.includes('등록해도 안 가게 될까 하는 불안을 본인 이야기로'), '2단계에 망설임이 박혀 있지 않다')
+ok(revHookSys.includes('1단계에서 연 이야기를 그대로 이어간다'), '2단계는 도입을 이어가라고 한다')
+ok(revHookSys.includes('망설임·불안으로 되돌아가지 않는다'), '망설임으로 돌아가지 말라고 한다')
 
 // 지시문과 검사가 같은 것을 요구해야 한다 (어긋나면 AI 는 옛 규칙으로 쓰고 검수는 새 규칙으로 잰다)
 const hookPrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], eventText: '8월 3개월 9.9만원 선착순 50명' })
