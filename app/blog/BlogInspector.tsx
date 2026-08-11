@@ -28,7 +28,10 @@ interface Result {
   meaning: string
   agency?: AgencyJudgement
   sponsorScans?: { title: string; url: string; level: SponsorLevel; found: string[]; note: string }[]
-  exposureDetail?: { query: string; rank: number | null }[]
+  exposureDetail?: { query: string; rank: number | null; total?: number | null; trivial?: boolean }[]
+  /** 검색어에 경쟁이 없어서 노출률 계산에서 뺀 표본 수 */
+  trivialSamples?: number
+  trivialMax?: number
   recent: { title: string; date: string; category: string; link: string }[]
 }
 
@@ -237,8 +240,49 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
                 30위 안 <b>{data.exposureRate}%</b> · 1페이지 <b>{data.firstPageRate ?? 0}%</b> 로 계산했습니다.
                 표본이 {data.exposureDetail?.length ?? 0}개라 한 칸 차이는 표본에 따라 흔들릴 수 있습니다 —
                 아래 표본 목록을 함께 보세요.
+                {Boolean(data.trivialSamples) && (
+                  <>
+                    {' '}그중 <b>{data.trivialSamples}편은 계산에서 뺐습니다</b> — 검색어의 최근 글이{' '}
+                    {data.trivialMax ?? 30}편 미만이라, 거기서 위에 걸리는 것은 블로그 힘과 무관합니다.
+                  </>
+                )}
               </p>
             )}
+
+            {/*
+              **시중 도구와 다르게 나오는 이유를 먼저 말한다.**
+
+              회원이 우리 진단(「최적 3」)과 다른 사이트(「준최·44점」)를 나란히 놓고 물었다.
+              둘 다 네이버 공식 등급이 아니고, **재는 대상이 아예 다르다.** 그걸 모르면 어느
+              쪽이 맞는지를 두고 헤매게 된다 — 답은 「같은 것을 재지 않았다」다.
+            */}
+            <details className="mt-3 text-[11.5px]">
+              <summary className="muted cursor-pointer font-semibold">
+                다른 사이트와 등급이 다르게 나오는 이유
+              </summary>
+              <div className="muted mt-2 space-y-2 leading-relaxed">
+                <p>
+                  <b>네이버는 블로그 등급을 발표하지 않습니다.</b> 「최적·준최·저품질」은 업계에서
+                  쓰는 말이고, 어느 도구든 자기 방식으로 추정한 값입니다. 그래서 서로 다르게 나오는
+                  것이 정상입니다 — 어느 쪽이 맞는지가 아니라 <b>무엇을 쟀는지</b>를 봐야 합니다.
+                </p>
+                <p>
+                  <b>시중 도구 대부분은 활동 지표로 점수를 냅니다</b> — 개설일·운영 기간·평균 방문자·
+                  스크랩 수·한 달 발행 수·총 게시물. 블로그가 얼마나 크고 부지런한지를 봅니다.
+                </p>
+                <p>
+                  <b>이 앱은 실제 검색 노출을 표본으로 잽니다</b> — 최근 글 제목을 검색해서 색인이
+                  됐는지, 30위·1페이지에 걸리는지. 방문자 수는 밖에서 볼 수 없으니 아예 안 씁니다
+                  (못 재는 것을 추측해 점수에 섞으면 숫자 전체가 거짓이 됩니다).
+                </p>
+                <p>
+                  그래서 <b>방문자는 많은데 검색 노출이 약한 블로그</b>는 저쪽이 높게, 이쪽이 낮게
+                  나옵니다. 반대로 <b>규모는 작아도 쓰는 글이 잘 걸리는 블로그</b>는 이쪽이 높게
+                  나옵니다. 우리 목적(검색 상위노출)에는 이쪽 축이 직접 쓸모가 있고, 블로그가
+                  전체적으로 얼마나 자랐는지는 저쪽이 잘 보여줍니다.
+                </p>
+              </div>
+            </details>
             {data.indexDetail && data.indexDetail.length > 0 && (
               <div data-index="card" className="surface mt-3 rounded-xl p-3.5">
                 <p className="text-[12px] font-bold">색인 검사 — 제목을 그대로 검색해 어디에 나오는지</p>
@@ -339,18 +383,40 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
           {data.exposureDetail && data.exposureDetail.length > 0 && (
             <Card
               title="노출력 표본"
-              subtitle="최근 글의 제목 앞부분을 검색어로 써서, 그 글이 30위 안에 있는지 확인한 결과입니다. 경쟁이 센 검색어를 노린 글은 안 걸리는 게 정상이니 검색어를 함께 보세요."
+              subtitle="최근 글의 제목 앞부분을 검색어로 써서 그 글이 30위 안에 있는지 봤습니다. 검색어마다 경쟁이 다르므로 「경쟁 N편」을 함께 보세요 — 경쟁이 거의 없는 검색어는 계산에서 뺐습니다."
             >
               <ul className="space-y-1.5">
                 {data.exposureDetail.map((e) => (
                   <li key={e.query} className="flex flex-wrap items-center gap-2 text-[12.5px]">
                     <span className="min-w-0 flex-1 truncate">{e.query}</span>
+                    {/*
+                      **검색어의 경쟁을 함께 보여준다.** 0편짜리 검색어에서 1위 하는 것은 힘의
+                      증거가 아니다 — 그걸 모르면 「1위네」로 읽는다.
+                    */}
+                    <span className="muted tnum text-[11px]">
+                      {e.total === null || e.total === undefined
+                        ? '경쟁 못 잼'
+                        : e.total >= 1000
+                          ? '경쟁 1,000편+'
+                          : `경쟁 ${e.total.toLocaleString()}편`}
+                    </span>
+                    {e.trivial && (
+                      <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200">
+                        계산 제외
+                      </span>
+                    )}
                     <Badge tone={e.rank === null ? 'default' : e.rank <= 10 ? 'good' : 'warn'}>
                       {e.rank === null ? '30위 밖' : `${e.rank}위`}
                     </Badge>
                   </li>
                 ))}
               </ul>
+              <p className="muted mt-2.5 text-[11px] leading-relaxed">
+                <b>「경쟁 N편」은 그 검색어로 쓰인 글 수입니다.</b> 상호명·가게 이름이 제목 앞에 오면
+                그 검색어는 사실상 그 글 하나여서(실측: 어떤 표본은 <b>0편</b>) 30위 안에 걸리는 게
+                당연합니다. 그런 표본은 <b>노출률 계산에서 뺐습니다</b> — 넣으면 등급이 실제보다 후하게
+                나옵니다.
+              </p>
             </Card>
           )}
 

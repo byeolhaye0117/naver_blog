@@ -127,6 +127,55 @@ export async function recentBlogCount(keyword: string, now = new Date()): Promis
   return value
 }
 
+/**
+ * 이 검색어로 쓰인 글이 **통틀어 몇 편**인지 (기간 제한 없이 한 번만 조회).
+ *
+ * 블로그 진단의 「노출력」이 이걸 필요로 한다. 우리는 표본 글 제목의 앞 3낱말을 검색어로
+ * 써서 30위 안에 걸리는지 봤는데, 그 검색어의 난이도가 표본마다 완전히 달랐다 —
+ * 실측(2026-08-11, 회원 블로그의 실제 제목 3편):
+ *
+ *   천안 신방동 맛집                    1,000편 이상   ← 진짜 경쟁 키워드
+ *   천안 생선구이 뭔맛집                  410편        ← 약한 경쟁
+ *   천안 성심호수공원마당 백년한방활산채탕      0편        ← 사실상 그 글 하나
+ *
+ * **0편짜리 검색어에서 1위를 하는 것은 블로그 힘의 증거가 아니다.** 그걸 섞어서 노출률을
+ * 내면 실제보다 후한 등급이 나온다. 그래서 표본마다 이 값을 함께 재서, 경쟁이 없는 표본은
+ * 노출률 계산에서 빼고 화면에 그렇게 밝힌다.
+ *
+ * `null` 은 못 읽은 것이다 (0 과 섞지 않는다). 1,000 은 잘린 값이라 「이상」으로 읽어야 한다.
+ */
+export async function totalBlogCount(keyword: string): Promise<number | null> {
+  const key = keyword.trim()
+  if (!key) return null
+  const url =
+    `${ENDPOINT}?countPerPage=7&currentPage=1&orderBy=sim&type=post` +
+    `&keyword=${encodeURIComponent(key)}`
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': UA, Referer: REFERER, Accept: 'application/json, text/plain, */*' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    })
+    if (!res.ok) return null
+    return parseSectionTotal(await res.text())
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 이 검색어가 「사실상 경쟁이 없는」 자리인가 (순수 함수 — 테스트 대상).
+ *
+ * 기준을 30편으로 뒀다. 그 아래면 검색 결과 첫 페이지가 그 글과 비슷한 몇 편으로 다 차서,
+ * 30위 안에 걸리는 것이 블로그 힘과 무관해진다. **못 읽은 것(null)은 경쟁이 없다고 보지
+ * 않는다** — 모르는 것을 유리하게도 불리하게도 쓰지 않는다.
+ */
+export const TRIVIAL_QUERY_MAX = 30
+
+export function isTrivialQuery(total: number | null): boolean {
+  return typeof total === 'number' && total < TRIVIAL_QUERY_MAX
+}
+
 // ─── 관련도순 상위 글 목록 ──────────────────────────────────────
 
 export interface SectionPost {
