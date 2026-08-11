@@ -345,6 +345,58 @@ export default function GuidePage() {
           </p>
         </Card>
 
+        {/*
+          **정보글 인용 모양을 여기 박아둔다.**
+
+          회원이 캡처와 함께 지적했다 — "내가 원하는 건 「대한비만학회 무슨무슨 결과에 따르면…」
+          인데, 그냥 내용을 쓰고 괄호로 출처를 쓰고 있어. 나는 이런 걸 원한 게 아니야."
+          지시문과 검수기는 고쳤지만, **회원이 눈으로 확인할 자리**가 없으면 다음에 또 같은 것을
+          캡처해서 물어야 한다. 그래서 규칙을 화면에 적는다.
+        */}
+        <Card
+          title="정보글 인용 모양 — 출처를 문장 앞에"
+          subtitle="검수의 「출처를 문장 앞에 세웠는가」 항목이 이 모양을 검사합니다"
+        >
+          <div className="space-y-2.5 text-[12px] leading-relaxed">
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/8 px-3 py-2.5">
+              <p className="text-[11px] font-bold text-rose-700 dark:text-rose-300">이렇게 쓰지 않습니다</p>
+              <p className="mt-1">
+                단맛 나는 음식은 혈당을 빠르게 올리고 다시 빠르게 떨어뜨리는데, 혈당이 떨어지면 공복감을
+                느끼고 과식으로 이어지기 쉽다고 <b>합니다 (대한비만학회 일반인 홈페이지)</b>.
+              </p>
+              <p className="muted mt-1.5 text-[11px]">
+                읽는 사람은 누가 한 말인지 모른 채 그 문장을 지나갑니다. 「~라고 합니다」까지 붙으면
+                출처를 적었는데도 소문처럼 읽힙니다.
+              </p>
+            </div>
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2.5">
+              <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">이렇게 씁니다</p>
+              <p className="mt-1">
+                <b>대한비만학회가 일반인용 자료에서 밝힌 내용을 보면</b>, 단맛 나는 음식은 혈당을 빠르게
+                올렸다가 다시 빠르게 <b>떨어뜨립니다</b>.
+              </p>
+              <p className="muted mt-1.5 text-[11px]">
+                기관 이름을 먼저 세우고, 앞에서 밝혔으니 문장은 단정으로 끝냅니다.
+              </p>
+            </div>
+            <ul className="muted space-y-1.5 text-[11.5px] leading-relaxed">
+              <li>
+                • 인용은 <b>2~3곳까지</b>. 국내 기관·학회(대한비만학회·질병관리청·보건복지부·식품의약품안전처)와
+                국제 기관(세계보건기구·미국스포츠의학회)만 씁니다. 개인 블로그·카페·쇼핑몰은 근거로 쓰지 않습니다.
+              </li>
+              <li>• 출처 이름은 <b>한국어로</b> 적고 약어는 괄호에 넣습니다 — 「세계보건기구(WHO)」.</li>
+              <li>
+                • <b>괄호를 금지하는 것은 아닙니다.</b> 앞에 세운 다음 확인용 주소를 문단 끝에 한 줄로 더
+                적는 것은 괜찮습니다.
+              </li>
+              <li>
+                • 못 찾았으면 <b>인용하지 않습니다.</b> 그 대목은 상담에서 본 것으로 씁니다 — 「제가 상담하면서
+                보면」. 빈손으로 오는 것이 지어내는 것보다 낫습니다.
+              </li>
+            </ul>
+          </div>
+        </Card>
+
         {/* ─── 운영 전략 ─── */}
         <Card title="블로그 운영 전략" subtitle="글 단위가 아니라 블로그 단위로 관리해야 합니다">
           <ul className="space-y-3 text-[12px] leading-relaxed">
