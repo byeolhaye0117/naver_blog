@@ -845,6 +845,44 @@ export function buildUserPrompt(req: WriteRequest): string {
   return lines.join('\n')
 }
 
+/**
+ * **제목만** 다시 써 달라고 부탁하는 메시지.
+ *
+ * 회원 지적 (2026-08-11, 네 번째): "제목에 홍보 내용이 안 들어갈 때가 있어. 이런 것 좀
+ * 안 나오게 확실히 수정해줘."
+ *
+ * 지시문·검수·고쳐 쓰기 목록·자동 실행까지 이었는데도 가끔 빠졌다. 본문까지 함께 고치는
+ * 요청에서는 모델이 할 일이 많아 제목 한 줄을 흘린다. 그래서 **제목만 놓고 한 번 더**
+ * 묻는다 — 한 줄이라 값이 싸고, 다른 것을 깨뜨릴 위험도 없다.
+ *
+ * 본문은 넘기지 않는다. 제목을 고치라고 본문을 다시 읽힐 이유가 없고, 길면 또 흘린다.
+ */
+export function buildTitlePrompt(
+  current: string,
+  issues: string[],
+  ctx: { mainKeyword: string; eventText?: string; type: PostType }
+): string {
+  return [
+    '방금 준 글의 **제목만** 다시 쓴다. 본문은 손대지 않는다.',
+    '',
+    `지금 제목: ${current}`,
+    '걸린 것:',
+    ...issues.map((i) => `- ${i}`),
+    '',
+    `- 메인 키워드 「${ctx.mainKeyword}」를 앞 7자 안에 둔다.`,
+    '- 28~40자.',
+    ctx.eventText
+      ? `- **혜택 한 조각을 반드시 넣는다.** 이벤트 정보에서 가져와라: ${ctx.eventText}`
+      : '- **혜택 한 조각을 반드시 넣는다.** 이벤트 정보가 없으니 금액을 지어내지 말고 「가격」·「비용」·「얼마」·「이용권」·「체험」 중 하나를 쓴다.',
+    ctx.type === 'review'
+      ? '- 「후기」를 넣고 **방문객 말투**로 쓴다 — 「○○ 헬스장 가격 궁금해서 상담 받아본 후기」. 「지금 신청하세요」 같은 센터 말투는 쓰지 않는다.'
+      : '- 뒤쪽에 독자가 실제로 하는 질문을 하나 얹는다.',
+    '- 「최저가·파격가·반값」은 쓰지 않는다 (광고심의).',
+    '',
+    '**제목 한 줄만** JSON 으로 출력한다: {"title": "..."}',
+  ].join('\n')
+}
+
 /** 검수에서 걸린 항목을 고쳐 달라고 다시 부탁하는 메시지 */
 export function buildFixPrompt(issues: string[], charCount: number, spec: { charMin: number; charMax: number }): string {
   /*

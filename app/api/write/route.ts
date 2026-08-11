@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { readDB } from '@/lib/store'
 import { poolStoredRuns } from '@/lib/analysis/factors'
 import { AiError, aiStatus, askLlm, canSearchWeb, extractJson } from '@/lib/ai/llm'
-import { buildFixPrompt, buildSystemPrompt, buildUserPrompt } from '@/lib/ai/prompt'
+import { buildFixPrompt, buildSystemPrompt, buildTitlePrompt, buildUserPrompt } from '@/lib/ai/prompt'
 import { PUBLISH_THRESHOLD, SPECS, checkPost, summarize } from '@/lib/writing/checker'
 import { adviseRotation } from '@/lib/writing/rotation'
 import { fixList } from '@/lib/writing/next-action'
@@ -243,20 +243,96 @@ async function handle(req: Request, ms: () => string) {
        * 순간 캡이 풀려서 점수가 제대로 올라간다.
        */
       const priorFails = summarize(priorResult).fail
-      const fixedFails = fixedResult ? summarize(fixedResult).fail : Number.POSITIVE_INFINITY
-      const better = Boolean(
-        fixed &&
-          fixedResult &&
-          (fixedFails < priorFails ||
-            (fixedFails === priorFails && fixedResult.score > priorResult.score))
-      )
+
+      /*
+       * **제목과 본문을 따로 채점해서 좋은 쪽을 섞는다** (2026-08-11).
+       *
+       * 회원 지적: "제목에 홍보 내용이 안 들어갈 때가 있어." 여기에 구멍이 있었다 —
+       * 고쳐 쓰기가 **제목은 고쳤는데 본문에서 다른 항목을 깨뜨리면** 수정필요 개수가
+       * 그대로여서 새 글이 통째로 버려졌다. 고쳐진 제목까지 같이 버려진 것이다.
+       *
+       * 제목과 본문은 **다른 칸**이다. 그래서 네 후보를 다 채점하고 가장 좋은 것을 고른다:
+       *   옛 제목+옛 본문 · 새 제목+새 본문 · **새 제목+옛 본문** · 옛 제목+새 본문
+       * 섞은 것도 그대로 채점하므로(제목+본문을 함께 보는 항목이 있다) 섞어서 나빠지면
+       * 안 고른다 — 「좋아 보이는 조합」을 짐작하지 않고 재서 고른다.
+       */
+      const candidates: { label: string; draft: Draft }[] = [{ label: '원래 글', draft: prior }]
+      if (fixed) {
+        candidates.push({ label: '고친 글', draft: fixed })
+        if (fixed.title !== prior.title) {
+          candidates.push({ label: '고친 제목 + 원래 본문', draft: { ...prior, title: fixed.title } })
+        }
+        if (fixed.body !== prior.body) {
+          candidates.push({ label: '원래 제목 + 고친 본문', draft: { ...fixed, title: prior.title } })
+        }
+      }
+      const scored = candidates.map((c) => {
+        const r = check(c.draft)
+        return { ...c, result: r, fails: summarize(r).fail }
+      })
+      // 수정필요가 적은 쪽을 먼저, 같으면 점수가 높은 쪽. 동점이면 앞에 온 것(=원래 글)을 둔다
+      const best = scored.reduce((a, b) => (b.fails < a.fails || (b.fails === a.fails && b.result.score > a.result.score) ? b : a))
       console.log(
         '[write] 고쳐 쓰기 판정',
-        `수정필요 ${priorFails}→${fixedFails} · 점수 ${priorResult.score}→${fixedResult?.score ?? '-'}`,
-        better ? '채택' : '버림'
+        scored.map((c) => `${c.label} 수정필요 ${c.fails}·${c.result.score}점`).join(' / '),
+        `→ ${best.label}`
       )
-      const out = better ? fixed : prior
-      const outResult = better ? fixedResult! : priorResult
+      let picked = best
+      /*
+       * **제목이 아직 걸려 있으면 제목만 놓고 한 번 더 묻는다** (2026-08-11).
+       *
+       * 회원 지적: "제목에 홍보 내용이 안 들어갈 때가 있어. 확실히 수정해줘." 본문까지 함께
+       * 고치는 요청에서는 모델이 할 일이 많아 제목 한 줄을 흘린다. 한 줄만 물으면 값이
+       * 싸고(수백 토큰) 다른 것을 깨뜨릴 위험도 없다.
+       *
+       * **받은 제목도 채점해서 나아졌을 때만 쓴다** — 홍보를 넣으려고 키워드를 밀어내거나
+       * 길이를 넘기면 그건 고친 것이 아니다.
+       */
+      const titleStuck = (r: ReturnType<typeof check>) =>
+        r.items.filter((i) => i.level === 'fail' && i.id.startsWith('title'))
+      const stuck = titleStuck(picked.result)
+      if (stuck.length) {
+        console.log('[write] 제목만 다시 쓰기 시작', ms(), stuck.map((i) => i.label).join('/'))
+        const askTitle = await askLlm(
+          system,
+          [
+            { role: 'user', content: buildUserPrompt(request) },
+            { role: 'assistant', content: JSON.stringify(picked.draft) },
+            {
+              role: 'user',
+              content: buildTitlePrompt(
+                picked.draft.title,
+                stuck.map((i) => `${i.label}: 지금 ${i.value} / 기준 ${i.target}`),
+                { mainKeyword, eventText: request.eventText, type }
+              ),
+            },
+          ],
+          // 제목 한 줄이라 넉넉히 줘도 400 토큰이면 충분하다
+          400
+        ).catch((e) => {
+          console.error('[write] 제목만 다시 쓰기 실패', ms(), e)
+          return ''
+        })
+        const newTitle = ((extractJson(askTitle) as { title?: unknown } | null)?.title ?? '') as string
+        if (typeof newTitle === 'string' && newTitle.trim() && newTitle.trim() !== picked.draft.title) {
+          const cand = { ...picked.draft, title: newTitle.trim() }
+          const r = check(cand)
+          const fewer = titleStuck(r).length < stuck.length
+          const notWorse = summarize(r).fail <= picked.fails
+          console.log(
+            '[write] 제목만 다시 쓰기 끝',
+            ms(),
+            `「${newTitle.trim()}」 제목 수정필요 ${stuck.length}→${titleStuck(r).length} · 전체 ${picked.fails}→${summarize(r).fail}`,
+            fewer && notWorse ? '채택' : '버림'
+          )
+          if (fewer && notWorse) picked = { label: '제목만 다시 쓴 글', draft: cand, result: r, fails: summarize(r).fail }
+        }
+      }
+
+      const fixedFails = fixedResult ? summarize(fixedResult).fail : Number.POSITIVE_INFINITY
+      const better = picked.draft !== prior
+      const out = picked.draft
+      const outResult = picked.result
       return NextResponse.json({
         draft: out,
         revised: Boolean(better),
