@@ -55,6 +55,8 @@ const TARGETS = [
   'lib/writing/export.ts',
   'lib/naver/searchad.ts',
   'lib/naver/datalab.ts',
+  'lib/naver/blogstat.ts',
+  'lib/analysis/activity.ts',
 ]
 
 let compiled
