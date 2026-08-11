@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { CheckGroup, CheckResult } from '@/lib/types'
 import { Badge, Progress, levelLabel, levelTone } from '@/components/ui'
+import { altWords } from '@/lib/writing/banned'
 
 /** 본문에서 그 표현을 찾아 커서를 놓은 결과 */
 export interface RiskJump {
@@ -38,18 +39,28 @@ export default function CheckPanel({
 }: {
   result: CheckResult
   /**
-   * 위험 표현을 **본문에서 찾아 커서를 놓는다** (회원 요청: "이런 거는 수정 버튼 있어서
+   * 위험 표현을 본문에서 찾아 그 자리를 손본다 (회원 요청: "이런 거는 수정 버튼 있어서
    * 바로 수정할 수 있게 해줘").
    *
-   * 자동으로 고쳐 주지는 않는다. 「무료 3회 → 2회」를 기계가 지우면 「무료 방문 상담」이
-   * 「방문 상담」이 되는 정도는 괜찮지만 「혜택을 준비했어요」가 「을 준비했어요」가 된다 —
-   * 어느 쪽인지는 문장을 봐야 안다. 그래서 **찾아서 커서를 놓는 것까지** 우리가 하고
-   * 지우는 판단은 회원이 한다. 긴 본문에서 세 번째 「무료」를 찾는 것이 실제로 번거로운
-   * 일이었다.
+   * 세 가지를 한다.
+   *   find    — 그 표현을 잡아 커서를 놓는다. 긴 본문에서 세 번째 「무료」를 눈으로 찾는
+   *             것이 실제로 번거로운 일이었다.
+   *   replace — **바꿔 쓴다** (회원 요청: "지우는 게 아니라 단어를 수정하는 쪽으로").
+   *             「무료」를 지우면 무료라는 사실이 사라지지만 「비용 없는」으로 바꾸면 뜻은
+   *             남고 도배 횟수만 줄어든다. 후보는 banned.ts 의 ALT_WORDS 에 있다.
+   *   delete  — 지운다. 「무료 방문 상담」 → 「방문 상담」처럼 지워도 읽히는 자리가 있다.
+   *
+   * **한 번에 다 고치지는 않는다.** 「혜택을 준비했어요」에서 「혜택」만 지우면 「을
+   * 준비했어요」가 된다 — 어느 쪽인지는 문장을 봐야 알기 때문에, 찾아서 보여준 다음에
+   * 회원이 고른다. 손본 자리에 커서를 놓아 결과가 바로 보이게 한다.
    *
    * 넘기지 않으면 버튼이 안 나온다 — 글 목록처럼 본문을 고칠 수 없는 화면을 위해서다.
    */
-  onFindRisk?: (term: string, nth: number, action?: 'find' | 'delete') => RiskJump | null
+  onFindRisk?: (
+    term: string,
+    nth: number,
+    action?: { kind: 'find' } | { kind: 'delete' } | { kind: 'replace'; with: string }
+  ) => RiskJump | null
 }) {
   const tone = result.score >= 85 ? 'good' : result.score >= 65 ? 'warn' : 'bad'
   const fails = result.items.filter((i) => i.level === 'fail')
@@ -155,7 +166,7 @@ export default function CheckPanel({
                          */
                         const first = r.category.startsWith('D.') ? -1 : 0
                         const nth = isJump(cur) ? cur.index : first
-                        setJumps((p) => ({ ...p, [r.term]: onFindRisk(r.term, nth) ?? 'none' }))
+                        setJumps((p) => ({ ...p, [r.term]: onFindRisk(r.term, nth, { kind: 'find' }) ?? 'none' }))
                       }}
                       className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-[11.5px] font-bold text-rose-700 dark:text-rose-300"
                     >
@@ -173,19 +184,35 @@ export default function CheckPanel({
                     {(() => {
                       const j = jumps[r.term]
                       if (!isJump(j)) return null
+                      const act = (action: { kind: 'delete' } | { kind: 'replace'; with: string }) =>
+                        setJumps((p) => ({ ...p, [r.term]: onFindRisk(r.term, j.index - 1, action) ?? 'gone' }))
+                      const alts = altWords(r.term)
                       return (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setJumps((p) => ({
-                              ...p,
-                              [r.term]: onFindRisk(r.term, j.index - 1, 'delete') ?? 'gone',
-                            }))
-                          }
-                          className="rounded-lg border border-rose-500/60 bg-rose-600 px-2.5 py-1.5 text-[11.5px] font-bold text-white"
-                        >
-                          이 자리 지우기
-                        </button>
+                        <>
+                          {/*
+                            **바꿔 쓰는 쪽을 먼저 보여준다.** 회원 요청: "이거를 지우는 게
+                            아니라 단어를 수정하는 쪽으로 고치면 좋겠어." 「무료」를 지우면
+                            무료라는 사실이 사라지지만 「비용 없는」으로 바꾸면 뜻은 남고
+                            도배 횟수만 줄어든다.
+                          */}
+                          {alts.map((alt) => (
+                            <button
+                              key={alt}
+                              type="button"
+                              onClick={() => act({ kind: 'replace', with: alt })}
+                              className="rounded-lg border border-emerald-500/60 bg-emerald-600 px-2.5 py-1.5 text-[11.5px] font-bold text-white"
+                            >
+                              「{alt}」으로 바꾸기
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => act({ kind: 'delete' })}
+                            className="rounded-lg border border-rose-500/60 bg-rose-500/10 px-2.5 py-1.5 text-[11.5px] font-bold text-rose-700 dark:text-rose-300"
+                          >
+                            이 자리 지우기
+                          </button>
+                        </>
                       )
                     })()}
                     <span className="muted text-[10.5px] leading-snug">
@@ -193,8 +220,10 @@ export default function CheckPanel({
                         ? '본문에서 못 찾았습니다 — 글자 사이에 기호가 끼어 있는 표기입니다.'
                         : jumps[r.term] === 'gone'
                           ? '다 지웠습니다. 문장이 어색해지지 않았는지 한 번 읽어보세요.'
-                          : jumps[r.term]
-                            ? '커서를 그 자리에 놓았습니다. 「찾기」를 다시 누르면 다음 자리로 갑니다.'
+                          : isJump(jumps[r.term])
+                            ? altWords(r.term).length
+                              ? '커서를 그 자리에 놓았습니다. 바꿀 말을 고르면 그 자리만 바뀝니다 — 조사가 어색해지지 않았는지 한 번 읽어보세요. 「찾기」를 다시 누르면 다음 자리로 갑니다.'
+                              : '커서를 그 자리에 놓았습니다. 이 말은 바꿔 쓸 말이 따로 없어서, 위 안내대로 문장을 고치는 편이 낫습니다.'
                             : '누르면 본문에서 그 표현을 잡아 커서를 놓습니다.'}
                     </span>
                   </div>
