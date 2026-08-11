@@ -5,6 +5,7 @@ import { AiError, aiStatus, askLlm, canSearchWeb, extractJson } from '@/lib/ai/l
 import { buildFixPrompt, buildSystemPrompt, buildUserPrompt } from '@/lib/ai/prompt'
 import { PUBLISH_THRESHOLD, SPECS, checkPost, summarize } from '@/lib/writing/checker'
 import { adviseRotation } from '@/lib/writing/rotation'
+import { fixList } from '@/lib/writing/next-action'
 import type { PostType } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -22,34 +23,6 @@ export const maxDuration = 300
  * AI_MAX_TOKENS 로 올리면 된다.
  */
 const WRITE_MAX_TOKENS = Number(process.env.AI_MAX_TOKENS ?? 8192) || 8192
-
-/**
- * 고쳐 쓰기에 넘길 항목 목록.
- *
- * **셋을 고쳤다** (2026-08-10). 예전에는 걸린 항목을 전부(수정필요 + 주의) 순서 없이
- * 넘기고 있었다. 회원 화면에서 9개가 넘어갔고, 모델이 아홉 개를 한 번에 손보다가 이미
- * 맞던 것을 깨서 결과가 나아지지 않았다.
- *
- *   ① **수정필요를 먼저** 놓는다. 점수 상한을 푸는 것은 수정필요뿐이다.
- *   ② **힌트를 함께** 넘긴다. 「지금 2회 / 기준 5회」만으로는 어디에 넣을지 모른다 —
- *      실제로 고치는 방법은 힌트에 적혀 있다.
- *   ③ **6개까지만** 넘긴다. 한 번에 다 고치라고 하면 아무것도 못 고친다.
- */
-function fixList(r: ReturnType<typeof checkPost>): string[] {
-  const rank = (level: string) => (level === 'fail' ? 0 : 1)
-  const items = r.items
-    .filter((i) => i.level !== 'pass')
-    .sort((a, b) => rank(a.level) - rank(b.level) || b.weight - a.weight)
-    .slice(0, 6)
-    .map((i) => {
-      const head = `[${i.level === 'fail' ? '수정필요' : '주의'}] ${i.label}: 지금 ${i.value} / 기준 ${i.target}`
-      return i.hint ? `${head}\n  → ${i.hint}` : head
-    })
-  // 위험 표현은 항목 수와 무관하게 전부 넘긴다 — 하나라도 남으면 발행할 수 없다
-  return items.concat(
-    r.risks.map((x) => `[위험 표현] "${x.term}" (${x.category}) — ${x.fix}`)
-  )
-}
 
 const TYPES: PostType[] = ['promo', 'info', 'review']
 
@@ -305,7 +278,7 @@ async function handle(req: Request, ms: () => string) {
             .filter((i) => i.level !== 'pass')
             .map((i) => ({ level: i.level, label: i.label, value: i.value, target: i.target })),
         },
-        fixIssues: fixList(outResult),
+        fixIssues: fixList(outResult.items, outResult.risks),
       })
     }
 
@@ -345,7 +318,7 @@ async function handle(req: Request, ms: () => string) {
         format: request.format,
         topicGroup: request.topicGroup,
       },
-      fixIssues: fixList(result),
+      fixIssues: fixList(result.items, result.risks),
       provider: ai.label,
       // 자료를 찾아 인용했는지 — 화면에서 회원에게 밝힌다 (못 찾는 키도 있다)
       searched: request.canSearch === true,
