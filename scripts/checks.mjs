@@ -6136,5 +6136,47 @@ ok(SMALL.size === '작은 편' || SMALL.size === '아주 작은 편', '구간 �
 ok(ACT.blind.some((b) => b.includes('유입경로')) && ACT.blind.some((b) => b.includes('체류시간')),
   '로그인해야 보이는 것을 명시한다')
 
+// ─────────────────────────────────────────────────────────────
+console.log('\n[93] 도배 낱말을 바꿔 쓸 말')
+/*
+ * 회원 요청 (2026-08-11): "이거를 지우는 게 아니라 단어를 수정하는 쪽으로 고치면 좋겠어."
+ * 「무료」를 지우면 무료라는 사실이 사라지지만 「비용 없는」으로 바꾸면 **뜻은 남고 도배
+ * 횟수만 줄어든다.** 그게 더 맞는 방향이다.
+ */
+const { ALT_WORDS, altWords, COMMERCIAL_LIMITS: LIMITS, scanRisks: scanR, RISK_TERMS: RTERMS } = require(`${OUT}/writing/banned.js`)
+
+ok(altWords('무료').length >= 2, '무료에 바꿔 쓸 말이 있다', altWords('무료').join('/'))
+ok(altWords('혜택').includes('조건'), '혜택 → 조건')
+ok(altWords('없는말').length === 0, '없는 낱말은 빈 배열 (화면이 버튼을 안 만든다)')
+// 상한이 걸린 낱말은 모두 바꿔 쓸 말이 있어야 한다 — 없으면 버튼이 안 나와 회원이 막힌다
+for (const { term } of LIMITS) {
+  ok(altWords(term).length > 0, `「${term}」에 바꿔 쓸 말이 있다`)
+}
+
+/*
+ * **바꾼 결과가 다른 항목에 걸리면 안 된다.** 「혜택」을 「할인」으로 바꾸면 할인 상한(2회)
+ * 으로 옮겨가는 것뿐이고, 광고심의에 걸리는 말로 바꾸면 한 항목 고치고 다른 항목을 만든다.
+ */
+const limitTerms = LIMITS.map((l) => l.term)
+for (const [term, alts] of Object.entries(ALT_WORDS)) {
+  for (const alt of alts) {
+    ok(!limitTerms.some((t) => alt.includes(t)), `「${term}」→「${alt}」가 다른 상한 낱말이 아니다`)
+    // 위험 표현 검사를 그대로 돌려본다 (문장에 넣어도 안 걸리는지)
+    const hits = scanR(`${alt} 상담을 해드립니다.`)
+    ok(hits.length === 0, `「${alt}」는 위험 표현에 안 걸린다`, hits.map((h) => h.term).join('/'))
+  }
+}
+
+/*
+ * 실제로 바꿨을 때 도배가 풀리는지 — 「무료」 3회 중 하나를 바꾸면 허용(2회) 안으로 들어온다.
+ */
+const { scanCommercialOveruse } = require(`${OUT}/writing/banned.js`)
+const overused = '무료 상담도 되고 무료 주차도 되고 무료 체험도 됩니다.'
+ok(scanCommercialOveruse(overused).length === 1, '무료 3회면 걸린다')
+const swapped = overused.replace('무료 체험', '비용 없는 체험')
+ok(scanCommercialOveruse(swapped).length === 0, '한 자리를 바꾸면 상한 안으로 들어온다', JSON.stringify(swapped))
+// 지우는 쪽도 여전히 된다 (지워도 읽히는 자리가 있다)
+ok(scanCommercialOveruse(overused.replace('무료 체험', '체험')).length === 0, '지워도 상한 안으로 들어온다')
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

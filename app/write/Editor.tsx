@@ -492,7 +492,12 @@ export default function Editor({
   function findRisk(
     term: string,
     nth: number,
-    action: 'find' | 'delete' = 'find'
+    /**
+     * 무엇을 할지. `replace` 는 **지우는 대신 바꿔 쓰는** 길이다 (회원 요청: "이거를
+     * 지우는 게 아니라 단어를 수정하는 쪽으로 고치면 좋겠어"). 「무료」를 지우면 무료라는
+     * 사실이 사라지지만 「비용 없는」으로 바꾸면 뜻은 남고 도배 횟수만 줄어든다.
+     */
+    action: { kind: 'find' } | { kind: 'delete' } | { kind: 'replace'; with: string } = { kind: 'find' }
   ): { index: number; total: number } | null {
     const ta = bodyRef.current
     if (!ta || !term) return null
@@ -508,20 +513,25 @@ export default function Editor({
     const i = ((nth % spots.length) + spots.length) % spots.length
     const start = spots[i]
 
-    if (action === 'delete') {
+    if (action.kind !== 'find') {
       /*
-       * 그 한 자리만 지운다. 낱말을 떼면 공백이 둘 남으므로 하나로 줄인다 —
-       * 「무료 방문 상담」 → 「방문 상담」.
+       * 그 한 자리만 손본다.
+       *   지우기 — 낱말을 떼면 공백이 둘 남으므로 하나로 줄인다 (「무료 방문 상담」 → 「방문 상담」)
+       *   바꾸기 — 그 자리에 다른 말을 넣는다 (「무료 방문 상담」 → 「비용 없는 방문 상담」)
        */
       const before = hay.slice(0, start)
       const after = hay.slice(start + term.length)
-      const doubled = /[ \t]$/.test(before) && /^[ \t]/.test(after)
-      const next = before + (doubled ? after.replace(/^[ \t]/, '') : after)
+      const put = action.kind === 'replace' ? action.with : ''
+      const doubled = !put && /[ \t]$/.test(before) && /^[ \t]/.test(after)
+      const next = before + put + (doubled ? after.replace(/^[ \t]/, '') : after)
       setBody(next)
-      // 지운 자리에 커서를 둔다 — 문장이 깨지지 않았는지 바로 보이게
+      /*
+       * 손본 자리에 커서를 둔다 — 조사가 어색해지지 않았는지 바로 보이게. 바꾼 경우는
+       * 넣은 말을 선택해 둬서 그 자리에서 다시 고칠 수 있게 한다.
+       */
       requestAnimationFrame(() => {
         ta.focus()
-        ta.setSelectionRange(start, start)
+        ta.setSelectionRange(start, start + put.length)
         ta.scrollTop = Math.max(0, (start / Math.max(1, next.length)) * ta.scrollHeight - ta.clientHeight / 2)
       })
       const left = spotsOf(next).length
