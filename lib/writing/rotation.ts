@@ -26,6 +26,55 @@ export const REVIEW_INTRO_TYPES = [
 
 export const ANGLES = ['시간', '지속', '방법', '초보 진입장벽', '안심(여성전용)']
 
+/**
+ * 앵글마다 「이 말이 나오면 그 앵글 얘기다」 하는 낱말들.
+ *
+ * 회원 요청을 읽어서 **부딪히는 앵글을 빼려고** 쓴다 (anglesToAvoid).
+ */
+const ANGLE_WORDS: Record<string, string[]> = {
+  시간: ['24시', '24시간', '시간대', '새벽', '야간', '심야', '밤늦', '늦은 시간', '영업시간', '운영시간'],
+  지속: ['지속', '꾸준', '작심삼일', '중도 포기'],
+  방법: ['운동법', '운동 방법', '자세', '루틴'],
+  '초보 진입장벽': ['초보', '처음', '입문', '헬스 초보'],
+  '안심(여성전용)': ['여성전용', '여성 전용', '안심', '여자만'],
+}
+
+/** 「빼고·말고·없이」류 — 이 말이 뒤에 붙으면 넣지 말라는 뜻이다 */
+const NEGATION = /(빼|제외|말고|없이|넣지\s*마|쓰지\s*마|안\s*넣|안\s*나오게|피해|지워)/
+
+/**
+ * 회원 요청에서 **쓰지 말라고 한 앵글**을 골라낸다 (순수 함수 — 테스트 대상).
+ *
+ * 회원 지적 (2026-08-11): "24시 내용 빼고 작성해달라 했는데 이렇게 작성했어" — 나온 글이
+ * 온통 시간대·늦은 시간 얘기였다.
+ *
+ * **앱이 그렇게 시킨 것이었다.** 로테이션이 앵글을 「시간」으로 골라 지시문에 「주력 앵글:
+ * 시간 — 이 축으로 이야기를 끌고 간다」로 박아 넣었다. 회원 요청과 정면으로 부딪히는데,
+ * 요청이 지시문 앞쪽에 있어서 뒤에 온 앵글 지시가 이겼다.
+ *
+ * 그래서 **로테이션이 애초에 그 앵글을 고르지 않게** 한다. 「부딪히면 요청이 이긴다」를
+ * 지시문에 적는 것보다 이쪽이 확실하다 — 모델에게 모순을 주고 잘 풀기를 바라지 않는다.
+ *
+ * 낱말 뒤 15자 안에 「빼고·말고·없이」가 와야 걸러낸다. 「24시간 운영하는 곳을 찾았다」처럼
+ * 그냥 언급한 것까지 빼면 요청을 거꾸로 읽는 셈이 된다.
+ */
+export function anglesToAvoid(request?: string): string[] {
+  const text = (request ?? '').trim()
+  if (!text) return []
+  const out: string[] = []
+  for (const [angle, words] of Object.entries(ANGLE_WORDS)) {
+    for (const w of words) {
+      const at = text.indexOf(w)
+      if (at === -1) continue
+      if (NEGATION.test(text.slice(at + w.length, at + w.length + 15))) {
+        out.push(angle)
+        break
+      }
+    }
+  }
+  return out
+}
+
 export const INFO_FORMATS = [
   '① 단계형 — 순서대로 정리 (1→2→3)',
   '② Q&A형 — 자주 받는 질문 3~4개에 답',
@@ -52,6 +101,8 @@ export interface RotationAdvice {
   mainKeywordCandidates: string[]
   warnings: string[]
   recentSummaries: string[]
+  /** 회원 요청 때문에 후보에서 뺀 앵글 — 화면에서 왜 안 골랐는지 밝힐 때 쓴다 */
+  avoidedAngles?: string[]
 }
 
 function daysBetween(a: string, b: string): number {
@@ -74,7 +125,9 @@ export function adviseRotation(
   posts: Post[],
   storeId: string,
   type: PostType,
-  store?: Store
+  store?: Store,
+  /** 이번 글 회원 요청 — 여기서 「빼달라」고 한 앵글은 고르지 않는다 */
+  request?: string
 ): RotationAdvice {
   const warnings: string[] = []
   const today = new Date().toISOString().slice(0, 10)
@@ -124,7 +177,18 @@ export function adviseRotation(
     advice.topicGroup = leastRecentlyUsed(TOPIC_GROUPS, sameType.map((p) => p.topicGroup))
   } else {
     advice.introType = leastRecentlyUsed(introPool, sameType.map((p) => p.introType))
-    const anglePool = store?.womenOnly ? ANGLES : ANGLES.filter((a) => !a.startsWith('안심'))
+    const basePool = store?.womenOnly ? ANGLES : ANGLES.filter((a) => !a.startsWith('안심'))
+    /*
+     * **회원이 빼달라고 한 앵글은 고르지 않는다.** 회원이 「24시 내용 빼고」라고 했는데
+     * 앱이 「주력 앵글: 시간」을 시켜서 글이 온통 시간대 얘기가 된 적이 있다.
+     * 전부 걸러지면 원래 목록으로 돌아간다 — 앵글이 없는 것보다는 낫다.
+     */
+    const avoid = anglesToAvoid(request)
+    const trimmed = basePool.filter((a) => !avoid.includes(a))
+    const anglePool = trimmed.length ? trimmed : basePool
+    if (avoid.length) {
+      advice.avoidedAngles = avoid
+    }
     advice.angle = leastRecentlyUsed(anglePool, sameType.map((p) => p.angle))
   }
 
