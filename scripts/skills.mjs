@@ -169,31 +169,70 @@ function bundleAll(outDir) {
 
 /* ─────────────────────────── 지점 정보 다시 만들기 ─────────────────────────── */
 
+/**
+ * 배포된 앱에서 지점 정보를 그대로 받아온다.
+ *
+ * **이게 없으면 실제로 어긋난다.** 2026-08-12 실측 — 씨앗에는 성정점이
+ * 「여성전용 착한헬스 성정점」인데 앱에는 「성정동 착한 헬스장」이었다. 회원이 앱 화면에서
+ * 고친 값이고, 스킬은 옛 이름을 들고 있었다. Upstash 환경변수가 없는 곳에서도 맞출 수 있는
+ * 길이 필요하다 — 앱의 `/api/stores` 가 같은 저장소를 읽어 주므로 그걸 쓴다.
+ */
+async function fetchStores(url) {
+  const base = url.replace(/\/+$/, '')
+  const res = await fetch(`${base}/api/stores`, { headers: { accept: 'application/json' } })
+  if (!res.ok) throw new Error(`${base}/api/stores → HTTP ${res.status}`)
+  const json = await res.json()
+  const stores = Array.isArray(json) ? json : json.stores
+  if (!Array.isArray(stores) || !stores.length) throw new Error('지점이 하나도 안 왔습니다')
+  return stores
+}
+
+function argOf(name) {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`))
+  return hit ? hit.slice(name.length + 3) : undefined
+}
+
 async function main() {
   if (process.argv[2] === 'bundle') {
-    bundleAll(process.argv[3] ? resolve(ROOT, process.argv[3]) : join(ROOT, 'docs/skills/bundled'))
+    const out = process.argv.slice(3).find((a) => !a.startsWith('--'))
+    bundleAll(out ? resolve(ROOT, out) : join(ROOT, 'docs/skills/bundled'))
     return
   }
-  const compiled = compileLib(['lib/store.ts', 'lib/seed/stores.ts'], 'nbm-skills-')
-  const require = createRequire(import.meta.url)
-  const { readDB } = require(`${join(compiled.outDir, 'lib')}/store.js`)
-  const db = await readDB()
-  compiled.cleanup()
+
+  const url = argOf('url')
+  let stores
+  let where
+  if (url) {
+    stores = await fetchStores(url)
+    where = `배포된 앱(${url})`
+  } else {
+    const compiled = compileLib(['lib/store.ts', 'lib/seed/stores.ts'], 'nbm-skills-')
+    const require = createRequire(import.meta.url)
+    const { readDB } = require(`${join(compiled.outDir, 'lib')}/store.js`)
+    stores = (await readDB()).stores
+    compiled.cleanup()
+    const live = Boolean(
+      process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || process.env.REDIS_URL
+    )
+    where = live
+      ? '앱 저장소(Upstash)'
+      : existsSync(join(ROOT, 'data/db.json'))
+        ? '로컬 data/db.json'
+        : '씨앗 데이터(lib/seed/stores.ts)'
+    if (!live) {
+      console.log(
+        '  ⚠ 씨앗 데이터를 읽었습니다. 앱에서 고친 값을 넣으려면:\n' +
+          '     npm run skills:stores -- --url=https://<앱주소>'
+      )
+    }
+  }
+  const db = { stores }
 
   /*
    * 어느 데이터를 읽었는지 밝힌다. 씨앗을 읽었는데 「앱 값으로 맞췄다」고 말하면
    * 회원이 앱에서 고친 내용이 반영된 줄 알게 된다.
    */
-  const live = Boolean(
-    process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || process.env.REDIS_URL
-  )
-  const where = live ? '앱 저장소(Upstash)' : existsSync(join(ROOT, 'data/db.json')) ? '로컬 data/db.json' : '씨앗 데이터(lib/seed/stores.ts)'
   console.log(`지점 ${db.stores.length}곳을 ${where} 에서 읽었습니다.`)
-  if (!live) {
-    console.log(
-      '  ⚠ 앱(Vercel)에서 고친 지점 정보를 넣으려면 Upstash 환경변수가 있는 곳에서 돌려야 합니다.'
-    )
-  }
 
   const body = [
     MARK,
