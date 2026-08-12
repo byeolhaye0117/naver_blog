@@ -6,6 +6,7 @@ import { Badge, Card } from '@/components/ui'
 import CopyButton from '@/components/CopyButton'
 import BackupBox from '@/components/BackupBox'
 import { StorageStatusCard } from '@/components/StorageNotice'
+import AiKeyCheck from '@/components/AiKeyCheck'
 
 /**
  * 지금 어떤 AI 키로 돌고 있는지.
@@ -61,6 +62,11 @@ function AiKeyCard() {
           </p>
         </>
       )}
+      {/*
+       * 위 안내는 「환경변수가 들어 있다」까지만 말한다. 오타·만료·잔액 없음은 전부 들어 있는
+       * 상태이므로, 실제로 되는지는 눌러서 확인해야 한다.
+       */}
+      <AiKeyCheck />
     </Card>
   )
 }
