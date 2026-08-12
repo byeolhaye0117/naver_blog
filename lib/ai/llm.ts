@@ -104,6 +104,101 @@ export function aiStatus(): { ready: boolean; provider: Provider | null; label: 
   }
 }
 
+/**
+ * 키가 **실제로 되는지** 확인한 결과.
+ *
+ * `aiStatus()` 는 환경변수가 들어 있는지만 본다. 그것만으로는 「키를 넣었는데 되는지」를
+ * 답할 수 없다 — 오타·만료·잔액 없음·권한 없음은 전부 키가 들어 있는 상태다. 그래서 이
+ * 검사는 **모델을 실제로 한 번 부른다.**
+ */
+export interface KeyCheck {
+  ok: boolean
+  provider: Provider | null
+  label: string | null
+  /** 이 키로 실제로 쓰게 될 모델 */
+  model: string | null
+  /** 목록 API 가 돌려준 모델 수 (0 = 목록을 못 받았다) */
+  models: number
+  /** 자료 검색까지 되는 키인지 */
+  canSearch: boolean
+  /** 모델이 실제로 돌려준 말 (성공했을 때만) */
+  said: string | null
+  /** 사람이 읽는 결과 */
+  detail: string
+}
+
+/** 이 키로 쓰게 될 모델 이름 */
+export async function currentModel(): Promise<string | null> {
+  const c = detectProvider()
+  if (!c) return null
+  try {
+    return await resolveModel(c)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 키 확인 — **모델을 한 번 불러서** 판정한다.
+ *
+ * 모델 목록만 받아 보고 판정하면 안 된다. 목록은 잔액이 0 이어도 나오는 회사가 있어서
+ * 「된다」고 말한 뒤 정작 글을 쓸 때 실패한다. 짧은 답 한 번이 가장 싸고 확실한 증거다.
+ */
+export async function checkKey(): Promise<KeyCheck> {
+  const c = detectProvider()
+  if (!c) {
+    return {
+      ok: false,
+      provider: null,
+      label: null,
+      model: null,
+      models: 0,
+      canSearch: false,
+      said: null,
+      detail:
+        'AI 키가 없습니다. 환경변수에 ANTHROPIC_API_KEY · OPENAI_API_KEY · GEMINI_API_KEY · CLOVA_API_KEY 중 하나를 넣고 다시 배포하세요.',
+    }
+  }
+  const label = PROVIDER_LABEL[c.provider]
+  let models: string[] = []
+  try {
+    models = await listModels(c)
+  } catch {
+    models = []
+  }
+  const model = await resolveModel(c)
+  try {
+    const text = await askLlm(
+      '한국어로 아주 짧게 답한다.',
+      [{ role: 'user', content: '연결 확인입니다. 「예」라고만 답해 주세요.' }],
+      64
+    )
+    const said = text.trim().replace(/\s+/g, ' ').slice(0, 60)
+    return {
+      ok: true,
+      provider: c.provider,
+      label,
+      model,
+      models: models.length,
+      canSearch: canSearchWeb(),
+      said,
+      detail: `키가 살아 있습니다. ${label} · 모델 ${model} 이 응답했습니다.`,
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return {
+      ok: false,
+      provider: c.provider,
+      label,
+      model,
+      models: models.length,
+      canSearch: false,
+      said: null,
+      detail: `${label} 키가 들어 있지만 호출이 실패했습니다 — ${msg}`,
+    }
+  }
+}
+
 export class AiError extends Error {
   constructor(
     message: string,
