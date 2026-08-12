@@ -18,3 +18,6 @@ data/db.json
 
 # 상위노출 조사가 받아온 원본 HTML — 다시 받으면 되므로 커밋하지 않는다
 study/.cache/
+
+# 한 파일로 묶은 스킬 (npm run skills:bundle) — 원본 docs/skills/*/ 에서 언제든 다시 만든다
+docs/skills/bundled/

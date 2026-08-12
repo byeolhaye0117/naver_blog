@@ -1,5 +1,8 @@
 /**
- * 스킬의 지점 정보를 **앱 데이터에서 만든다.**
+ * 스킬의 지점 정보를 **앱 데이터에서 만든다**, 그리고 **한 파일로 묶는다.**
+ *
+ *     npm run skills:stores    지점 정보를 앱 데이터에서 다시 만든다
+ *     npm run skills:bundle    스킬을 계정에 붙여넣을 수 있는 한 파일로 묶는다
  *
  * 회원 지적 (2026-08-11): "블로그 스킬에 앱 지점정보도 업데이트해서 스킬 다시 업그레이드
  * 해주면 문제 없는 거 아니야?" 맞는 말이다 — 스킬은 `references/stores.md` 를 읽고 앱은
@@ -16,8 +19,8 @@
  *
  * 사람이 쓴 머리말(여성전용 축약 규칙 등)은 **건드리지 않는다.** 지점 블록만 갈아 끼운다.
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { compileLib } from './complib.mjs'
 
@@ -63,7 +66,114 @@ function block(s) {
   return lines.join('\n')
 }
 
+/* ─────────────────────── 한 파일로 묶기 (skills:bundle) ─────────────────────── */
+
+/**
+ * 스킬은 폴더(SKILL.md + references/)다. 계정 화면에 **붙여넣으려면** 한 덩어리여야
+ * 하므로 참고 파일을 부록으로 이어 붙이고, 본문의 `references/…` 언급을 부록 이름으로
+ * 바꾼다. 바꾸지 않으면 스킬이 없는 파일을 읽으려 한다.
+ */
+const REF_TITLE = {
+  'stores.md': '지점 정보',
+  'naver-seo.md': '네이버 검색 기준',
+  'safe-expressions.md': '위험 표현 치환',
+  'post-log.md': '발행 기록',
+  'info-topics.md': '정보글 주제',
+  'image-prompts.md': '이미지 프롬프트',
+}
+/** 부록 순서 — 글 쓸 때 읽는 순서대로 */
+const REF_ORDER = ['stores.md', 'safe-expressions.md', 'post-log.md', 'info-topics.md', 'image-prompts.md', 'naver-seo.md']
+const LETTERS = 'ABCDEFGH'
+
+/** 참고 파일의 제목 단계를 부록 아래로 내린다. 코드블록 안의 `#` 는 건드리지 않는다. */
+function demote(text) {
+  let fence = false
+  return text
+    .split('\n')
+    .map((line) => {
+      if (/^\s*```/.test(line)) fence = !fence
+      if (fence) return line
+      return line.replace(/^(#{1,4}) /, (_, h) => `${'#'.repeat(Math.min(h.length + 2, 6))} `)
+    })
+    .join('\n')
+}
+
+function bundle(dir) {
+  const raw = readFileSync(join(dir, 'SKILL.md'), 'utf8')
+  const refDir = join(dir, 'references')
+  const files = existsSync(refDir) ? readdirSync(refDir).filter((f) => f.endsWith('.md')) : []
+  const ordered = [
+    ...REF_ORDER.filter((f) => files.includes(f)),
+    ...files.filter((f) => !REF_ORDER.includes(f)).sort(),
+  ]
+  const label = new Map(ordered.map((f, i) => [f, `부록 ${LETTERS[i]}`]))
+  const title = new Map(ordered.map((f) => [f, REF_TITLE[f] ?? f.replace(/\.md$/, '')]))
+
+  /*
+   * 본문의 파일 경로 언급 → 부록 이름. 굵게 감싸지 않는다 — 원문이 이미 `**…를 읽고**`
+   * 처럼 굵은 문장 안에서 파일을 부르는 곳이 있어, 안에 또 `**` 를 넣으면 표기가 깨진다.
+   * 이미 괄호 안에 있는 경우는 제목을 빼서 `(부록 A(지점 정보))` 같은 겹괄호를 막는다.
+   */
+  let body = raw
+  for (const [file, name] of label) {
+    const full = `${name}(${title.get(file)})`
+    body = body
+      .replaceAll('(`references/' + file + '`)', `(${name})`)
+      .replaceAll('(references/' + file + ')', `(${name})`)
+      .replaceAll('`references/' + file + '`', full)
+      .replaceAll('references/' + file, full)
+  }
+  /* 「부록 D(네이버 검색 기준)(C-Rank…)」 처럼 괄호가 잇달아 붙으면 제목을 뺀다 */
+  body = body.replace(/(부록 [A-H])\([^)]*\)(?=\()/g, '$1')
+
+  const left = body.match(/references\/[\w-]+\.md/g)
+  if (left) throw new Error(`부록으로 못 바꾼 언급이 남았다: ${[...new Set(left)].join(', ')}`)
+
+  const parts = [
+    body.trimEnd(),
+    '',
+    '---',
+    '',
+    '# 부록 (원래 `references/` 파일들 — 이 스킬은 한 파일로 묶여 있다)',
+    '',
+    '아래 부록은 별도 파일이 아니라 이 문서 안에 있다. 「부록 A 를 읽어」라는 지시는 이 문서의 해당 절을 읽으라는 뜻이다.',
+  ]
+  for (const [file, name] of label) {
+    parts.push(
+      '',
+      '---',
+      '',
+      `## ${name} — ${title.get(file)}`,
+      '',
+      demote(readFileSync(join(refDir, file), 'utf8')).trim()
+    )
+  }
+  return `${parts.join('\n')}\n`
+}
+
+function bundleAll(outDir) {
+  mkdirSync(outDir, { recursive: true })
+  for (const name of SKILLS) {
+    const dir = join(ROOT, 'docs/skills', name)
+    if (!existsSync(join(dir, 'SKILL.md'))) {
+      console.log(`  – ${name}: SKILL.md 가 없어 건너뜁니다`)
+      continue
+    }
+    const text = bundle(dir)
+    const out = join(outDir, `${name}.md`)
+    writeFileSync(out, text)
+    console.log(`  ✅ ${out} (${text.length.toLocaleString()}자)`)
+  }
+  console.log('\n한 파일이므로 계정 스킬 화면에 그대로 붙여넣을 수 있습니다.')
+}
+
+/* ─────────────────────────── 지점 정보 다시 만들기 ─────────────────────────── */
+
 async function main() {
+  if (process.argv[2] === 'bundle') {
+    bundleAll(process.argv[3] ? resolve(ROOT, process.argv[3]) : join(ROOT, 'docs/skills/bundled'))
+    return
+  }
   const compiled = compileLib(['lib/store.ts', 'lib/seed/stores.ts'], 'nbm-skills-')
   const require = createRequire(import.meta.url)
   const { readDB } = require(`${join(compiled.outDir, 'lib')}/store.js`)
