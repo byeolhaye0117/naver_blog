@@ -195,7 +195,7 @@ function promoTemplate(ctx: TemplateContext): string {
     guide(`실제 예약 수단만: 전화 ${phone}${reserve ? ` / 예약 ${reserve}` : ' (예약 링크 없음 — 전화만 안내)'}`),
     '',
     '',
-    guide('발행 후: 네이버 지도 위치 첨부 → 플레이스 연결, 서치어드바이저 색인 요청.'),
+    guide('발행 후: 네이버 지도 위치 첨부 → 플레이스 연결. 색인은 자동이니 제목 그대로 검색해 나오는지만 확인.'),
   ].join('\n')
 }
 
