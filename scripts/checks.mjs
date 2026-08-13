@@ -1065,6 +1065,38 @@ const sysReview = buildSystemPrompt('review')
   })
   ok(firstPerson.items.find((i) => i.id === 'voice').level === 'fail', '1인칭이 붙으면 방문자 서술로 잡는다', firstPerson.items.find((i) => i.id === 'voice').value)
 
+  /*
+   * **「다녀온」은 뒤의 이름씨를 꾸미는 꼴이라 대개 남의 이야기다** (2026-08-13).
+   * 회원 지적 "정보글 유형이 맞는데 화자가 어긋났대" — 정보글이 「다녀온」 하나로 즉시수정을
+   * 맞았다. 「병원에 다녀온 뒤」·「다녀온 회원님들」은 센터가 쓰는 정상 문장이다.
+   */
+  const infoBase = { ...base, type: 'info', title: '다이어트 정체기 왜 오는지 정리했습니다' }
+  const long = Array.from({ length: 22 }, () => '가'.repeat(130)).join('\n\n')
+  const others = checkPost({
+    ...infoBase,
+    body: `${long}\n\n병원에 다녀온 뒤에는 무게를 먼저 내립니다. 상담 다녀온 회원님들 보면 대체로 그렇습니다.`,
+  })
+  ok(
+    others.items.find((i) => i.id === 'voice').level === 'pass',
+    '남의 방문을 말하는 「다녀온」은 걸리지 않는다',
+    others.items.find((i) => i.id === 'voice').value
+  )
+  const mine = checkPost({
+    ...infoBase,
+    body: `${long}\n\n제가 다녀온 곳은 시설이 좋았습니다.`,
+  })
+  ok(
+    mine.items.find((i) => i.id === 'voice').level === 'fail',
+    '내가 갔다는 「다녀온」은 그대로 걸린다',
+    mine.items.find((i) => i.id === 'voice').value
+  )
+  const past = checkPost({ ...infoBase, body: `${long}\n\n어제 다녀왔어요. 시설이 좋았습니다.` })
+  ok(
+    past.items.find((i) => i.id === 'voice').level === 'fail',
+    '주어가 없어도 「다녀왔어요」는 걸린다',
+    past.items.find((i) => i.id === 'voice').value
+  )
+
   // 홍보글인데 본문이 방문자 말투
   const t2 = checkPost({ ...base, type: 'promo', title: '쌍용동 헬스장 어디가 좋을까요', body: `${paras}\n\n직접 가봤더니 시설이 괜찮더라고요.` })
   ok(t2.items.find((i) => i.id === 'voice').level === 'fail', '홍보글 본문의 방문자 말투도 걸린다', t2.items.find((i) => i.id === 'voice').value)
@@ -4829,7 +4861,12 @@ const v77 = (title, tail) => checkPost({ type:'promo', title,
 const v77body = v77('쌍용동 헬스장 8월 혜택 안내', '지난주에 직접 다녀왔습니다.')
 ok(v77body.level === 'fail', '방문자 말투는 그대로 잡는다')
 ok(v77body.value.includes('다녀왔'), '걸린 말을 value 에 넣는다', v77body.value)
-ok(v77body.hint.includes('본문의 「다녀왔'), '힌트도 걸린 말을 짚는다', v77body.hint)
+// 주어까지 함께 잡히므로(「직접 다녀왔」) 낱말이 힌트에 들어 있는지로 본다
+ok(
+  v77body.hint.includes('본문의 「') && v77body.hint.includes('다녀왔'),
+  '힌트도 걸린 말을 짚는다',
+  v77body.hint
+)
 ok(!v77body.hint.includes('괜찮더라고요'), '걸리지도 않은 패턴을 나열하지 않는다')
 
 const v77title = v77('쌍용동 헬스장 등록 후기, 3주 다녀보고', '오시면 안내드립니다.')
