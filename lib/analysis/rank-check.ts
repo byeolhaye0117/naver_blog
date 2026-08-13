@@ -16,8 +16,11 @@ import { RANK_DEPTH, normalizeUrl } from './rank'
  *
  * 정확한 글 URL이 없으면 블로그 주소만 넣어도 그 블로그의 최상위 노출 글 순위를 잡는다.
  */
-export async function checkRank(target: RankTarget): Promise<RankSnapshot> {
-  const date = new Date().toISOString().slice(0, 10)
+export async function checkRank(target: RankTarget, by: 'cron' | 'user' = 'user'): Promise<RankSnapshot> {
+  const now = new Date().toISOString()
+  const date = now.slice(0, 10)
+  /* 언제·누가 쟀는지 남긴다 — 날짜만 있으면 「자동 조회가 돌았나」에 답할 수 없다 */
+  const stamp = { at: now, by }
 
   /**
    * 통합검색 스마트블록 위치도 함께 잰다 (조회 1번).
@@ -45,6 +48,7 @@ export async function checkRank(target: RankTarget): Promise<RankSnapshot> {
       ...unifiedFields,
       mock: false,
       source: 'api',
+      ...stamp,
     }
   }
 
@@ -88,5 +92,6 @@ export async function checkRank(target: RankTarget): Promise<RankSnapshot> {
     ...unifiedFields,
     mock: res.mock,
     source: 'api',
+    ...stamp,
   }
 }

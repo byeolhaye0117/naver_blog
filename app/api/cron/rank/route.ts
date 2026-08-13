@@ -54,12 +54,33 @@ export async function GET(req: Request) {
     ...db.rankTargets.filter((t) => done.has(t.id)),
   ].slice(0, MAX_CHECK)
 
+  /*
+   * **실패를 조용히 넘기지 않는다** (2026-08-13).
+   *
+   * 회원 질문: "오전 09시에 추적하는데 왜 결과가 안 나와." 그날 두 항목 중 하나만
+   * 기록됐는데, 여기 catch 가 빈 블록이어서 **무엇이 왜 빠졌는지 어디에도 남지 않았다.**
+   * 화면에는 그냥 구멍으로 보이고, 자동 조회가 돌았는지조차 알 수 없었다.
+   *
+   * 네이버 호출은 원래 자주 흔들린다(막힘·시간초과). 그래서 두 가지를 한다:
+   *   ① 한 번 더 시도한다 — 대부분의 실패가 일시적이다.
+   *   ② 그래도 실패하면 이유를 응답과 로그에 남긴다. Vercel Logs 에서 바로 보인다.
+   *
+   * 실패를 rank: null 로 기록하지는 않는다 — null 은 「50위 밖」이라는 뜻이라, 못 재본 것을
+   * 그렇게 적으면 그래프에 없는 사실을 그리게 된다.
+   */
   const snapshots: RankSnapshot[] = []
+  const failed: { keyword: string; why: string }[] = []
   for (const t of queue) {
     try {
-      snapshots.push(await checkRank(t))
-    } catch {
-      /* 한 항목이 실패해도 나머지는 계속 잰다 */
+      snapshots.push(await checkRank(t, 'cron'))
+    } catch (e) {
+      try {
+        snapshots.push(await checkRank(t, 'cron'))
+      } catch (again) {
+        const why = again instanceof Error ? again.message : String(again)
+        failed.push({ keyword: t.keyword, why })
+        console.error('[cron/rank] 순위 조회 실패', t.keyword, why, '| 첫 시도:', e)
+      }
     }
   }
 
@@ -149,6 +170,8 @@ export async function GET(req: Request) {
     date: today,
     checked: snapshots.length,
     found: snapshots.filter((s) => s.rank !== null).length,
+    // 못 잰 항목은 숨기지 않는다 — 빠진 기록의 이유가 여기 남는다
+    failed,
     diagnosed,
   })
 }
