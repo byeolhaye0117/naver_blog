@@ -6319,5 +6319,50 @@ ok(scanCommercialOveruse(swapped).length === 0, '한 자리를 바꾸면 상한 
 // 지우는 쪽도 여전히 된다 (지워도 읽히는 자리가 있다)
 ok(scanCommercialOveruse(overused.replace('무료 체험', '체험')).length === 0, '지워도 상한 안으로 들어온다')
 
+
+/*
+ * ─── mutate 오용 잡기 ────────────────────────────────────────────
+ *
+ * 회원 요청 "오류 수정해줘" 로 찾은 진짜 결함. `/api/cron/factors` 가
+ * `return { ...cur, factorRuns: … }` 로 새 DB 객체를 돌려줬는데, `mutate` 가 저장하는 것은
+ * **넘겨준 db** 다. 그래서 크론은 매일 네이버를 수십 번 호출하고 결과를 전부 버렸다.
+ * 8월 5일 이후 관찰 기록이 하나도 안 쌓였고, 오류도 로그도 없어서 8일 동안 몰랐다.
+ *
+ * 같은 실수가 다시 들어오지 못하게 두 겹으로 막는다: 런타임 가드 + 소스 검사.
+ */
+const { isDbShaped } = require(`${OUT}/store.js`)
+const dbLike = { posts: [], stores: [], rankTargets: [] }
+ok(isDbShaped(dbLike) === true, 'DB 모양을 알아본다')
+ok(isDbShaped({ ...dbLike, factorRuns: [] }) === true, '항목이 더 있어도 DB 모양이다')
+ok(isDbShaped({ posts: [] }) === false, '일부만 있으면 DB 모양이 아니다 (반환값을 함부로 막지 않는다)')
+ok(isDbShaped(null) === false, 'null 은 아니다')
+ok(isDbShaped([dbLike]) === false, '배열은 아니다')
+ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값은 통과시킨다')
+
+// 소스 검사 — mutate 콜백이 새 DB 를 돌려주는 꼴이 남아 있지 않은지
+{
+  const { readFileSync, readdirSync, statSync } = require('node:fs')
+  const { join } = require('node:path')
+  const walk = (dir) =>
+    readdirSync(dir).flatMap((f) => {
+      const p = join(dir, f)
+      return statSync(p).isDirectory() ? walk(p) : p.endsWith('.ts') || p.endsWith('.tsx') ? [p] : []
+    })
+  /*
+   * 주석은 걷어내고 본다. 이 결함을 설명하는 주석 자체가 나쁜 예를 글자로 적고 있어서,
+   * 안 걷어내면 「고쳐 놨는데 테스트가 실패」한다 (실제로 그렇게 됐다).
+   */
+  const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  const bad = []
+  for (const f of [...walk('app'), ...walk('lib')]) {
+    const src = stripComments(readFileSync(f, 'utf8'))
+    if (!src.includes('mutate(')) continue
+    // `return { ...db` / `...d,` / `...cur` — DB 를 펼쳐 새 객체를 만드는 꼴
+    const m = src.match(/return \{\s*\.\.\.(db|d|cur|database)[,\s}]/)
+    if (m) bad.push(`${f}: ${m[0]}`)
+  }
+  ok(bad.length === 0, 'mutate 콜백이 새 DB 를 돌려주는 곳이 없다', bad.join(' / '))
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
