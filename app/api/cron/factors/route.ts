@@ -141,11 +141,19 @@ export async function GET(req: Request) {
   }
 
   if (fresh.length) {
+    /*
+     * **넘겨받은 db 를 직접 고쳐야 한다** (2026-08-13에 고침).
+     *
+     * 앞 판은 `return { ...cur, factorRuns: … }` 로 새 객체를 돌려줬다. 그런데 `mutate` 는
+     * 넘겨준 db 를 그대로 저장하고 반환값은 호출자에게만 준다 — 그래서 **관찰 결과가 한 번도
+     * 저장되지 않았다.** 2026-08-05 이후 factorRuns 가 하나도 안 쌓인 이유가 이것이다.
+     * 크론은 매일 돌면서 네이버를 수십 번 호출하고 결과를 버리고 있었다.
+     */
     await mutate((cur) => {
       const keep = (cur.factorRuns ?? []).filter(
         (r) => !fresh.some((f) => f.keyword === r.keyword && f.date === r.date)
       )
-      return { ...cur, factorRuns: [...keep, ...fresh].slice(-KEEP) }
+      cur.factorRuns = [...keep, ...fresh].slice(-KEEP)
     })
   }
 

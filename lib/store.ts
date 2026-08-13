@@ -232,8 +232,32 @@ export async function writeDB(db: DB): Promise<void> {
 export async function mutate<T>(fn: (db: DB) => T): Promise<{ db: DB; result: T }> {
   const db = await readDB()
   const result = fn(db)
+  /*
+   * **새 DB 를 돌려주면 조용히 버려진다 — 그러니 시끄럽게 막는다.** (2026-08-13)
+   *
+   * 실제로 그 일이 있었다. `/api/cron/factors` 가 `return { ...cur, factorRuns: … }` 로
+   * 새 객체를 돌려줬는데, 여기서 저장하는 것은 넘겨준 `db` 다. 크론은 매일 돌면서 네이버를
+   * 수십 번 호출하고 **결과를 전부 버렸다.** 8월 5일 이후 관찰 기록이 하나도 안 쌓인 이유가
+   * 이것이고, 오류도 로그도 없어서 8일 동안 아무도 몰랐다.
+   *
+   * 반환값 자체는 쓸모가 있다(찾은 항목·null 로 실패 알리기 등). 그래서 전부 막지 않고,
+   * **DB 모양인데 넘겨준 것과 다른 객체**일 때만 막는다.
+   */
+  if (isDbShaped(result) && result !== (db as unknown)) {
+    throw new Error(
+      'mutate 안에서는 넘겨받은 db 를 직접 고쳐야 합니다. 새 DB 객체를 돌려주면 저장되지 않습니다 ' +
+        '(예: `return { ...db, posts }` → `db.posts = posts`).'
+    )
+  }
   await writeDB(db)
   return { db, result }
+}
+
+/** DB 통째로처럼 생긴 값인지 (mutate 오용을 잡는 데만 쓴다 — 테스트에서 직접 본다) */
+export function isDbShaped(v: unknown): boolean {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false
+  const o = v as Record<string, unknown>
+  return Array.isArray(o.posts) && Array.isArray(o.stores) && Array.isArray(o.rankTargets)
 }
 
 /** 전체 내보내기 / 가져오기 — 기기 간 이전·백업용 */

@@ -57,6 +57,9 @@ const TARGETS = [
   'lib/naver/datalab.ts',
   'lib/naver/blogstat.ts',
   'lib/analysis/activity.ts',
+  // 저장소 — mutate 오용 가드를 테스트한다 (2026-08-13)
+  'lib/store.ts',
+  'lib/seed/stores.ts',
 ]
 
 let compiled
