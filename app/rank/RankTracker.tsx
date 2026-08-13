@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Post } from '@/lib/types'
 import {
   RANK_BASIS,
@@ -50,6 +50,8 @@ export default function RankTracker({
   const [publishedAt, setPublishedAt] = useState('')
   const [adding, setAdding] = useState(false)
   const [checking, setChecking] = useState<string | null>(null)
+  /** 화면을 열 때 빠진 기록을 스스로 채우는 중인지 */
+  const [autoFilling, setAutoFilling] = useState(false)
   const [manual, setManual] = useState<Record<string, { rank: string; date: string; note: string }>>({})
   const [savingManual, setSavingManual] = useState<string | null>(null)
   const [manualMsg, setManualMsg] = useState<{ id: string; text: string; ok: boolean } | null>(null)
@@ -161,6 +163,51 @@ export default function RankTracker({
   }
 
   const today = () => new Date().toISOString().slice(0, 10)
+
+  /**
+   * **화면을 열면 오늘 빠진 기록을 스스로 채운다.**
+   *
+   * 회원 요청 (2026-08-13): "이제 자동으로 측정될 수 있게 해줘." 자동 조회는 하루 두 번
+   * 도는데, 그 한 번이 실패하면(네이버 호출은 원래 자주 흔들린다) 다음 실행까지 기록에
+   * 구멍이 남는다. 실제로 그런 일이 있었다 — 8/13 오전 조회에서 한 항목이 빠졌다.
+   *
+   * 그래서 **회원이 화면을 열 때도 한 번 메꾼다.** 버튼을 누르라고 안내하는 것보다 이게
+   * 「자동」에 가깝다. 오늘 기록이 이미 있는 항목은 건드리지 않는다 — 하루 한 점이면
+   * 충분하고, 열 때마다 네이버를 다시 부를 이유가 없다.
+   */
+  const filledRef = useRef(false)
+  useEffect(() => {
+    if (filledRef.current) return
+    filledRef.current = true
+    const day = new Date().toISOString().slice(0, 10)
+    const missing = views
+      .filter((v) => {
+        const last = v.history[v.history.length - 1]
+        return !last || last.date < day
+      })
+      // 한 번에 너무 많이 부르지 않는다. 나머지는 자동 조회나 버튼이 맡는다.
+      .slice(0, 5)
+    if (!missing.length) return
+    ;(async () => {
+      setAutoFilling(true)
+      for (const v of missing) {
+        try {
+          const res = await fetch('/api/rank/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetId: v.target.id }),
+          })
+          const json = await res.json()
+          if (res.ok && Array.isArray(json.views)) setViews(json.views)
+        } catch {
+          /* 조용히 넘긴다 — 실패해도 「API 로 조회」 버튼과 직접 입력이 그대로 남아 있다 */
+        }
+      }
+      setAutoFilling(false)
+      router.refresh()
+    })()
+    // 처음 한 번만 돈다 (filledRef)
+  }, [views, router])
 
   function manualOf(id: string) {
     return manual[id] ?? { rank: '', date: today(), note: '' }
@@ -315,6 +362,8 @@ export default function RankTracker({
         <span className="mx-1.5 opacity-40">·</span>
         등록한 항목은 <b>매일 오전 9시·오후 6시에 앱이 스스로 순위를 재서</b> 기록합니다. 발행 첫날부터
         점이 찍히니 며칠째에 올라왔는지 추세로 보입니다.{' '}
+        <b>이 화면을 열 때 오늘 기록이 없는 항목은 그 자리에서 자동으로 잽니다</b> — 자동 조회 한 번이
+        네이버 쪽 사정으로 실패해도 구멍이 남지 않게 하는 장치입니다(버튼을 누르지 않아도 됩니다).{' '}
         <b>발행 2주 뒤에도 1페이지 밖이면 진단까지 자동으로 해둡니다</b> — 그 결과는 처방으로 저장돼
         글쓰기 화면에 바로 실립니다.
         <span className="muted mt-1 block text-[11px]">
@@ -498,7 +547,11 @@ export default function RankTracker({
                     <span className={stale ? 'text-amber-700 dark:text-amber-300' : 'muted'}>
                       마지막 조회 <span className="font-bold">{when}</span>
                       {who && <span className="opacity-80"> ({who})</span>}
-                      {stale && <span className="opacity-80"> · 오늘 기록 아직 없음</span>}
+                      {stale && (
+                        <span className="opacity-80">
+                          {autoFilling ? ' · 지금 자동으로 재는 중…' : ' · 오늘 기록 아직 없음'}
+                        </span>
+                      )}
                     </span>
                   )
                 })()}
