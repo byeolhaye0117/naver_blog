@@ -474,6 +474,34 @@ export default function RankTracker({
                 <span className="muted">
                   조회 <span className="tnum font-bold">{v.history.length}회</span>
                 </span>
+                {/*
+                  **마지막으로 언제 쟀는지 보여준다** (2026-08-13).
+                  회원 질문: "오전 09시에 추적하는데 왜 결과가 안 나와." 그날 이 항목의 기록이
+                  빠져 있었는데, 화면에는 그냥 구멍으로 보여서 자동 조회가 돌았는지조차 알 수
+                  없었다. 마지막 조회 시각과 누가 쟀는지를 적으면 화면이 바로 답한다.
+                */}
+                {(() => {
+                  const last2 = v.history[v.history.length - 1]
+                  if (!last2) return null
+                  const todayUtc = new Date().toISOString().slice(0, 10)
+                  const stale = last2.date < todayUtc
+                  const when = last2.at
+                    ? new Date(last2.at).toLocaleString('ko-KR', {
+                        month: 'numeric',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })
+                    : last2.date.slice(5)
+                  const who = last2.by === 'cron' ? '자동' : last2.by === 'user' ? '직접 조회' : ''
+                  return (
+                    <span className={stale ? 'text-amber-700 dark:text-amber-300' : 'muted'}>
+                      마지막 조회 <span className="font-bold">{when}</span>
+                      {who && <span className="opacity-80"> ({who})</span>}
+                      {stale && <span className="opacity-80"> · 오늘 기록 아직 없음</span>}
+                    </span>
+                  )
+                })()}
                 {v.publishedAt && (
                   <span className="muted">
                     발행 <span className="tnum font-bold">{v.publishedAt.slice(0, 10)}</span>
@@ -512,6 +540,17 @@ export default function RankTracker({
                 />
               ) : (
                 <Empty>아직 조회 기록이 없습니다.</Empty>
+              )}
+
+              {/*
+                **X 가 무슨 뜻인지 적는다.** 「조회가 안 됐다」로 읽히기 쉬운데, 실제로는
+                조회는 됐고 50위 안에 없었다는 뜻이다. 둘은 해야 할 일이 완전히 다르다.
+              */}
+              {v.history.some((h) => h.rank === null) && (
+                <p className="muted mt-1.5 text-[11px] leading-relaxed">
+                  그래프의 <b>X</b> 는 조회는 됐지만 <b>{RANK_DEPTH}위 안에 없었다</b>는 뜻입니다 (조회
+                  실패가 아닙니다). 기록이 아예 없는 날은 점도 X 도 찍히지 않습니다.
+                </p>
               )}
 
               {/*

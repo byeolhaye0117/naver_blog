@@ -22,7 +22,8 @@ export async function POST(req: Request) {
 
     const snapshots: RankSnapshot[] = []
     for (const t of targets) {
-      snapshots.push(await checkRank(t))
+      // 화면에서 누른 조회다 — 자동 조회(cron)와 구별해 남긴다
+      snapshots.push(await checkRank(t, 'user'))
     }
 
     const { db: next } = await mutate((d) => {
