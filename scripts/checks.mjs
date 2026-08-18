@@ -546,6 +546,49 @@ ok(
   '근거 부족하면 최신성 처방을 빼고 그 사실을 알림'
 )
 ok(
+  !pa.prescription.some((p) => p.includes('7일 이내 글')),
+  '근거 부족하면 7일 기준도 말하지 않는다'
+)
+
+/*
+ * ─── 「한 주 안에 뚫린 자리가 있나」 ──────────────────────────────
+ *
+ * 회원 제안 (2026-08-18): "7일 이내 7% 정도가 상위노출되는데 왜 노출되는지 분석해서 그에
+ * 맞는 글쓰기를 할 수 있게 업데이트해보는 건 어떨까?"
+ *
+ * 재보니 **글의 형태로는 안 갈렸다** (7일 이내 진입 글 vs 31일 이상 글: 글자수 1,649 대
+ * 1,711 · 이미지 14 대 18 · 정보 낱말 6 대 7 · 홍보 낱말 3 대 3). 그래서 글쓰기 규칙을
+ * 새로 만들지 않고, **고를 수 있는 것**(어느 키워드를 잡느냐)을 재서 알려준다.
+ */
+{
+  const day = (n) => {
+    const d = new Date()
+    d.setDate(d.getDate() - n)
+    return d.toISOString().slice(0, 10)
+  }
+  const withDates = (ages) =>
+    ages.map((a, i) => ({ title: `쌍용동 헬스장 ${i + 1}번째 글입니다`, date: day(a), blogger: `b${i}` }))
+
+  const open = analyzePastedSerp('쌍용동 헬스장', withDates([3, 40, 55, 60, 70, 80, 90, 100, 120, 140]), 0)
+  ok(open.stats.freshWithin7d === 1, '7일 이내 글을 센다', String(open.stats.freshWithin7d))
+  ok(open.stats.youngestAgeDays === 3, '가장 어린 글의 나이를 남긴다', String(open.stats.youngestAgeDays))
+  ok(
+    open.prescription.some((p) => p.includes('뚫고 들어오는 자리')),
+    '한 주 안에 들어온 글이 있으면 기회라고 말한다'
+  )
+
+  const shut = analyzePastedSerp('쌍용동 헬스장', withDates([31, 40, 55, 60, 70, 80, 90, 100, 120, 140]), 0)
+  ok(shut.stats.freshWithin7d === 0, '없으면 0편', String(shut.stats.freshWithin7d))
+  ok(
+    shut.prescription.some((p) => p.includes('자리가 굳어')),
+    '한 편도 없으면 굳은 자리라고 말하고 세부 키워드를 권한다'
+  )
+  ok(
+    shut.prescription.some((p) => p.includes('발행량이 더 적은 세부 키워드')),
+    '굳은 자리에서는 다음 행동을 준다'
+  )
+}
+ok(
   !pa.prescription.some((p) => p.includes('누적 발행량 0건')),
   '발행량 모르면 0건이라고 말하지 않음'
 )
@@ -1933,7 +1976,7 @@ const SERP_FOR_DX = {
   keyword: '쌍용동 헬스장', total: 437, items: [],
   stats: {
     avgTitleLength: 43, keywordInTitleRate: 90, keywordFrontRate: 67, avgAgeDays: 21,
-    freshWithin30dRate: 70, datedCount: 12, bloggerKnownCount: 12,
+    freshWithin30dRate: 70, freshWithin7d: 0, youngestAgeDays: 9, datedCount: 12, bloggerKnownCount: 12,
     commonTokens: [{ token: '후기', count: 5 }, { token: '가격', count: 4 }, { token: 'PT', count: 3 }],
     usableTokens: [{ token: '후기', count: 5 }, { token: '가격', count: 4 }, { token: 'PT', count: 3 }],
     rivalTokens: [{ token: '미녀와야수짐', count: 4 }],

@@ -221,6 +221,14 @@ function buildAnalysis(
       ? Math.round(dated.reduce((s, i) => s + i.ageDays, 0) / dated.length)
       : 0,
     freshWithin30dRate: dated.length ? Math.round((fresh.length / dated.length) * 100) : 0,
+    /*
+     * 7일 기준은 30일 기준과 뜻이 다르다. 30일은 「최신성이 작동하는가」이고,
+     * 7일은 **「새 글이 지금 뚫고 들어오는가」**다. 발행하고 한 주 안에 1페이지에 올라온
+     * 글이 실제로 있는 판이면 우리도 그 자리를 노려볼 수 있고, 한 편도 없으면 그 키워드는
+     * 자리가 굳어 있어서 몇 달을 봐야 한다.
+     */
+    freshWithin7d: dated.filter((i) => i.ageDays <= 7).length,
+    youngestAgeDays: dated.length ? Math.min(...dated.map((i) => i.ageDays)) : null,
     datedCount: dated.length,
     bloggerKnownCount: named.length,
     commonTokens,
@@ -302,6 +310,30 @@ function prescribe(
     )
   } else {
     out.push(`상위 글 평균 나이 ${s.avgAgeDays}일 — 최신성 압박은 보통 수준입니다.`)
+  }
+
+  /*
+   * **한 주 안에 뚫린 자리가 있나** (2026-08-18 추가).
+   *
+   * 회원 질문 "보통 며칠이면 상위 노출되냐" 를 실측해보니, 1페이지 60편의 나이 중간값이
+   * 35일이고 7일 이내는 7% 였다. 그 7% 를 따로 재보니 **글의 형태로는 안 갈렸다** —
+   * 글자수·이미지·정보/홍보/경험 낱말이 오래된 글과 사실상 같았다. 갈린 것은 블로그 힘이고,
+   * 그건 글 한 편으로 못 바꾼다.
+   *
+   * 대신 **바꿀 수 있는 것은 어느 키워드를 고르느냐**다. 그래서 이 줄을 처방에 넣는다 —
+   * 한 주 안에 들어온 글이 실제로 있으면 우리도 노려볼 자리가 있다는 뜻이고, 한 편도
+   * 없으면 그 키워드는 자리가 굳어 있다.
+   */
+  if (s.datedCount >= DATED_MIN) {
+    if (s.freshWithin7d > 0) {
+      out.push(
+        `1페이지에 발행 7일 이내 글이 ${s.freshWithin7d}편 있습니다 (가장 어린 글 ${s.youngestAgeDays}일) — 새 글이 지금 뚫고 들어오는 자리입니다. 우리 판 실측에서 1페이지 글의 나이 중간값은 35일, 7일 이내는 7%뿐이었으니 이건 드문 기회입니다.`
+      )
+    } else {
+      out.push(
+        `1페이지에 발행 7일 이내 글이 한 편도 없습니다 (가장 어린 글 ${s.youngestAgeDays}일). 자리가 굳어 있어 한 주 안에 올라오길 기대하기 어렵습니다 — 발행량이 더 적은 세부 키워드로 먼저 자리를 잡는 편이 빠릅니다.`
+      )
+    }
   }
 
   // 지시에는 쓸 수 있는 말만 넣는다. 남의 상호·다른 종목을 "소제목에 넣으세요" 라고

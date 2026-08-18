@@ -385,6 +385,25 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
               icon={<IconTrend />}
               iconTone="gold"
             />
+            {/*
+              **한 주 안에 뚫린 자리가 있나** (2026-08-18 추가).
+              회원 제안으로 7일 이내 진입 글을 따로 재봤더니, 글의 형태로는 안 갈렸고
+              (글자수·이미지·정보/홍보 낱말이 오래된 글과 사실상 같았다) 블로그 힘이 갈랐다.
+              글 한 편으로 못 바꾸는 것이라, 대신 **고를 수 있는 것**을 보여준다 —
+              이 키워드에 새 글이 지금 들어오고 있는지.
+            */}
+            <Stat
+              label="7일 이내 진입"
+              value={data.stats.datedCount ? `${data.stats.freshWithin7d}편` : '—'}
+              hint={
+                data.stats.datedCount
+                  ? `가장 어린 글 ${data.stats.youngestAgeDays}일 · 우리 판 평균은 7%`
+                  : '날짜를 넣으면 계산됩니다'
+              }
+              tone={!data.stats.datedCount ? 'default' : data.stats.freshWithin7d > 0 ? 'good' : 'warn'}
+              icon={<IconTrend />}
+              iconTone="violet"
+            />
           </div>
 
           {data.stats.commonTokens.length > 0 && (
