@@ -1,0 +1,393 @@
+{
+  "blog": {
+    "id": "sulliha8277",
+    "visitors": 269718
+  },
+  "measuredAt": "2026-08-18T01:23:15.446Z",
+  "rows": [
+    {
+      "keyword": "용곡동 여성전용",
+      "stores": [
+        "용곡점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 2,
+      "youngest": 1,
+      "medianAge": 14,
+      "recent30": 28,
+      "minVisitors": 641,
+      "minBlogId": "cjsqkdwlcnr0",
+      "freshest": {
+        "age": 1,
+        "title": "사무실, 집에서 혼자 할수 있는 허리 통증 완화 운동 [쌍용동PT, 용곡동PT, 성정동PT, 두정동PT, ....",
+        "url": "https://blog.naver.com/cjsqkdwlcnr0/224381238856"
+      },
+      "tier": {
+        "label": "지금 열려 있고 경쟁도 적음",
+        "rank": 0
+      }
+    },
+    {
+      "keyword": "용곡동 PT",
+      "stores": [
+        "용곡점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 1,
+      "youngest": 1,
+      "medianAge": 147,
+      "recent30": 22,
+      "minVisitors": 641,
+      "minBlogId": "cjsqkdwlcnr0",
+      "freshest": {
+        "age": 1,
+        "title": "사무실, 집에서 혼자 할수 있는 허리 통증 완화 운동 [쌍용동PT, 용곡동PT, 성정동PT, 두정동PT, ....",
+        "url": "https://blog.naver.com/cjsqkdwlcnr0/224381238856"
+      },
+      "tier": {
+        "label": "지금 열려 있고 경쟁도 적음",
+        "rank": 0
+      }
+    },
+    {
+      "keyword": "신방동 PT",
+      "stores": [
+        "용곡점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 1,
+      "youngest": 1,
+      "medianAge": 36,
+      "recent30": 94,
+      "minVisitors": 36,
+      "minBlogId": "tjmte901",
+      "freshest": {
+        "age": 1,
+        "title": "[천안 신방동 통정지구 PT] 머신보다 프리웨이트를 먼저 배우는 이유실제 여성 회원님의 덤벨....",
+        "url": "https://blog.naver.com/coach_kimwonje/224381323337"
+      },
+      "tier": {
+        "label": "지금 열려 있고 경쟁도 적음",
+        "rank": 0
+      }
+    },
+    {
+      "keyword": "봉명동 PT",
+      "stores": [
+        "쌍용점",
+        "성정점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 3,
+      "youngest": 2,
+      "medianAge": 11,
+      "recent30": 349,
+      "minVisitors": 11399,
+      "minBlogId": "jium2024",
+      "freshest": {
+        "age": 2,
+        "title": "봉명동 PT 어디서 받아야할지 모르겠다면 여기! '비엠 더 프라이빗 필라테스 & PT 대전유성점'",
+        "url": "https://blog.naver.com/dss02071/224380404466"
+      },
+      "tier": {
+        "label": "지금 열려 있음",
+        "rank": 1
+      }
+    },
+    {
+      "keyword": "봉명동 헬스장",
+      "stores": [
+        "쌍용점",
+        "성정점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 2,
+      "youngest": 4,
+      "medianAge": 26,
+      "recent30": 407,
+      "minVisitors": 20298,
+      "minBlogId": "hansy82",
+      "freshest": {
+        "age": 4,
+        "title": "[대전 유성구] 봉명동에 넓고 깔끔한 헬스장 랩스휘트니스 유성온천점 준혁쌤 PT 5개월차 후....",
+        "url": "https://blog.naver.com/hansy82/224378960650"
+      },
+      "tier": {
+        "label": "지금 열려 있음",
+        "rank": 1
+      }
+    },
+    {
+      "keyword": "신방동 헬스장",
+      "stores": [
+        "용곡점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 1,
+      "youngest": 3,
+      "medianAge": 52,
+      "recent30": 139,
+      "minVisitors": 556,
+      "minBlogId": "mmays3034",
+      "freshest": {
+        "age": 3,
+        "title": "신방동헬스장 피앤피짐 대표님과 함께하는 특별한 시간",
+        "url": "https://blog.naver.com/pnpgym/224379441545"
+      },
+      "tier": {
+        "label": "지금 열려 있음",
+        "rank": 1
+      }
+    },
+    {
+      "keyword": "성정동 PT",
+      "stores": [
+        "성정점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 1,
+      "youngest": 5,
+      "medianAge": 15,
+      "recent30": 202,
+      "minVisitors": 20944,
+      "minBlogId": "shampoo_3_3",
+      "freshest": {
+        "age": 5,
+        "title": "성정동헬스장 하체운동 | 뒷벅지 자극 제대로 느껴본 3가지 운동 후기",
+        "url": "https://blog.naver.com/tnsrl6056/224377492338"
+      },
+      "tier": {
+        "label": "지금 열려 있음",
+        "rank": 1
+      }
+    },
+    {
+      "keyword": "쌍용동PT",
+      "stores": [
+        "쌍용점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 1,
+      "youngest": 1,
+      "medianAge": 36,
+      "recent30": 269,
+      "minVisitors": 260,
+      "minBlogId": "eumbody_",
+      "freshest": {
+        "age": 1,
+        "title": "쌍용동 PT l 굶지 않고, 건강을 지키며 만든 바디챌린지 3등",
+        "url": "https://blog.naver.com/eumbody_/224380960579"
+      },
+      "tier": {
+        "label": "지금 열려 있음",
+        "rank": 1
+      }
+    },
+    {
+      "keyword": "천안 성정동 헬스장",
+      "stores": [
+        "성정점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 1,
+      "youngest": 5,
+      "medianAge": 21,
+      "recent30": 332,
+      "minVisitors": 554,
+      "minBlogId": "geyexrcmqlyo",
+      "freshest": {
+        "age": 5,
+        "title": "성정동헬스장 하체운동 | 뒷벅지 자극 제대로 느껴본 3가지 운동 후기",
+        "url": "https://blog.naver.com/tnsrl6056/224377492338"
+      },
+      "tier": {
+        "label": "지금 열려 있음",
+        "rank": 1
+      }
+    },
+    {
+      "keyword": "성정동 헬스장",
+      "stores": [
+        "성정점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 1,
+      "youngest": 5,
+      "medianAge": 12,
+      "recent30": 352,
+      "minVisitors": 554,
+      "minBlogId": "geyexrcmqlyo",
+      "freshest": {
+        "age": 5,
+        "title": "성정동헬스장 하체운동 | 뒷벅지 자극 제대로 느껴본 3가지 운동 후기",
+        "url": "https://blog.naver.com/tnsrl6056/224377492338"
+      },
+      "tier": {
+        "label": "지금 열려 있음",
+        "rank": 1
+      }
+    },
+    {
+      "keyword": "천안 용곡동 헬스장",
+      "stores": [
+        "용곡점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 0,
+      "youngest": 11,
+      "medianAge": 141,
+      "recent30": 38,
+      "minVisitors": 5313,
+      "minBlogId": "majorfc_2020",
+      "freshest": null,
+      "tier": {
+        "label": "경쟁은 적지만 자리 굳음",
+        "rank": 2
+      }
+    },
+    {
+      "keyword": "용곡동 헬스장",
+      "stores": [
+        "용곡점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 0,
+      "youngest": 11,
+      "medianAge": 99,
+      "recent30": 45,
+      "minVisitors": 641,
+      "minBlogId": "cjsqkdwlcnr0",
+      "freshest": null,
+      "tier": {
+        "label": "경쟁은 적지만 자리 굳음",
+        "rank": 2
+      }
+    },
+    {
+      "keyword": "성정동 여성전용",
+      "stores": [
+        "성정점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 0,
+      "youngest": 12,
+      "medianAge": 172,
+      "recent30": 58,
+      "minVisitors": 5229,
+      "minBlogId": "lovesome_72",
+      "freshest": null,
+      "tier": {
+        "label": "경쟁은 적지만 자리 굳음",
+        "rank": 2
+      }
+    },
+    {
+      "keyword": "쌍용동 24시헬스장",
+      "stores": [
+        "쌍용점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 0,
+      "youngest": 12,
+      "medianAge": 60,
+      "recent30": 88,
+      "minVisitors": 4049,
+      "minBlogId": "dani0510",
+      "freshest": null,
+      "tier": {
+        "label": "경쟁은 적지만 자리 굳음",
+        "rank": 2
+      }
+    },
+    {
+      "keyword": "두정동 PT",
+      "stores": [
+        "두정점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 0,
+      "youngest": 21,
+      "medianAge": 45,
+      "recent30": 366,
+      "minVisitors": 6906,
+      "minBlogId": "rappolap",
+      "freshest": null,
+      "tier": {
+        "label": "굳은 자리",
+        "rank": 3
+      }
+    },
+    {
+      "keyword": "쌍용동 헬스장",
+      "stores": [
+        "쌍용점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 0,
+      "youngest": 9,
+      "medianAge": 42,
+      "recent30": 404,
+      "minVisitors": 5531,
+      "minBlogId": "sa901229",
+      "freshest": null,
+      "tier": {
+        "label": "굳은 자리",
+        "rank": 3
+      }
+    },
+    {
+      "keyword": "천안 두정동 헬스장",
+      "stores": [
+        "두정점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 0,
+      "youngest": 8,
+      "medianAge": 46,
+      "recent30": 546,
+      "minVisitors": 10958,
+      "minBlogId": "babsebin",
+      "freshest": null,
+      "tier": {
+        "label": "굳은 자리",
+        "rank": 3
+      }
+    },
+    {
+      "keyword": "두정동 헬스장",
+      "stores": [
+        "두정점"
+      ],
+      "sampled": 10,
+      "dated": 10,
+      "fresh7": 0,
+      "youngest": 8,
+      "medianAge": 46,
+      "recent30": 579,
+      "minVisitors": 10958,
+      "minBlogId": "babsebin",
+      "freshest": null,
+      "tier": {
+        "label": "굳은 자리",
+        "rank": 3
+      }
+    }
+  ]
+}

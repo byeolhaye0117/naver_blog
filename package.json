@@ -14,7 +14,8 @@
     "study:analyze": "node scripts/study.mjs analyze",
     "study:pull": "node scripts/study.mjs pull",
     "skills:stores": "node scripts/skills.mjs",
-    "skills:bundle": "node scripts/skills.mjs bundle"
+    "skills:bundle": "node scripts/skills.mjs bundle",
+    "keywords:openings": "node scripts/openings.mjs"
   },
   "dependencies": {
     "next": "15.5.22",
