@@ -58,6 +58,8 @@ const TARGETS = [
   'lib/naver/blogstat.ts',
   'lib/analysis/activity.ts',
   // 저장소 — mutate 오용 가드를 테스트한다 (2026-08-13)
+  // 키워드 자리 판단 — 앱과 스크립트가 같은 함수를 쓴다 (2026-08-18)
+  'lib/analysis/openings.ts',
   'lib/store.ts',
   'lib/seed/stores.ts',
 ]

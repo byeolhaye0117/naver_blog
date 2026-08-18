@@ -6444,5 +6444,57 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(bad.length === 0, 'mutate 콜백이 새 DB 를 돌려주는 곳이 없다', bad.join(' / '))
 }
 
+
+/*
+ * ─── 지금 뚫릴 만한 자리인가 (openings) ──────────────────────────
+ *
+ * 회원 제안으로 7일 이내 진입 글을 재보니 **글의 형태로는 안 갈렸다**. 그래서 글쓰기 규칙을
+ * 만들지 않고, 고를 수 있는 것(어느 키워드를 잡느냐)을 재기로 했다. 등급이 잰 것만으로
+ * 갈리는지 여기서 지킨다.
+ */
+{
+  const { openingOf, ageDaysOf, sortOpenings, FRESH_DAYS, QUIET_MAX } = require(`${OUT}/analysis/openings.js`)
+
+  const openQuiet = openingOf({ ages: [1, 14, 30, 40], recent30: 28 })
+  ok(openQuiet.tier === 'open-quiet', '7일 이내 글 + 조용한 판 = 맨 위', openQuiet.tier)
+  ok(openQuiet.fresh === 1 && openQuiet.youngest === 1, '7일 이내 수와 가장 어린 나이', `${openQuiet.fresh}/${openQuiet.youngest}`)
+  ok(openQuiet.medianAge === 30, '나이 중간값', String(openQuiet.medianAge))
+  ok(openQuiet.why.includes('28편'), '왜 그 등급인지 숫자로 말한다', openQuiet.why)
+
+  ok(openingOf({ ages: [2, 40, 60], recent30: 404 }).tier === 'open', '7일 이내는 있지만 경쟁이 세면 open')
+  ok(openingOf({ ages: [31, 40, 60], recent30: 45 }).tier === 'quiet', '조용하지만 굳은 자리')
+  ok(openingOf({ ages: [31, 40, 60], recent30: 404 }).tier === 'shut', '둘 다 아니면 굳은 자리')
+
+  // 경계값 — 7일과 100편은 포함이다
+  ok(openingOf({ ages: [FRESH_DAYS], recent30: QUIET_MAX }).tier === 'open-quiet', '경계값은 포함으로 본다')
+  ok(openingOf({ ages: [FRESH_DAYS + 1], recent30: QUIET_MAX + 1 }).tier === 'shut', '경계를 넘으면 굳은 자리')
+
+  // 발행량을 모르면 「경쟁 적음」으로 치지 않는다 (모르는 것을 유리하게 쓰지 않는다)
+  ok(openingOf({ ages: [3], recent30: null }).tier === 'open', '발행량을 모르면 조용하다고 하지 않는다')
+  ok(openingOf({ ages: [50], recent30: null }).tier === 'shut', '발행량 모름 + 오래된 글 = 굳은 자리')
+
+  // 날짜를 하나도 못 읽으면 7일 이내 0편이고 나이도 없다
+  const noDate = openingOf({ ages: [], recent30: 50 })
+  ok(noDate.youngest === null && noDate.medianAge === null, '날짜가 없으면 나이를 만들지 않는다')
+  ok(noDate.tier === 'quiet', '날짜를 모르면 열렸다고 하지 않는다', noDate.tier)
+
+  // 나이 계산
+  const now = Date.parse('2026-08-18T00:00:00Z')
+  ok(ageDaysOf('2026-08-11', now) === 7, '이레 전이면 7일', String(ageDaysOf('2026-08-11', now)))
+  ok(ageDaysOf('', now) === null, '날짜가 없으면 null')
+  ok(ageDaysOf('말도 안 되는 값', now) === null, '못 읽으면 null')
+
+  // 표 순서 — 등급 먼저, 같으면 7일 이내 많은 순, 그다음 발행량 적은 순
+  const mk = (keyword, ages, recent30) => ({ ...openingOf({ ages, recent30 }), keyword, stores: [], dated: ages.length, sampled: ages.length })
+  const sorted = sortOpenings([
+    mk('굳음', [50], 500),
+    mk('열림-경쟁셈', [2], 300),
+    mk('열림-조용', [2], 20),
+    mk('열림-조용-많이', [1, 2, 3], 20),
+  ]).map((r) => r.keyword)
+  ok(sorted[0] === '열림-조용-많이' && sorted[1] === '열림-조용', '열리고 조용한 자리가 위로', sorted.join(' > '))
+  ok(sorted[sorted.length - 1] === '굳음', '굳은 자리는 맨 아래', sorted.join(' > '))
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

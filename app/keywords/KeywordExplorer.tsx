@@ -29,6 +29,7 @@ import { naverBlogSectionUrl, naverPlaceSearchUrl } from '@/lib/analysis/rank'
 import type { TrendSeries } from '@/lib/naver/datalab'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
 import LineChart, { MiniBar } from '@/components/LineChart'
+import OpeningsCard from '@/components/OpeningsCard'
 
 type Sort = 'competition' | 'volume'
 
@@ -632,6 +633,8 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
           ))}
         </ol>
       </div>
+
+      <OpeningsCard hasStores={stores.length > 0} />
 
       {/*
         「키워드 조회」와 「지역 키워드 조합」을 하나로 합쳤다.
