@@ -5471,8 +5471,39 @@ ok(rvA.themes.every((t) => t.words.length > 0), '어떤 낱말이 걸렸는지 �
 ok(rvA.themes.some((t) => t.label === '청결·관리'), '「깨끗」을 청결 주제로 센다')
 ok(rvA.themes.some((t) => t.label === 'PT·트레이너'), 'PT 리뷰도 주제로 잡는다')
 ok(rvA.quotes.length >= 2 && rvA.quotes.length <= 4, `인용문 2~4개 — ${rvA.quotes.length}개`)
-ok(rvA.quotes.every((q) => parsedRv.some((r) => r.text === q)), '인용문은 원문 그대로다 (요약하지 않는다)')
+const rvNorm = (s) => s.replace(/\s+/g, '')
+ok(
+  rvA.quotes.every((q) => parsedRv.some((r) => rvNorm(r.text).includes(rvNorm(q)))),
+  '인용문은 원문에 있는 말 그대로다 (요약하지 않는다)'
+)
 ok(rvA.quotes.every((q) => q.length >= 18), '너무 짧은 문장은 인용하지 않는다')
+
+/*
+ * ─── 긴 리뷰에서도 인용문이 나온다
+ *
+ * 실제 예약 리뷰는 대부분 90자를 넘는다. 원문만 후보로 쓰던 판에서는 쌍용점 리뷰 20편으로
+ * 인용문이 **한 줄**밖에 나오지 않았다 — 리뷰를 모을수록 근거가 비어버렸다. 그래서 긴 리뷰는
+ * 문장 단위로 잘라 후보에 넣는다. 잘라낸 조각은 원문의 부분 문자열이라 review-honesty 를
+ * 그대로 통과한다.
+ */
+const LONG_RV = [
+  {
+    text:
+      '운동을 해본적이 없어서 잘 할 수 있을까 걱정했었는데 쌤이 항상 칭찬도 많이 해주시고 맞춤으로 알려주셔서 앞으로 혼자 운동하는데 기반을 많이 다질 수 있었어요. ' +
+      '기구도 많고 깔끔해서 아주 좋았습니다. 샤워실도 넉넉해서 퇴근하고 바로 가기 편했어요.',
+    kind: 'text',
+  },
+]
+const longA = analyzeReviews(LONG_RV)
+ok(longA.quotes.length >= 2, `90자 넘는 리뷰 한 편에서도 인용문이 나온다 — ${longA.quotes.length}개`)
+ok(longA.quotes.every((q) => rvNorm(LONG_RV[0].text).includes(rvNorm(q))), '잘라낸 인용문도 원문 안의 말이다')
+ok(longA.quotes.every((q) => q.length <= 90), '인용문은 90자를 넘지 않는다 (본문이 리뷰로 채워진다)')
+ok(
+  longA.quotes.every((q) => verifyReviewQuotes(`플레이스 리뷰: "${q}"`, LONG_RV)[0].ok),
+  '잘라낸 인용문은 review-honesty 대조를 통과한다'
+)
+// 짧은 스무 자짜리("친절해요 좋았어요")보다 무엇을 해줬는지 적힌 문장을 먼저 고른다
+ok(longA.quotes[0].length > 40, `근거가 되는 긴 문장을 먼저 고른다 — ${longA.quotes[0].length}자`)
 
 ok(placeReviewUrl('1234567890') === 'https://m.place.naver.com/place/1234567890/review/visitor', '리뷰 링크를 만든다')
 ok(placeReviewUrl(undefined) === null, '플레이스 id 가 없으면 링크도 없다')
@@ -5530,7 +5561,14 @@ ok(rvPrompt.includes('## 플레이스 리뷰 (실제 리뷰다 — 여기 없는
 ok(rvPrompt.includes('리뷰에서 반복된 것 (많은 순)'), '분석 결과를 넣는다')
 ok(rvPrompt.includes('글자 그대로'), '그대로 옮기라고 한다')
 ok(rvPrompt.includes('m.place.naver.com/place/1234567890/review/visitor'), '링크를 넣어준다')
-ok(rvPrompt.includes('별점·평점 숫자를 쓰지 않는다'), '없는 숫자를 막는다')
+/*
+ * 별점은 「금지」가 아니라 「출처가 있으면 허용」이다. 지점 정보의 고유 강점에 확인된 평점이
+ * 들어오게 되면서(예약 리뷰 13건·평점 5.0) 전면 금지가 지시끼리 어긋나게 만들었다 —
+ * 한쪽은 주고 한쪽은 금지하면 모델은 어느 쪽이든 어긴다.
+ */
+ok(rvPrompt.includes('별점·평점 숫자는'), '별점을 어떻게 다룰지 말한다')
+ok(rvPrompt.includes('고유 강점)에 적혀 있을 때만'), '적혀 있을 때만 쓰라고 한다 (출처 있는 숫자는 살린다)')
+ok(rvPrompt.includes('없으면 만들지 않는다'), '없는 숫자는 여전히 막는다')
 ok(rvPrompt.includes('출처 없는 인용은 거짓 광고다'), '왜 안 되는지 적는다')
 
 // 리뷰가 없으면 **언급 금지**를 명시한다 (지시가 없으면 모델이 지어낸다)

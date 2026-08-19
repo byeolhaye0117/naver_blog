@@ -139,6 +139,33 @@ export function parsePastedReviews(raw: string): { reviews: PlaceReview[]; dropp
   return { reviews, dropped }
 }
 
+/** 인용문 길이 — 너무 짧으면 근거가 안 되고, 너무 길면 본문이 리뷰로 채워진다 */
+const QUOTE_MIN = 18
+const QUOTE_MAX = 90
+
+/**
+ * 인용 후보 — 리뷰 원문과, 긴 리뷰에서 잘라낸 문장.
+ *
+ * 실제 예약 리뷰는 대부분 90자를 넘는다. 원문만 후보로 두면 리뷰 20편을 모아도 인용문이
+ * **한 줄**밖에 나오지 않았다 (쌍용점 데이터로 직접 세어 봤다). 그러면 「실제 리뷰를 인용해서
+ * 신뢰를 준다」는 목적이 리뷰를 모을수록 오히려 비어버린다.
+ *
+ * 문장 단위로 자른 것은 **원문의 부분 문자열**이므로 review-honesty 대조(양방향 부분
+ * 문자열)를 그대로 통과한다 — 말을 바꾸는 게 아니라 긴 리뷰에서 한 문장만 떼는 것이다.
+ */
+function quoteCandidates(texts: PlaceReview[]): string[] {
+  const out: string[] = []
+  for (const r of texts) {
+    out.push(r.text)
+    if (r.text.length <= QUOTE_MAX) continue
+    for (const piece of r.text.split(/(?<=[.!?…])\s+|\n+/)) {
+      const t = piece.trim()
+      if (t && t.length <= QUOTE_MAX) out.push(t)
+    }
+  }
+  return out
+}
+
 /**
  * 리뷰에서 반복되는 주제와 인용할 문장을 뽑는다.
  *
@@ -171,21 +198,26 @@ export function analyzeReviews(reviews: PlaceReview[], dropped = 0): ReviewAnaly
    */
   const quotes: string[] = []
   const usedThemes = new Set<string>()
-  const candidates = [...texts].sort((a, b) => a.text.length - b.text.length)
+  /*
+   * 90자 안에서는 **긴 것부터** 고른다. 짧은 순으로 고르면 「친절하고 잘 설명해주세요!」처럼
+   * 어느 헬스장에나 붙는 스무 자짜리가 뽑히는데, 그건 인용해도 근거가 되지 않는다.
+   * 근거가 되는 문장은 무엇을 어떻게 해줬는지가 들어 있고, 그건 길이로 걸러진다.
+   */
+  const candidates = quoteCandidates(texts).sort((a, b) => b.length - a.length)
   for (const pass of [1, 2]) {
-    for (const r of candidates) {
+    for (const text of candidates) {
       if (quotes.length >= 4) break
-      const len = r.text.length
-      if (len < 18 || len > 90) continue
-      if (quotes.includes(r.text)) continue
-      const mine = THEMES.filter((th) => th.words.some((w) => normalize(r.text).includes(normalize(w)))).map(
+      const len = text.length
+      if (len < QUOTE_MIN || len > QUOTE_MAX) continue
+      if (quotes.some((q) => normalize(q).includes(normalize(text)) || normalize(text).includes(normalize(q)))) continue
+      const mine = THEMES.filter((th) => th.words.some((w) => normalize(text).includes(normalize(w)))).map(
         (th) => th.label
       )
       if (!mine.length) continue
       // 1차는 새 주제만, 2차는 남은 자리를 채운다
       if (pass === 1 && mine.every((m) => usedThemes.has(m))) continue
       mine.forEach((m) => usedThemes.add(m))
-      quotes.push(r.text)
+      quotes.push(text)
     }
   }
 
