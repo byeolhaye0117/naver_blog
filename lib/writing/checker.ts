@@ -753,20 +753,45 @@ export function checkPost(input: CheckInput): CheckResult {
    * 「상담·등록·문의」는 홍보로 세지 않는다. 후기글 제목에 거의 다 들어가는 말이라
    * 그걸 인정하면 이 검사가 아무것도 안 잡는다.
    */
+  /**
+   * 모바일 검색결과가 제목을 자르는 자리 (대략).
+   *
+   * 제목 길이 항목의 「모바일 표시 한계 ~35자」와 같은 값을 쓴다. 여기서 다른 수를 쓰면
+   * 한 화면에서 두 기준이 어긋난 말을 하게 된다.
+   */
+  const TITLE_MOBILE_CUT = 35
   const TITLE_PROMO =
-    /혜택|이벤트|할인|특가|프로모션|가격|비용|얼마|\d+\s*(만\s*원|원)|무료|공짜|오픈|개관|마감|선착순|체험|이용권|회원권|\d+\s*개월|첫\s*달/
+    /혜택|이벤트|할인|특가|프로모션|가격|비용|얼마|\d[\d,]*\s*(만\s*원|천\s*원|원)|무료|공짜|오픈|개관|마감|선착순|체험|이용권|회원권|\d+\s*개월|첫\s*달/
   if (input.type !== 'info') {
-    const titlePromo = TITLE_PROMO.exec(title)?.[0]?.trim()
+    const hit = TITLE_PROMO.exec(title)
+    const titlePromo = hit?.[0]?.trim()
+    /*
+     * **잘리는 자리에 있으면 있는 게 아니다** (2026-08-18).
+     *
+     * 회원이 나온 제목을 보여줬다 — 「쌍용동 PT 지금 받아야 하는 이유, 시간 없는 분도 될까요?
+     * 45,000원 안내」(45자). 홍보 조각(45,000원)이 **맨 뒤**에 있다. 모바일 검색결과는 35자쯤에서
+     * 뒤를 자르므로, 정작 사람이 보는 자리에는 혜택이 없다. 그런데 검사는 「있음」으로 통과했다.
+     *
+     * 그래서 자리도 본다. 없는 것과 안 보이는 것은 다르지만, 통과시킬 수 없는 것은 같다.
+     */
+    const promoAt = titlePromo ? title.indexOf(titlePromo) : -1
+    const cutOff = promoAt >= 0 && promoAt >= TITLE_MOBILE_CUT
     const ev = input.eventText?.trim()
     add({
       id: 'titlePromo',
       group: '키워드',
       label: '제목에 홍보 한 조각',
-      level: titlePromo ? 'pass' : 'fail',
-      value: titlePromo ? `있음 (「${titlePromo}」)` : '없음',
+      level: titlePromo ? (cutOff ? 'warn' : 'pass') : 'fail',
+      value: titlePromo
+        ? cutOff
+          ? `있지만 ${promoAt + 1}번째 글자라 모바일에서 잘립니다 (「${titlePromo}」)`
+          : `있음 (「${titlePromo}」)`
+        : '없음',
       target: '혜택·가격·이벤트·기간 중 하나를 제목에 넣는다',
       hint: titlePromo
-        ? undefined
+        ? cutOff
+          ? `홍보 조각이 제목 뒤쪽(${promoAt + 1}번째 글자)에 있습니다. 모바일 검색결과는 ${TITLE_MOBILE_CUT}자쯤에서 뒤를 자르니, 사람이 보는 자리에는 혜택이 없는 셈입니다 — 「${titlePromo}」를 앞으로 당기거나 제목을 짧게 줄이세요. 요구를 절로 나눠 이어 붙이면(「…이유, …될까요? …원 안내」) 늘 이렇게 됩니다.`
+          : undefined
         : (input.type === 'review'
             ? '후기 제목에도 내가 받은 것을 적으세요 — 「쌍용동 헬스장 3개월 9.9만원에 등록한 후기」·「8월 혜택 받고 등록한 후기」처럼 **방문자 말투로** 씁니다. 「지금 신청하세요」 같은 센터 말투는 쓰지 않습니다. '
             : '「3개월 9.9만원」·「8월 혜택」·「신규 오픈」처럼 혜택 한 조각을 제목에 넣으세요. ') +
