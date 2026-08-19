@@ -6550,6 +6550,21 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   const none = itemOf('쌍용동 PT 처음이라 걱정되시는 분들께 드리는 이야기')
   ok(none.level === 'fail', '아예 없으면 즉시수정', none.level)
 
+  /*
+   * **금액은 앞쪽에** (2026-08-18, 회원 요청 "금액이 중요하니까 금액이 제목에 앞에 위치하면
+   * 좋겠어"). 실측 표본이 7편뿐이라 막지 않고 권한다 — 통과시키되 자리를 값에 적는다.
+   */
+  const early = itemOf('쌍용동 PT 45,000원으로 먼저 한 번 받아보세요')
+  ok(early.level === 'pass' && !early.value.includes('낫습니다'), '앞 20자 안이면 군말이 없다', early.value)
+  ok(/\d+번째 글자/.test(early.value), '자리를 늘 값에 적는다', early.value)
+
+  // 금액이 25번째 글자에 오도록 만든다 (20자 뒤 · 35자 안 = 보이지만 앞쪽은 아님)
+  const middle = itemOf(`쌍용동 PT ${'가'.repeat(15)} 45,000원 안내`)
+  ok(middle.level === 'pass', '보이는 자리면 통과시킨다 (막지 않는다)', middle.level)
+  ok(middle.value.includes('앞 20자 안이 낫습니다'), '앞으로 당기라고 권한다', middle.value)
+  ok(middle.hint.includes('메인 키워드 바로 뒤'), '어디로 당길지 알려준다')
+  ok(middle.hint.includes('7편뿐'), '근거가 약하다는 사실을 숨기지 않는다')
+
   // 35자 경계 — 34번째 글자에서 시작하면 아직 보인다
   const edge = itemOf('쌍용동 PT 처음 오시는 분들께 드리는 안내입니다 이용권')
   ok(edge.level === 'pass' || edge.value.includes('잘립니다'), '경계에서 값이 뜻을 밝힌다', edge.value)
