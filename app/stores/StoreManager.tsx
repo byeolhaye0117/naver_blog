@@ -290,6 +290,22 @@ export default function StoreManager({ stores }: { stores: Store[] }) {
             />
           </Field>
 
+          {/*
+            트레이너 칸 (2026-08-19 추가). 이 칸이 비어 있으면 「트레이너가 안 맞을까봐」 같은
+            요청에 글이 답을 못 한다 — 지어내면 안 되는 사실이라 빈손으로 넘어간다.
+          */}
+          <Field
+            label="트레이너 (한 줄에 하나)"
+            hint="이름과 직함을 적으세요 — 예) 조용석 PT 팀장. 플레이스에 트레이너별 무료체험 항목이 있으면 그 이름 그대로 쓰면 됩니다. 비워 두면 글에서 트레이너 얘기를 아예 하지 않습니다(지어내지 않습니다)."
+          >
+            <textarea
+              value={lines(editing.trainers ?? [])}
+              onChange={(e) => set('trainers', parseLines(e.target.value))}
+              rows={4}
+              className={inputClass}
+            />
+          </Field>
+
           <Field label="고유 강점 (한 줄에 하나)" hint="'좋다'가 아니라 구체적 사실·수치로 적으세요">
             <textarea
               value={lines(editing.strengths)}

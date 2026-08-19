@@ -55,7 +55,18 @@ function block(s) {
   if (s.features?.length) lines.push('- 시설 특징:', bullet(s.features))
   lines.push(`- 24시간 운영: ${s.open24 ? '예' : '아니오'}`)
   if (s.strengths?.length) lines.push('- 고유 강점:', numbered(s.strengths))
-  lines.push('- 트레이너: (미제공 — 지어내지 말 것)')
+  /*
+   * 트레이너는 있으면 그대로, 없으면 「미제공」이라고 밝힌다 (2026-08-19).
+   * 앞 판은 무조건 「미제공」으로 찍고 있어서, 앱에 트레이너를 넣어도 스킬은 계속 없다고 했다.
+   */
+  if (s.trainers?.length) {
+    lines.push('- 트레이너:', bullet(s.trainers))
+    lines.push(
+      '  (트레이너별로 상담·무료체험 신청을 받을 수 있으면 「트레이너가 안 맞을까봐」 걱정에 그 사실로 답한다 — 지정해서 먼저 만나볼 수 있다는 것이 답이다. 여기 없는 이름·경력·자격은 지어내지 않는다.)'
+    )
+  } else {
+    lines.push('- 트레이너: (미제공 — 지어내지 말 것)')
+  }
   const how = [s.phone ? `전화 ${s.phone}` : '', s.reserveUrl ? `예약 링크 ${s.reserveUrl}` : '']
     .filter(Boolean)
     .join(' / ')
