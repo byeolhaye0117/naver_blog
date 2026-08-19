@@ -136,6 +136,8 @@ export default function PostList({
               mainKeyword: p.mainKeyword,
               subKeywords: p.subKeywords,
               localKeyword: p.localKeyword,
+              // 요청 반영 검사 (2026-08-19)
+              request: p.request,
               tags: p.tags,
               legalName: store?.legalName,
               womenOnly: store?.womenOnly,

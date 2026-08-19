@@ -385,6 +385,8 @@ export default async function Dashboard() {
                   womenOnly: store?.womenOnly,
                   sponsorship: p.sponsorship ?? 'unset',
                   eventText: p.eventText,
+                  // 요청 반영 검사 (2026-08-19)
+                  request: p.request,
                   placeReviews: store?.placeReviews,
                   placeId: store?.placeId,
                   evidence,

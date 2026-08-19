@@ -205,6 +205,11 @@ async function handle(req: Request, ms: () => string) {
         sponsorship: body.sponsorship ?? 'unset',
         eventText: request.eventText,
         promoNote: request.promoNote,
+        /*
+         * **요청을 검수에도 넘긴다** (2026-08-19). 넘기지 않으면 `request-coverage` 가 아예
+         * 돌지 않는다 — 회원이 "요청사항이 거의 반영되지 않았어"라고 한 그 검사다.
+         */
+        request: request.request,
         placeReviews: store.placeReviews,
         placeId: store.placeId,
         // AI 가 스스로 고칠 때도 같은 근거로 채점한다 — 화면 점수와 다르면 안 된다

@@ -9,6 +9,7 @@ import {
 import { TITLE_SHAPE_LABEL, titleAdvice, titleShape } from '../analysis/title'
 import { analyzeReviews, placeReviewUrl, verifyReviewQuotes } from '../analysis/reviews'
 import { findHardWords } from './plainwords'
+import { coverageOf, requestedTopics } from './request'
 import type { PlaceReview } from '../analysis/reviews'
 import { evidenceHeadline, itemEvidence } from './evidence'
 import type { PooledFactor } from '../analysis/factors'
@@ -47,6 +48,15 @@ export interface CheckInput {
    * (`event-hook`). 이벤트가 없으면 그 항목을 아예 만들지 않는다.
    */
   eventText?: string
+  /**
+   * 회원이 이 글에 적어 보낸 요청.
+   *
+   * **써달라고 한 내용이 글에 실제로 들어갔는지** 본다 (`request-coverage`).
+   * 회원 지적 (2026-08-19): "요청사항이 거의 반영되지 않았어." 앱은 요청을 **거르는 말**로만
+   * 읽고 있었다 — 「24시 빼줘」는 지켰지만 「등록해야 하는 이유·추천하는 사람들·망설이는 점을
+   * 해결」은 골격에 밀려 사라졌다.
+   */
+  request?: string
   /**
    * 지점에 붙여넣어 둔 **실제** 플레이스 리뷰.
    *
@@ -820,6 +830,51 @@ export function checkPost(input: CheckInput): CheckResult {
        * 제목 항목은 개수 제한과 따로 센다).
        */
       weight: 4,
+    })
+  }
+
+  /*
+   * ─── 요청한 내용이 글에 들어갔는가 ───────────────────────────────
+   *
+   * 회원이 요청과 결과를 나란히 보여줬다 (2026-08-19): "요청사항이 거의 반영되지 않았어."
+   *
+   *   요청: 24시 빼기 + 지금 등록해야 하는 이유 · 추천하는 사람들 · 망설이는 점(효과·가격·
+   *         트레이너) 해결
+   *   결과: 24시는 빠졌지만, 본문은 「다이어트 첫 달 5가지」·「이런 환경에서 진행됩니다」·
+   *         「자세와 시설 관리」로 채워졌다. 요청한 세 항목 중 둘이 아예 없었다.
+   *
+   * 원인은 앱이 요청을 **거르는 말**로만 읽은 것이다. 「빼달라」는 지켰고 「써달라」는 고정
+   * 골격에 밀렸다. 지시문에도 적었지만, 지시문만으로는 안 붙는다는 것을 이 앱에서 이미
+   * 배웠다 (titlePromo·event-hook 둘 다 그랬다). 그래서 검수가 확인한다.
+   *
+   * **느슨하게 판정한다.** 항목의 낱말 절반 이상이 글에 있으면 들어간 것으로 본다 — 글자
+   * 그대로 베끼라는 뜻이 아니기 때문이다. 그래도 빠진 것이 절반을 넘으면 즉시수정이다.
+   */
+  const askedTopics = requestedTopics(input.request)
+  if (askedTopics.length) {
+    const cov = coverageOf(askedTopics, `${title}\n${prose}`)
+    const half = cov.missing.length > askedTopics.length / 2
+    add({
+      id: 'request-coverage',
+      group: '분량·구조',
+      label: '요청한 내용 반영',
+      level: cov.missing.length === 0 ? 'pass' : half ? 'fail' : 'warn',
+      value:
+        cov.missing.length === 0
+          ? `${askedTopics.length}개 항목 모두 들어감`
+          : `${cov.covered.length}/${askedTopics.length}개 (${cov.rate}%) — 빠짐: ${cov.missing
+              .map((m) => `「${m.text}」`)
+              .join(' · ')}`,
+      target: '요청한 항목을 모두 다룹니다',
+      hint:
+        cov.missing.length === 0
+          ? undefined
+          : `요청하신 ${cov.missing.map((m) => `「${m.text}」`).join(' · ')} 가 글에 없습니다. **이 항목들이 본문 소제목이 되어야 합니다** — 골격의 기본 구간(운동 정보·시설 소개 같은 것)은 요청이 있으면 그 요청으로 바꿉니다. 자리가 부족하면 요청과 무관한 구간을 빼세요.`,
+      /*
+       * 가중치 5. 요청을 안 지킨 글은 다른 항목이 다 맞아도 회원이 쓸 수 없는 글이다 —
+       * 화자(5)와 같은 무게로 둔다. 고쳐 쓰기 목록에서도 앞에 실려야 한다.
+       */
+      weight: 5,
     })
   }
 

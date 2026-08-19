@@ -340,6 +340,12 @@ export default function Editor({
         eventText,
         // 정보글 마지막 홍보가 「적어둔 것」인지 대조한다
         promoNote,
+        /*
+         * **요청한 내용이 글에 들어갔는지 화면에서 바로 본다** (2026-08-19).
+         * 회원 지적: "요청사항이 거의 반영되지 않았어." 요청 칸을 채워 두면 검수가 항목별로
+         * 확인해서 빠진 것을 짚어 준다.
+         */
+        request,
         // 실제 리뷰를 인용했는지 / 없는 리뷰를 지어냈는지 잰다
         placeReviews: store?.placeReviews,
         placeId: store?.placeId,
