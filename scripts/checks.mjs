@@ -4028,7 +4028,11 @@ ok(!stripGuides(tsSkel).includes('앞 7자 안에 두고'), '안내가 본문에
   ok(spPromo.includes('40자를 넘기지 않는다'), '상한을 이유와 함께 말한다')
   ok(!spPromo.includes('제목 뒤쪽에 **독자가 실제로 하는 질문**을 하나 얹는다'), '홍보글에 질문형을 시키지 않는다')
   ok(buildSystemPrompt('info').includes('독자가 실제로 하는 질문'), '정보글에는 질문형을 계속 권한다')
-  ok(spPromo.includes('질문형은 0편'), '왜 안 시키는지 근거를 남긴다')
+  // 근거는 실측 수치로 남긴다 (물음표가 1~3위에서 더 적었다는 것)
+  ok(spPromo.includes('물음표로 끝나는 제목은 1~3위 9%'), '왜 안 시키는지 실측으로 남긴다')
+  ok(spPromo.includes('숫자를 하나 넣어라'), '상위권에 더 많던 것을 시킨다 (숫자 58% 대 48%)')
+  ok(spPromo.includes('0편'), '「가격·비용·얼마」가 1~3위에 없었다는 사실을 남긴다')
+  ok(spPromo.includes('선택 기준'), '궁금증을 만드는 방법을 실측 형태로 준다')
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -4618,7 +4622,12 @@ ok(tpEv.hint.includes('8월 등록분 3개월 9.9만원'), '이벤트 칸 내용
  */
 const tpEmpty = tpItem('review', '쌍용동 헬스장 등록 후기')
 ok(tpEmpty.hint.includes('금액 없이 쓸 수 있는 말'), '금액 없이 넣는 방법을 준다')
-ok(tpEmpty.hint.includes('가격 궁금해서 상담 받아본 후기'), '예시를 준다')
+/*
+ * 예시를 「가격 궁금해서…」에서 바꿨다 (2026-08-18 실측). 우리 판 1~3위 55편에 「가격·비용·
+ * 얼마」를 쓴 제목이 0편이었다 — 검사는 통과시키되 권하지는 않는다.
+ */
+ok(tpEmpty.hint.includes('이용권'), '금액 없이 쓸 말을 예로 준다', tpEmpty.hint.slice(0, 80))
+ok(tpEmpty.hint.includes('0편'), '「가격」류를 왜 피하라는지 수치로 밝힌다')
 ok(tpEmpty.hint.includes('없는 금액을 만들 필요는 없습니다'), '지어내지 않아도 된다고 밝힌다')
 ok(tpEmpty.hint.includes('구별이 되지 않습니다'), '왜 상담·등록은 안 되는지 말한다')
 // 금액 없이 쓴 제목이 실제로 통과해야 한다 (이게 통과 안 되면 지시문과 검수가 또 싸운다)
