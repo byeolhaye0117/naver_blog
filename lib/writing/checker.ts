@@ -760,6 +760,14 @@ export function checkPost(input: CheckInput): CheckResult {
    * 한 화면에서 두 기준이 어긋난 말을 하게 된다.
    */
   const TITLE_MOBILE_CUT = 35
+  /**
+   * 홍보 조각(특히 금액)이 있으면 좋은 자리.
+   *
+   * 회원 요청 (2026-08-18): "금액이 중요하니까 금액이 제목에 앞에 위치하면 좋겠어."
+   * 실측에서도 금액이 든 제목 7편 중 0~19자에 둔 4편에는 1~3위가 2편 있었고, 20자 뒤에 둔
+   * 3편에는 1~3위가 없었다. 7편은 적은 표본이라 **막지는 않고 권한다**.
+   */
+  const TITLE_PROMO_FRONT = 20
   const TITLE_PROMO =
     /혜택|이벤트|할인|특가|프로모션|가격|비용|얼마|\d[\d,]*\s*(만\s*원|천\s*원|원)|무료|공짜|오픈|개관|마감|선착순|체험|이용권|회원권|\d+\s*개월|첫\s*달/
   if (input.type !== 'info') {
@@ -776,6 +784,8 @@ export function checkPost(input: CheckInput): CheckResult {
      */
     const promoAt = titlePromo ? title.indexOf(titlePromo) : -1
     const cutOff = promoAt >= 0 && promoAt >= TITLE_MOBILE_CUT
+    /** 보이기는 하지만 앞쪽이 아닌 자리 — 막지 않고 권하기만 한다 */
+    const late = promoAt >= TITLE_PROMO_FRONT && !cutOff
     const ev = input.eventText?.trim()
     add({
       id: 'titlePromo',
@@ -785,11 +795,15 @@ export function checkPost(input: CheckInput): CheckResult {
       value: titlePromo
         ? cutOff
           ? `있지만 ${promoAt + 1}번째 글자라 모바일에서 잘립니다 (「${titlePromo}」)`
-          : `있음 (「${titlePromo}」)`
+          : late
+            ? `있음 — ${promoAt + 1}번째 글자 (「${titlePromo}」 · 앞 ${TITLE_PROMO_FRONT}자 안이 낫습니다)`
+            : `있음 — ${promoAt + 1}번째 글자 (「${titlePromo}」)`
         : '없음',
       target: '혜택·가격·이벤트·기간 중 하나를 제목에 넣는다',
       hint: titlePromo
-        ? cutOff
+        ? late
+          ? `「${titlePromo}」가 ${promoAt + 1}번째 글자에 있습니다. **메인 키워드 바로 뒤(앞 ${TITLE_PROMO_FRONT}자 안)로 당기면** 검색결과에서 먼저 눈에 들어옵니다 — 상위권 제목이 그렇게 씁니다: 「배방 헬스장 월 3만 원 등록 전 꼭 확인하세요」(9번째 글자) · 「아산헬스장 짐플레이스 헬스 12만원부터」(15번째 글자). 실측 표본이 7편뿐이라 막지는 않습니다.`
+          : cutOff
           ? `홍보 조각이 제목 뒤쪽(${promoAt + 1}번째 글자)에 있습니다. 모바일 검색결과는 ${TITLE_MOBILE_CUT}자쯤에서 뒤를 자르니, 사람이 보는 자리에는 혜택이 없는 셈입니다 — 「${titlePromo}」를 앞으로 당기거나 제목을 짧게 줄이세요. 요구를 절로 나눠 이어 붙이면(「…이유, …될까요? …원 안내」) 늘 이렇게 됩니다.`
           : undefined
         : (input.type === 'review'
