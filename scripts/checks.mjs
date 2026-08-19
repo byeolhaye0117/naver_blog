@@ -4012,7 +4012,24 @@ ok(tsSkel.includes('8편 중 6편이 질문형'), '실측 근거를 붙인다')
 ok(tsSkel.includes('추천!」 (X)'), '나쁜 예와 좋은 예를 같이 준다')
 ok(stripGuides(tsSkel).includes('[이미지'), '제목 안내는 복사 본문에서 지워진다')
 ok(!stripGuides(tsSkel).includes('앞 7자 안에 두고'), '안내가 본문에 남지 않는다')
-ok(buildSystemPrompt('promo').includes('질문형이 0편'), 'AI 지시문에도 넣는다')
+/*
+ * **AI 지시문에서는 질문형을 홍보글에 시키지 않는다** (2026-08-18).
+ *
+ * 회원이 나온 제목을 보여줬다 — 「쌍용동 PT 지금 받아야 하는 이유, 시간 없는 분도 될까요?
+ * 45,000원 안내」(45자). 요구를 따로따로 주면 모델은 각 요구를 한 절로 만들어 이어 붙인다.
+ * 게다가 질문형 근거는 **전국 정보 키워드**에서 나왔고 우리 지역 키워드 상위 8편은 0편이었다 —
+ * 홍보글·후기글은 늘 지역 키워드를 쓰므로, 측정이 「없다」고 한 자리에 규칙을 강요하고 있었다.
+ *
+ * 골격(buildTemplate)은 사람이 읽는 안내라 근거를 그대로 남긴다. 사람은 절을 이어 붙이지 않는다.
+ */
+{
+  const spPromo = buildSystemPrompt('promo')
+  ok(spPromo.includes('한 문장으로 읽혀야 한다'), '홍보글 제목은 한 문장으로 쓰라고 한다')
+  ok(spPromo.includes('40자를 넘기지 않는다'), '상한을 이유와 함께 말한다')
+  ok(!spPromo.includes('제목 뒤쪽에 **독자가 실제로 하는 질문**을 하나 얹는다'), '홍보글에 질문형을 시키지 않는다')
+  ok(buildSystemPrompt('info').includes('독자가 실제로 하는 질문'), '정보글에는 질문형을 계속 권한다')
+  ok(spPromo.includes('질문형은 0편'), '왜 안 시키는지 근거를 남긴다')
+}
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[60] 판을 섞지 않는다 — 우리 판과 참고 판을 따로 모은다')
@@ -6356,7 +6373,8 @@ const tp2 = buildTitlePrompt('쌍용동 헬스장 추천', ['제목에 홍보 �
 ok(tp2.includes('금액을 지어내지 말고'), '이벤트 정보가 없으면 지어내지 말라고 한다')
 ok(tp2.includes('가격'), '금액 없이 쓸 말을 준다')
 ok(!tp2.includes('방문객 말투'), '홍보글에는 방문객 말투를 시키지 않는다')
-ok(tp2.includes('독자가 실제로 하는 질문'), '홍보글에는 질문형을 권한다')
+ok(tp2.includes('한 문장으로 읽히게'), '제목 재시도도 한 문장을 요구한다')
+ok(!tp2.includes('독자가 실제로 하는 질문'), '제목 재시도에서 홍보글에 질문형을 시키지 않는다')
 ok(tp1.includes('최저가·파격가'), '광고심의 위험은 계속 막는다')
 
 /*
@@ -6494,6 +6512,38 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ]).map((r) => r.keyword)
   ok(sorted[0] === '열림-조용-많이' && sorted[1] === '열림-조용', '열리고 조용한 자리가 위로', sorted.join(' > '))
   ok(sorted[sorted.length - 1] === '굳음', '굳은 자리는 맨 아래', sorted.join(' > '))
+}
+
+
+/*
+ * ─── 홍보 조각이 잘리는 자리에 있으면 통과가 아니다 ────────────────
+ *
+ * 회원이 나온 제목을 그대로 보여줬다 (2026-08-18):
+ *   「쌍용동 PT 지금 받아야 하는 이유, 시간 없는 분도 될까요? 45,000원 안내」 (45자)
+ * 홍보 조각(45,000원)이 맨 뒤에 있다. 모바일 검색결과는 35자쯤에서 자르니, 사람이 보는
+ * 자리에는 혜택이 없다. 그런데 검사는 「있음」으로 통과시켰다.
+ */
+{
+  const body = ['[이미지: 대표]', '안녕하세요, MTO 피트니스 쌍용점입니다. 쌍용동 PT 안내입니다.', '',
+    '[이미지: 2]', '## 소제목', '자세와 호흡을 봅니다. ' + '가'.repeat(1800)].join('\n')
+  const base = { type: 'promo', body, mainKeyword: '쌍용동 PT', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' }
+  const itemOf = (title) => checkPost({ ...base, title }).items.find((i) => i.id === 'titlePromo')
+
+  const stapled = itemOf('쌍용동 PT 지금 받아야 하는 이유, 시간 없는 분도 될까요? 45,000원 안내')
+  ok(stapled.level === 'warn', '뒤에 붙은 홍보 조각은 통과가 아니다', `${stapled.level} — ${stapled.value}`)
+  ok(stapled.value.includes('잘립니다'), '잘린다는 사실을 값에 적는다', stapled.value)
+  ok(stapled.hint.includes('앞으로 당기거나'), '무엇을 하라고 알려준다')
+
+  const front = itemOf('쌍용동 PT 45,000원으로 먼저 한 번 받아보세요')
+  ok(front.level === 'pass', '앞쪽에 있으면 통과', `${front.level} — ${front.value}`)
+
+  // 없는 것과 안 보이는 것은 구별한다
+  const none = itemOf('쌍용동 PT 처음이라 걱정되시는 분들께 드리는 이야기')
+  ok(none.level === 'fail', '아예 없으면 즉시수정', none.level)
+
+  // 35자 경계 — 34번째 글자에서 시작하면 아직 보인다
+  const edge = itemOf('쌍용동 PT 처음 오시는 분들께 드리는 안내입니다 이용권')
+  ok(edge.level === 'pass' || edge.value.includes('잘립니다'), '경계에서 값이 뜻을 밝힌다', edge.value)
 }
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
