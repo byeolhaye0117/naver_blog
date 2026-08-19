@@ -163,6 +163,73 @@ export default function GuidePage() {
           </div>
         </Card>
 
+        {/* ─── 제목 실측 ─── */}
+        <Card
+          id="title"
+          title="제목 — 우리 판 상위 165편을 세어서 정했습니다"
+          subtitle="1~3위 55편과 4~10위 110편의 제목을 비교했습니다. 통설이 아니라 우리 키워드의 실측값입니다 (2026-08-18)."
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[520px] text-[12px]">
+              <thead>
+                <tr className="muted bd border-b text-left">
+                  <th className="py-1.5 pr-3 font-semibold">요소</th>
+                  <th className="py-1.5 pr-3 text-right font-semibold">1~3위</th>
+                  <th className="py-1.5 pr-3 text-right font-semibold">4~10위</th>
+                  <th className="py-1.5 font-semibold">그래서</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['숫자 있음', '58%', '48%', '개수·기간·회차·평수·금액 중 하나를 넣습니다'],
+                  ['「찐·솔직·진짜」', '15%', '6%', '겪은 티를 한 낱말로 냅니다'],
+                  ['「후기」', '36%', '28%', '후기글은 필수, 홍보글은 쓰지 않습니다'],
+                  ['대괄호 [ ]', '22%', '15%', '지역명을 묶어도 됩니다 (선택)'],
+                  ['이벤트·할인·혜택', '7%', '3%', '홍보 조각으로 씁니다'],
+                  ['물음표', '9%', '12%', '「~할까요?」를 뒤에 붙이지 않습니다'],
+                  ['「가격·비용·얼마」', '0%', '3%', '되도록 쓰지 않습니다 (1~3위에 0편)'],
+                  ['길이(중간값)', '39자', '38자', '길이는 순위와 무관했습니다'],
+                ].map((row) => (
+                  <tr key={row[0]} className="bd border-b last:border-0 align-top">
+                    <td className="py-1.5 pr-3 font-semibold whitespace-nowrap">{row[0]}</td>
+                    <td className="tnum py-1.5 pr-3 text-right font-bold">{row[1]}</td>
+                    <td className="tnum muted py-1.5 pr-3 text-right">{row[2]}</td>
+                    <td className="py-1.5">{row[3]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-emerald-800 dark:text-emerald-200">
+            <strong className="font-bold">순서: 메인 키워드(앞 7자) → 금액(앞 20자 안) → 궁금증.</strong>
+            <p className="mt-1.5">
+              금액이 든 상위 제목 7편 중 <strong>0~19자에 둔 4편에 1~3위가 2편</strong> 있었고,{' '}
+              <strong>20자 뒤에 둔 3편에는 1~3위가 없었습니다.</strong> 표본이 작아 단정하지는 않지만, 모바일이
+              35자쯤에서 뒤를 자르는 것과도 맞습니다. 그래서 앱은 금액이 20자 뒤에 있으면 앞으로 당기라고
+              권하고, 35자 뒤에 있으면 <strong>주의</strong>로 알려줍니다.
+            </p>
+            <p className="mt-1.5">
+              상위권 실제 제목 — 「배방 헬스장 <strong>월 3만 원</strong> 등록 전 꼭 확인하세요」(2위) ·
+              「아산헬스장 짐플레이스 헬스 <strong>12만원부터</strong> PT 1회 4만원까지」(1위)
+            </p>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
+            <strong className="font-bold">궁금증은 「선택 기준」이나 「비교」로 만듭니다.</strong> 물음표를 하나
+            붙이는 방식은 상위권에 오히려 적었습니다. 상위권이 실제로 쓰는 형태는 이렇습니다 — 「두정역 근처
+            헬스장 알아볼 때 <strong>거리보다 중요했던 4가지</strong>」(1위) · 「성정동헬스 운동 초보라면{' '}
+            <strong>유산소부터? 웨이트부터?</strong>」(2위) · 「실패 없이 고르는 <strong>5가지 핵심 기준</strong>」(1위)
+          </div>
+
+          <p className="muted mt-3 text-[11.5px] leading-relaxed">
+            <strong>한 문장으로 읽혀야 합니다.</strong> 요구를 쉼표·물음표로 이어 붙이면 45자가 되고 금액이
+            잘리는 자리로 밀립니다 — 「○○ 지금 받아야 하는 이유, 시간 없는 분도 될까요? 45,000원 안내」가 그
+            예이고, 이 규칙은 그 제목을 보고 만들었습니다. 정보글은 예외로 <strong>질문형을 씁니다</strong>{' '}
+            (전국 정보 키워드 상위 8편 중 6편이 질문형이었습니다).
+          </p>
+        </Card>
+
         {/* ─── 발행 후 타임라인 ─── */}
         <Card
           id="timeline"
@@ -323,7 +390,7 @@ export default function GuidePage() {
                   ],
                   ['정식 상호명', `${SPECS.promo.legalNameMin}회 이상`, '—', '—'],
                   ['지역 키워드', '메인이 지역', '본문 1~2회 + 태그', '메인이 지역'],
-                  ['제목', '28~40자', '28~40자', '28~40자 + "후기" 명시'],
+                  ['제목', '28~40자 · 금액 앞 20자', '28~40자 · 질문형', '28~40자 + "후기" 명시'],
                   ['소제목', '4~5개', '4~5개', '4~5개'],
                   ['이미지', '5~10장', '5~10장', '5~10장'],
                   ['해시태그', '8~12개', '8~12개', '8~12개'],
