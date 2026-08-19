@@ -6563,6 +6563,86 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
 
 
 /*
+ * ─── 매일 자동으로 다시 잰다 (2026-08-19) ────────────────────────
+ *
+ * 회원 요청: "자동으로 매일 업데이트 되게 해줘." 앞 판은 버튼을 누를 때만 재고 결과를 화면
+ * 상태에만 뒀다 — 새로 고치면 사라지고, 누르지 않으면 아무 값도 없었다.
+ *
+ * 여기서 지키는 것은 세 가지다:
+ *   ① 재는 루프가 **버튼과 크론에서 같다** (라우트는 테스트가 못 읽으니 lib 로 뺐다)
+ *   ② 못 잰 키워드를 숨기지 않는다 — 빈 줄은 「자리가 굳었다」로 읽힌다
+ *   ③ 어제와 비교해 **열린 날**을 잡는다 (그게 매일 재는 이유다)
+ */
+{
+  const { openingOf, openingChanges, OPENING_RUNS_KEEP, CHANGE_LABEL } = require(`${OUT}/analysis/openings.js`)
+  const { scanOpenings, mergeOpeningRuns, keywordOwners, TOP } = require(`${OUT}/analysis/openings-scan.js`)
+
+  // ── 재는 루프. 네이버 호출은 주입한다 (진짜로 부르지 않는다)
+  const NOW = Date.parse('2026-08-19T00:00:00Z')
+  const PAGES = {
+    '용곡동 PT': { items: [{ date: '2026-08-18' }, { date: '2026-07-01' }, { date: null }] },
+    '쌍용동 헬스장': { items: [{ date: '2026-05-01' }, { date: '2026-04-01' }] },
+  }
+  const owners = keywordOwners([
+    { name: '쌍용점', localKeywords: ['쌍용동 헬스장', ' 용곡동 PT ', ''] },
+    { name: '두정점', localKeywords: ['쌍용동 헬스장'] },
+  ])
+  ok(owners.size === 2, `키워드 앞뒤 공백·빈 값을 정리한다 — ${owners.size}개`)
+  ok(owners.get('쌍용동 헬스장').join('·') === '쌍용점·두정점', '한 키워드를 두 지점이 쓰면 둘 다 적는다')
+
+  const deps = {
+    now: () => NOW,
+    top: async (k, n) => {
+      ok(n === TOP, '1페이지 범위를 그대로 넘긴다', String(n))
+      if (!PAGES[k]) throw new Error('네이버가 막았다')
+      return PAGES[k]
+    },
+    recent: async (k) => ({ count: k === '용곡동 PT' ? 22 : 800 }),
+  }
+  const scan = await scanOpenings(['용곡동 PT', '쌍용동 헬스장', '없는 키워드'], owners, deps)
+  ok(scan.rows.length === 2, `잰 줄만 표에 넣는다 — ${scan.rows.length}줄`)
+  ok(scan.failed.join() === '없는 키워드', '못 잰 키워드를 숨기지 않는다', scan.failed.join())
+  ok(scan.rows[0].keyword === '용곡동 PT' && scan.rows[0].tier === 'open-quiet', '열린 자리가 맨 위', scan.rows[0].tier)
+  ok(scan.rows[0].stores.join() === '쌍용점', '어느 지점 키워드인지 함께 준다')
+  ok(scan.rows[0].dated === 2 && scan.rows[0].sampled === 3, `날짜를 읽은 수와 잰 수를 구분한다 — ${scan.rows[0].dated}/${scan.rows[0].sampled}`)
+
+  // 발행량 조회만 실패하면 그 키워드를 버리지 않는다 (등급은 7일 이내만으로도 나온다)
+  const halfBlind = await scanOpenings(['용곡동 PT'], owners, {
+    ...deps,
+    recent: async () => {
+      throw new Error('발행량 조회 실패')
+    },
+  })
+  ok(halfBlind.rows.length === 1 && halfBlind.failed.length === 0, '발행량을 못 읽어도 줄은 남긴다')
+  ok(halfBlind.rows[0].tier === 'open', '발행량 모름 = 조용하다고 하지 않는다', halfBlind.rows[0].tier)
+
+  // ── 어제와 비교 — 매일 재는 이유
+  const row = (keyword, ages, recent30) => ({ ...openingOf({ ages, recent30 }), keyword, stores: [], dated: ages.length, sampled: ages.length })
+  const yesterday = [row('열렸던', [2], 20), row('굳었던', [60], 500), row('그대로', [60], 500)]
+  const today = [row('열렸던', [60], 500), row('굳었던', [1], 20), row('그대로', [60], 500), row('새키워드', [1], 20)]
+  const ch = openingChanges(yesterday, today)
+  ok(ch.get('굳었던') === 'opened', '어제 굳었는데 오늘 열리면 「새로 열림」', ch.get('굳었던'))
+  ok(ch.get('열렸던') === 'shut', '어제 열렸는데 오늘 굳으면 「닫힘」', ch.get('열렸던'))
+  ok(ch.get('그대로') === 'same', '안 바뀐 줄은 그대로')
+  ok(ch.get('새키워드') === 'new', '어제 없던 키워드는 「처음 잼」 — 열렸다고 하지 않는다', ch.get('새키워드'))
+  ok(CHANGE_LABEL.opened === '새로 열림', '화면에 쓰는 말도 한 곳에서 온다')
+  // 등급이 같으면 편수가 늘어도 「달라졌다」고 하지 않는다 (매일 전부 달라지면 알림이 의미를 잃는다)
+  ok(openingChanges([row('k', [1], 20)], [row('k', [1, 2, 3], 20)]).get('k') === 'same', '편수 변화만으로는 알리지 않는다')
+  // 첫 측정에는 비교할 어제가 없다
+  ok(openingChanges(null, today).get('굳었던') === 'new', '첫 측정은 전부 「처음 잼」')
+
+  // ── 기록 쌓기 — 하루 한 줄, 상한까지
+  const many = Array.from({ length: OPENING_RUNS_KEEP }, (_, i) => ({ date: `2026-08-${String(i + 1).padStart(2, '0')}`, tag: i }))
+  const rolled = mergeOpeningRuns(many, { date: '2026-08-20', tag: 'new' }, OPENING_RUNS_KEEP)
+  ok(rolled.length === OPENING_RUNS_KEEP, `상한을 넘기지 않는다 — ${rolled.length}개`)
+  ok(rolled[rolled.length - 1].tag === 'new' && rolled[0].date === '2026-08-02', '오래된 것부터 버린다', rolled[0].date)
+  const sameDay = mergeOpeningRuns([{ date: '2026-08-19', tag: 'cron' }], { date: '2026-08-19', tag: 'user' }, OPENING_RUNS_KEEP)
+  ok(sameDay.length === 1 && sameDay[0].tag === 'user', '같은 날 다시 재면 나중 것이 그날 값이다')
+  ok(mergeOpeningRuns(undefined, { date: '2026-08-19' }, OPENING_RUNS_KEEP).length === 1, '기록이 없어도 첫 줄이 들어간다')
+}
+
+
+/*
  * ─── 홍보 조각이 잘리는 자리에 있으면 통과가 아니다 ────────────────
  *
  * 회원이 나온 제목을 그대로 보여줬다 (2026-08-18):

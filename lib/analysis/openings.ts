@@ -132,6 +132,52 @@ export interface OpeningRow extends Opening {
   sampled: number
 }
 
+/**
+ * 남겨둘 측정 기록 수 — 매일 한 번이면 2주치.
+ *
+ * 자리가 열리고 닫히는 것을 보려면 어제 값이 있어야 한다. 다만 무한정 쌓으면 저장소가
+ * 커지므로 상한을 둔다 (studyRuns 와 같은 방식).
+ */
+export const OPENING_RUNS_KEEP = 14
+
+/** 지난번과 비교해 이 키워드가 어떻게 됐나 */
+export type OpeningChange = 'opened' | 'shut' | 'same' | 'new'
+
+export const CHANGE_LABEL: Record<OpeningChange, string> = {
+  opened: '새로 열림',
+  shut: '닫힘',
+  same: '그대로',
+  new: '처음 잼',
+}
+
+/**
+ * **어제와 무엇이 달라졌나.**
+ *
+ * 매일 재는 이유가 이것이다 — 같은 표를 매일 다시 그리는 게 목적이면 손으로 눌러도 된다.
+ * 값이 있는 것은 **자리가 열린 날을 놓치지 않는 것**이고, 그건 어제 값과 비교해야 나온다.
+ *
+ * 등급 순서(OPENING_ORDER)로만 본다 — 7일 이내 편수가 1편에서 2편으로 늘어난 것까지
+ * 「달라졌다」고 알리면 매일 전부가 달라진 것으로 나와서 알림이 의미를 잃는다.
+ */
+export function openingChanges(
+  prev: { keyword: string; tier: OpeningTier }[] | null | undefined,
+  next: { keyword: string; tier: OpeningTier }[]
+): Map<string, OpeningChange> {
+  const out = new Map<string, OpeningChange>()
+  const before = new Map((prev ?? []).map((r) => [r.keyword, r.tier]))
+  for (const r of next) {
+    const was = before.get(r.keyword)
+    if (was === undefined) {
+      out.set(r.keyword, 'new')
+      continue
+    }
+    const from = OPENING_ORDER[was]
+    const to = OPENING_ORDER[r.tier]
+    out.set(r.keyword, to < from ? 'opened' : to > from ? 'shut' : 'same')
+  }
+  return out
+}
+
 /** 표 순서 — 등급 → 7일 이내 많은 순 → 발행량 적은 순 */
 export function sortOpenings(rows: OpeningRow[]): OpeningRow[] {
   return [...rows].sort(

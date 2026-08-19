@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import type { KeywordMetric, PlaceRank, Store } from '@/lib/types'
+import type { KeywordMetric, OpeningRun, PlaceRank, Store } from '@/lib/types'
 import { GRADE_LABEL, POST_TYPE_LABEL } from '@/lib/types'
 import {
   AD_HEAVY,
@@ -206,7 +206,16 @@ function sortMetrics(list: KeywordMetric[], mode: Sort, requested: string[] = []
   return copy
 }
 
-export default function KeywordExplorer({ stores, keys }: { stores: Store[]; keys: { search: boolean; searchAd: boolean } }) {
+export default function KeywordExplorer({
+  stores,
+  keys,
+  openingRuns,
+}: {
+  stores: Store[]
+  keys: { search: boolean; searchAd: boolean }
+  /** 매일 도는 크론이 쌓은 「지금 뚫릴 만한 키워드」 측정 기록 (오래된 것 → 최신) */
+  openingRuns?: OpeningRun[]
+}) {
   const [raw, setRaw] = useState('')
   const [rows, setRows] = useState<KeywordMetric[] | null>(null)
   const [sort, setSort] = useState<Sort>('competition')
@@ -634,7 +643,11 @@ export default function KeywordExplorer({ stores, keys }: { stores: Store[]; key
         </ol>
       </div>
 
-      <OpeningsCard hasStores={stores.length > 0} />
+      <OpeningsCard
+        hasStores={stores.length > 0}
+        saved={openingRuns?.[openingRuns.length - 1] ?? null}
+        previous={openingRuns && openingRuns.length > 1 ? openingRuns[openingRuns.length - 2] : null}
+      />
 
       {/*
         「키워드 조회」와 「지역 키워드 조합」을 하나로 합쳤다.

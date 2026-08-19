@@ -62,6 +62,8 @@ const TARGETS = [
   // 저장소 — mutate 오용 가드를 테스트한다 (2026-08-13)
   // 키워드 자리 판단 — 앱과 스크립트가 같은 함수를 쓴다 (2026-08-18)
   'lib/analysis/openings.ts',
+  // 재는 루프 — 버튼과 크론이 같은 함수를 쓴다 (2026-08-19). 네이버 호출은 주입받는다
+  'lib/analysis/openings-scan.ts',
   'lib/store.ts',
   'lib/seed/stores.ts',
 ]
