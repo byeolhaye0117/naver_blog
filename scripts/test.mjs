@@ -49,6 +49,8 @@ const TARGETS = [
   'lib/writing/evidence.ts',
   'lib/writing/templates.ts',
   'lib/writing/rotation.ts',
+  // 요청 반영 검사 (2026-08-19)
+  'lib/writing/request.ts',
   'lib/writing/next-action.ts',
   'lib/ai/llm.ts',
   'lib/ai/prompt.ts',

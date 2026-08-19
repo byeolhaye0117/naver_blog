@@ -6570,5 +6570,85 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(edge.level === 'pass' || edge.value.includes('잘립니다'), '경계에서 값이 뜻을 밝힌다', edge.value)
 }
 
+
+/*
+ * ─── 요청한 내용이 글에 들어갔는가 ──────────────────────────────
+ *
+ * 회원이 요청과 결과를 나란히 보여줬다 (2026-08-19): "요청사항이 거의 반영되지 않았어."
+ * 아래 REQ·BODY 는 그 실제 요청과 그때 나온 글의 소제목이다.
+ */
+{
+  const R = require(`${OUT}/writing/request.js`)
+  const REQ =
+    '24시 내용 빼주고 지금 PT를 등록해야하는 이유, PT 를 추천드리는 사람들, PT등록할때 망설이는 점 (효과, 가격, 트레이너가 안맞을까봐) 을 해결하는 방식으로 글을 작성해줘'
+
+  const topics = R.requestedTopics(REQ)
+  const texts = topics.map((x) => x.text)
+  ok(topics.length === 6, `요청을 항목 6개로 읽는다 — ${topics.length}`, texts.join(' / '))
+  /*
+   * 「24시 … 빼주고 지금 PT를 등록해야하는 이유」는 한 조각에 빼달라와 써달라가 함께 있다.
+   * 앞 판은 조각째 버려서 「등록해야 하는 이유」가 사라졌다.
+   */
+  ok(texts.some((x) => x.includes('등록해야하는 이유')), '「빼주고」 뒤의 요청을 살린다', texts.join(' / '))
+  ok(!texts.some((x) => x.includes('24시')), '빼달라고 한 것은 항목으로 세지 않는다')
+  // 괄호 열거는 각각 센다 — 셋을 나열한 것은 셋 다 답해 달라는 뜻이다
+  ok(texts.includes('효과') && texts.includes('가격'), '괄호 안 열거를 각각 센다', texts.join(' / '))
+  ok(!texts.some((x) => x.includes('작성해줘')), '마무리 문구를 항목으로 세지 않는다', texts.join(' / '))
+  // 「효과」의 「과」를 조사로 떼면 낱말이 사라진다 (실제로 그랬다)
+  ok(R.topicWords('효과').includes('효과'), '두 글자 낱말을 조사로 깎지 않는다', R.topicWords('효과').join(','))
+
+  const MISSING_BODY = [
+    '## 등록을 망설이게 만드는 세 가지',
+    '효과가 있을지, 가격이 부담되지 않을지 걱정하시더라고요.',
+    '## 다이어트 시작하는 첫 달, 이렇게 잡으세요',
+    '체중계 숫자보다 몸 둘레를 재는 걸 권합니다.',
+    '## 쌍용동 PT, 이런 환경에서 진행됩니다',
+    '웨이트실과 프리웨이트실이 나뉘어 있습니다.',
+  ].join('\n')
+  const cov = R.coverageOf(topics, MISSING_BODY)
+  ok(cov.missing.length === 3, `빠진 항목 3개를 찾는다 — ${cov.missing.length}`, cov.missing.map((m) => m.text).join(' / '))
+  ok(
+    cov.missing.some((m) => m.text.includes('추천드리는 사람들')),
+    '「추천드리는 사람들」이 없다는 것을 잡는다'
+  )
+  ok(cov.rate === 50, `반영률을 센다 — ${cov.rate}%`)
+
+  // 요청을 다 다룬 글은 통과
+  const FULL_BODY = `${MISSING_BODY}\n## 지금 등록해야하는 이유\n마감이 있어서요.\n## PT를 추천드리는 사람들\n혼자 하다 자세가 무너지는 분들.\n## 트레이너가 안맞을까봐 걱정되신다면\n첫 수업 전에 맞춰봅니다.`
+  ok(R.coverageOf(topics, FULL_BODY).missing.length === 0, '다 다루면 빠진 것이 없다')
+
+  // ── 검수 항목으로 실제로 걸리는가 ──
+  const body = ['[이미지: 대표]', '안녕하세요, MTO 피트니스 쌍용점입니다. 쌍용동 PT 안내입니다.', '',
+    '[이미지: 2]', MISSING_BODY, '자세와 호흡을 봅니다. ' + '가'.repeat(1700)].join('\n')
+  const withReq = checkPost({ type: 'promo', title: '쌍용동 PT 45,000원으로 먼저 받아보세요', body,
+    mainKeyword: '쌍용동 PT', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점', request: REQ })
+  const item = withReq.items.find((i) => i.id === 'request-coverage')
+  ok(item && item.level === 'fail', '절반 넘게 빠지면 즉시수정', item?.level)
+  ok(item.weight === 5, '요청은 화자와 같은 무게로 본다', String(item?.weight))
+  ok(item.value.includes('추천드리는 사람들'), '빠진 항목을 값에 적는다', item?.value)
+  ok(item.hint.includes('본문 소제목이 되어야'), '무엇을 해야 하는지 알려준다')
+
+  // 요청이 없으면 이 항목을 아예 만들지 않는다 (없는 요구로 점수를 깎지 않는다)
+  const noReq = checkPost({ type: 'promo', title: '쌍용동 PT 45,000원으로 먼저 받아보세요', body,
+    mainKeyword: '쌍용동 PT', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' })
+  ok(!noReq.items.some((i) => i.id === 'request-coverage'), '요청이 없으면 항목을 만들지 않는다')
+
+  /*
+   * 지시문 쪽도 같은 말을 해야 한다. 이 문구는 시스템 지시문이 아니라 **요청 블록**
+   * (buildUserPrompt)에 들어간다 — 요청은 맨 마지막에 둬야 모델이 가장 강하게 따른다.
+   */
+  const up = buildUserPrompt({
+    type: 'promo',
+    mainKeyword: '쌍용동 PT',
+    subKeywords: [],
+    store: { id: 's', name: '쌍용점', legalName: 'MTO 피트니스 쌍용점' },
+    request: REQ,
+  })
+  ok(up.includes('써달라고 한 것은 그대로 본문 소제목이 된다'), '요청 블록이 소제목을 정한다고 말한다')
+  ok(up.includes('요청과 무관한 구간은'), '요청과 무관한 구간을 빼라고 한다')
+  ok(up.includes('회원이 쓸 수 없다'), '왜 그래야 하는지 말한다')
+  ok(up.includes('「상담 때 알려드릴게요」로 넘기면 해결이 아니다'), '해결을 미루지 말라고 한다')
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
