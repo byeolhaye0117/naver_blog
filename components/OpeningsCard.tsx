@@ -1,9 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Badge, Card, btnPrimary } from './ui'
-import { FRESH_DAYS, QUIET_MAX, type OpeningTier } from '@/lib/analysis/openings'
+import {
+  CHANGE_LABEL,
+  FRESH_DAYS,
+  QUIET_MAX,
+  openingChanges,
+  type OpeningChange,
+  type OpeningTier,
+} from '@/lib/analysis/openings'
+import type { OpeningRun } from '@/lib/types'
 
 interface Row {
   keyword: string
@@ -35,12 +43,34 @@ const TONE: Record<OpeningTier, 'good' | 'warn' | 'bad'> = {
  * 무엇을 근거로 나눴는지 화면에 적는다 — 등급만 보여주면 확인할 수 없고, 확인할 수 없는
  * 판단은 믿을 근거가 없다.
  */
-export default function OpeningsCard({ hasStores }: { hasStores: boolean }) {
+export default function OpeningsCard({
+  hasStores,
+  saved,
+  previous,
+}: {
+  hasStores: boolean
+  /** 매일 도는 크론이 남긴 마지막 측정 (없으면 아직 한 번도 안 돈 것) */
+  saved?: OpeningRun | null
+  /** 그 전 측정 — 「어제와 무엇이 달라졌나」를 보려고 함께 받는다 */
+  previous?: OpeningRun | null
+}) {
   const [busy, setBusy] = useState(false)
-  const [rows, setRows] = useState<Row[] | null>(null)
-  const [failed, setFailed] = useState<string[]>([])
-  const [at, setAt] = useState<string | null>(null)
+  const [rows, setRows] = useState<Row[] | null>((saved?.rows as Row[] | undefined) ?? null)
+  const [failed, setFailed] = useState<string[]>(saved?.failed ?? [])
+  const [at, setAt] = useState<string | null>(saved?.at ?? null)
+  const [by, setBy] = useState<'cron' | 'user' | null>(saved?.by ?? null)
   const [error, setError] = useState<string | null>(null)
+
+  /*
+   * 어제와 비교한다. **매일 재는 값이 있는 이유가 이것이다** — 같은 표를 다시 그리는 게
+   * 목적이면 손으로 눌러도 된다. 열린 자리는 며칠 만에 다시 굳으니, 열린 날을 놓치지 않는
+   * 것이 값이다. 회원이 방금 다시 잰 경우에도 어제 값과 비교한다 (기준은 늘 지난 측정).
+   */
+  const changes = useMemo(
+    () => (rows ? openingChanges(previous?.rows ?? null, rows) : new Map<string, OpeningChange>()),
+    [rows, previous]
+  )
+  const newlyOpen = rows?.filter((r) => changes.get(r.keyword) === 'opened') ?? []
 
   async function run() {
     setBusy(true)
@@ -56,6 +86,7 @@ export default function OpeningsCard({ hasStores }: { hasStores: boolean }) {
       setRows(json.rows as Row[])
       setFailed(json.failed ?? [])
       setAt(json.measuredAt ?? null)
+      setBy('user')
     } catch (e) {
       setError(e instanceof Error ? e.message : '재지 못했습니다.')
     } finally {
@@ -92,12 +123,24 @@ export default function OpeningsCard({ hasStores }: { hasStores: boolean }) {
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button type="button" onClick={run} disabled={busy} className={btnPrimary}>
-            {busy ? '재는 중… (키워드당 2~4초)' : rows ? '다시 재기' : '전 지점 키워드 재기'}
+            {busy ? '재는 중… (키워드당 2~4초)' : rows ? '지금 다시 재기' : '전 지점 키워드 재기'}
           </button>
-          {at && (
+          {/*
+            언제·누가 잰 값인지 밝힌다. 자동으로 도는 줄 모르면 회원은 매일 버튼을 누르고,
+            버튼을 누른 값인 줄 모르면 자동이 안 돈다고 오해한다.
+          */}
+          {at ? (
             <span className="muted text-[11px]">
-              {new Date(at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} 기준
+              {new Date(at).toLocaleString('ko-KR', {
+                month: 'numeric',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })}{' '}
+              기준 · {by === 'user' ? '직접 재기' : '매일 아침 6시 자동 측정'}
             </span>
+          ) : (
+            <span className="muted text-[11px]">매일 아침 6시에 자동으로 잽니다 (첫 측정 전입니다)</span>
           )}
         </div>
       )}
@@ -110,6 +153,17 @@ export default function OpeningsCard({ hasStores }: { hasStores: boolean }) {
 
       {rows && rows.length > 0 && (
         <>
+          {/*
+            매일 재는 값의 쓸모는 「어제는 굳어 있었는데 오늘 열렸다」를 잡는 것이다.
+            열린 자리는 며칠 만에 다시 굳으니, 이 줄이 곧 「오늘 이 키워드로 쓰세요」다.
+          */}
+          {newlyOpen.length > 0 && (
+            <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] leading-relaxed text-emerald-900 dark:text-emerald-100">
+              <b>지난 측정보다 새로 열린 자리 {newlyOpen.length}개</b> — {newlyOpen.map((r) => r.keyword).join(' · ')}.
+              열린 자리는 며칠 만에 다시 굳습니다. 오늘 쓸 글이 있다면 여기서 고르세요.
+            </p>
+          )}
+
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[620px] text-[12px]">
               <thead>
@@ -130,7 +184,21 @@ export default function OpeningsCard({ hasStores }: { hasStores: boolean }) {
                     <td className="py-1.5 pr-2">
                       <Badge tone={TONE[r.tier]}>{r.label}</Badge>
                     </td>
-                    <td className="py-1.5 pr-2 font-semibold">{r.keyword}</td>
+                    <td className="py-1.5 pr-2 font-semibold">
+                      {r.keyword}
+                      {/* 지난 측정과 달라진 줄만 표시한다 — 전부 표시하면 「그대로」가 표를 덮는다 */}
+                      {(changes.get(r.keyword) === 'opened' || changes.get(r.keyword) === 'shut') && (
+                        <span
+                          className={`ml-1.5 align-middle text-[10.5px] font-bold ${
+                            changes.get(r.keyword) === 'opened'
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : 'text-rose-700 dark:text-rose-300'
+                          }`}
+                        >
+                          {CHANGE_LABEL[changes.get(r.keyword) as OpeningChange]}
+                        </span>
+                      )}
+                    </td>
                     <td className="muted py-1.5 pr-2">{r.stores.join('·') || '—'}</td>
                     <td className="tnum py-1.5 pr-2 text-right font-bold">{r.fresh}편</td>
                     <td className="tnum py-1.5 pr-2 text-right">{r.youngest === null ? '—' : `${r.youngest}일`}</td>
@@ -160,7 +228,11 @@ export default function OpeningsCard({ hasStores }: { hasStores: boolean }) {
             대변하지 못해서, 그 숫자로 나누면 없는 근거를 만드는 셈이 됩니다.
             <br />
             날짜를 읽은 글이 적은 키워드는 근거가 약합니다 (잰 글 수와 날짜 확인 수는 표 아래 원자료에
-            남습니다). 자리는 바뀌니 2주에 한 번쯤 다시 재세요.
+            남습니다).
+            <br />
+            <b>매일 아침 6시에 자동으로 다시 잽니다</b> — 열린 자리는 며칠 만에 굳으므로 생각날 때 눌러서 재면
+            대부분 놓칩니다. 「새로 열림」·「닫힘」은 <b>지난 측정과 비교한 등급 변화</b>이고, 최근 2주치를 남깁니다.
+            네이버 호출이 막힌 날은 저장하지 않습니다 (빈 표로 덮으면 전부 굳은 자리로 보입니다).
           </p>
 
           {failed.length > 0 && (

@@ -1,4 +1,5 @@
 import type { PlaceReview } from './analysis/reviews'
+import type { OpeningRow } from './analysis/openings'
 
 // 앱 전체에서 쓰는 도메인 타입.
 
@@ -264,6 +265,28 @@ export interface DB {
    * 그건 크론 한 번에 들어가지 않는다.
    */
   studyPosts?: StudyPostCache[]
+  /**
+   * 「지금 뚫릴 만한 키워드」 측정 기록 — 매일 크론이 하나씩 쌓는다 (app/api/cron/openings).
+   *
+   * 회원 요청 (2026-08-19): "자동으로 매일 업데이트 되게 해줘." 앞 판은 버튼을 누를 때만
+   * 재고 결과를 화면 상태에만 뒀다 — 새로 고치면 사라졌고, 회원이 누르지 않으면 아무 값도
+   * 없었다. 저장해 두면 ①화면을 열자마자 어제 값이 보이고 ②어제와 비교해 **자리가 열린
+   * 날**을 알 수 있다.
+   */
+  openingRuns?: OpeningRun[]
+}
+
+/** 키워드 한 바퀴 측정 (lib/analysis/openings.ts 의 OpeningRow 를 그대로 저장한다) */
+export interface OpeningRun {
+  /** 잰 시각 (ISO) */
+  at: string
+  /** YYYY-MM-DD — 하루에 한 줄만 남긴다 */
+  date: string
+  /** 누가 쟀나 — 자동(크론)인지 회원이 누른 것인지 화면에 밝힌다 */
+  by: 'cron' | 'user'
+  rows: OpeningRow[]
+  /** 못 잰 키워드 — 빈 줄로 두면 「자리가 굳었다」로 오해한다 */
+  failed: string[]
 }
 
 /** 하루치 조사 (lib/analysis/study.ts 의 StudyRun 과 같은 모양) */

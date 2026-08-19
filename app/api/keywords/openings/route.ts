@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server'
-import { readDB } from '@/lib/store'
-import { recentBlogCount, topBlogPosts } from '@/lib/naver/blogsection'
-import { ageDaysOf, openingOf, sortOpenings, type OpeningRow } from '@/lib/analysis/openings'
+import { mutate, readDB } from '@/lib/store'
+import { OPENING_RUNS_KEEP } from '@/lib/analysis/openings'
+import { keywordOwners, mergeOpeningRuns, scanOpenings } from '@/lib/analysis/openings-scan'
+import type { OpeningRun } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 /** 키워드마다 목록 1콜 + 발행량 조회라 시간이 걸린다 */
 export const maxDuration = 300
 
-/** 1페이지로 볼 범위 */
-const TOP = 10
 /** 한 번에 잴 키워드 수 — 넘치면 화면에서 다음 묶음을 요청한다 */
 const MAX_KEYWORDS = 24
 
@@ -26,17 +25,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as { keywords?: string[] }
     const db = await readDB()
-
-    /** 키워드 → 어느 지점 것인지 */
-    const owners = new Map<string, string[]>()
-    for (const s of db.stores) {
-      for (const raw of s.localKeywords ?? []) {
-        const k = raw.trim()
-        if (!k) continue
-        if (!owners.has(k)) owners.set(k, [])
-        owners.get(k)!.push(s.name)
-      }
-    }
+    const owners = keywordOwners(db.stores)
     // 화면에서 고른 것만 재도 되게 한다 (다시 재기·묶음 나누기)
     const picked = (body.keywords ?? []).map((k) => k.trim()).filter(Boolean)
     const list = (picked.length ? picked : [...owners.keys()]).slice(0, MAX_KEYWORDS)
@@ -48,36 +37,33 @@ export async function POST(req: Request) {
       )
     }
 
-    const now = Date.now()
-    const rows: OpeningRow[] = []
-    const failed: string[] = []
-    for (const keyword of list) {
-      try {
-        const [page, recent] = await Promise.all([
-          topBlogPosts(keyword, TOP),
-          recentBlogCount(keyword).catch(() => ({ count: null as number | null })),
-        ])
-        const ages = page.items
-          .map((it) => ageDaysOf(it.date, now))
-          .filter((a): a is number => a !== null)
-        const base = openingOf({ ages, recent30: recent.count ?? null })
-        rows.push({
-          ...base,
-          keyword,
-          stores: owners.get(keyword) ?? [],
-          dated: ages.length,
-          sampled: page.items.length,
-        })
-      } catch (e) {
-        // 못 잰 키워드는 숨기지 않는다 — 빈 줄로 보이면 「자리가 굳었다」로 오해한다
-        failed.push(keyword)
-        console.error('[openings] 못 쟀습니다', keyword, e instanceof Error ? e.message : e)
+    // 재는 부분은 크론과 **같은 함수**다 (lib/analysis/openings-scan.ts)
+    const { rows, failed } = await scanOpenings(list, owners)
+
+    /*
+     * 눌러서 잰 것도 저장한다.
+     *
+     * 앞 판은 결과를 화면 상태에만 뒀다 — 새로 고치면 사라졌다. 저장해 두면 다음에 화면을
+     * 열자마자 보이고, 매일 도는 크론과 같은 자리에 쌓여서 「어제와 비교」가 이어진다.
+     * 다만 **전체를 잰 경우만** 남긴다 — 몇 개만 다시 잰 결과를 그날 값으로 덮으면 표가
+     * 반쪽이 된다.
+     */
+    if (rows.length && !picked.length) {
+      const fresh: OpeningRun = {
+        at: new Date().toISOString(),
+        date: new Date().toISOString().slice(0, 10),
+        by: 'user',
+        rows,
+        failed,
       }
+      await mutate((cur) => {
+        cur.openingRuns = mergeOpeningRuns(cur.openingRuns, fresh, OPENING_RUNS_KEEP)
+      })
     }
 
     return NextResponse.json({
       measuredAt: new Date().toISOString(),
-      rows: sortOpenings(rows),
+      rows,
       failed,
       /** 지점에 저장된 키워드가 한 번에 재는 수보다 많으면 알려준다 */
       more: Math.max(0, owners.size - list.length),
