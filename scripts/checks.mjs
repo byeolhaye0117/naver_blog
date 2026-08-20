@@ -6511,6 +6511,57 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
 
 
 /*
+ * ─── 저장했는데 읽을 때 사라지는 항목이 없는지 (2026-08-19) ─────────
+ *
+ * `openingRuns` 를 저장하고도 화면에는 「첫 측정 전입니다」가 떴다. 원인은 `normalize()` —
+ * **여기 적힌 항목만 옮기고 나머지는 조용히 버린다.** 저장은 성공했고 다음 읽기에서
+ * 사라졌으니, mutate 오용(2026-08-13)과 같은 모양의 사고다: **성공으로 보이는 데이터 손실.**
+ *
+ * 그래서 목록을 한 곳(DB_LIST_KEYS)으로 모으고, 그 목록이 `lib/types.ts` 의 DB 인터페이스와
+ * 어긋나면 여기서 실패하게 한다. 다음에 새 항목을 만드는 사람이 「한 군데 빠뜨리는」 실수를
+ * 타입 검사가 못 잡기 때문에, 사람이 아니라 테스트가 잡아야 한다.
+ */
+{
+  const { readFileSync } = require('node:fs')
+  const { join } = require('node:path')
+  const { DB_LIST_KEYS } = require(`${OUT}/store.js`)
+
+  const types = readFileSync(join(process.cwd(), 'lib/types.ts'), 'utf8')
+  const block = types.match(/export interface DB \{([\s\S]*?)\n\}/)
+  ok(Boolean(block), 'lib/types.ts 에서 DB 인터페이스를 찾는다')
+
+  // 주석을 걷어내고 「이름?: 타입[]」 꼴만 뽑는다
+  const body = block[1].replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  const declared = [...body.matchAll(/^\s*(\w+)\??:\s*[^\n]*\[\]/gm)].map((m) => m[1])
+  ok(declared.length > 5, `DB 목록 항목을 읽었다 — ${declared.length}개`)
+
+  const missing = declared.filter((k) => k !== 'stores' && !DB_LIST_KEYS.includes(k))
+  ok(
+    missing.length === 0,
+    'DB 의 모든 목록 항목이 store 의 DB_LIST_KEYS 에 있다 (없으면 저장해도 읽을 때 사라진다)',
+    missing.join(' · ')
+  )
+  const extra = DB_LIST_KEYS.filter((k) => !declared.includes(k))
+  ok(extra.length === 0, 'DB_LIST_KEYS 에 없는 항목을 만들지 않는다', extra.join(' · '))
+
+  /*
+   * 실제로 살아 돌아오는지도 본다 — 목록에 이름을 적는 것과 값이 보존되는 것은 다른 일이다.
+   * (저장 경로를 건드리지 않는다. 테스트가 회원의 data/db.json 을 덮어쓰면 안 된다.)
+   */
+  const { normalizeDB } = require(`${OUT}/store.js`)
+  const sample = { stores: [{ id: 's', name: '테스트점' }] }
+  for (const k of DB_LIST_KEYS) sample[k] = [{ mark: k }]
+  const back = normalizeDB(sample)
+  const lost = DB_LIST_KEYS.filter((k) => back[k]?.[0]?.mark !== k)
+  ok(lost.length === 0, '읽기 정규화를 거쳐도 항목이 사라지지 않는다', lost.join(' · '))
+  ok(back.openingRuns?.[0]?.mark === 'openingRuns', '이 사고의 원본 항목(openingRuns)이 살아 돌아온다')
+  // 모르는 항목은 여전히 버린다 (백업 파일이 아닌 것을 통째로 받아들이지 않는다)
+  ok(normalizeDB({ ...sample, 엉뚱한것: [1] }).엉뚱한것 === undefined, '모르는 항목은 받아들이지 않는다')
+  ok(normalizeDB(null).openingRuns.length === 0, '값이 없으면 빈 목록으로 시작한다')
+}
+
+
+/*
  * ─── 지금 뚫릴 만한 자리인가 (openings) ──────────────────────────
  *
  * 회원 제안으로 7일 이내 진입 글을 재보니 **글의 형태로는 안 갈렸다**. 그래서 글쓰기 규칙을
