@@ -7177,5 +7177,62 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
 }
 
 
+/*
+ * ─── 정보글에 홍보 표지가 박히나 (2026-08-20) ────────────────────
+ *
+ * 회원 질문: "정보성 블로그에 상호명이 들어가거나 홍보성이 되는(업체명·스마트플레이스 링크·
+ * 전화번호 등) 문구가 들어가?" 들어가고 있었다 — 지시문이 전화번호를 주고 있었다.
+ *
+ * 1페이지 정보형 글 4편에는 전화번호가 0편(후기형 45% · 일상형 43%), 가격·이벤트도 0편이었다.
+ * 그래서 정보글에는 전화번호를 **주지 않고**, 본문에 박히면 검수가 알린다.
+ * 상호명은 잡지 않는다 — 누가 쓴 글인지 밝히는 것은 홍보가 아니다.
+ */
+{
+  const store = { id: 's', name: '쌍용점', legalName: 'MTO 피트니스 쌍용점', phone: '010-2455-2896', reserveUrl: 'https://vo.la/Zbynx' }
+  const infoPrompt = buildUserPrompt({ type: 'info', mainKeyword: '헬스 초보 운동 순서', localKeyword: '쌍용동 헬스장', subKeywords: [], store })
+  ok(!infoPrompt.includes('- 전화: 010-2455-2896'), '정보글 지시문에 전화번호를 주지 않는다')
+  ok(infoPrompt.includes('전화번호를 쓰지 않는다'), '왜 안 주는지 지시문에 적는다')
+  ok(infoPrompt.includes('예약 링크: https://vo.la/Zbynx'), '예약 링크는 그대로 준다 (1페이지 정보글 4편 중 3편이 쓴다)')
+  ok(infoPrompt.includes('정식 상호명: MTO 피트니스 쌍용점'), '상호명은 그대로 준다 — 누가 쓴 글인지는 밝혀야 한다')
+
+  const promoPrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: [], store })
+  ok(promoPrompt.includes('- 전화: 010-2455-2896'), '홍보글에는 전화번호를 그대로 준다')
+
+  const sys = buildSystemPrompt('info')
+  ok(sys.includes('예약 링크만 쓰고 전화번호는 쓰지 않는다'), '골격도 같은 말을 한다')
+
+  // ── 검수: 본문에 전화번호가 박히면 알린다
+  /* 정보글 표본 — 이 항목만 보므로 골격은 최소로 둔다 */
+  const infoPost = {
+    type: 'info',
+    title: '헬스 초보 운동 순서, 뭐부터 해야 할까요?',
+    mainKeyword: '헬스 초보 운동 순서',
+    localKeyword: '쌍용동 헬스장',
+    subKeywords: [],
+    legalName: 'MTO 피트니스 쌍용점',
+    tags: ['헬스초보', '운동순서'],
+    body: [
+      '안녕하세요, MTO 피트니스 쌍용점입니다.',
+      '헬스 초보 운동 순서를 물어보시는 분이 많아서 정리해 드립니다.',
+      '## 무엇부터 하면 되나',
+      '가'.repeat(600),
+      '## 상담을 받고 싶다면',
+      '예약 링크로 연락 주시면 안내해 드릴게요. MTO 피트니스 쌍용점에서 기다리겠습니다.',
+    ].join('\n'),
+  }
+  const phoneItem = (patch) => checkPost({ ...infoPost, ...patch }).items.find((i) => i.id === 'info-phone')
+  ok(phoneItem({}), '정보글에는 이 항목이 생긴다')
+  ok(phoneItem({}).level === 'pass', '전화번호가 없으면 통과')
+  const withPhone = phoneItem({ body: infoPost.body + '\n문의는 010-2455-2896 으로 주세요.' })
+  ok(withPhone.level === 'warn', `전화번호가 있으면 주의 — ${withPhone.level}`)
+  ok(withPhone.value.includes('010-2455-2896'), '어느 번호가 걸렸는지 보여준다', withPhone.value)
+  ok(withPhone.hint.includes('0편'), '왜 그런지 실측으로 말한다')
+  ok(!checkPost({ ...goodPromo, body: goodPromo.body + '\n010-2455-2896' }).items.some((i) => i.id === 'info-phone'), '홍보글에는 이 항목을 만들지 않는다')
+  // 주의 하나로 점수가 무너지지 않는다 (표본 4편짜리 근거다)
+  const a = checkPost({ ...infoPost }).score
+  const b = checkPost({ ...infoPost, body: infoPost.body + '\n010-2455-2896' }).score
+  ok(a - b <= 3, `표본이 작은 근거라 점수를 크게 깎지 않는다 — ${a} → ${b}`)
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
