@@ -77,7 +77,7 @@ export default function GuidePage() {
               {
                 t: 'C-Rank — 출처 신뢰도',
                 d: '문서가 아니라 블로그 자체를 평가합니다. 한 주제로 꾸준히 양질의 글을 쌓은 블로그의 글이 상위에 갑니다. 2025~26년 들어 주제 집중도가 핵심 평가요소로 강화됐습니다.',
-                m: '헬스·운동·지역생활 범위를 벗어난 글을 섞지 않습니다. 카테고리는 2~3개 이내로 집중.',
+                m: '한 주제로 꾸준히 쌓는 것이 공식 설명입니다. 다만 우리 판에서는 집중도가 문턱이 아니었습니다 — 아래 「상위 블로그는 잡블로그였습니다」를 보세요.',
               },
               {
                 t: 'D.I.A. / D.I.A.+ — 문서 품질·의도 분석',
@@ -317,6 +317,85 @@ export default function GuidePage() {
             ② 같은 키워드로 계속 씁니다 — 자리는 주당 11편 나고, 들어간 글의 절반은 36일 이상 된 글입니다.
             ③ 발행 후 최소 5~6주는 순위를 지켜봅니다. <strong>「몇 편이면 들어간다」는 재보지 않았으니 말하지
             않습니다.</strong>
+          </p>
+        </Card>
+
+        {/* ─── 상위 블로그와 블로그 단위 비교 ─── */}
+        <Card
+          id="peers"
+          title="상위 블로그는 잡블로그였습니다"
+          subtitle="상위 5편의 블로그 13곳을 블로그 단위로 재서 우리와 비교했습니다 (2026-08-20). 쌍용동 헬스장·두정동 헬스장·쌍용동 PT."
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[540px] text-[12px]">
+              <thead>
+                <tr className="muted bd border-b text-left">
+                  <th className="py-1.5 pr-3 font-semibold">항목</th>
+                  <th className="py-1.5 pr-3 text-right font-semibold">상위 13곳 중간값</th>
+                  <th className="py-1.5 pr-3 text-right font-semibold">우리</th>
+                  <th className="py-1.5 font-semibold">읽는 법</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['헬스·운동 글 비중', '10%', '87%', '집중도가 문턱이 아닙니다'],
+                  ['이웃', '481', '4,231', '우리가 8.8배'],
+                  ['누적 방문자', '36,446', '269,750', '우리가 7.4배'],
+                  ['블로그 나이', '1.7년', '4.8년', '오래된 게 유리하지 않습니다'],
+                  ['전체 글 수', '101편', '278편', '우리가 많습니다'],
+                  ['글당 댓글', '3.3', '9.2', '우리가 많습니다'],
+                  ['글당 공감', '12.4', '36.6', '우리가 많습니다'],
+                  ['오늘 방문자', '43명', '6명', '우리가 1/7 — 뒤진 항목'],
+                  ['주당 발행', '3.1편', '1.3편', '우리가 절반 — 뒤진 항목'],
+                  ['후기·체험 글', '13곳 중 12곳', '0편', '빈칸'],
+                ].map((row) => (
+                  <tr key={row[0]} className="bd border-b last:border-0 align-top">
+                    <td className="py-1.5 pr-3 font-semibold whitespace-nowrap">{row[0]}</td>
+                    <td className="tnum py-1.5 pr-3 text-right">{row[1]}</td>
+                    <td className="tnum py-1.5 pr-3 text-right font-bold">{row[2]}</td>
+                    <td className="py-1.5">{row[3]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-rose-900 dark:text-rose-200">
+            <strong className="font-bold">이 화면이 적어둔 조언 하나가 뒤집혔습니다.</strong>
+            <p className="mt-1.5">
+              위 랭킹 설명에 「헬스·운동 범위를 벗어난 글을 섞지 않는다」고 적어뒀습니다. 그런데 1페이지를 잡고 있는
+              블로그들의 최근 30편을 보니 헬스·운동 글이 <strong>3~33%</strong>뿐이고 나머지는 맛집·일상·체험이었습니다.
+              중간값 <strong>10%</strong>입니다. 우리는 <strong>87%</strong>고, 순위는 우리가 밀립니다.
+            </p>
+            <p className="mt-1.5">
+              그래서 <strong>주제 집중도는 이 판에서 문턱이 아닙니다.</strong> 지금 87%를 굳이 낮출 이유도 없지만,
+              헬스 밖 글을 섞는 것을 두려워할 이유도 없습니다. (C-Rank 자체를 부정하는 것이 아니라, 이 키워드들에서
+              그것이 갈림길이 아니었다는 뜻입니다.)
+            </p>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-emerald-800 dark:text-emerald-200">
+            <strong className="font-bold">우리가 실제로 뒤진 것은 셋입니다.</strong>
+            <p className="mt-1.5">
+              ① <strong>오늘 방문자 6명</strong> (상위 중간 43명) — 이건 결과이지 원인이 아닙니다.
+              ② <strong>주당 1.3편</strong> (상위 중간 3.1편) — 간격 중간값도 2일 대 1일입니다.
+              ③ <strong>후기·체험 글 0편</strong> — 상위 13곳 중 12곳이 쓰는 유형인데 우리 최근 30편에 없습니다.
+            </p>
+            <p className="mt-1.5">
+              다만 <strong>발행 빈도가 순위를 만든다고는 적지 않습니다</strong> — 1~2위 그룹(중간 4.5편/주)과 3~5위
+              그룹(3.1편)이 겹쳤고, 쌍용동 헬스장 1위 블로그는 주 0.6편입니다. 「주 3편 쓰면 오른다」가 아니라
+              「이 판의 절반이 그렇게 쓴다」가 우리가 아는 전부입니다.
+            </p>
+          </div>
+
+          <p className="muted mt-3 text-[11.5px] leading-relaxed">
+            <strong>개설일은 밖에서 볼 수 없습니다</strong> — 가장 오래된 글 날짜를 하한으로 씁니다. 그 값으로도
+            결론은 분명합니다: 두정동 헬스장 <strong>1위 블로그의 첫 글은 2026-06-01</strong>(2.5개월)이고 주 6.5편을
+            씁니다. 반대로 쌍용동 헬스장 1위는 3.6년 · 주 0.6편 · 이웃 121명입니다. <strong>블로그 스펙으로 자리가
+            정해지지 않습니다.</strong>
+            <br />
+            직접 재보시려면 <Link href="/blog" className="text-brand-600 dark:text-brand-100 font-semibold underline">블로그 진단</Link>{' '}
+            화면의 「상위 5편의 블로그와 비교」에 키워드를 넣으세요. 표본은 그때 다시 잽니다.
           </p>
         </Card>
 

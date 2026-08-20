@@ -1,0 +1,400 @@
+{
+  "at": "2026-08-20T03:24:08.756Z",
+  "keywords": [
+    "쌍용동 헬스장",
+    "두정동 헬스장",
+    "쌍용동 PT"
+  ],
+  "rows": [
+    {
+      "blogId": "527mood",
+      "dayVisitors": 12,
+      "totalVisitors": 48090,
+      "buddies": 121,
+      "postCount": 101,
+      "firstPost": "2023-01-19",
+      "ageYears": 3.6,
+      "sampled": 30,
+      "perWeek": 0.6,
+      "gapMedian": 10,
+      "gapMax": 46,
+      "commentAvg": 3.3,
+      "commentMed": 2,
+      "likeAvg": 6.6,
+      "likeMed": 7,
+      "likeRead": 10,
+      "onTopicShare": 3,
+      "types": {
+        "일상·기타": 23,
+        "후기·체험": 7
+      },
+      "searchableOff": 11,
+      "where": [
+        "쌍용동 헬스장 1위",
+        "쌍용동 PT 5위"
+      ]
+    },
+    {
+      "blogId": "jjong_bori",
+      "dayVisitors": 12,
+      "totalVisitors": 16232,
+      "buddies": 81,
+      "postCount": 78,
+      "firstPost": "2025-04-18",
+      "ageYears": 1.3,
+      "sampled": 30,
+      "perWeek": 0.6,
+      "gapMedian": 6,
+      "gapMax": 62,
+      "commentAvg": 1.4,
+      "commentMed": 1,
+      "likeAvg": 1.6,
+      "likeMed": 2,
+      "likeRead": 10,
+      "onTopicShare": 13,
+      "types": {
+        "후기·체험": 15,
+        "일상·기타": 14,
+        "업체·홍보": 1
+      },
+      "searchableOff": 0,
+      "where": [
+        "쌍용동 헬스장 2위"
+      ]
+    },
+    {
+      "blogId": "h1_zero",
+      "dayVisitors": 80,
+      "totalVisitors": 121361,
+      "buddies": 4010,
+      "postCount": 549,
+      "firstPost": "2024-12-03",
+      "ageYears": 1.7,
+      "sampled": 30,
+      "perWeek": 6.1,
+      "gapMedian": 1,
+      "gapMax": 3,
+      "commentAvg": 3.8,
+      "commentMed": 3,
+      "likeAvg": 18.1,
+      "likeMed": 18,
+      "likeRead": 10,
+      "onTopicShare": 3,
+      "types": {
+        "일상·기타": 26,
+        "후기·체험": 4
+      },
+      "searchableOff": 0,
+      "where": [
+        "쌍용동 헬스장 3위",
+        "쌍용동 PT 1위"
+      ]
+    },
+    {
+      "blogId": "als020825",
+      "dayVisitors": 33,
+      "totalVisitors": 70494,
+      "buddies": 569,
+      "postCount": 112,
+      "firstPost": "2023-11-02",
+      "ageYears": 2.8,
+      "sampled": 30,
+      "perWeek": 0.7,
+      "gapMedian": 7,
+      "gapMax": 53,
+      "commentAvg": 9.2,
+      "commentMed": 5,
+      "likeAvg": 12.4,
+      "likeMed": 12,
+      "likeRead": 10,
+      "onTopicShare": 13,
+      "types": {
+        "일상·기타": 20,
+        "업체·홍보": 1,
+        "후기·체험": 9
+      },
+      "searchableOff": 0,
+      "where": [
+        "쌍용동 헬스장 4위"
+      ]
+    },
+    {
+      "blogId": "rudaily_371",
+      "dayVisitors": 47,
+      "totalVisitors": 36446,
+      "buddies": 3495,
+      "postCount": 89,
+      "firstPost": "2025-05-27",
+      "ageYears": 1.2,
+      "sampled": 30,
+      "perWeek": 3.1,
+      "gapMedian": 2,
+      "gapMax": 8,
+      "commentAvg": 23,
+      "commentMed": 22,
+      "likeAvg": 223.4,
+      "likeMed": 236,
+      "likeRead": 10,
+      "onTopicShare": 3,
+      "types": {
+        "후기·체험": 18,
+        "일상·기타": 12
+      },
+      "searchableOff": 0,
+      "where": [
+        "쌍용동 헬스장 5위"
+      ]
+    },
+    {
+      "blogId": "babsebin",
+      "dayVisitors": 43,
+      "totalVisitors": 11293,
+      "buddies": 668,
+      "postCount": 66,
+      "firstPost": "2026-06-01",
+      "ageYears": 0.2,
+      "sampled": 30,
+      "perWeek": 6.5,
+      "gapMedian": 1,
+      "gapMax": 3,
+      "commentAvg": 10.2,
+      "commentMed": 9,
+      "likeAvg": 31.1,
+      "likeMed": 33,
+      "likeRead": 10,
+      "onTopicShare": 3,
+      "types": {
+        "일상·기타": 24,
+        "후기·체험": 5,
+        "업체·홍보": 1
+      },
+      "searchableOff": 0,
+      "where": [
+        "두정동 헬스장 1위"
+      ]
+    },
+    {
+      "blogId": "hje47_",
+      "dayVisitors": 422,
+      "totalVisitors": 770956,
+      "buddies": 4326,
+      "postCount": 1014,
+      "firstPost": "2022-04-20",
+      "ageYears": 4.3,
+      "sampled": 30,
+      "perWeek": 4.8,
+      "gapMedian": 1,
+      "gapMax": 4,
+      "commentAvg": 2.5,
+      "commentMed": 3,
+      "likeAvg": 19.9,
+      "likeMed": 20,
+      "likeRead": 10,
+      "onTopicShare": 3,
+      "types": {
+        "일상·기타": 19,
+        "후기·체험": 11
+      },
+      "searchableOff": 0,
+      "where": [
+        "두정동 헬스장 2위"
+      ]
+    },
+    {
+      "blogId": "hyerannni",
+      "dayVisitors": 177,
+      "totalVisitors": 73882,
+      "buddies": 1804,
+      "postCount": 177,
+      "firstPost": "2025-01-02",
+      "ageYears": 1.6,
+      "sampled": 30,
+      "perWeek": 7,
+      "gapMedian": 1,
+      "gapMax": 1,
+      "commentAvg": 82.2,
+      "commentMed": 83,
+      "likeAvg": 129.6,
+      "likeMed": 142,
+      "likeRead": 10,
+      "onTopicShare": 0,
+      "types": {
+        "업체·홍보": 1,
+        "후기·체험": 15,
+        "일상·기타": 13,
+        "정보·방법": 1
+      },
+      "searchableOff": 0,
+      "where": [
+        "두정동 헬스장 3위"
+      ]
+    },
+    {
+      "blogId": "yotsuba1025",
+      "dayVisitors": 62,
+      "totalVisitors": 19650,
+      "buddies": 481,
+      "postCount": 61,
+      "firstPost": "2026-05-05",
+      "ageYears": 0.3,
+      "sampled": 30,
+      "perWeek": 3.1,
+      "gapMedian": 2,
+      "gapMax": 8,
+      "commentAvg": 15.6,
+      "commentMed": 13,
+      "likeAvg": 30.4,
+      "likeMed": 32,
+      "likeRead": 10,
+      "onTopicShare": 33,
+      "types": {
+        "일상·기타": 16,
+        "후기·체험": 12,
+        "정보·방법": 2
+      },
+      "searchableOff": 0,
+      "where": [
+        "두정동 헬스장 4위"
+      ]
+    },
+    {
+      "blogId": "ghdtjd313",
+      "dayVisitors": 12,
+      "totalVisitors": 30823,
+      "buddies": 81,
+      "postCount": 748,
+      "firstPost": "2023-05-31",
+      "ageYears": 3.2,
+      "sampled": 30,
+      "perWeek": 1.7,
+      "gapMedian": 1,
+      "gapMax": 26,
+      "commentAvg": 0.1,
+      "commentMed": 0,
+      "likeAvg": 0.3,
+      "likeMed": 0,
+      "likeRead": 10,
+      "onTopicShare": 10,
+      "types": {
+        "후기·체험": 17,
+        "일상·기타": 9,
+        "정보·방법": 4
+      },
+      "searchableOff": 0,
+      "where": [
+        "두정동 헬스장 5위"
+      ]
+    },
+    {
+      "blogId": "hoduuuuu0809",
+      "dayVisitors": 33,
+      "totalVisitors": 20937,
+      "buddies": 33,
+      "postCount": 42,
+      "firstPost": "2024-04-04",
+      "ageYears": 2.4,
+      "sampled": 30,
+      "perWeek": 4.1,
+      "gapMedian": 1,
+      "gapMax": 7,
+      "commentAvg": 0.3,
+      "commentMed": 0,
+      "likeAvg": 0.7,
+      "likeMed": 1,
+      "likeRead": 10,
+      "onTopicShare": 17,
+      "types": {
+        "후기·체험": 17,
+        "정보·방법": 4,
+        "일상·기타": 9
+      },
+      "searchableOff": 0,
+      "where": [
+        "쌍용동 PT 2위"
+      ]
+    },
+    {
+      "blogId": "eumbody_",
+      "dayVisitors": 0,
+      "totalVisitors": 271,
+      "buddies": 4,
+      "postCount": 10,
+      "firstPost": "2026-05-12",
+      "ageYears": 0.3,
+      "sampled": 10,
+      "perWeek": 0.6,
+      "gapMedian": 12,
+      "gapMax": 16,
+      "commentAvg": 0,
+      "commentMed": 0,
+      "likeAvg": 10.2,
+      "likeMed": 10,
+      "likeRead": 10,
+      "onTopicShare": 100,
+      "types": {
+        "일상·기타": 9,
+        "정보·방법": 1
+      },
+      "searchableOff": 0,
+      "where": [
+        "쌍용동 PT 3위"
+      ]
+    },
+    {
+      "blogId": "heana_9",
+      "dayVisitors": 59,
+      "totalVisitors": 124998,
+      "buddies": 154,
+      "postCount": 605,
+      "firstPost": "2021-03-04",
+      "ageYears": 5.5,
+      "sampled": 30,
+      "perWeek": 5.6,
+      "gapMedian": 1,
+      "gapMax": 6,
+      "commentAvg": 0.7,
+      "commentMed": 0,
+      "likeAvg": 2.8,
+      "likeMed": 3,
+      "likeRead": 10,
+      "onTopicShare": 10,
+      "types": {
+        "후기·체험": 21,
+        "일상·기타": 7,
+        "업체·홍보": 2
+      },
+      "searchableOff": 0,
+      "where": [
+        "쌍용동 PT 4위"
+      ]
+    },
+    {
+      "blogId": "sulliha8277",
+      "dayVisitors": 6,
+      "totalVisitors": 269750,
+      "buddies": 4231,
+      "postCount": 278,
+      "firstPost": "2021-10-22",
+      "ageYears": 4.8,
+      "sampled": 30,
+      "perWeek": 1.3,
+      "gapMedian": 2,
+      "gapMax": 23,
+      "commentAvg": 9.2,
+      "commentMed": 7,
+      "likeAvg": 36.6,
+      "likeMed": 33,
+      "likeRead": 10,
+      "onTopicShare": 87,
+      "types": {
+        "일상·기타": 20,
+        "업체·홍보": 3,
+        "정보·방법": 7
+      },
+      "searchableOff": 0,
+      "where": [
+        "우리"
+      ]
+    }
+  ]
+}

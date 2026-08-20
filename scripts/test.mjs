@@ -66,6 +66,8 @@ const TARGETS = [
   'lib/analysis/openings-scan.ts',
   // 자리 회전 — 「굳은 자리」가 실제로는 주당 11편 갈리고 있었다 (2026-08-20)
   'lib/analysis/turnover.ts',
+  // 상위 블로그와 블로그 단위 비교 — 발행 간격·글 유형·주제 집중도 (2026-08-20)
+  'lib/analysis/peers.ts',
   'lib/store.ts',
   'lib/seed/stores.ts',
 ]
