@@ -1,12 +1,26 @@
 import { readDB } from '@/lib/store'
 import { keyStatus } from '@/lib/naver/client'
 import { PageHeader } from '@/components/AppShell'
+import { dailyTopFrom, turnoverOf, type Turnover } from '@/lib/analysis/turnover'
+import { keywordOwners } from '@/lib/analysis/openings-scan'
 import KeywordExplorer from './KeywordExplorer'
 
 export const dynamic = 'force-dynamic'
 
 export default async function KeywordsPage() {
   const db = await readDB()
+
+  /*
+   * 자리 회전은 **서버에서 계산해서 넘긴다.**
+   *
+   * 조사 기록(studyRuns)은 하루에 글 수십 편씩 지표까지 들어 있어서 그대로 화면에 넘기면
+   * 수백 KB 가 된다. 화면이 필요한 것은 키워드마다 숫자 몇 개뿐이다.
+   */
+  const turnover: Record<string, Turnover> = {}
+  for (const keyword of keywordOwners(db.stores).keys()) {
+    const t = turnoverOf(dailyTopFrom(db.studyRuns ?? [], keyword))
+    if (t) turnover[keyword] = t
+  }
   return (
     <>
       <PageHeader
@@ -14,7 +28,7 @@ export default async function KeywordsPage() {
         desc="검색량이 아니라 경쟁률을 보세요. 월 검색량 500~5,000 구간 + 낮은 경쟁률이 실제로 1페이지에 갈 수 있는 자리입니다. API 키가 없어도 검색량·발행량을 직접 넣으면 같은 기준으로 등급이 나옵니다."
       />
       {/* 매일 도는 크론이 쌓아둔 「지금 뚫릴 만한 키워드」 — 화면을 열자마자 보이게 서버에서 넘긴다 */}
-      <KeywordExplorer stores={db.stores} keys={keyStatus()} openingRuns={db.openingRuns} />
+      <KeywordExplorer stores={db.stores} keys={keyStatus()} openingRuns={db.openingRuns} turnover={turnover} />
     </>
   )
 }

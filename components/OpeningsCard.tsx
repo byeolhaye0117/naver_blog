@@ -13,6 +13,7 @@ import {
   type OpeningTier,
 } from '@/lib/analysis/openings'
 import type { OpeningRun } from '@/lib/types'
+import { turnoverNote, type Turnover } from '@/lib/analysis/turnover'
 
 interface Row {
   keyword: string
@@ -50,12 +51,20 @@ export default function OpeningsCard({
   hasStores,
   saved,
   previous,
+  turnover,
 }: {
   hasStores: boolean
   /** 매일 도는 크론이 남긴 마지막 측정 (없으면 아직 한 번도 안 돈 것) */
   saved?: OpeningRun | null
   /** 그 전 측정 — 「어제와 무엇이 달라졌나」를 보려고 함께 받는다 */
   previous?: OpeningRun | null
+  /**
+   * 키워드별 1페이지 회전 — 조사 기록으로 서버에서 계산해 넘긴다.
+   *
+   * 등급(「갓 쓴 글이 바로 올라오나」)과 **다른 질문에 답한다** — 「들어갈 자리가 나는가」다.
+   * 2026-08-20 실측에서 이 둘이 정반대로 읽히는 일이 있었다 (turnover.ts 주석).
+   */
+  turnover?: Record<string, Turnover>
 }) {
   const [busy, setBusy] = useState(false)
   const [rows, setRows] = useState<Row[] | null>((saved?.rows as Row[] | undefined) ?? null)
@@ -179,7 +188,7 @@ export default function OpeningsCard({
           {newlyOpen.length > 0 && (
             <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[12px] leading-relaxed text-emerald-900 dark:text-emerald-100">
               <b>지난 측정보다 새로 열린 자리 {newlyOpen.length}개</b> — {newlyOpen.map((r) => r.keyword).join(' · ')}.
-              열린 자리는 며칠 만에 다시 굳습니다. 오늘 쓸 글이 있다면 여기서 고르세요.
+              갓 쓴 글이 바로 올라오는 상태는 며칠이면 바뀝니다. 오늘 쓸 글이 있다면 여기서 고르세요.
             </p>
           )}
 
@@ -194,6 +203,7 @@ export default function OpeningsCard({
                   <th className="py-1.5 pr-2 text-right font-semibold">가장 어린 글</th>
                   <th className="py-1.5 pr-2 text-right font-semibold">나이 중간값</th>
                   <th className="py-1.5 pr-2 text-right font-semibold">최근 30일 발행</th>
+                  <th className="py-1.5 pr-2 text-right font-semibold">1페이지 회전</th>
                   <th className="py-1.5 font-semibold">글쓰기</th>
                 </tr>
               </thead>
@@ -225,6 +235,17 @@ export default function OpeningsCard({
                     <td className="tnum py-1.5 pr-2 text-right">
                       {r.recent30 === null ? '—' : `${r.recent30.toLocaleString()}편`}
                     </td>
+                    {/*
+                      「들어갈 자리가 나는가」 — 등급과 다른 질문이다. 등급이 「올라오는 데
+                      시간 걸림」이어도 회전이 주당 10편이면 들어갈 자리는 계속 난다.
+                    */}
+                    <td className="tnum py-1.5 pr-2 text-right" title={turnoverNote(turnover?.[r.keyword] ?? null) ?? undefined}>
+                      {turnover?.[r.keyword] ? (
+                        <b>주 {turnover[r.keyword].perWeek}편</b>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
                     <td className="py-1.5">
                       <Link
                         href={`/write?main=${encodeURIComponent(r.keyword)}&new=1`}
@@ -235,15 +256,15 @@ export default function OpeningsCard({
                     </td>
                   </tr>,
                   /*
-                    굳은 줄 아래에 **들어가는 문**을 붙인다 (2026-08-20 실측). 굳은 자리를 정면으로
-                    뚫는 방법은 실측에 없었다 — 갈린 것은 1페이지 글의 나이였고 그건 글로 못 바꾼다.
-                    대신 같은 동네의 세부 의도 키워드는 열려 있었다.
+                    등급이 낮은 줄 아래에 **더 빨리 오르는 자리**를 붙인다 (2026-08-20 실측).
+                    우회로가 아니다 — 같은 head 키워드도 주당 11편씩 자리가 나므로 계속 노려도 된다.
+                    다만 이 자리들은 발행량이 적어서 같은 글로 더 빨리 올라온다.
                   */
                   doors.get(r.keyword) && (
                     <tr key={`${r.keyword}-door`} className="bd border-b last:border-0">
                       <td />
-                      <td colSpan={7} className="pb-2 pl-0 pr-2">
-                        <span className="muted text-[11px]">들어가는 문 · 같은 동네에서 지금 열린 자리 → </span>
+                      <td colSpan={8} className="pb-2 pl-0 pr-2">
+                        <span className="muted text-[11px]">더 빨리 오르는 자리 · 같은 동네 → </span>
                         {doors.get(r.keyword)!.map((d, i) => (
                           <span key={d.keyword} className="text-[11.5px]">
                             {i > 0 && <span className="muted"> · </span>}
@@ -276,13 +297,20 @@ export default function OpeningsCard({
             <b>블로그 크기는 등급에 넣지 않았습니다</b> — 우리 블로그 누적 방문자가 지금 힘(1페이지 진입률)을
             대변하지 못해서, 그 숫자로 나누면 없는 근거를 만드는 셈이 됩니다.
             <br />
-            <b>굳은 자리는 「블로그가 커서」 굳은 게 아닙니다</b> (2026-08-20, 굳은 자리 6개 · 열린 자리 5개의 1페이지를
-            30위까지 재봤습니다). 굳은 자리 1페이지에도 누적 <b>314명 · 396명 · 503명 · 769명</b> 블로그가 앉아
-            있었고, 열린 자리(271~10,597명)와 크기가 겹쳤습니다. 갈린 것은 <b>1페이지 글의 나이</b>였습니다 — 열린
-            자리는 1~7일 글이 1페이지에 있고, 굳은 자리는 가장 어린 글이 8~38일입니다. 새 글이 1페이지로 못 올라오는
-            상태라 글을 잘 써서 뚫는 문제가 아닙니다. 그래서 굳은 줄 아래에 <b>같은 동네의 열린 문</b>을 함께
-            잽니다 (예: 「성정동 여성전용」은 굳었지만 「성정동 여성전용 헬스장」은 발행 28편으로 열려 있었습니다 —
-            낱말 하나 차이입니다).
+            <b>등급이 낮아도 「못 들어가는 자리」가 아닙니다 — 이 줄을 2026-08-20에 고쳤습니다.</b> 등급이 재는
+            것은 「갓 쓴 글이 <b>바로</b> 1페이지에 올라오나」 하나입니다. 그런데 10일치 기록으로 회전을 세어보니
+            「쌍용동 헬스장」·「두정동 헬스장」 1페이지에 <b>9일 동안 각각 14편</b>이 새로 들어왔습니다(주당 11편).
+            들어온 글들의 나이는 중간값 36일, 빠른 쪽이 9~12일입니다 — <b>바로 안 올라올 뿐, 몇 주 뒤에
+            올라옵니다.</b> 그래서 「1페이지 회전」 열을 함께 보여줍니다. <b>들어갈 자리가 나는지는 그 숫자가
+            답합니다.</b>
+            <br />
+            <b>블로그 크기는 문턱이 아닙니다</b> (같은 날, 1페이지를 30위까지 재봤습니다). 등급이 낮은 자리
+            1페이지에도 누적 <b>314명 · 396명 · 503명 · 769명</b> 블로그가 앉아 있었고, 등급 높은 자리
+            (271~10,597명)와 크기가 겹쳤습니다. 글자수·이미지도 문턱이 아닙니다 — 두정동 헬스장 1페이지에 이미지
+            3장 · 967자 글이 있습니다.
+            <br />
+            아래 「들어가는 문」은 <b>더 빨리 오르는 자리</b>일 뿐 우회로가 아닙니다. 같은 head 키워드를 계속
+            노리셔도 됩니다.
             <br />
             날짜를 읽은 글이 적은 키워드는 근거가 약합니다 (잰 글 수와 날짜 확인 수는 표 아래 원자료에
             남습니다).

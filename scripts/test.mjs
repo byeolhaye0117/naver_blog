@@ -64,6 +64,8 @@ const TARGETS = [
   'lib/analysis/openings.ts',
   // 재는 루프 — 버튼과 크론이 같은 함수를 쓴다 (2026-08-19). 네이버 호출은 주입받는다
   'lib/analysis/openings-scan.ts',
+  // 자리 회전 — 「굳은 자리」가 실제로는 주당 11편 갈리고 있었다 (2026-08-20)
+  'lib/analysis/turnover.ts',
   'lib/store.ts',
   'lib/seed/stores.ts',
 ]

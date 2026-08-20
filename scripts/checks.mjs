@@ -6692,6 +6692,59 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(halfBlind.rows.length === 1 && halfBlind.failed.length === 0, '발행량을 못 읽어도 줄은 남긴다')
   ok(halfBlind.rows[0].tier === 'open', '발행량 모름 = 조용하다고 하지 않는다', halfBlind.rows[0].tier)
 
+  /*
+   * ─── 자리 회전 (2026-08-20) ─────────────────────────────────
+   *
+   * 회원: "쌍용동 헬스장, 두정동 헬스장에 상위노출하려면 어떻게 해야 하냐. 우회하고 싶지
+   * 않다." 10일치 조사 기록으로 재보니 두 자리 1페이지가 **주당 11편씩 갈리고 있었다.**
+   * 내 등급은 「1페이지에 7일 이내 글이 있나」만 보고 그걸 「굳은 자리」로 적었는데, 그 말은
+   * 「못 들어간다」로 읽힌다. 등급과 회전은 **다른 질문**이라는 것을 여기서 못 박는다.
+   */
+  {
+    const { turnoverOf, dailyTopFrom, turnoverNote } = require(`${OUT}/analysis/turnover.js`)
+
+    // 하루에 1편씩 갈리는 자리
+    const daily = [
+      { date: '2026-08-10', urls: ['a', 'b', 'c'] },
+      { date: '2026-08-11', urls: ['a', 'b', 'd'] },
+      { date: '2026-08-12', urls: ['a', 'e', 'd'] },
+    ]
+    const t = turnoverOf(daily)
+    ok(t.entries === 2, `새로 들어온 글만 센다 — ${t.entries}편`)
+    ok(t.perWeek === 7, `주당으로 환산한다 — ${t.perWeek}편`)
+    ok(t.kept === 1 && t.keptOf === 3, `첫날 글 중 남은 수 — ${t.kept}/${t.keptOf}`)
+    // 순위가 오르내린 것은 「새 진입」이 아니다 — 우리가 알고 싶은 건 자리가 나는가다
+    const shuffled = turnoverOf([
+      { date: '2026-08-10', urls: ['a', 'b', 'c'] },
+      { date: '2026-08-11', urls: ['c', 'a', 'b'] },
+    ])
+    ok(shuffled.entries === 0, '순서만 바뀐 것은 새 진입이 아니다')
+    ok(turnoverOf([{ date: '2026-08-10', urls: ['a'] }]) === null, '하루치로는 회전을 못 센다')
+    ok(turnoverOf([]) === null, '기록이 없으면 null (0편이라고 하지 않는다)')
+    ok(turnoverNote(null) === null, '없는 값을 문장으로 만들지 않는다')
+    ok(turnoverNote(t).includes('주당 7편'), '사람 말로도 같은 숫자를 쓴다', turnoverNote(t))
+
+    // 조사 기록에서 뽑아내기 — ranks 는 키워드→순위 객체다
+    const runs = [
+      {
+        date: '2026-08-11',
+        posts: [
+          { url: 'x', ranks: { '쌍용동 헬스장': 3, '봉명동 헬스장': 1 } },
+          { url: 'y', ranks: { '쌍용동 헬스장': 11 } }, // 1페이지 밖
+          { url: 'z', ranks: { '봉명동 헬스장': 2 } },
+          { url: 'w' }, // ranks 없음
+        ],
+      },
+      { date: '2026-08-10', posts: [{ url: 'q', ranks: { '쌍용동 헬스장': 1 } }] },
+    ]
+    const got = dailyTopFrom(runs, '쌍용동 헬스장')
+    ok(got.length === 2 && got[0].date === '2026-08-10', '날짜 순으로 정렬한다', got.map((g) => g.date).join())
+    ok(got[1].urls.join() === 'x', '1페이지(10위 안) 글만 담는다', got[1].urls.join())
+    ok(dailyTopFrom(runs, '없는 키워드').length === 0, '기록에 없는 키워드는 빈 배열')
+    // 이 자료로 회전을 세면 「x 가 새로 들어왔다」가 나온다
+    ok(turnoverOf(got).entries === 1, '기록에서 바로 회전이 나온다')
+  }
+
   // ── 우회로 재기 — 굳은 자리가 있는 동네만, 이미 잰 것은 빼고
   {
     const { scanDetours } = require(`${OUT}/analysis/openings-scan.js`)
