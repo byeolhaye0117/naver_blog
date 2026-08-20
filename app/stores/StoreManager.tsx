@@ -13,6 +13,7 @@ import {
   type PlaceReview,
 } from '@/lib/analysis/reviews'
 import { Badge, Card, Field, inputClass } from '@/components/ui'
+import ReviewProof from '@/components/ReviewProof'
 
 function emptyStore(): Store {
   return {
@@ -646,6 +647,24 @@ function ReviewField({
                   신뢰 구간의 중심으로 씁니다.
                 </p>
               </div>
+            )}
+
+            {/*
+              원본 화면이 붙어 있는 리뷰는 **사진과 함께** 보여준다 (회원 요청 2026-08-19).
+              문장만 목록으로 두면 이게 진짜 리뷰인지 화면에서 확인할 방법이 없다 —
+              인용은 글에 그대로 옮겨지고, 없는 리뷰를 옮기면 표시광고법 위반이다.
+            */}
+            {reviews.some((r) => r.image) && (
+              <details className="bd rounded-xl border px-3 py-2" open>
+                <summary className="cursor-pointer text-[12px] font-semibold">
+                  원본 화면이 있는 리뷰 {reviews.filter((r) => r.image).length}편 — 사진과 함께 보기
+                </summary>
+                <p className="muted mb-2 mt-1.5 text-[11px] leading-relaxed">
+                  글에 인용한 문장을 여기서 원본과 눈으로 대조할 수 있습니다. 사진을 누르면 원본 크기로
+                  열립니다. (사진은 꾸밈이 아니라 <b>근거</b>입니다.)
+                </p>
+                <ReviewProof reviews={reviews} />
+              </details>
             )}
 
             <div className="bd max-h-52 overflow-y-auto rounded-xl border">

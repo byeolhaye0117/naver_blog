@@ -5505,6 +5505,31 @@ ok(
 // 짧은 스무 자짜리("친절해요 좋았어요")보다 무엇을 해줬는지 적힌 문장을 먼저 고른다
 ok(longA.quotes[0].length > 40, `근거가 되는 긴 문장을 먼저 고른다 — ${longA.quotes[0].length}자`)
 
+/*
+ * ─── 리뷰에 붙인 원본 화면이 실제로 있는지 (2026-08-19)
+ *
+ * 회원 요청 "글이랑 사진이랑 함께 첨부해서 홈페이지에 보일 수 있게 해줘" 로 리뷰에 캡처를
+ * 붙였다. 경로가 틀리면 화면에는 **깨진 이미지**가 조용히 뜬다 — 근거로 붙인 사진이 근거를
+ * 못 하는 상태이고, 그건 오류로 보이지도 않는다. 그래서 파일이 있는지 여기서 본다.
+ */
+{
+  const { existsSync } = require('node:fs')
+  const { join } = require('node:path')
+  const { SEED_STORES } = require(`${OUT}/seed/stores.js`)
+  const shots = SEED_STORES.flatMap((s) => (s.placeReviews ?? []).filter((r) => r.image))
+  const gone = shots.filter((r) => !r.image.startsWith('http') && !existsSync(join(process.cwd(), 'public', r.image)))
+  ok(gone.length === 0, `리뷰에 붙인 원본 화면이 다 있다 — ${shots.length}장`, gone.map((r) => r.image).join(' · '))
+  ok(
+    shots.every((r) => r.kind === 'text' && r.author && r.at),
+    '원본 화면이 있는 리뷰는 작성자·날짜도 함께 둔다 (누가 언제 쓴 것인지 없으면 대조가 안 된다)'
+  )
+  // 사진을 붙였어도 인용 대조 대상은 그대로 본문이다
+  ok(
+    shots.every((r) => verifyReviewQuotes(`플레이스 리뷰: "${r.text.slice(0, 30)}"`, shots)[0]?.ok),
+    '사진이 붙은 리뷰도 문장으로 대조된다'
+  )
+}
+
 ok(placeReviewUrl('1234567890') === 'https://m.place.naver.com/place/1234567890/review/visitor', '리뷰 링크를 만든다')
 ok(placeReviewUrl(undefined) === null, '플레이스 id 가 없으면 링크도 없다')
 
