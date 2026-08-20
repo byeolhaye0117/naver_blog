@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import type { KeywordMetric, OpeningRun, PlaceRank, Store } from '@/lib/types'
+import type { Turnover } from '@/lib/analysis/turnover'
 import { GRADE_LABEL, POST_TYPE_LABEL } from '@/lib/types'
 import {
   AD_HEAVY,
@@ -210,11 +211,14 @@ export default function KeywordExplorer({
   stores,
   keys,
   openingRuns,
+  turnover,
 }: {
   stores: Store[]
   keys: { search: boolean; searchAd: boolean }
   /** 매일 도는 크론이 쌓은 「지금 뚫릴 만한 키워드」 측정 기록 (오래된 것 → 최신) */
   openingRuns?: OpeningRun[]
+  /** 키워드별 1페이지 회전 — 조사 기록으로 서버에서 미리 계산해 넘긴다 */
+  turnover?: Record<string, Turnover>
 }) {
   const [raw, setRaw] = useState('')
   const [rows, setRows] = useState<KeywordMetric[] | null>(null)
@@ -647,6 +651,7 @@ export default function KeywordExplorer({
         hasStores={stores.length > 0}
         saved={openingRuns?.[openingRuns.length - 1] ?? null}
         previous={openingRuns && openingRuns.length > 1 ? openingRuns[openingRuns.length - 2] : null}
+        turnover={turnover}
       />
 
       {/*
