@@ -1,0 +1,501 @@
+{
+  "at": "2026-08-20T01:09:11.261Z",
+  "rows": [
+    {
+      "keyword": "성정동 헬스장 새벽",
+      "tier": "open-quiet",
+      "label": "지금 열려 있고 경쟁도 적음",
+      "fresh": 5,
+      "youngest": 1,
+      "medianAge": 8,
+      "recent30": 55,
+      "why": "1페이지에 발행 7일 이내 글이 5편 있습니다 (가장 어린 글 1일) · 최근 30일 발행 55편으로 경쟁도 적습니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "tellmey123_",
+        "v": 2487
+      }
+    },
+    {
+      "keyword": "쌍용동 여성전용 헬스장",
+      "tier": "open-quiet",
+      "label": "지금 열려 있고 경쟁도 적음",
+      "fresh": 3,
+      "youngest": 6,
+      "medianAge": 17,
+      "recent30": 26,
+      "why": "1페이지에 발행 7일 이내 글이 3편 있습니다 (가장 어린 글 6일) · 최근 30일 발행 26편으로 경쟁도 적습니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "cjsqkdwlcnr0",
+        "v": 654
+      }
+    },
+    {
+      "keyword": "두정동 헬스장 새벽",
+      "tier": "open-quiet",
+      "label": "지금 열려 있고 경쟁도 적음",
+      "fresh": 2,
+      "youngest": 2,
+      "medianAge": 15,
+      "recent30": 81,
+      "why": "1페이지에 발행 7일 이내 글이 2편 있습니다 (가장 어린 글 2일) · 최근 30일 발행 81편으로 경쟁도 적습니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "lmycxmbacsfqv",
+        "v": 716
+      }
+    },
+    {
+      "keyword": "성정동 여성전용 헬스장",
+      "tier": "open-quiet",
+      "label": "지금 열려 있고 경쟁도 적음",
+      "fresh": 1,
+      "youngest": 6,
+      "medianAge": 234,
+      "recent30": 28,
+      "why": "1페이지에 발행 7일 이내 글이 1편 있습니다 (가장 어린 글 6일) · 최근 30일 발행 28편으로 경쟁도 적습니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "aqwe2566",
+        "v": 10597
+      }
+    },
+    {
+      "keyword": "쌍용동 헬스장 새벽",
+      "tier": "open-quiet",
+      "label": "지금 열려 있고 경쟁도 적음",
+      "fresh": 1,
+      "youngest": 6,
+      "medianAge": 9,
+      "recent30": 55,
+      "why": "1페이지에 발행 7일 이내 글이 1편 있습니다 (가장 어린 글 6일) · 최근 30일 발행 55편으로 경쟁도 적습니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "yoga__aube2023",
+        "v": 4145
+      }
+    },
+    {
+      "keyword": "쌍용동 헬스장 주말",
+      "tier": "open-quiet",
+      "label": "지금 열려 있고 경쟁도 적음",
+      "fresh": 1,
+      "youngest": 7,
+      "medianAge": 57,
+      "recent30": 77,
+      "why": "1페이지에 발행 7일 이내 글이 1편 있습니다 (가장 어린 글 7일) · 최근 30일 발행 77편으로 경쟁도 적습니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "jojoreview",
+        "v": 1048
+      }
+    },
+    {
+      "keyword": "성정동 헬스 초보",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 4,
+      "youngest": 6,
+      "medianAge": 11,
+      "recent30": 106,
+      "why": "1페이지에 발행 7일 이내 글이 4편 있습니다 (가장 어린 글 6일) · 다만 최근 30일 발행이 106편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "geyexrcmqlyo",
+        "v": 633
+      }
+    },
+    {
+      "keyword": "쌍용동 헬스장 후기",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 3,
+      "youngest": 1,
+      "medianAge": 12,
+      "recent30": 109,
+      "why": "1페이지에 발행 7일 이내 글이 3편 있습니다 (가장 어린 글 1일) · 다만 최근 30일 발행이 109편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "jojoreview",
+        "v": 1048
+      }
+    },
+    {
+      "keyword": "성정동 헬스장 가격",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 2,
+      "youngest": 7,
+      "medianAge": 24,
+      "recent30": 102,
+      "why": "1페이지에 발행 7일 이내 글이 2편 있습니다 (가장 어린 글 7일) · 다만 최근 30일 발행이 102편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "bylee95",
+        "v": 948
+      }
+    },
+    {
+      "keyword": "성정동 헬스장 후기",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 2,
+      "youngest": 7,
+      "medianAge": 24,
+      "recent30": 103,
+      "why": "1페이지에 발행 7일 이내 글이 2편 있습니다 (가장 어린 글 7일) · 다만 최근 30일 발행이 103편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "inggg96",
+        "v": 314
+      }
+    },
+    {
+      "keyword": "쌍용동 헬스 초보",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 2,
+      "youngest": 7,
+      "medianAge": 14,
+      "recent30": 122,
+      "why": "1페이지에 발행 7일 이내 글이 2편 있습니다 (가장 어린 글 7일) · 다만 최근 30일 발행이 122편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "nu_un_03",
+        "v": 815
+      }
+    },
+    {
+      "keyword": "쌍용동 PT",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 2,
+      "youngest": 1,
+      "medianAge": 14,
+      "recent30": 278,
+      "why": "1페이지에 발행 7일 이내 글이 2편 있습니다 (가장 어린 글 1일) · 다만 최근 30일 발행이 278편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "eumbody_",
+        "v": 271
+      }
+    },
+    {
+      "keyword": "두정동 다이어트",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 2,
+      "youngest": 2,
+      "medianAge": 13,
+      "recent30": 457,
+      "why": "1페이지에 발행 7일 이내 글이 2편 있습니다 (가장 어린 글 2일) · 다만 최근 30일 발행이 457편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "gmdgmd-",
+        "v": 852
+      }
+    },
+    {
+      "keyword": "두정동 헬스장 후기",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 1,
+      "youngest": 1,
+      "medianAge": 37,
+      "recent30": 117,
+      "why": "1페이지에 발행 7일 이내 글이 1편 있습니다 (가장 어린 글 1일) · 다만 최근 30일 발행이 117편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "iqdfmbpmdonp",
+        "v": 769
+      }
+    },
+    {
+      "keyword": "두정동 헬스 초보",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 1,
+      "youngest": 1,
+      "medianAge": 10,
+      "recent30": 144,
+      "why": "1페이지에 발행 7일 이내 글이 1편 있습니다 (가장 어린 글 1일) · 다만 최근 30일 발행이 144편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "iqdfmbpmdonp",
+        "v": 769
+      }
+    },
+    {
+      "keyword": "두정동 24시 헬스장",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 1,
+      "youngest": 6,
+      "medianAge": 89,
+      "recent30": 196,
+      "why": "1페이지에 발행 7일 이내 글이 1편 있습니다 (가장 어린 글 6일) · 다만 최근 30일 발행이 196편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "iqdfmbpmdonp",
+        "v": 769
+      }
+    },
+    {
+      "keyword": "쌍용동 헬스장 추천",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 1,
+      "youngest": 1,
+      "medianAge": 44,
+      "recent30": 212,
+      "why": "1페이지에 발행 7일 이내 글이 1편 있습니다 (가장 어린 글 1일) · 다만 최근 30일 발행이 212편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "dani0510",
+        "v": 4057
+      }
+    },
+    {
+      "keyword": "성정동 다이어트",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 1,
+      "youngest": 2,
+      "medianAge": 23,
+      "recent30": 221,
+      "why": "1페이지에 발행 7일 이내 글이 1편 있습니다 (가장 어린 글 2일) · 다만 최근 30일 발행이 221편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "geyexrcmqlyo",
+        "v": 633
+      }
+    },
+    {
+      "keyword": "두정동 헬스장 추천",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 1,
+      "youngest": 1,
+      "medianAge": 47,
+      "recent30": 270,
+      "why": "1페이지에 발행 7일 이내 글이 1편 있습니다 (가장 어린 글 1일) · 다만 최근 30일 발행이 270편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "iqdfmbpmdonp",
+        "v": 769
+      }
+    },
+    {
+      "keyword": "쌍용동 피트니스",
+      "tier": "open",
+      "label": "지금 열려 있음",
+      "fresh": 1,
+      "youngest": 6,
+      "medianAge": 54,
+      "recent30": 368,
+      "why": "1페이지에 발행 7일 이내 글이 1편 있습니다 (가장 어린 글 6일) · 다만 최근 30일 발행이 368편입니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "dani0510",
+        "v": 4057
+      }
+    },
+    {
+      "keyword": "성정동 헬스장 주말",
+      "tier": "quiet",
+      "label": "경쟁은 적지만 자리 굳음",
+      "fresh": 0,
+      "youngest": 10,
+      "medianAge": 147,
+      "recent30": 53,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 10일) · 최근 30일 발행은 53편뿐이라 경쟁은 적습니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "jhw114-",
+        "v": 65
+      }
+    },
+    {
+      "keyword": "두정동 여성전용 헬스장",
+      "tier": "quiet",
+      "label": "경쟁은 적지만 자리 굳음",
+      "fresh": 0,
+      "youngest": 9,
+      "medianAge": 44,
+      "recent30": 63,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 9일) · 최근 30일 발행은 63편뿐이라 경쟁은 적습니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "right_14201",
+        "v": 614
+      }
+    },
+    {
+      "keyword": "성정동 24시 헬스장",
+      "tier": "quiet",
+      "label": "경쟁은 적지만 자리 굳음",
+      "fresh": 0,
+      "youngest": 11,
+      "medianAge": 39,
+      "recent30": 98,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 11일) · 최근 30일 발행은 98편뿐이라 경쟁은 적습니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "inggg96",
+        "v": 314
+      }
+    },
+    {
+      "keyword": "쌍용동 24시 헬스장",
+      "tier": "shut",
+      "label": "굳은 자리",
+      "fresh": 0,
+      "youngest": 38,
+      "medianAge": 62,
+      "recent30": 115,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 38일) · 최근 30일 발행 115편으로 경쟁도 셉니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "dani0510",
+        "v": 4057
+      }
+    },
+    {
+      "keyword": "두정동 헬스장 주말",
+      "tier": "shut",
+      "label": "굳은 자리",
+      "fresh": 0,
+      "youngest": 10,
+      "medianAge": 57,
+      "recent30": 121,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 10일) · 최근 30일 발행 121편으로 경쟁도 셉니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "l2fitness04",
+        "v": 503
+      }
+    },
+    {
+      "keyword": "두정동 헬스장 가격",
+      "tier": "shut",
+      "label": "굳은 자리",
+      "fresh": 0,
+      "youngest": 9,
+      "medianAge": 178,
+      "recent30": 131,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 9일) · 최근 30일 발행 131편으로 경쟁도 셉니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "rla2wlgus",
+        "v": 16145
+      }
+    },
+    {
+      "keyword": "성정동 피트니스",
+      "tier": "shut",
+      "label": "굳은 자리",
+      "fresh": 0,
+      "youngest": 11,
+      "medianAge": 18,
+      "recent30": 144,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 11일) · 최근 30일 발행 144편으로 경쟁도 셉니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "geyexrcmqlyo",
+        "v": 633
+      }
+    },
+    {
+      "keyword": "쌍용동 헬스장 가격",
+      "tier": "shut",
+      "label": "굳은 자리",
+      "fresh": 0,
+      "youngest": 11,
+      "medianAge": 83,
+      "recent30": 166,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 11일) · 최근 30일 발행 166편으로 경쟁도 셉니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "dabinparks",
+        "v": 6104
+      }
+    },
+    {
+      "keyword": "성정동 헬스장 추천",
+      "tier": "shut",
+      "label": "굳은 자리",
+      "fresh": 0,
+      "youngest": 11,
+      "medianAge": 39,
+      "recent30": 171,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 11일) · 최근 30일 발행 171편으로 경쟁도 셉니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "inggg96",
+        "v": 314
+      }
+    },
+    {
+      "keyword": "두정동 피트니스",
+      "tier": "shut",
+      "label": "굳은 자리",
+      "fresh": 0,
+      "youngest": 12,
+      "medianAge": 133,
+      "recent30": 290,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 12일) · 최근 30일 발행 290편으로 경쟁도 셉니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "iqdfmbpmdonp",
+        "v": 769
+      }
+    },
+    {
+      "keyword": "쌍용동 다이어트",
+      "tier": "shut",
+      "label": "굳은 자리",
+      "fresh": 0,
+      "youngest": 8,
+      "medianAge": 42,
+      "recent30": 372,
+      "why": "1페이지에 발행 7일 이내 글이 없습니다 (가장 어린 글 8일) · 최근 30일 발행 372편으로 경쟁도 셉니다",
+      "sampled": 10,
+      "dated": 10,
+      "weakest": {
+        "id": "dowo2818",
+        "v": 396
+      }
+    }
+  ]
+}

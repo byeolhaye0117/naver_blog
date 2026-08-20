@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
-import { keywordOwners, mergeOpeningRuns, scanOpenings } from '@/lib/analysis/openings-scan'
+import { keywordOwners, mergeOpeningRuns, scanDetours, scanOpenings } from '@/lib/analysis/openings-scan'
 import { OPENING_RUNS_KEEP, openingChanges } from '@/lib/analysis/openings'
 import type { OpeningRun } from '@/lib/types'
 
@@ -39,7 +39,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: '지점에 저장된 지역 키워드가 없습니다.' }, { status: 400 })
   }
 
-  const { rows, failed } = await scanOpenings(keywords, owners)
+  const { rows: storeRows, failed } = await scanOpenings(keywords, owners)
+  /*
+   * 굳은 자리가 있으면 그 동네의 세부 의도 키워드를 한 번 더 잰다 — 「굳은 자리로 들어가는
+   * 문」이다. 굳은 자리가 없으면 한 콜도 쓰지 않는다.
+   */
+  const detours = storeRows.length ? await scanDetours(storeRows) : { rows: [], failed: [] }
+  const rows = [...storeRows, ...detours.rows]
+  failed.push(...detours.failed)
   if (!rows.length) {
     // 어제 값을 지우지 않는다 — 네이버가 막힌 날이 「자리가 굳은 날」로 보이면 안 된다
     return NextResponse.json(
@@ -66,9 +73,11 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     date: fresh.date,
-    measured: rows.length,
+    measured: storeRows.length,
+    /** 굳은 자리 우회로 후보로 함께 잰 세부 의도 키워드 */
+    detours: detours.rows.length,
     failed,
-    open: rows.filter((r) => r.tier === 'open-quiet' || r.tier === 'open').length,
+    open: storeRows.filter((r) => r.tier === 'open-quiet' || r.tier === 'open').length,
     /** 어제는 굳어 있었는데 오늘 열린 자리 — 이걸 잡으려고 매일 돈다 */
     newlyOpen: opened,
     stored: (await readDB()).openingRuns?.length ?? 0,

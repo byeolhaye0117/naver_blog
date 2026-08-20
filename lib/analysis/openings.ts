@@ -130,6 +130,64 @@ export interface OpeningRow extends Opening {
   dated: number
   /** 잰 글 수 */
   sampled: number
+  /**
+   * store  — 지점에 저장된 지역 키워드 (표에 올라가는 줄)
+   * detour — 굳은 자리를 우회하려고 함께 재본 세부 의도 키워드 (표 대신 우회로로 보여준다)
+   *
+   * 없으면 'store' 다 — 이 항목을 만들기 전 기록은 전부 지점 키워드였다.
+   */
+  kind?: 'store' | 'detour'
+}
+
+/**
+ * 키워드에서 동네 이름을 뽑는다 — 「천안 두정동 헬스장」 → 두정동, 「쌍용동PT」 → 쌍용동.
+ *
+ * 우회로를 찾을 때 **같은 동네인지**가 유일한 조건이다. 다른 동네의 열린 키워드를 권하면
+ * 우리 지점과 상관없는 글을 쓰게 된다.
+ */
+export function areaOf(keyword: string): string | null {
+  const m = /([가-힣]{2,10}?(?:동|읍|면))/.exec(keyword ?? '')
+  return m ? m[1] : null
+}
+
+/**
+ * **굳은 자리로 들어가는 문** — 같은 동네에서 지금 열려 있는 세부 의도 키워드.
+ *
+ * ── 왜 이 방식인가 (2026-08-20 실측) ─────────────────────────
+ * 회원 요청: "굳은 키워드도 돌파할 수 있는 방법을 알아주면 좋겠어." 그래서 굳은 자리 6개와
+ * 열린 자리 5개의 1페이지를 30위까지 열어 홀더의 블로그 크기를 쟀다.
+ *
+ * **블로그 크기로는 갈리지 않았다.** 굳은 자리 1페이지에 누적 314명·396명·503명·769명
+ * 블로그가 앉아 있었고(열린 자리는 271~10,597명), 두 집단의 크기가 겹쳤다. 「작아서 못
+ * 들어간다」는 설명은 실측에서 틀렸다.
+ *
+ * 갈린 것은 **1페이지 글의 나이**였다 — 열린 자리는 1~7일 글이 1페이지에 있고, 굳은 자리는
+ * 가장 어린 글이 8~38일이다. 즉 굳은 자리는 새 글이 1페이지로 못 올라오는 상태이고, 그건
+ * 글을 잘 써서 뚫는 문제가 아니다.
+ *
+ * 그런데 같은 동네의 세부 의도 키워드는 열려 있었다. 예를 들어 「성정동 여성전용」은 굳었지만
+ * **「성정동 여성전용 헬스장」**은 발행 28편에 7일 이내 1편으로 열려 있었다 — 낱말 하나
+ * 차이다. 그래서 「굳은 자리를 정면으로 치는 방법」 대신 **열린 문을 찾아주는 것**을 만들었다.
+ * 지어낸 우회로가 아니라 같은 함수로 잰 값이다.
+ */
+export function detoursFor(shut: OpeningRow, rows: OpeningRow[], max = 3): OpeningRow[] {
+  if (shut.tier !== 'shut' && shut.tier !== 'quiet') return []
+  const area = areaOf(shut.keyword)
+  if (!area) return []
+  const flat = (s: string) => s.replace(/\s+/g, '')
+  return rows
+    .filter(
+      (r) =>
+        (r.tier === 'open-quiet' || r.tier === 'open') &&
+        flat(r.keyword) !== flat(shut.keyword) &&
+        areaOf(r.keyword) === area
+    )
+    /*
+     * 발행량이 적은 문을 먼저 권한다. 7일 이내 편수가 많은 쪽을 먼저 권해봤는데, 발행량이
+     * 400편인 자리가 위로 올라왔다 — 지금 열려 있어도 우리가 들어갈 자리는 아니다.
+     */
+    .sort((a, b) => (a.recent30 ?? Infinity) - (b.recent30 ?? Infinity) || b.fresh - a.fresh)
+    .slice(0, max)
 }
 
 /**
