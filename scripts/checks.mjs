@@ -6973,6 +6973,105 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(up.includes('회원이 쓸 수 없다'), '왜 그래야 하는지 말한다')
   ok(up.includes('「상담 때 알려드릴게요」로 넘기면 해결이 아니다'), '해결을 미루지 말라고 한다')
 }
+/*
+ * ─── 상위 블로그와 블로그 단위로 비교 (2026-08-20) ──────────────
+ *
+ * 회원 요청: "상위 5편의 블로그와 비교해서 블로그 개설일, 이웃수, 글의 유형, 글 발행 간격,
+ * 포스팅당 좋아요나 댓글 수 등을 비교분석해달라."
+ *
+ * 실측에서 앱이 적어둔 조언 하나가 뒤집혔다 — 상위 블로그는 헬스 전문이 아니라 **잡블로그**
+ * 였다(헬스·운동 글 중간값 10% · 우리 87%). 그래서 이 비교는 **점수로 합치지 않는다.**
+ * 어느 축이 순위를 만드는지 모르는데 합치면 모르는 것을 아는 것처럼 만든다.
+ */
+{
+  const { paceOf, typeMixOf, onTopicShare, typeOf, summarizePeer, comparePeers, missingTypes } = require(
+    `${OUT}/analysis/peers.js`
+  )
+
+  // ── 발행 속도: 최근 표본의 간격으로 본다 (전체 글÷운영일수로 하면 옛날에 많이 쓴 블로그가 부지런해 보인다)
+  const mkPosts = (dates) => dates.map((date, i) => ({ title: `글 ${i}`, date, commentCount: 0 }))
+  const weekly = paceOf(mkPosts(['2026-08-01', '2026-08-08', '2026-08-15', '2026-08-22']))
+  ok(weekly.perWeek === 1, `이레에 한 편이면 주당 1편 — ${weekly.perWeek}`)
+  ok(weekly.gapMedian === 7, `간격 중간값 — ${weekly.gapMedian}일`)
+  const daily = paceOf(mkPosts(['2026-08-18', '2026-08-19', '2026-08-20', '2026-08-21']))
+  ok(daily.perWeek === 7, `매일 쓰면 주당 7편 — ${daily.perWeek}`)
+  ok(paceOf(mkPosts(['2026-08-20'])).perWeek === null, '글이 한 편이면 속도를 못 잰다 (0 이라고 하지 않는다)')
+  // 오래 쉰 구간을 숨기지 않는다 — 꾸준함을 보는 값이다
+  const gappy = paceOf(mkPosts(['2026-05-01', '2026-08-18', '2026-08-19']))
+  ok(gappy.gapMax === 109, `가장 길게 쉰 기간을 남긴다 — ${gappy.gapMax}일`)
+
+  // ── 글 유형: 제목으로 가른다
+  ok(typeOf('천안 쌍용동 헬스장 다녀온 후기') === '후기·체험', typeOf('천안 쌍용동 헬스장 다녀온 후기'))
+  ok(typeOf('헬스 초보 운동 순서 알려드립니다') === '정보·방법', typeOf('헬스 초보 운동 순서 알려드립니다'))
+  ok(typeOf('8월 이벤트 3개월 9.9만원 안내') === '홍보·안내', typeOf('8월 이벤트 3개월 9.9만원 안내'))
+  ok(typeOf('오늘 점심은 김치찌개') === '일상·기타', typeOf('오늘 점심은 김치찌개'))
+
+  const mix = typeMixOf([
+    { title: '헬스장 후기', date: '2026-08-20', commentCount: 0 },
+    { title: '운동 방법 알려드려요', date: '2026-08-19', commentCount: 0 },
+    { title: '점심 먹은 이야기', date: '2026-08-18', commentCount: 0 },
+    { title: '저녁 산책', date: '2026-08-17', commentCount: 0 },
+  ])
+  ok(mix.find((m) => m.label === '일상·기타').share === 50, '유형 비율을 낸다', JSON.stringify(mix))
+  ok(!mix.some((m) => m.count === 0), '0편인 유형은 넣지 않는다')
+
+  // ── 주제 집중도
+  ok(
+    onTopicShare([
+      { title: '쌍용동 헬스장', date: '', commentCount: 0 },
+      { title: '맛집 후기', date: '', commentCount: 0 },
+    ]) === 50,
+    '헬스·운동 글 비중'
+  )
+  ok(onTopicShare([]) === null, '글이 없으면 비중도 없다')
+
+  // ── 축 비교
+  const peer = (blogId, over = {}) =>
+    summarizePeer({
+      blogId,
+      dayVisitors: 40,
+      totalVisitors: 30000,
+      buddies: 480,
+      postCount: 100,
+      firstPost: '2025-01-01',
+      posts: mkPosts(['2026-08-18', '2026-08-19', '2026-08-20']),
+      likes: [10, 14],
+      now: Date.parse('2026-08-20T00:00:00Z'),
+      ...over,
+    })
+  const peers = [peer('a'), peer('b'), peer('c')]
+  const mineRow = peer('mine', { dayVisitors: 6, buddies: 4231, where: ['우리'] })
+  const axes = comparePeers(peers, mineRow)
+  const axis = (k) => axes.find((a) => a.key === k)
+  ok(axis('dayVisitors').verdict === 'behind', `오늘 방문자가 적으면 뒤짐 — ${axis('dayVisitors').verdict}`)
+  ok(axis('buddies').verdict === 'ahead', `이웃이 많으면 앞섬 — ${axis('buddies').verdict}`)
+  ok(axis('postCount').verdict === 'same', `10% 안쪽 차이는 같다고 본다 — ${axis('postCount').verdict}`)
+  // 간격은 작을수록 좋다 — 방향을 뒤집어 판정한다
+  const slow = comparePeers(peers, peer('slow', { posts: mkPosts(['2026-07-01', '2026-08-01', '2026-08-20']) }))
+  const gapAxis = slow.find((a) => a.key === 'gapMedian')
+  ok(gapAxis.higherIsBetter === false, '간격은 작을수록 좋은 축이다')
+  ok(gapAxis.verdict === 'behind', `간격이 길면 뒤짐 — ${gapAxis.verdict}`)
+  ok(axes.every((a) => a.provenSignal === false), '어느 축도 「순위를 만든다」고 표시하지 않는다')
+  ok(comparePeers(peers, null).every((a) => a.verdict === 'unknown'), '우리 값이 없으면 판정하지 않는다')
+  ok(axis('ageYears').mine === 1.6, `첫 글로 나이를 센다 — ${axis('ageYears').mine}년`)
+
+  // ── 우리에게 없는 글 유형 (순위 근거가 아니라 빈칸)
+  const reviewers = [
+    peer('r1', { posts: [{ title: '헬스장 후기', date: '2026-08-20', commentCount: 0 }] }),
+    peer('r2', { posts: [{ title: 'PT 체험 후기', date: '2026-08-19', commentCount: 0 }] }),
+    peer('r3', { posts: [{ title: '다녀온 이야기', date: '2026-08-18', commentCount: 0 }] }),
+  ]
+  const noReview = peer('mine', { posts: [{ title: '8월 이벤트 안내', date: '2026-08-20', commentCount: 0 }] })
+  const blanks = missingTypes(reviewers, noReview)
+  ok(
+    blanks.some((g) => g.label === '후기·체험' && g.peersWith === 3),
+    '상위 다수가 쓰는데 우리는 0편인 유형을 찾는다',
+    JSON.stringify(blanks)
+  )
+  ok(missingTypes(reviewers, reviewers[0]).length === 0, '우리도 쓰는 유형은 빈칸이 아니다')
+  ok(missingTypes(reviewers, null).length === 0, '우리 값이 없으면 빈칸을 말하지 않는다')
+}
+
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
