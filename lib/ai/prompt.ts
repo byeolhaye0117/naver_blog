@@ -14,6 +14,7 @@ import { RISK_TERMS } from '../writing/banned'
 import { dropExcluded, prescriptionForType } from '../analysis/prescription'
 import { excludedWords } from '../writing/rotation'
 import { analyzeReviews, placeReviewUrl } from '../analysis/reviews'
+import { arenaGuidance, type Arena } from '../writing/arena'
 
 export interface WriteRequest {
   type: PostType
@@ -40,6 +41,13 @@ export interface WriteRequest {
    * 찾을 수 있으면 찾아 인용하게 하고, 못 하면 인용하지 말라고 한다. 되는 척하지 않는다.
    */
   canSearch?: boolean
+  /**
+   * 이 키워드의 경쟁 수준 — 키워드 조사에서 잰 최근 30일 발행량으로 정한다.
+   *
+   * 회원 질문 (2026-08-20): "그래서 홈페이지에 경쟁 높은 키워드용 글쓰기 도구가 있는거야?"
+   * 없었다 — 재놓은 값이 글쓰기에 하나도 연결돼 있지 않았다. 이 입력이 그 연결이다.
+   */
+  arena?: Arena
   /** 이번 글에만 적용할 회원 요청 — 다른 규칙보다 먼저 지킨다 */
   request?: string
   /** 후기글 대가성 — 'sponsored' 면 첫 화면에 표기해야 한다 */
@@ -915,6 +923,17 @@ export function buildUserPrompt(req: WriteRequest): string {
    * 온 「주력 앵글: 시간」이 이겨서 글이 온통 시간대 얘기가 됐다. 모델은 뒤쪽을 더 강하게
    * 따르므로 위치가 곧 우선순위다.
    */
+  /*
+   * 경쟁 센 자리의 **판 형태** — 회원 요청 바로 앞에 둔다.
+   *
+   * 뒤쪽 지시가 더 강하게 먹으므로 순서가 곧 우선순위다. 이 묶음은 골격보다는 뒤(더 강하게),
+   * 회원 요청보다는 앞(요청이 이기게)이어야 한다. 경쟁이 세지 않으면 아무 줄도 안 나온다.
+   */
+  const arenaLines = req.arena ? arenaGuidance(req.arena, req.type) : []
+  if (arenaLines.length) {
+    lines.push('', '## 이 키워드 판의 형태 (상위 50편을 세어서 정했다)', ...arenaLines)
+  }
+
   if (req.request?.trim()) {
     lines.push(
       '',

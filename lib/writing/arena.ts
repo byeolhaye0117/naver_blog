@@ -1,0 +1,133 @@
+/**
+ * **경쟁 높은 키워드에 쓸 때 무엇을 달리하나** — 판의 형태를 글쓰기에 연결한다.
+ *
+ * ── 왜 만들었나 (2026-08-20) ─────────────────────────────────
+ * 회원 질문: "그래서 홈페이지에 경쟁 높은 키워드용 글쓰기 도구가 있는거야?" **없었다.**
+ * 그동안 잰 것은 화면에 표로만 있었고, 글쓰기 쪽에는 경쟁 수준이라는 입력 자체가 없었다.
+ * 재놓고 안 쓰면 도구가 아니다 — 그래서 잰 값을 지시문과 검수로 잇는다.
+ *
+ * ── 무엇을 근거로 하나 ──────────────────────────────────────
+ * 지역 헬스·PT 키워드 5개 × 1페이지 10편 = 50편 (2026-08-20):
+ *
+ *   제목에 상호명           37/50 (74%)
+ *   제목에 후기·추천        29/50 (58%)
+ *   둘 다 없는 6편          전부 「○년차 관장·운영자가 알려주는 정보글」 (나이 3~23일)
+ *   글자수                  중간 1,561자 · 하위 10% 1,129자
+ *
+ * 그리고 블로그 단위(상위 5편의 블로그 13곳):
+ *   후기·체험 글을 쓰는 블로그  13곳 중 12곳 (우리는 최근 30편에 0편)
+ *
+ * ── 규칙으로 만들지 않은 것 ─────────────────────────────────
+ * 「상호명을 넣으면 오른다」고는 하지 않는다. 2026-08-06 실측(161편)에서 상호명 유무로
+ * **1페이지 안의 순위 차이는 없었다**(있음 5.33위 / 없음 5.38위). 이건 순위를 만드는 규칙이
+ * 아니라 **이 판에 있는 글의 형태**다. 그러니 검수도 `warn` 까지만 하고 점수를 크게 깎지
+ * 않는다.
+ */
+
+/** 경쟁 수준 — 최근 30일 발행량으로 가른다 */
+export type ArenaLevel = 'high' | 'mid' | 'low'
+
+/**
+ * 경계값의 근거 (2026-08-20 실측).
+ *
+ * 300편 이상은 실제로 「갓 쓴 글이 바로 안 올라오는」 자리였다 — 쌍용동 헬스장 433편 ·
+ * 두정동 헬스장 611편 · 천안 두정동 헬스장 581편 · 두정동 PT 377편이 모두 그랬다.
+ * 100편 아래는 그 반대였다 — 용곡동 PT 24편 · 여성전용 31편 · 쌍용동 여성전용 헬스장 26편이
+ * 모두 7일 이내 글을 1페이지에 올리고 있었다. 사이는 섞여 있어서 'mid' 로 둔다.
+ */
+export const ARENA_HIGH = 300
+export const ARENA_LOW = 100
+
+export const ARENA_LABEL: Record<ArenaLevel, string> = {
+  high: '경쟁 센 자리',
+  mid: '경쟁 보통',
+  low: '경쟁 적은 자리',
+}
+
+export interface ArenaInput {
+  /** 최근 30일 발행량. null = 모름 */
+  recent30: number | null
+}
+
+export interface Arena {
+  level: ArenaLevel
+  label: string
+  recent30: number | null
+  /** 왜 이 수준인지 한 줄 */
+  why: string
+}
+
+/** 모르면 'mid' 다 — 모르는 것을 유리하게도 불리하게도 쓰지 않는다 */
+export function arenaOf({ recent30 }: ArenaInput): Arena {
+  const level: ArenaLevel =
+    recent30 === null ? 'mid' : recent30 >= ARENA_HIGH ? 'high' : recent30 <= ARENA_LOW ? 'low' : 'mid'
+  const why =
+    recent30 === null
+      ? '최근 30일 발행량을 모릅니다 (키워드 조사에서 재면 이 자리에 들어옵니다).'
+      : `최근 30일 발행 ${recent30.toLocaleString()}편${
+          level === 'high'
+            ? ` — ${ARENA_HIGH}편 이상은 갓 쓴 글이 바로 1페이지에 못 올라오는 자리였습니다.`
+            : level === 'low'
+              ? ` — ${ARENA_LOW}편 이하는 갓 쓴 글이 바로 올라오던 자리입니다.`
+              : '.'
+        }`
+  return { level, label: ARENA_LABEL[level], recent30, why }
+}
+
+/**
+ * 제목에 상호명이 들어갔나.
+ *
+ * 정식 상호명 전체가 아니어도 **브랜드 부분**이 있으면 맞다고 본다 — 「MTO 피트니스 쌍용점」
+ * 에서 「MTO」·「MTO 피트니스」만 써도 독자는 어느 업체인지 안다. 공백은 무시한다.
+ */
+export function titleHasBrand(title: string, legalName?: string, name?: string): boolean {
+  const flat = (s: string) => (s ?? '').replace(/\s+/g, '').toLowerCase()
+  const t = flat(title)
+  if (!t) return false
+  for (const raw of [legalName, name]) {
+    const full = flat(raw ?? '')
+    if (!full) continue
+    if (t.includes(full)) return true
+    /*
+     * 상호명을 낱말로 쪼개서 **2자 이상 조각**이 제목에 있으면 맞다고 본다.
+     * 「여성전용 착한헬스 성정점」에서 「착한헬스」만 써도 업체는 밝혀진다.
+     * 다만 「성정점」처럼 지역+점 조각은 브랜드로 보지 않는다 — 그것만으로는 어느
+     * 브랜드인지 모른다 (회원이 앞서 지적한 「두정점입니다」 문제와 같은 이유다).
+     */
+    for (const piece of (raw ?? '').split(/\s+/)) {
+      const p = flat(piece)
+      if (p.length < 2) continue
+      if (/(동|점|지점)$/.test(piece.trim())) continue
+      if (t.includes(p)) return true
+    }
+  }
+  return false
+}
+
+/**
+ * 경쟁 센 자리에서 이 판의 형태로 쓰라는 지시 — **지시문과 화면이 같은 문장을 쓴다.**
+ *
+ * 낮은 경쟁에서는 아무 말도 하지 않는다. 규칙을 늘리면 서로 부딪히고, 이 판 형태는
+ * 경쟁이 셀 때만 의미가 있다 (경쟁 적은 자리는 그냥 써도 올라갔다).
+ */
+export function arenaGuidance(arena: Arena, type: 'promo' | 'info' | 'review'): string[] {
+  if (arena.level !== 'high') return []
+  const lines = [
+    `- **경쟁 센 자리다** (${arena.why}) 이 판 상위 50편을 세어보니 글의 형태가 정해져 있다 — 그 형태로 쓴다.`,
+    '- **제목에 정식 상호명을 넣는다.** 상위 50편 중 37편(74%)이 그렇게 썼다. 순위를 만드는 규칙이라는 근거는 없지만(1페이지 안에서는 차이가 없었다), 이 판에 있는 글은 그 모양이다. 메인 키워드 → 상호명 순서로 두고, 금액이 있으면 앞 20자 안에 넣는다.',
+  ]
+  if (type === 'review') {
+    lines.push(
+      '- 제목에 「후기」를 넣는다 (상위 50편 중 29편이 후기·추천을 썼고, 후기글은 그 자체로 유리했다 — 있음 4.77위 / 없음 5.81위).'
+    )
+  }
+  if (type === 'info') {
+    lines.push(
+      '- **누가 알려주는지 제목에서 밝힌다** — 「○년차 관장이 알려드립니다」 꼴이다. 상호명도 후기도 없이 1페이지에 있는 6편이 전부 이 형태였다 (나이 3~23일로 최근에 들어온 글들이다). 지점 정보의 운영 연차를 쓰고, 없으면 이 문장을 만들지 않는다.'
+    )
+  }
+  lines.push(
+    '- 분량은 1,500자 아래로 내려가지 않게 한다 — 이 판 1페이지의 하위 10%가 1,129자다. 위쪽은 자유다 (실측에서 분량과 순위는 무관했다).'
+  )
+  return lines
+}
