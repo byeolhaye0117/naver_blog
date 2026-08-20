@@ -230,6 +230,81 @@ export default function GuidePage() {
           </p>
         </Card>
 
+        {/* ─── 굳은 자리 돌파 ─── */}
+        <Card
+          id="shut"
+          title="굳은 키워드는 어떻게 뚫나"
+          subtitle="굳은 자리 6개와 열린 자리 5개의 1페이지를 30위까지 재봤습니다 (2026-08-20). 통설과 반대 결과가 나왔습니다."
+        >
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-rose-900 dark:text-rose-200">
+            <strong className="font-bold">「블로그가 작아서 못 들어간다」는 틀렸습니다.</strong>
+            <p className="mt-1.5">
+              굳은 자리 1페이지에도 누적 방문자 <strong>314명 · 396명 · 503명 · 769명</strong> 블로그가 앉아
+              있었습니다. 열린 자리의 최소 블로그(271~10,597명)와 크기가 겹칩니다. 두정동 헬스장 10위는 769명,
+              성정동 헬스장 추천 1페이지에는 314명 블로그가 있습니다 — 우리보다 훨씬 작습니다.
+            </p>
+          </div>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[520px] text-[12px]">
+              <thead>
+                <tr className="muted bd border-b text-left">
+                  <th className="py-1.5 pr-3 font-semibold">잰 것</th>
+                  <th className="py-1.5 pr-3 font-semibold">굳은 자리 6개</th>
+                  <th className="py-1.5 pr-3 font-semibold">열린 자리 5개</th>
+                  <th className="py-1.5 font-semibold">갈리나</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['1페이지 최소 블로그', '314~16,145명', '271~10,597명', '아니오 (겹침)'],
+                  ['1~10위 크기 중간값', '28,004~73,821명', '5,342~40,262명', '아니오 (겹침)'],
+                  ['1페이지 가장 어린 글', '8~38일', '1~3일', '예 — 이것만 갈렸습니다'],
+                  ['7일 이내 1~10위', '0편 (6개 전부)', '1~2편', '예'],
+                  ['최근 30일 발행', '53~625편', '24~95편', '대체로 (예외 있음)'],
+                ].map((row) => (
+                  <tr key={row[0]} className="bd border-b last:border-0 align-top">
+                    <td className="py-1.5 pr-3 font-semibold">{row[0]}</td>
+                    <td className="tnum py-1.5 pr-3">{row[1]}</td>
+                    <td className="tnum muted py-1.5 pr-3">{row[2]}</td>
+                    <td className="py-1.5">{row[3]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-3 text-[12px] leading-relaxed">
+            갈린 것은 <strong>1페이지 글의 나이</strong> 하나였습니다. 굳은 자리는 자리 임자가 8~38일 전 글이고
+            새 글이 11위 아래에 쌓입니다. 즉 <strong>글을 잘 써서 뚫는 문제가 아닙니다</strong> — 그래서 「굳은
+            자리용 글쓰기 규칙」은 만들지 않았습니다. 측정에 없는 규칙을 지시문에 넣으면 검수와 싸우게 됩니다.
+          </p>
+
+          <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-emerald-800 dark:text-emerald-200">
+            <strong className="font-bold">대신 같은 동네에 열린 문이 있었습니다.</strong>
+            <p className="mt-1.5">
+              「성정동 여성전용」은 굳었지만 <strong>「성정동 여성전용 헬스장」</strong>은 발행 28편에 7일 이내
+              1편으로 열려 있었습니다 — 낱말 하나 차이입니다. 「쌍용동 헬스장」(발행 444편·굳음) 옆에는{' '}
+              <strong>「쌍용동 여성전용 헬스장」</strong>(26편·7일 3편) ·{' '}
+              <strong>「쌍용동 헬스장 새벽」</strong>(55편) · <strong>「쌍용동 헬스장 주말」</strong>(77편)이 열려
+              있었고, 「두정동 헬스장」(625편·굳음) 옆에는 <strong>「두정동 헬스장 새벽」</strong>(81편·7일 2편)이
+              열려 있었습니다.
+            </p>
+            <p className="mt-1.5">
+              그래서 앱이 <strong>굳은 줄 아래에 그 동네의 열린 문을 함께 보여줍니다</strong> (키워드 조사 화면 →
+              「지금 뚫릴 만한 키워드」). 매일 아침 자동으로 다시 잽니다.
+            </p>
+          </div>
+
+          <p className="muted mt-3 text-[11.5px] leading-relaxed">
+            <strong>그럼 굳은 head 키워드는 포기인가 —</strong> 아닙니다. 다만 순서가 있습니다. 우리 블로그의
+            1페이지 진입률이 0%인 동안에는 굳은 자리에 써도 11위 아래에 쌓입니다(실측에서 굳은 자리 11~30위에
+            8~11일 글이 실제로 있었습니다). 열린 문으로 1페이지 경험을 쌓아 지수를 올린 다음 head 로 가는 것이,
+            지금 재본 값으로 말할 수 있는 유일한 순서입니다. <strong>「몇 편 쓰면 열린다」는 재보지 않았으니
+            말하지 않습니다.</strong>
+          </p>
+        </Card>
+
         {/* ─── 발행 후 타임라인 ─── */}
         <Card
           id="timeline"

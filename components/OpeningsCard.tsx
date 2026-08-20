@@ -7,6 +7,7 @@ import {
   CHANGE_LABEL,
   FRESH_DAYS,
   QUIET_MAX,
+  detoursFor,
   openingChanges,
   type OpeningChange,
   type OpeningTier,
@@ -25,6 +26,8 @@ interface Row {
   dated: number
   sampled: number
   why: string
+  /** detour = 굳은 자리 우회로 후보로 함께 잰 세부 의도 키워드 (표에는 올리지 않는다) */
+  kind?: 'store' | 'detour'
 }
 
 const TONE: Record<OpeningTier, 'good' | 'warn' | 'bad'> = {
@@ -70,7 +73,23 @@ export default function OpeningsCard({
     () => (rows ? openingChanges(previous?.rows ?? null, rows) : new Map<string, OpeningChange>()),
     [rows, previous]
   )
-  const newlyOpen = rows?.filter((r) => changes.get(r.keyword) === 'opened') ?? []
+  /*
+   * 표에는 **지점 키워드만** 올린다. 우회로 후보(세부 의도 키워드)는 수십 개라 표에 섞으면
+   * 「우리가 잡은 키워드가 어떤 상태인가」를 못 읽는다. 굳은 줄 아래에 문으로만 보여준다.
+   */
+  const table = rows?.filter((r) => r.kind !== 'detour') ?? []
+  const newlyOpen = table.filter((r) => changes.get(r.keyword) === 'opened')
+  /** 굳은 줄마다 붙일 문 — 같은 동네에서 지금 열려 있는 세부 의도 키워드 */
+  const doors = useMemo(() => {
+    const m = new Map<string, Row[]>()
+    if (!rows) return m
+    for (const r of rows) {
+      if (r.kind === 'detour') continue
+      const d = detoursFor(r, rows) as Row[]
+      if (d.length) m.set(r.keyword, d)
+    }
+    return m
+  }, [rows])
 
   async function run() {
     setBusy(true)
@@ -94,7 +113,7 @@ export default function OpeningsCard({
     }
   }
 
-  const open = rows?.filter((r) => r.tier === 'open-quiet' || r.tier === 'open') ?? []
+  const open = table.filter((r) => r.tier === 'open-quiet' || r.tier === 'open')
 
   return (
     <Card
@@ -151,7 +170,7 @@ export default function OpeningsCard({
         </p>
       )}
 
-      {rows && rows.length > 0 && (
+      {rows && table.length > 0 && (
         <>
           {/*
             매일 재는 값의 쓸모는 「어제는 굳어 있었는데 오늘 열렸다」를 잡는 것이다.
@@ -179,7 +198,7 @@ export default function OpeningsCard({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {table.flatMap((r) => [
                   <tr key={r.keyword} className="bd border-b last:border-0 align-top" title={r.why}>
                     <td className="py-1.5 pr-2">
                       <Badge tone={TONE[r.tier]}>{r.label}</Badge>
@@ -214,8 +233,38 @@ export default function OpeningsCard({
                         이 키워드로 →
                       </Link>
                     </td>
-                  </tr>
-                ))}
+                  </tr>,
+                  /*
+                    굳은 줄 아래에 **들어가는 문**을 붙인다 (2026-08-20 실측). 굳은 자리를 정면으로
+                    뚫는 방법은 실측에 없었다 — 갈린 것은 1페이지 글의 나이였고 그건 글로 못 바꾼다.
+                    대신 같은 동네의 세부 의도 키워드는 열려 있었다.
+                  */
+                  doors.get(r.keyword) && (
+                    <tr key={`${r.keyword}-door`} className="bd border-b last:border-0">
+                      <td />
+                      <td colSpan={7} className="pb-2 pl-0 pr-2">
+                        <span className="muted text-[11px]">들어가는 문 · 같은 동네에서 지금 열린 자리 → </span>
+                        {doors.get(r.keyword)!.map((d, i) => (
+                          <span key={d.keyword} className="text-[11.5px]">
+                            {i > 0 && <span className="muted"> · </span>}
+                            <Link
+                              href={`/write?main=${encodeURIComponent(d.keyword)}&new=1`}
+                              className="text-brand-600 dark:text-brand-100 font-semibold underline"
+                              title={d.why}
+                            >
+                              {d.keyword}
+                            </Link>
+                            <span className="muted">
+                              {' '}
+                              (발행 {d.recent30 === null ? '?' : d.recent30.toLocaleString()}편 · {FRESH_DAYS}일 이내{' '}
+                              {d.fresh}편)
+                            </span>
+                          </span>
+                        ))}
+                      </td>
+                    </tr>
+                  ),
+                ])}
               </tbody>
             </table>
           </div>
@@ -226,6 +275,14 @@ export default function OpeningsCard({
             <br />
             <b>블로그 크기는 등급에 넣지 않았습니다</b> — 우리 블로그 누적 방문자가 지금 힘(1페이지 진입률)을
             대변하지 못해서, 그 숫자로 나누면 없는 근거를 만드는 셈이 됩니다.
+            <br />
+            <b>굳은 자리는 「블로그가 커서」 굳은 게 아닙니다</b> (2026-08-20, 굳은 자리 6개 · 열린 자리 5개의 1페이지를
+            30위까지 재봤습니다). 굳은 자리 1페이지에도 누적 <b>314명 · 396명 · 503명 · 769명</b> 블로그가 앉아
+            있었고, 열린 자리(271~10,597명)와 크기가 겹쳤습니다. 갈린 것은 <b>1페이지 글의 나이</b>였습니다 — 열린
+            자리는 1~7일 글이 1페이지에 있고, 굳은 자리는 가장 어린 글이 8~38일입니다. 새 글이 1페이지로 못 올라오는
+            상태라 글을 잘 써서 뚫는 문제가 아닙니다. 그래서 굳은 줄 아래에 <b>같은 동네의 열린 문</b>을 함께
+            잽니다 (예: 「성정동 여성전용」은 굳었지만 「성정동 여성전용 헬스장」은 발행 28편으로 열려 있었습니다 —
+            낱말 하나 차이입니다).
             <br />
             날짜를 읽은 글이 적은 키워드는 근거가 약합니다 (잰 글 수와 날짜 확인 수는 표 아래 원자료에
             남습니다).
@@ -244,7 +301,7 @@ export default function OpeningsCard({
         </>
       )}
 
-      {rows && rows.length === 0 && (
+      {rows && table.length === 0 && (
         <p className="mt-3 text-[12.5px]">잰 키워드가 없습니다. 지점에 지역 키워드를 넣어주세요.</p>
       )}
     </Card>

@@ -6692,6 +6692,45 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(halfBlind.rows.length === 1 && halfBlind.failed.length === 0, '발행량을 못 읽어도 줄은 남긴다')
   ok(halfBlind.rows[0].tier === 'open', '발행량 모름 = 조용하다고 하지 않는다', halfBlind.rows[0].tier)
 
+  // ── 우회로 재기 — 굳은 자리가 있는 동네만, 이미 잰 것은 빼고
+  {
+    const { scanDetours } = require(`${OUT}/analysis/openings-scan.js`)
+    const mk = (keyword, ages, recent30) => ({
+      ...openingOf({ ages, recent30 }),
+      keyword,
+      stores: [],
+      dated: ages.length,
+      sampled: ages.length,
+      kind: 'store',
+    })
+    const asked = []
+    const fake = {
+      now: () => NOW,
+      top: async (k) => {
+        asked.push(k)
+        return { items: [{ date: '2026-08-18' }] }
+      },
+      recent: async () => ({ count: 30 }),
+    }
+
+    // 굳은 자리가 없으면 한 콜도 쓰지 않는다
+    const none = await scanDetours([mk('용곡동 PT', [1], 24)], fake)
+    ok(none.rows.length === 0 && asked.length === 0, '굳은 자리가 없으면 우회로를 재지 않는다')
+
+    const got = await scanDetours([mk('쌍용동 헬스장', [60], 444), mk('용곡동 PT', [1], 24)], fake, 12)
+    ok(asked.length > 0 && asked.length <= 12, `상한까지만 잰다 — ${asked.length}개`)
+    ok(
+      asked.every((k) => k.startsWith('쌍용동')),
+      '굳은 자리가 있는 동네만 잰다 (열린 동네는 재지 않는다)',
+      asked.slice(0, 3).join(' · ')
+    )
+    ok(!asked.includes('쌍용동 헬스장'), '이미 잰 키워드는 두 번 재지 않는다')
+    ok(
+      got.rows.every((r) => r.kind === 'detour'),
+      '우회로 후보는 표에 올라가지 않게 표시된다 (kind=detour)'
+    )
+  }
+
   // ── 어제와 비교 — 매일 재는 이유
   const row = (keyword, ages, recent30) => ({ ...openingOf({ ages, recent30 }), keyword, stores: [], dated: ages.length, sampled: ages.length })
   const yesterday = [row('열렸던', [2], 20), row('굳었던', [60], 500), row('그대로', [60], 500)]
@@ -6712,6 +6751,44 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   const rolled = mergeOpeningRuns(many, { date: '2026-08-20', tag: 'new' }, OPENING_RUNS_KEEP)
   ok(rolled.length === OPENING_RUNS_KEEP, `상한을 넘기지 않는다 — ${rolled.length}개`)
   ok(rolled[rolled.length - 1].tag === 'new' && rolled[0].date === '2026-08-02', '오래된 것부터 버린다', rolled[0].date)
+  /*
+   * ─── 굳은 자리로 들어가는 문 (2026-08-20) ────────────────────────
+   *
+   * 회원 요청: "굳은 키워드도 돌파할 수 있는 방법을 알아주면 좋겠어." 굳은 자리 6개·열린
+   * 자리 5개의 1페이지를 30위까지 재봤더니 **블로그 크기로는 갈리지 않았다** (굳은 자리
+   * 1페이지에 누적 314·396·503·769명 블로그가 있었다). 갈린 것은 1페이지 글의 나이였고,
+   * 그건 글로 못 바꾼다. 대신 같은 동네의 세부 의도 키워드는 열려 있었다.
+   *
+   * 그래서 「정면으로 뚫는 규칙」을 만들지 않고 **열린 문을 찾아준다**. 그 문이 우리 동네
+   * 것인지, 정말 열려 있는지, 들어갈 만한 자리인지를 여기서 지킨다.
+   */
+  const { areaOf, detoursFor } = require(`${OUT}/analysis/openings.js`)
+  ok(areaOf('천안 두정동 헬스장') === '두정동', '앞에 시 이름이 붙어도 동네를 찾는다', areaOf('천안 두정동 헬스장'))
+  ok(areaOf('쌍용동PT') === '쌍용동', '붙여 쓴 키워드에서도 동네를 찾는다', areaOf('쌍용동PT'))
+  ok(areaOf('헬스장 추천') === null, '동네가 없으면 null')
+
+  const shutHead = row('성정동 여성전용', [60], 61)
+  const pool = [
+    shutHead,
+    row('성정동 여성전용 헬스장', [6], 28), // 같은 동네 · 열림 · 조용 → 첫 번째 문
+    row('성정동 다이어트', [2], 221), // 같은 동네 · 열림 · 발행 많음 → 뒤로
+    row('성정동 헬스장 추천', [11], 171), // 같은 동네지만 굳음 → 문이 아니다
+    row('용곡동 여성전용 헬스장', [1], 26), // 열렸지만 다른 동네 → 권하면 엉뚱한 글이 된다
+  ]
+  const doors = detoursFor(shutHead, pool)
+  ok(doors.length === 2, `열린 같은 동네 키워드만 문으로 본다 — ${doors.length}개`)
+  ok(doors[0].keyword === '성정동 여성전용 헬스장', '발행량이 적은 문을 먼저 권한다', doors[0].keyword)
+  ok(!doors.some((d) => d.keyword.startsWith('용곡동')), '다른 동네는 권하지 않는다')
+  ok(!doors.some((d) => d.tier === 'shut' || d.tier === 'quiet'), '굳은 자리를 문이라고 하지 않는다')
+  ok(!doors.some((d) => d.keyword === shutHead.keyword), '자기 자신은 문이 아니다')
+  // 열린 자리에는 문을 붙이지 않는다 (이미 들어갈 수 있는 자리다)
+  ok(detoursFor(row('용곡동 PT', [1], 24), pool).length === 0, '열린 자리에는 우회로를 붙이지 않는다')
+  // 공백만 다른 같은 키워드를 문으로 권하지 않는다
+  ok(
+    detoursFor(row('쌍용동 PT', [60], 300), [row('쌍용동PT', [1], 20)]).length === 0,
+    '공백만 다른 같은 키워드는 문이 아니다'
+  )
+
   const sameDay = mergeOpeningRuns([{ date: '2026-08-19', tag: 'cron' }], { date: '2026-08-19', tag: 'user' }, OPENING_RUNS_KEEP)
   ok(sameDay.length === 1 && sameDay[0].tag === 'user', '같은 날 다시 재면 나중 것이 그날 값이다')
   ok(mergeOpeningRuns(undefined, { date: '2026-08-19' }, OPENING_RUNS_KEEP).length === 1, '기록이 없어도 첫 줄이 들어간다')

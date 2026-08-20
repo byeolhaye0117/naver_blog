@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { OPENING_RUNS_KEEP } from '@/lib/analysis/openings'
-import { keywordOwners, mergeOpeningRuns, scanOpenings } from '@/lib/analysis/openings-scan'
+import { keywordOwners, mergeOpeningRuns, scanDetours, scanOpenings } from '@/lib/analysis/openings-scan'
 import type { OpeningRun } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -38,7 +38,15 @@ export async function POST(req: Request) {
     }
 
     // 재는 부분은 크론과 **같은 함수**다 (lib/analysis/openings-scan.ts)
-    const { rows, failed } = await scanOpenings(list, owners)
+    const { rows: storeRows, failed } = await scanOpenings(list, owners)
+
+    /*
+     * 굳은 자리가 나오면 그 동네의 세부 의도 키워드도 함께 잰다 — 「굳은 자리로 들어가는 문」.
+     * 몇 개만 다시 잰 경우(picked)에는 건너뛴다: 표 전체가 없으면 우회로를 붙일 자리도 없다.
+     */
+    const detours = picked.length ? { rows: [], failed: [] } : await scanDetours(storeRows)
+    const rows = [...storeRows, ...detours.rows]
+    failed.push(...detours.failed)
 
     /*
      * 눌러서 잰 것도 저장한다.

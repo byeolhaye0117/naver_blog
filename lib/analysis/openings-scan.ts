@@ -11,10 +11,19 @@
  * 않는가」·「순서가 맞는가」를 테스트에서 확인할 수 있다.
  */
 import { recentBlogCount, topBlogPosts } from '../naver/blogsection'
-import { ageDaysOf, openingOf, sortOpenings, type OpeningRow } from './openings'
+import { combineLocalKeywords } from './keyword'
+import { areaOf, ageDaysOf, openingOf, sortOpenings, type OpeningRow } from './openings'
 
 /** 1페이지로 볼 범위 */
 export const TOP = 10
+
+/**
+ * 우회로 후보 상한 — 굳은 자리가 여러 동네에 있으면 후보가 금방 수십 개가 된다.
+ *
+ * 키워드 하나에 목록 1콜 + 발행량 1콜이고 실측에서 18개에 15초였다. 40개를 더하면 한 번에
+ * 50초쯤이라 크론(300초) 안에 들어간다.
+ */
+export const MAX_DETOURS = 40
 
 export interface ScanDeps {
   top: (keyword: string, display: number) => Promise<{ items: { date: string | null }[] }>
@@ -44,7 +53,8 @@ export interface ScanResult {
 export async function scanOpenings(
   keywords: string[],
   owners: Map<string, string[]>,
-  deps: Partial<ScanDeps> = {}
+  deps: Partial<ScanDeps> = {},
+  kind: 'store' | 'detour' = 'store'
 ): Promise<ScanResult> {
   const d: ScanDeps = { ...REAL, ...deps }
   const now = d.now()
@@ -66,6 +76,7 @@ export async function scanOpenings(
         stores: owners.get(keyword) ?? [],
         dated: ages.length,
         sampled: page.items.length,
+        kind,
       })
     } catch {
       failed.push(keyword)
@@ -73,6 +84,39 @@ export async function scanOpenings(
   }
 
   return { rows: sortOpenings(rows), failed }
+}
+
+/**
+ * 굳은 자리가 나온 **동네만** 세부 의도 키워드로 한 번 더 잰다.
+ *
+ * 굳은 자리를 정면으로 뚫는 방법은 실측에 없었다 (openings.ts 의 `detoursFor` 주석) —
+ * 갈리는 것은 1페이지 글의 나이였고 그건 글로 못 바꾼다. 대신 **같은 동네의 열린 문**은
+ * 실제로 있었다. 그 문을 매번 손으로 찾지 않게 함께 재둔다.
+ *
+ * 굳은 자리가 없으면 한 콜도 쓰지 않는다.
+ */
+export async function scanDetours(
+  storeRows: OpeningRow[],
+  deps: Partial<ScanDeps> = {},
+  max = MAX_DETOURS
+): Promise<ScanResult> {
+  const areas = Array.from(
+    new Set(
+      storeRows
+        .filter((r) => r.tier === 'shut' || r.tier === 'quiet')
+        .map((r) => areaOf(r.keyword))
+        .filter((a): a is string => Boolean(a))
+    )
+  )
+  if (!areas.length) return { rows: [], failed: [] }
+
+  // 이미 잰 키워드는 두 번 재지 않는다 (공백 차이는 같은 것으로 본다)
+  const seen = new Set(storeRows.map((r) => r.keyword.replace(/\s+/g, '')))
+  const candidates = combineLocalKeywords(areas)
+    .filter((k) => !seen.has(k.replace(/\s+/g, '')))
+    .slice(0, max)
+
+  return scanOpenings(candidates, new Map(), deps, 'detour')
 }
 
 /**
