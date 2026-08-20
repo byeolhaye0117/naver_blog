@@ -68,6 +68,8 @@ const TARGETS = [
   'lib/analysis/turnover.ts',
   // 상위 블로그와 블로그 단위 비교 — 발행 간격·글 유형·주제 집중도 (2026-08-20)
   'lib/analysis/peers.ts',
+  // 경쟁 센 자리용 글쓰기 — 잰 발행량을 지시문·검수로 잇는다 (2026-08-20)
+  'lib/writing/arena.ts',
   'lib/store.ts',
   'lib/seed/stores.ts',
 ]

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import type { Post, PostStatus, PostType, Prescription, Sponsorship, Store } from '@/lib/types'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL, SPONSORSHIP_LABEL } from '@/lib/types'
 import { checkPost } from '@/lib/writing/checker'
+import type { Arena } from '@/lib/writing/arena'
 import { buildTemplate, hasGuides, stripGuides } from '@/lib/writing/templates'
 import { PUBLISH_THRESHOLD } from '@/lib/writing/checker'
 import { explainNonJson } from '@/lib/ai/httperror'
@@ -85,6 +86,7 @@ export default function Editor({
   evidence,
   resumable,
   ai,
+  arenas,
 }: {
   stores: Store[]
   posts: Post[]
@@ -112,6 +114,14 @@ export default function Editor({
   resumable?: { id: string; title: string; type: PostType; updatedAt: string }
   /** 지금 쓰는 AI 키와 자료 검색 가능 여부 (서버에서 판단해 넘긴다 — 키 값은 넘기지 않는다) */
   ai?: { label: string | null; canSearch: boolean }
+  /**
+   * 키워드별 경쟁 수준 — 매일 도는 측정에서 서버가 미리 만들어 넘긴다.
+   *
+   * 회원 질문 (2026-08-20): "경쟁 높은 키워드용 글쓰기 도구가 있는거야?" 없었다. 잰 값이
+   * 글쓰기에 하나도 연결돼 있지 않았다. 잰 적 없는 키워드는 값이 없고, 그러면 아무 규칙도
+   * 붙지 않는다 (모르는 것을 유리하게도 불리하게도 쓰지 않는다).
+   */
+  arenas?: Record<string, Arena>
 }) {
   const router = useRouter()
 
@@ -350,11 +360,16 @@ export default function Editor({
         placeReviews: store?.placeReviews,
         placeId: store?.placeId,
         evidence,
+        // 경쟁 센 자리에서만 판 형태를 본다 (제목에 상호명) — 잰 적 없으면 undefined
+        arena: arenas?.[mainKeyword.trim()]?.level,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // eventText 를 빼면 이벤트를 지웠는데 「후킹에 이벤트 훅」이 그대로 남는다
-    [type, title, body, mainKeyword, sub1, legacySub, localKeyword, tagText, storeId, sponsorship, eventText]
+    [type, title, body, mainKeyword, sub1, legacySub, localKeyword, tagText, storeId, sponsorship, eventText, arenas]
   )
+
+  /** 지금 메인 키워드의 경쟁 수준 — 서버가 넘긴 표에서 찾는다 (없으면 아무 말도 안 한다) */
+  const arena = arenas?.[mainKeyword.trim()]
 
   const advice = useMemo(
     () => adviseRotation(posts.filter((p) => p.id !== id), storeId, type, store),
@@ -952,6 +967,33 @@ export default function Editor({
                   >
                     <input value={mainKeyword} onChange={(e) => setMainKeyword(e.target.value)} className={inputClass} />
                   </Field>
+
+                  {/*
+                    이 키워드가 경쟁 센 자리인지 **글 쓰기 전에** 보여준다.
+                    회원 질문 (2026-08-20): "경쟁 높은 키워드용 글쓰기 도구가 있는거야?"
+                    없었다 — 매일 재둔 발행량이 글쓰기 화면에 한 줄도 안 보였다.
+                  */}
+                  {arena && (
+                    <div
+                      className={`rounded-xl border px-3 py-2.5 text-[11.5px] leading-relaxed ${
+                        arena.level === 'high'
+                          ? 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200'
+                          : 'bd muted'
+                      }`}
+                    >
+                      <b>{arena.label}</b> — {arena.why}
+                      {arena.level === 'high' && (
+                        <>
+                          {' '}
+                          이 판 상위 50편 중 <b>37편(74%)이 제목에 업체 이름</b>을 넣고,{' '}
+                          <b>29편(58%)이 후기·추천</b>을 씁니다. 상호명도 후기도 없이 1페이지에 있는 6편은 전부
+                          「○년차 관장이 알려주는 정보글」이었습니다. AI로 쓰면 이 형태를 지시문에 넣고, 검수가
+                          제목에 상호명이 있는지 봅니다. <b>순위를 만든다는 근거는 아닙니다</b> — 이 판에 있는 글의
+                          모양입니다.
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {advice.mainKeywordCandidates.length > 0 && type !== 'info' && (
                     <div>

@@ -6,6 +6,7 @@ import StorageNotice from '@/components/StorageNotice'
 import { findPrescription } from '@/lib/analysis/prescription'
 import { poolStoredRuns } from '@/lib/analysis/factors'
 import { aiStatus, canSearchWeb } from '@/lib/ai/llm'
+import { arenaOf } from '@/lib/writing/arena'
 
 export const dynamic = 'force-dynamic'
 
@@ -74,6 +75,17 @@ export default async function WritePage({
   const mainKeyword = existing?.mainKeyword || sp.main
   const prescription = findPrescription(db.prescriptions, mainKeyword)
 
+  /*
+   * 매일 도는 「지금 뚫릴 만한 키워드」 측정에서 발행량을 꺼내 경쟁 수준을 만든다.
+   * 회원 질문 (2026-08-20): "경쟁 높은 키워드용 글쓰기 도구가 있는거야?" — 이 줄이 그 연결이다.
+   */
+  const runs = db.openingRuns ?? []
+  const lastRun = runs.length ? runs[runs.length - 1] : null
+  const arenas: Record<string, ReturnType<typeof arenaOf>> = {}
+  for (const row of lastRun?.rows ?? []) {
+    arenas[row.keyword] = arenaOf({ recent30: row.recent30 })
+  }
+
   return (
     <>
       <PageHeader
@@ -87,6 +99,12 @@ export default async function WritePage({
         바뀌면 편집기를 새로 만들어야 한다.
       */}
       <Editor
+        /*
+         * 키워드별 경쟁 수준 — 매일 도는 측정(openingRuns)에서 그대로 가져온다.
+         * 글 쓸 때 네이버를 다시 부르지 않는다. 잰 적 없는 키워드는 값이 없고, 그러면
+         * 「모름」으로 두고 아무 규칙도 붙이지 않는다 (arenaOf 주석).
+         */
+        arenas={arenas}
         key={
           existing?.id ??
           `new:${sp.type ?? ''}:${sp.main ?? ''}:${sp.subs ?? ''}:${sp.store ?? ''}`

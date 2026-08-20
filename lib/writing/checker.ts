@@ -10,6 +10,7 @@ import { TITLE_SHAPE_LABEL, titleAdvice, titleShape } from '../analysis/title'
 import { analyzeReviews, placeReviewUrl, verifyReviewQuotes } from '../analysis/reviews'
 import { findHardWords } from './plainwords'
 import { coverageOf, requestedTopics } from './request'
+import { titleHasBrand, type ArenaLevel } from './arena'
 import type { PlaceReview } from '../analysis/reviews'
 import { evidenceHeadline, itemEvidence } from './evidence'
 import type { PooledFactor } from '../analysis/factors'
@@ -39,6 +40,14 @@ export interface CheckInput {
   localKeyword?: string
   tags: string[]
   legalName?: string
+  /**
+   * 이 키워드의 경쟁 수준 — 키워드 조사에서 잰 최근 30일 발행량으로 정한다.
+   *
+   * 회원 질문 (2026-08-20): "경쟁 높은 키워드용 글쓰기 도구가 있는거야?" 없었다. 재놓은 값이
+   * 글쓰기·검수에 하나도 연결돼 있지 않았다. 경쟁이 세지 않으면 이 값으로 아무 항목도 만들지
+   * 않는다 — 규칙을 늘리면 서로 부딪힌다.
+   */
+  arena?: ArenaLevel
   womenOnly?: boolean
   sponsorship?: Sponsorship
   /**
@@ -830,6 +839,43 @@ export function checkPost(input: CheckInput): CheckResult {
        * 제목 항목은 개수 제한과 따로 센다).
        */
       weight: 4,
+    })
+  }
+
+  /*
+   * ─── 경쟁 센 자리에서는 제목에 상호명 (2026-08-20) ────────────────
+   *
+   * 회원 질문: "경쟁 높은 키워드용 글쓰기 도구가 있는거야?" 없었다 — 잰 값이 검수에 연결돼
+   * 있지 않았다.
+   *
+   * 지역 헬스·PT 키워드 5개 × 1페이지 10편 = 50편에서 **37편(74%)이 제목에 상호명**을 썼다.
+   * 우리 글은 없었고 8일간 59위에 멈춰 있었다.
+   *
+   * **그러나 `warn` 까지만 한다.** 2026-08-06 실측(161편)에서 상호명 유무로 1페이지 안의
+   * 순위 차이는 없었다(있음 5.33위 / 없음 5.38위). 이건 순위를 만드는 규칙이 아니라 **이 판에
+   * 있는 글의 형태**이고, 형태를 근거로 점수를 크게 깎으면 없는 인과를 만드는 셈이다.
+   *
+   * 경쟁이 세지 않으면 이 항목을 아예 만들지 않는다 — 경쟁 적은 자리는 그냥 써도 올라갔다.
+   */
+  if (input.arena === 'high' && (input.type === 'promo' || input.type === 'review')) {
+    const hasBrand = titleHasBrand(title, input.legalName, undefined)
+    add({
+      id: 'title-brand',
+      group: '키워드',
+      label: '제목에 상호명 (경쟁 센 자리)',
+      level: hasBrand ? 'pass' : 'warn',
+      value: hasBrand ? '있음' : '없음',
+      target: '경쟁 센 자리에서는 넣는다 (상위 50편 중 37편 · 74%)',
+      hint: hasBrand
+        ? undefined
+        : `이 키워드는 경쟁이 센 자리입니다. 상위 50편 중 **37편(74%)이 제목에 업체 이름**을 썼습니다 — 「천안 쌍용동 헬스장 미녀와야수짐 ! 샤워실 개인 부스에…」처럼요. ${
+            input.legalName ? `「${input.legalName}」을 메인 키워드 바로 뒤에 넣으세요. ` : ''
+          }**순위를 만든다는 근거는 없습니다**(1페이지 안에서는 차이가 없었습니다). 다만 이 판에 있는 글은 그 모양이고, 우리 글은 그 형태가 아닌 채로 8일간 59위에 멈춰 있었습니다.`,
+      /*
+       * 가중치 2. 형태이지 순위 근거가 아니라서 가볍게 둔다 — 상호명 본문 항목(legalName,
+       * 가중치 2)과 같은 무게다.
+       */
+      weight: 2,
     })
   }
 

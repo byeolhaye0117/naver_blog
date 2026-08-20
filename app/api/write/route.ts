@@ -4,6 +4,7 @@ import { poolStoredRuns } from '@/lib/analysis/factors'
 import { AiError, aiStatus, askLlm, canSearchWeb, extractJson } from '@/lib/ai/llm'
 import { buildFixPrompt, buildSystemPrompt, buildTitlePrompt, buildUserPrompt } from '@/lib/ai/prompt'
 import { PUBLISH_THRESHOLD, SPECS, checkPost, summarize } from '@/lib/writing/checker'
+import { arenaOf } from '@/lib/writing/arena'
 import { adviseRotation } from '@/lib/writing/rotation'
 import { fixList } from '@/lib/writing/next-action'
 import type { PostType } from '@/lib/types'
@@ -162,10 +163,23 @@ async function handle(req: Request, ms: () => string) {
      */
     const rotation = adviseRotation(db.posts, store.id, type, store, body.request?.trim())
 
+    /*
+     * 경쟁 수준은 **서버가 저장된 측정에서 찾는다** (화면이 보내는 값을 쓰지 않는다).
+     *
+     * 회원 질문 (2026-08-20): "경쟁 높은 키워드용 글쓰기 도구가 있는거야?" 없었다. 매일 도는
+     * 「지금 뚫릴 만한 키워드」가 발행량을 이미 재두고 있었는데 글쓰기가 그 값을 안 봤다.
+     * 잰 적 없는 키워드는 값이 없고, 그러면 판 형태 지시가 아예 안 붙는다.
+     */
+    const lastOpening = (db.openingRuns ?? []).slice(-1)[0] ?? null
+    const flat = (v: string) => v.replace(/\s+/g, '')
+    const openingRow = (lastOpening?.rows ?? []).find((r) => flat(r.keyword) === flat(mainKeyword))
+    const arena = openingRow ? arenaOf({ recent30: openingRow.recent30 }) : undefined
+
     const request = {
       type,
       store,
       mainKeyword,
+      arena,
       introType: body.introType?.trim() || rotation.introType,
       angle: body.angle?.trim() || rotation.angle,
       format: body.format?.trim() || rotation.format,
@@ -197,6 +211,7 @@ async function handle(req: Request, ms: () => string) {
         title: d.title,
         body: d.body,
         mainKeyword,
+        arena: arena?.level,
         subKeywords: request.subKeywords,
         localKeyword: request.localKeyword,
         tags: d.tags,

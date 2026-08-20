@@ -7072,6 +7072,110 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(missingTypes(reviewers, null).length === 0, '우리 값이 없으면 빈칸을 말하지 않는다')
 }
 
+/*
+ * ─── 경쟁 센 자리용 글쓰기 (2026-08-20) ─────────────────────────
+ *
+ * 회원 질문: "그래서 홈페이지에 경쟁 높은 키워드용 글쓰기 도구가 있는거야?" **없었다.**
+ * 재놓은 발행량이 글쓰기·검수에 하나도 연결돼 있지 않았다. 여기서 지키는 것은 셋:
+ *   ① 경쟁이 세지 않으면 **아무 규칙도 붙지 않는다** (규칙을 늘리면 서로 부딪힌다)
+ *   ② 모르면 규칙을 붙이지 않는다 (모르는 것을 유리하게도 불리하게도 쓰지 않는다)
+ *   ③ 「상호명을 넣으면 오른다」로 말하지 않는다 — 1페이지 안에서는 차이가 없었다
+ */
+{
+  const { arenaOf, arenaGuidance, titleHasBrand, ARENA_HIGH, ARENA_LOW } = require(`${OUT}/writing/arena.js`)
+
+  ok(arenaOf({ recent30: 433 }).level === 'high', '발행 433편은 경쟁 센 자리', arenaOf({ recent30: 433 }).level)
+  ok(arenaOf({ recent30: 26 }).level === 'low', '발행 26편은 경쟁 적은 자리')
+  ok(arenaOf({ recent30: 160 }).level === 'mid', '사이는 보통')
+  ok(arenaOf({ recent30: ARENA_HIGH }).level === 'high', '경계값은 포함')
+  ok(arenaOf({ recent30: ARENA_LOW }).level === 'low', '아래 경계값도 포함')
+  ok(arenaOf({ recent30: null }).level === 'mid', '모르면 보통으로 둔다 (유리하게도 불리하게도 쓰지 않는다)')
+  ok(arenaOf({ recent30: 433 }).why.includes('433'), '왜 그 수준인지 숫자로 말한다', arenaOf({ recent30: 433 }).why)
+
+  // ── 경쟁이 세지 않으면 지시가 아예 없다
+  ok(arenaGuidance(arenaOf({ recent30: 26 }), 'promo').length === 0, '경쟁 적은 자리에는 규칙을 붙이지 않는다')
+  ok(arenaGuidance(arenaOf({ recent30: null }), 'promo').length === 0, '모르는 자리에도 붙이지 않는다')
+
+  const high = arenaOf({ recent30: 433 })
+  const promoLines = arenaGuidance(high, 'promo').join('\n')
+  ok(promoLines.includes('제목에 정식 상호명'), '경쟁 센 자리에서는 제목에 상호명을 요구한다')
+  ok(promoLines.includes('74%'), '몇 편을 세어서 그런지 밝힌다')
+  ok(promoLines.includes('근거는 없지만'), '순위를 만든다고 말하지 않는다')
+  ok(!promoLines.includes('후기」를 넣는다'), '홍보글 제목에 「후기」를 넣으라고 하지 않는다 (실측으로 금지한 것)')
+  const reviewLines = arenaGuidance(high, 'review').join('\n')
+  ok(reviewLines.includes('「후기」를 넣는다'), '후기글에는 「후기」를 넣으라고 한다')
+  const infoLines = arenaGuidance(high, 'info').join('\n')
+  ok(infoLines.includes('년차 관장'), '정보글에는 「○년차 관장」 형태를 알려준다')
+  ok(infoLines.includes('없으면 이 문장을 만들지 않는다'), '운영 연차가 없으면 지어내지 말라고 한다')
+
+  // ── 제목에 상호명이 있나
+  ok(titleHasBrand('쌍용동 헬스장 MTO 피트니스 쌍용점 3개월 9.9만원', 'MTO 피트니스 쌍용점'), '상호명 전체가 있으면 통과')
+  ok(titleHasBrand('쌍용동 헬스장 MTO 3개월 9.9만원', 'MTO 피트니스 쌍용점'), '브랜드 조각만 있어도 통과')
+  ok(titleHasBrand('성정동 헬스장 착한헬스 후기', '여성전용 착한헬스 성정점'), '가운데 조각도 브랜드로 본다')
+  ok(!titleHasBrand('쌍용동 헬스장 초보도 지금 등록해도 될까? 8월 3개월 9.9만원', 'MTO 피트니스 쌍용점'), '우리 실제 제목은 상호명이 없다')
+  // 「성정점」처럼 지역+점 조각은 브랜드가 아니다 (회원이 앞서 지적한 「두정점입니다」와 같은 이유)
+  ok(!titleHasBrand('성정동 헬스장 성정점 후기', '여성전용 착한헬스 성정점'), '지역+점 조각은 브랜드로 보지 않는다')
+  ok(!titleHasBrand('', 'MTO 피트니스 쌍용점'), '제목이 없으면 없는 것')
+  ok(!titleHasBrand('쌍용동 헬스장 후기', undefined), '상호명을 모르면 통과시키지 않는다')
+
+  // ── 검수: 경쟁 센 자리 + 홍보/후기에서만 항목이 생긴다
+  const brandItem = (patch) => checkPost({ ...goodPromo, legalName: 'MTO 피트니스 쌍용점', ...patch }).items.find((i) => i.id === 'title-brand')
+  ok(!brandItem({}), '경쟁 수준을 모르면 이 항목을 만들지 않는다')
+  ok(!brandItem({ arena: 'low' }), '경쟁 적은 자리에서도 만들지 않는다')
+  ok(brandItem({ arena: 'high' }), '경쟁 센 자리에서는 항목이 생긴다')
+  ok(brandItem({ arena: 'high' }).level === 'warn', `상호명이 없으면 주의 — ${brandItem({ arena: 'high' })?.level}`)
+  ok(
+    brandItem({ arena: 'high' }).hint.includes('순위를 만든다는 근거는 없습니다'),
+    '순위 근거가 아니라고 화면에도 적는다'
+  )
+  ok(
+    brandItem({ arena: 'high', title: '쌍용동 헬스장 MTO 피트니스 쌍용점 8월 3개월 9.9만원 안내' })?.level === 'pass',
+    '상호명을 넣으면 통과'
+  )
+  ok(!brandItem({ arena: 'high', type: 'info' }), '정보글에는 이 항목을 만들지 않는다 (제목 형태가 다르다)')
+  // 주의 하나로 점수가 무너지지 않는다 — 형태이지 순위 근거가 아니다
+  const withWarn = checkPost({ ...goodPromo, legalName: 'MTO 피트니스 쌍용점', arena: 'high' })
+  const without = checkPost({ ...goodPromo, legalName: 'MTO 피트니스 쌍용점' })
+  ok(without.score - withWarn.score <= 3, `경쟁 항목이 점수를 크게 깎지 않는다 — ${without.score} → ${withWarn.score}`)
+
+  // ── 지시문에 실제로 들어가나
+  const upHigh = buildUserPrompt({
+    type: 'promo',
+    mainKeyword: '쌍용동 헬스장',
+    subKeywords: [],
+    store: { id: 's', name: '쌍용점', legalName: 'MTO 피트니스 쌍용점' },
+    arena: high,
+  })
+  ok(upHigh.includes('## 이 키워드 판의 형태'), '지시문에 판 형태 묶음이 들어간다')
+  ok(upHigh.includes('제목에 정식 상호명'), '지시문이 제목에 상호명을 요구한다')
+  const upLow = buildUserPrompt({
+    type: 'promo',
+    mainKeyword: '용곡동 PT',
+    subKeywords: [],
+    store: { id: 's', name: '용곡점', legalName: 'MTO 피트니스 용곡점' },
+    arena: arenaOf({ recent30: 24 }),
+  })
+  ok(!upLow.includes('## 이 키워드 판의 형태'), '경쟁 적은 자리에는 그 묶음이 없다')
+  const upNone = buildUserPrompt({ type: 'promo', mainKeyword: '용곡동 PT', subKeywords: [] })
+  ok(!upNone.includes('## 이 키워드 판의 형태'), '경쟁 수준을 안 넘기면 아무 것도 안 붙는다')
+  /*
+   * 회원 요청은 판 형태보다 **뒤에** 있어야 한다 — 뒤쪽 지시가 더 강하게 먹는다.
+   * 2026-08-11 에 요청이 가운데로 밀려 「24시 빼줘」가 무시된 일이 있었다.
+   */
+  const upBoth = buildUserPrompt({
+    type: 'promo',
+    mainKeyword: '쌍용동 헬스장',
+    subKeywords: [],
+    store: { id: 's', name: '쌍용점', legalName: 'MTO 피트니스 쌍용점' },
+    arena: high,
+    request: '24시 내용은 빼주세요',
+  })
+  ok(
+    upBoth.indexOf('## 이 키워드 판의 형태') < upBoth.indexOf('## 이번 글 요청'),
+    '회원 요청이 판 형태보다 뒤에 온다 (요청이 이겨야 한다)'
+  )
+}
+
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
