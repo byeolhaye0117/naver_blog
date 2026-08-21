@@ -7,6 +7,7 @@ import { POST_STATUS_LABEL, POST_TYPE_LABEL, SPONSORSHIP_LABEL } from '@/lib/typ
 import { checkPost } from '@/lib/writing/checker'
 import type { Arena } from '@/lib/writing/arena'
 import { buildTemplate, hasGuides, stripGuides } from '@/lib/writing/templates'
+import { INFO_TOPICS } from '@/lib/writing/autodraft'
 import { PUBLISH_THRESHOLD } from '@/lib/writing/checker'
 import { explainNonJson } from '@/lib/ai/httperror'
 
@@ -56,14 +57,8 @@ const SPEAKER_LABEL: Record<PostType, string> = {
  * 실측에서 상위권과 갈린 말들(자세·무게·호흡·식단·초보)이 자연스럽게 나오는 주제로 골랐다 —
  * 아무 주제나 되는 게 아니라, 한 주제 안에서 정보 5종류가 채워져야 하기 때문이다.
  */
-const INFO_TOPIC_IDEAS = [
-  '새벽 운동 시작하기',
-  '다이어트 첫 달에 할 것',
-  '처음 등록했을 때 첫 2주',
-  '체중이 안 빠질 때 점검할 것',
-  '하체 운동 자세 잡기',
-  '퇴근 후 30분 루틴',
-]
+// 매일 자동 초안이 도는 목록과 **같은 것**을 쓴다 — 두 곳에 적으면 한쪽만 늘어난다
+const INFO_TOPIC_IDEAS = INFO_TOPICS.slice(0, 6)
 
 const TYPE_HINT: Record<PostType, string> = {
   promo: '센터가 1인칭으로 쓰는 홍보글. 목표는 방문 상담 예약입니다. 메인 키워드 5~7회, 정식 상호명 3회.',

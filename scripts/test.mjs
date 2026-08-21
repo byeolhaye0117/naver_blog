@@ -72,6 +72,8 @@ const TARGETS = [
   'lib/writing/arena.ts',
   // 네이버 공지 최신화 — 분류·병합은 순수 함수 (2026-08-20)
   'lib/naver/notice.ts',
+  // 매일 정보글 초안 — 「오늘 것이 있나」·「무엇을 쓸 차례인가」 (2026-08-21)
+  'lib/writing/autodraft.ts',
   'lib/store.ts',
   'lib/seed/stores.ts',
 ]

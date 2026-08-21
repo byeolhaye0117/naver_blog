@@ -7,6 +7,7 @@
  * 그래서 순서에서 막힌 첫 지점을 찾아 그것만 크게 보여주고, 나머지는 접어 둔다.
  */
 import type { Post, RankTarget, Store } from '@/lib/types'
+import { isAutoDraft } from './autodraft'
 
 export type ActionTone = 'good' | 'warn' | 'bad'
 
@@ -76,6 +77,8 @@ export interface ActionInput {
   /** 발행 주기 판정 */
   cadence: { level: ActionTone; last14: number }
   keys: { search: boolean; searchAd: boolean }
+  /** 오늘 날짜 (YYYY-MM-DD) — 밖에서 받는다. 안에서 만들면 테스트가 시각에 흔들린다 */
+  today?: string
 }
 
 /** 부족한 글 유형 하나 — 무엇을 쓸지까지 정해 준다 */
@@ -97,6 +100,25 @@ export function nextActions(input: ActionInput): NextAction[] {
   const drafts = posts.filter((p) => p.status === 'draft')
   const reviewed = posts.filter((p) => p.status === 'reviewed')
   const published = posts.filter((p) => p.status === 'published')
+
+  /*
+   * **오늘 자동으로 쓴 정보글을 맨 위에 올린다** (2026-08-21, 회원 요청으로 매일 초안이
+   * 생긴다). 아래 「초안 N편」에 섞여 있으면 **어제 것과 구별이 안 되고**, 그러면 매일
+   * 준비해 두는 의미가 없다 — 오늘 것을 오늘 올려야 발행 간격이 붙는다.
+   *
+   * 오늘 날짜는 밖에서 받는다. 안에서 new Date() 를 부르면 테스트가 시각에 따라 흔들린다.
+   */
+  const todayAuto = drafts.find((p) => isAutoDraft(p) && (p.createdAt ?? '').slice(0, 10) === input.today)
+  if (todayAuto) {
+    out.push({
+      id: 'auto-draft',
+      title: '오늘 정보글 초안이 준비됐습니다',
+      why: `「${todayAuto.mainKeyword}」 · ${todayAuto.topicGroup ?? '주제 미상'} — 사진만 넣으면 올릴 수 있습니다. 발행은 회원님이 누르셔야 합니다 (네이버는 자동 발행을 열어두지 않습니다).`,
+      href: `/write?id=${todayAuto.id}`,
+      cta: '오늘 초안 열기',
+      tone: 'warn',
+    })
+  }
 
   if (!stores.length) {
     out.push({
@@ -120,10 +142,14 @@ export function nextActions(input: ActionInput): NextAction[] {
     })
   }
 
-  if (drafts.length) {
+  // 오늘 자동 초안은 위에서 따로 냈다 — 같은 글을 두 줄이 가리키지 않게 뺀다
+  // todayAuto 가 없으면 거르지 않는다 — id 가 없는 글끼리 undefined === undefined 로 걸러지면
+  // 초안이 통째로 사라진다 (테스트가 잡았다)
+  const otherDrafts = todayAuto ? drafts.filter((p) => p.id !== todayAuto.id) : drafts
+  if (otherDrafts.length) {
     out.push({
       id: 'draft',
-      title: `초안 ${drafts.length}편을 검수해 마무리하세요`,
+      title: `초안 ${otherDrafts.length}편을 검수해 마무리하세요`,
       why: '검수 점수 85점을 넘기면 발행해도 좋은 상태입니다. 저품질 위험 표현도 이때 걸러집니다.',
       href: '/posts',
       cta: '초안 열기',
