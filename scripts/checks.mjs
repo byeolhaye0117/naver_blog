@@ -5459,8 +5459,9 @@ ok(infoSys.includes('어느 단계에도 시설·가격·이벤트·업체 이�
  * 보는 여섯 가지에 없고, 실측에서도 순위 손해가 없었다 (인사 27% / 아닌 글 32%, 구간 겹침).
  */
 ok(infoSys.includes('**첫 문장은 인사다**'), '인사로 열라고 한다')
-ok(infoSys.includes('상호명을 붙이지 않는다'), '다만 상호명은 붙이지 말라고 한다')
-ok(infoSys.includes('업체 소개로 열지 않는다'), '업체 소개로는 열지 말라고 한다')
+ok(infoSys.includes('**상호명은 여기 1회까지다**'), '상호명은 인사에서 1회만 쓰라고 한다')
+ok(infoSys.includes('제목에도 넣지 않는다'), '제목에는 넣지 말라고 한다')
+ok(infoSys.includes('인사 다음부터는 업체 이야기를 하지 않는다'), '인사 뒤로는 업체 얘기를 막는다')
 ok(!infoSys.includes('인사·상호명·업체 소개로 열지 않는다'), '「인사하지 마라」를 지웠다')
 ok(!infoSys.includes('첫 문장에서 인사와 정식 상호명으로 누가 말하는지 밝힌다'), '「인사로 밝혀라」를 지웠다')
 /*
@@ -5468,28 +5469,50 @@ ok(!infoSys.includes('첫 문장에서 인사와 정식 상호명으로 누가 �
  * 검수는 인사를 요구해서 서로 반대였던 적이 있다. 이번에는 검수 쪽도 같이 껐다.
  */
 const greetInfo = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터 바꿔보세요', body: '제가 상담할 때 이 질문을 제일 많이 받습니다.\n\n## 왜\n혈당이 낮게 유지되다 떨어지면서 생깁니다.', mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' })
+/*
+ * **인사 + 상호명 1회** (2026-08-21). 회원 요청 두 개가 하루 사이에 왔다:
+ *   ① "정보성글 인사말이 없어서 어색해"  ② "인사말에 업체명 한번을 소개되게 해줘"
+ *
+ * 08-20 에 상호명을 뺀 근거는 영상이 든 여섯 가지였는데, **그중 상호명만 우리가 실측한 적이
+ * 없다** (나머지 다섯은 정보형 38편에서 실제로 셌다). 우리가 잰 것은 오히려 반대쪽이었다.
+ * 그래서 되돌리되 **1회로 못 박는다** — 「과도한 반복」과 「한 번 밝히는 것」은 다르다.
+ */
 {
   const item = greetInfo.items.find((i) => i.id === 'intro-greeting')
-  ok(Boolean(item), '정보글에도 인사 검사가 생긴다 (2026-08-21)')
-  ok(item.label === '첫 문장 인사', `정보글은 상호명을 요구하지 않는다 — ${item.label}`)
-  ok(item.target.includes('상호명은 넣지 않습니다'), '상호명은 넣지 말라고 목표에 적는다')
-  ok(item.level === 'warn' && item.value === '없음', `인사가 없으면 주의 — ${item.value}`)
-  // 인사만 있으면 통과한다 — 상호명이 없어도
-  const greeted = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터 바꿔보세요', body: '안녕하세요. 오늘은 폭식 얘기를 정리해 봤습니다.\n\n## 왜\n혈당이 낮게 유지되다 떨어지면서 생깁니다.', mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' })
-  const gi = greeted.items.find((i) => i.id === 'intro-greeting')
-  ok(gi.level === 'pass', `인사만 있으면 통과 — ${gi.value}`)
-  // 그리고 그 글은 순수성도 통과해야 한다 (인사는 홍보 신호가 아니다)
-  ok(greeted.items.find((i) => i.id === 'info-purity')?.level === 'pass', '인사가 있어도 정보글 순수성은 통과')
-  // 홍보글은 그대로 상호명까지 요구한다
-  const promoItem = checkPost({ ...goodPromo, body: '쌍용동 헬스장 이야기입니다.\n\n## 소제목\n' + '가'.repeat(1800) }).items.find((i) => i.id === 'intro-greeting')
-  ok(promoItem.label === '첫 문장 인사 + 정식 상호명', '홍보글은 상호명까지 그대로 요구한다')
+  ok(Boolean(item), '정보글에도 인사 검사가 생긴다')
+  ok(item.target.includes('이 1회까지만'), `정보글 목표에 1회 제한을 적는다 — ${item.target}`)
+  ok(item.value === '없음', `인사도 상호명도 없으면 잡는다 — ${item.value}`)
+
+  const OPEN = '안녕하세요, MTO 피트니스 쌍용점입니다. 오늘은 폭식 얘기를 정리해 봤습니다.'
+  const greeted = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터 바꿔보세요', body: `${OPEN}\n\n## 왜\n혈당이 낮게 유지되다 떨어지면서 생깁니다.`, mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' })
+  ok(greeted.items.find((i) => i.id === 'intro-greeting')?.level === 'pass', '인사 + 상호명이면 통과')
+  // **1회는 순수성도 통과해야 한다** — 여기가 이번 변경의 핵심이다
+  const purity = greeted.items.find((i) => i.id === 'info-purity')
+  ok(purity?.level === 'pass', `상호명 1회는 정보글 순수성 통과 — ${purity?.value}`)
+  ok(greeted.items.find((i) => i.id === 'legalName')?.level === 'pass', '상호명 횟수 항목도 통과')
+
+  // 2회부터는 「과도한 반복」이다 — 계속 잡는다
+  const twice = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터 바꿔보세요', body: `${OPEN}\n\n## 왜\nMTO 피트니스 쌍용점에서는 이렇게 봅니다.`, mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' })
+  const p2 = twice.items.find((i) => i.id === 'info-purity')
+  ok(p2?.level === 'warn' && p2.value.includes('상호명 2회'), `2회부터 잡는다 — ${p2?.value}`)
+
+  // 제목에는 여전히 안 된다 (자리가 다르다)
+  const inTitle = checkPost({ type: 'info', title: 'MTO 피트니스 쌍용점 폭식 멈추는 방법', body: `${OPEN}\n\n## 왜\n내용입니다.`, mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' })
+  ok(inTitle.items.find((i) => i.id === 'info-title-purity')?.value.includes('상호명'), '제목의 상호명은 그대로 잡는다')
+
+  // 홍보글은 3회 그대로
+  ok(SPECS.promo.legalNameMin === 3 && SPECS.info.legalNameMin === 1, `홍보 3회 · 정보 1회 — ${SPECS.promo.legalNameMin}/${SPECS.info.legalNameMin}`)
 }
 const greetPromo = checkPost({ ...goodPromo, body: '쌍용동 헬스장 이야기입니다.\n\n## 소제목\n' + '가'.repeat(1800) })
 ok(greetPromo.items.some((i) => i.id === 'intro-greeting'), '홍보글에는 인사 검사가 그대로 있다')
 
 // 분량 — 회원: "정보성 글 분량이 부족한 거 같아 늘려서 업데이트 해줘"
 ok(SPECS.info.charMin === 2200 && SPECS.info.charMax === 3000, `정보글 분량 2,200~3,000자 — ${SPECS.info.charMin}~${SPECS.info.charMax}`)
-ok(SPECS.info.legalNameMin === 0, `정보글은 상호명을 요구하지 않는다 — ${SPECS.info.legalNameMin}회`)
+/*
+ * **0 → 1** (2026-08-21). 회원: "인사말에 업체명 한번을 소개되게 해줘." 인사에서 1회,
+ * 그 뒤로는 안 쓴다 (SPECS.info 의 legalNameMin 주석에 근거를 적어 뒀다).
+ */
+ok(SPECS.info.legalNameMin === 1, `정보글 상호명은 인사에서 1회 — ${SPECS.info.legalNameMin}회`)
 /*
  * 「방법」은 여전히 최대 구간이다. 2026-08-20 에 구간이 하나 늘면서 800~1,000 → 700~900 으로
  * 줄었지만, **다른 어느 구간보다 크다**는 것이 이 검사가 지키려던 것이다. 숫자를 박아 두면
@@ -5514,9 +5537,9 @@ const infoSkeleton = buildTemplate('info', { mainKeyword: '폭식 멈추는 방�
  * 검수의 `info-purity` 에 걸린다. 아래 네 줄은 옛 판을 지키던 검사였고, **지금은 반대를
  * 지킨다** — 그 자리가 비면 다음에 또 한쪽만 고치게 된다.
  */
-ok(!infoSkeleton.includes('안녕하세요, MTO 피트니스 쌍용점입니다'), '골격이 인사 + 상호명으로 열지 않는다')
+ok(infoSkeleton.includes('안녕하세요, MTO 피트니스 쌍용점입니다'), '골격이 인사 + 상호명으로 연다 (2026-08-21)')
 ok(infoSkeleton.includes('**⓪첫 문장은 인사다**'), '골격도 인사로 열라고 적는다')
-ok(infoSkeleton.includes('**상호명은 붙이지 않는다**'), '골격도 상호명은 빼라고 적는다')
+ok(infoSkeleton.includes('**상호명은 여기 1회까지다**'), '골격도 1회 제한을 적는다')
 ok(infoSkeleton.includes('상담에서 들은 질문이다'), '골격도 화자를 센터로 적는다')
 ok(infoSkeleton.includes('교대근무라 오후에 눈뜨고'), '골격도 첫 문장에 독자를 못 박게 한다 (셀프 체크 ①)')
 ok(infoSkeleton.includes('4단계 고를 때 기준'), '골격에도 대안 비교 구간이 있다 (셀프 체크 ③)')
@@ -5532,8 +5555,15 @@ for (const span of ['1단계 후킹 (250~300자', '2단계 왜 그런지 (350~45
  * **골격에 업체 흔적이 남지 않았는가.** 지점 정보를 통째로 넘겨도 본문에 상호명·전화번호가
  * 새지 않아야 한다 (해시태그 안내의 지역 키워드는 본문이 아니다).
  */
-for (const leak of ['MTO 피트니스 쌍용점', '010-2455-2896']) {
-  ok(!infoSkeleton.includes(leak), `골격에 업체 정보가 새지 않는다 — ${leak}`)
+/*
+ * 상호명은 인사에 1회 들어간다 (2026-08-21). 골격에서는 **안내 줄에만** 나온다 — 회원이
+ * 그 자리에 직접 쓰는 것이라, 복사되는 본문(stripGuides)에는 남지 않아야 한다.
+ */
+ok(infoSkeleton.includes('MTO 피트니스 쌍용점'), '골격이 어떤 상호명을 쓸지 보여준다')
+ok(!stripGuides(infoSkeleton).includes('MTO 피트니스 쌍용점'), '복사 본문에는 상호명이 박히지 않는다 (회원이 직접 쓴다)')
+// 전화번호·예약 링크는 안내 줄에도 나오면 안 된다 — 정보글에는 넣을 자리가 없다
+for (const leak of ['010-2455-2896', 'booking.naver.com']) {
+  ok(!infoSkeleton.includes(leak), `골격에 연락 수단이 새지 않는다 — ${leak}`)
 }
 ok(!infoSkeleton.includes('전화/문의 한 줄이면 충분'), '「한 줄이면 충분」을 지웠다')
 
@@ -5566,7 +5596,10 @@ const INFO_GOOD = `폭식 멈추는 방법을 찾으시는 분들이 많습니�
 
 ## 저희 센터에서는 이렇게 하실 수 있어요
 위 순서를 그대로 하시려면 웨이트실과 유산소존이 나뉘어 있는 게 편합니다. MTO 피트니스 쌍용점은 24시간 운영이라 새벽 근무 마치고도 오실 수 있어요. 궁금한 점은 상담 때 여쭤보시면 되고, 예약은 전화로 편하게 주세요.`
-// 옛 판에서 「통과」였던 글 — 마지막에 상호명·상담·전화를 모은 글이다. 지금은 통과가 아니다
+/*
+ * 옛 판에서 「통과」였던 글 — 마지막 구간에 상호명·상담·전화를 모았다. 상호명 1회는
+ * 2026-08-21 부터 허용이지만, 이 글에는 전화·방문 유도가 함께 있어서 여전히 통과가 아니다.
+ */
 ok(tailItem(INFO_GOOD)?.level !== 'pass', `마지막에 모아도 통과가 아니다 — ${tailItem(INFO_GOOD)?.value}`)
 
 /*
@@ -7871,8 +7904,11 @@ for (const g of GOLDEN_POSTS) {
   ok(purity?.level === 'pass', '정보글 예시에 업체 흔적이 하나도 없다', purity?.value)
   // 지점을 통째로 넘겼는데도 새지 않아야 한다 (지시문·골격이 값을 흘리는지 함께 본다)
   ok(Boolean(info.input.store && info.input.legalName), '지점 정보를 넘긴 상태로 검사한다')
-  for (const leak of ['MTO 피트니스 쌍용점', '010-2455-2896', 'booking.naver.com']) {
-    ok(!info.input.body.includes(leak), `정보글 본문에 업체 정보가 없다 — ${leak}`)
+  // 상호명은 인사에 1회 (2026-08-21). 연락 수단은 여전히 0회여야 한다
+  ok((info.input.body.match(/MTO 피트니스 쌍용점/g) ?? []).length === 1, '정보글 예시의 상호명은 인사 1회뿐이다')
+  ok(!info.input.title.includes('MTO'), '정보글 예시 제목에는 상호명이 없다')
+  for (const leak of ['010-2455-2896', 'booking.naver.com']) {
+    ok(!info.input.body.includes(leak), `정보글 본문에 연락 수단이 없다 — ${leak}`)
   }
 }
 
