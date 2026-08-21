@@ -7426,6 +7426,60 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
    */
   ok(infoPrompt.includes('정식 상호명: MTO 피트니스 쌍용점'), '상호명은 준다 (인사에 쓰라고 시키니까)')
   ok(infoPrompt.includes('인사 문장에 딱 1회만 쓴다'), '어디에 몇 번 쓸지를 같은 줄에 붙인다')
+
+  /*
+   * ─── 첫 문장을 완성해서 준다 (2026-08-21) ─────────────────────
+   *
+   * 회원 지적: "인사말에 (선택된 키워드) (상호명)으로 했는데 **선택된 키워드가 아니라 다른
+   * 키워드가 나와.**"
+   *
+   * 원인은 예시가 **시스템 지시문에 고정 문자열**로 박혀 있던 것이다. buildSystemPrompt 는
+   * 유형만 받으므로 이번 글의 키워드를 모른다. 예시에 「쌍용동 헬스장」이 박혀 있었고 모델이
+   * 그대로 베꼈다. 값이 있는 자리는 유저 지시문이므로, 거기서 **문장을 완성해서 준다.**
+   */
+  const greetP = buildUserPrompt({ type: 'info', mainKeyword: '두정동 헬스장', subKeywords: [], store })
+  ok(greetP.includes('## 첫 문장 (이 문장을 글 맨 처음에 그대로 쓴다)'), '첫 문장을 따로 낸다')
+  ok(
+    greetP.includes('안녕하세요, 두정동 헬스장 MTO 피트니스 쌍용점입니다.'),
+    '이번 글의 키워드로 문장을 완성해서 준다'
+  )
+  ok(greetP.includes('「두정동 헬스장」와 「MTO 피트니스 쌍용점」은 글자 그대로 쓴다'), '바꿔 쓰지 말라고 못 박는다')
+  // **시스템 지시문에 다른 키워드가 예시로 박혀 있으면 안 된다** — 그게 이 사고의 원인이었다
+  ok(!buildSystemPrompt('info').includes('쌍용동 헬스장 MTO'), '시스템 지시문에 고정 예시가 남아 있지 않다')
+  ok(buildSystemPrompt('info').includes('예시 낱말을 그대로 베끼지 않는다'), '예시를 베끼지 말라고 한다')
+  // 홍보글·후기글에는 이 묶음이 없다 (인사 형식이 정해진 것은 정보글뿐이다)
+  for (const t of ['promo', 'review']) {
+    ok(!buildUserPrompt({ type: t, mainKeyword: '두정동 헬스장', subKeywords: [], store }).includes('## 첫 문장 (이 문장을'), `${t} 에는 이 묶음이 없다`)
+  }
+
+  /*
+   * ─── 키워드 목표를 하한에서 뗐다 (2026-08-21) ──────────────────
+   *
+   * 회원: "키워드 노출회수가 2번정도 밖에 안되는데 너무 적은거 아니야?"
+   *
+   * **순위 때문은 아니다** — 관찰소가 33번 잰 메인 키워드 횟수의 평균 advantage 가 +0.046
+   * 이고 판마다 부호가 뒤집힌다. 문제는 **목표가 통과 하한에 붙어 있던 것**이다: 통과는
+   * 3~5인데 목표가 3이면 한 자리만 놓쳐도 2가 되어 즉시수정이다. 목표를 가운데(4)로 옮기면
+   * 하나 놓쳐도 3이라 통과한다.
+   */
+  ok(SPECS.info.mainTarget === 4, `정보글 키워드 목표는 4회 — ${SPECS.info.mainTarget}`)
+  /*
+   * **목표는 「통과 구간 안」이면서 「실제로 도달 가능」해야 한다.**
+   *
+   * 홍보글은 목표가 하한(5)에 붙어 있는데 이건 못 뗀다 — 밀도 상한 2% 때문이다. 7자짜리
+   * 지역 키워드를 1,750자 글에 6회 쓰면 2.4% 라 밀도에서 걸린다. 즉 「하한에 붙지 마라」는
+   * 어느 유형에나 되는 규칙이 아니고, **밀도가 허락하는 만큼만** 뗄 수 있다.
+   * 정보글은 9자 키워드 · 2,200자에서 4회가 1.6% 라 여유가 있어서 뗐다.
+   */
+  for (const t of ['promo', 'info', 'review']) {
+    const sp = SPECS[t]
+    const tg = sp.mainTarget ?? sp.mainMin
+    ok(tg >= sp.mainMin && tg <= sp.mainMax, `${t} — 목표가 통과 구간 안이다`, `목표 ${tg} / 통과 ${sp.mainMin}~${sp.mainMax}`)
+    // 그 유형의 최소 분량 · 실제로 쓰는 길이의 키워드로 목표를 채울 수 있나
+    const kw = t === 'info' ? '폭식 멈추는 방법' : '쌍용동 헬스장'
+    const r = reachableKeywordRange({ keyword: kw, charCount: sp.charMin, densityMax: sp.densityMax, mainMin: sp.mainMin, mainMax: sp.mainMax, inTitle: 1 })
+    ok(tg <= r.max, `${t} — 목표를 밀도 안에서 채울 수 있다`, `목표 ${tg} / 도달 가능 ${r.min}~${r.max} (${kw} · ${sp.charMin}자 · 밀도 ${sp.densityMax}%)`)
+  }
   ok(infoPrompt.includes('업체를 드러내는 것이 하나도 들어가지 않는다'), '무엇을 쓰지 말아야 하는지 한 줄로 준다')
   ok(infoPrompt.includes('인사에서 밝히는 정식 상호명 1회를 빼면'), '그 한 줄이 상호명 1회 예외를 함께 적는다')
   /*
@@ -7883,7 +7937,7 @@ console.log('\n[89] 정보글 제목에 업체 말이 섞이는 것 (2026-08-21)
    * 같은 결과물에서 메인 키워드가 **제목 1회 · 본문 0회**였다. 목표는 3회인데 지시문이
    * 자리를 다섯 개 불러줬고, 그중 「이벤트/후반」은 정보글에 없는 구간이었다.
    */
-  for (const [t, n] of [['promo', 5], ['info', 3], ['review', 3]]) {
+  for (const [t, n] of [['promo', 5], ['info', 4], ['review', 3]]) {
     const line = buildSystemPrompt(t).split('\n').find((l) => l.includes('메인 키워드 **정확히'))
     const slots = (line.match(/[①②③④⑤⑥⑦]/g) ?? []).length
     ok(slots === n, `${t} — 자리 수가 목표 횟수와 같다`, `${slots}자리 / 목표 ${n}회`)
@@ -8037,7 +8091,7 @@ console.log('\n[92] 유형별 — 지시문·골격·검수 세 판이 같은 �
 
     // ④ 메인 키워드 자리 수 == 목표 횟수, 그리고 자리 이름이 실제 구간인가
     const slotLine = sys.split('\n').find((l) => l.includes('메인 키워드 **정확히'))
-    const slotNames = (slotLine?.match(/[①②③④⑤⑥⑦][^ ]+/g) ?? []).map((x) => x.slice(1))
+    const slotNames = (slotLine?.match(/[①②③④⑤⑥⑦][^ ]+/g) ?? []).map((x) => x.slice(1).replace(/[.,·]+$/, ''))
     const target = spec.mainTarget ?? spec.mainMin
     ok(slotNames.length === target, `${t} — 메인 키워드 자리 수가 목표 횟수와 같다`, `${slotNames.length}자리 / ${target}회`)
     for (const name of slotNames) {

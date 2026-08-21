@@ -818,6 +818,77 @@ export default async function GuidePage() {
           </p>
         </Card>
 
+        {/* ─── 키워드 횟수 ─── */}
+        <Card
+          id="keyword-count"
+          title="키워드를 더 많이 넣으면 오르나요"
+          subtitle="관찰소가 지금까지 33번 잰 값입니다 (2026-08-21 기준). 결론은 「아니오」입니다."
+        >
+          <p className="text-[12px] leading-relaxed">
+            매일 밤 1페이지 글을 받아와 <strong>「무엇이 위에 있는 글의 특징인가」</strong>를 재고 있습니다. 그중 메인
+            키워드 횟수는 <strong>33번</strong> 쟀습니다.
+          </p>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[460px] text-[12px]">
+              <thead>
+                <tr className="muted bd border-b text-left">
+                  <th className="py-1.5 pr-3 font-semibold">잰 것</th>
+                  <th className="py-1.5 pr-3 text-right font-semibold">평균값</th>
+                  <th className="py-1.5 font-semibold">뜻</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['발행 최신성', '+0.361', '최신 글이 위에 — 가장 뚜렷'],
+                  ['본문 글자수', '+0.174', '긴 글이 약간 위'],
+                  ['정보 종류 수', '+0.130', '많은 쪽이 약간 위'],
+                  ['홍보 표현 수', '+0.062', '차이 없음'],
+                  ['밀도', '+0.063', '차이 없음'],
+                  ['메인 키워드 횟수', '+0.046', '차이 없음 ← 여기'],
+                  ['이미지 수', '-0.007', '차이 없음'],
+                  ['공감 수', '-0.125', '많다고 위가 아님'],
+                ].map((row) => (
+                  <tr key={row[0]} className={`bd border-b last:border-0 ${row[0].includes('메인 키워드') ? 'font-semibold' : ''}`}>
+                    <td className="py-1.5 pr-3 whitespace-nowrap">{row[0]}</td>
+                    <td className="tnum py-1.5 pr-3 text-right">{row[1]}</td>
+                    <td className="muted py-1.5">{row[2]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-3 text-[12px] leading-relaxed">
+            메인 키워드 횟수는 <strong>+0.046</strong>입니다. 0이면 무관하다는 뜻이고, 33판을 나눠 보면{' '}
+            <strong>많이 쓴 쪽이 위였던 판 12회 · 적게 쓴 쪽이 위였던 판 9회 · 차이 없음 12회</strong>로 갈립니다. 판마다
+            부호가 뒤집힙니다(+0.67 ~ −0.64). <strong>더 넣어서 오르지 않습니다.</strong>
+          </p>
+
+          {/*
+            **그렇다고 회원의 지적이 틀린 게 아니었다.** 목표가 통과 하한에 붙어 있어서
+            한 자리만 놓쳐도 실패였다 — 회원이 본 「2회」가 그것이다.
+          */}
+          <div className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
+            <strong className="font-bold">그래도 목표는 3회 → 4회로 올렸습니다.</strong>
+            <p className="mt-1.5">
+              순위 때문이 아니라 <strong>여유 때문</strong>입니다. 정보글 통과 구간은 3~5회인데 목표가 3회였습니다 —
+              <strong> 목표가 하한에 붙어 있으면 한 자리만 놓쳐도 2회가 되어 즉시수정</strong>입니다. 회원님이 보신
+              「2회」가 그것입니다. 목표를 가운데(4회)로 옮기면 하나 놓쳐도 3회라 통과합니다.
+              <br />
+              <strong>홍보글은 못 올립니다</strong>(목표 5회 = 하한 5회). 밀도 상한 2% 때문인데, 7자짜리 지역 키워드를
+              1,750자 글에 6번 쓰면 2.4%가 되어 스터핑 쪽에서 걸립니다. 정보글은 키워드가 길고 글도 길어(2,200자)
+              4회가 1.6%라 여유가 있었습니다.
+            </p>
+          </div>
+
+          <p className="muted mt-3 text-[11.5px] leading-relaxed">
+            <strong>그래서 무엇을 하면 오르나요.</strong> 위 표에서 유일하게 뚜렷한 것이 <strong>최신성(+0.361)</strong>
+            입니다. 키워드를 몇 번 더 넣는 것보다 <strong>한 편 더 쓰는 쪽</strong>이 잽니다. 그다음이 글자수와 정보
+            종류 수인데, 둘 다 이미 검수가 기준을 잡고 있습니다.
+          </p>
+        </Card>
+
         {/* ─── 정보글 신뢰 ─── */}
         <Card
           id="trust"
