@@ -101,6 +101,73 @@ export default function GuidePage() {
           </div>
         </Card>
 
+        {/* ─── 로직 이름 정리 ─── */}
+        <Card
+          id="logics"
+          title="「리브라 로직」이 뭔가요 — 로직 이름 정리"
+          subtitle="회원이 영상에서 들은 이름을 확인했습니다 (2026-08-20). 마케팅 강의에서 자주 나오는 이름들이라 어디에 해당하는지 적어둡니다."
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-[12px]">
+              <thead>
+                <tr className="muted bd border-b text-left">
+                  <th className="py-1.5 pr-3 font-semibold">이름</th>
+                  <th className="py-1.5 pr-3 font-semibold">언제</th>
+                  <th className="py-1.5 font-semibold">무엇을 보나</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['리브라 (Li:bra)', '2012.12', '블로그 검색에 처음 적용. 만족도(클릭 수) · 활동성(블로그 활동기간) · 어뷰징. 「맛집」처럼 만족도 낮은 키워드군부터 적용했습니다.'],
+                  ['C-Rank', '2016', '문서가 아니라 출처(블로그)의 신뢰도'],
+                  ['D.I.A.', '2018', '키워드별로 사용자가 선호한 문서의 점수를 반영'],
+                  ['D.I.A.+', '2020', '검색 의도까지 더 깊게'],
+                  ['에어서치 · 스마트블록', '2021~', '검색어를 의도 단위로 쪼개 블록별 노출'],
+                ].map((row) => (
+                  <tr key={row[0]} className="bd border-b last:border-0 align-top">
+                    <td className="py-1.5 pr-3 font-semibold whitespace-nowrap">{row[0]}</td>
+                    <td className="tnum muted py-1.5 pr-3 whitespace-nowrap">{row[1]}</td>
+                    <td className="py-1.5">{row[2]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+            <strong className="font-bold">영상이 이름을 잘못 붙였습니다 — 결론은 맞습니다.</strong>
+            <p className="mt-1.5">
+              영상은 「이벤트·무료·견적 같은 혜택 낱말은 <strong>네이버 리브라 로직</strong>에서 홍보성 글로 걸러진다」고
+              합니다. 그런데 <strong>리브라의 공개된 평가 요소에 「홍보성 문서」는 없습니다</strong> — 2012년 발표문이
+              밝힌 것은 만족도·활동성·어뷰징이고, 걸러낸다고 한 대상은 불법 콘텐츠 · 기계 생성 문서 · 클로킹 ·
+              저품질/스팸이었습니다. 그리고 리브라는 14년 전 이름이라 지금 네이버가 설명하는 구조(C-Rank →
+              D.I.A. → 에어서치)에 그 이름으로는 등장하지 않습니다.
+            </p>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-emerald-800 dark:text-emerald-200">
+            <strong className="font-bold">그럼 정보글 개편의 근거는 어디 있나요 — 세 곳입니다.</strong>
+            <p className="mt-1.5">
+              ① <strong>네이버 홍보성 게시물 운영정책</strong>(공지) — 「구매 사용하도록 권하거나 <strong>연락을 유도하는</strong>」
+              활동을 홍보성 게시물로 규정합니다. 이건 로직이 아니라 <strong>정책</strong>이라 이름이 바뀌어도 남습니다.
+              ② <strong>D.I.A.의 평가 요소</strong> — 널리 알려진 7가지(주제 적합도 · 경험 정보 · 정보의 충실성 ·{' '}
+              <strong>문서의 의도</strong> · 어뷰징 척도 · 독창성 · 적시성) 가운데 「문서의 의도」가 정확히 이 얘기입니다.
+              ③ <strong>우리 실측</strong> — 1페이지 정보형 38편 중 25편(66%)이 업체 표지 0개.
+            </p>
+            <p className="mt-1.5">
+              그래서 앱의 정보글 규칙은 <strong>「리브라」가 아니라 이 셋에 걸어 뒀습니다.</strong> 로직 이름은 바뀌지만
+              정책과 실측은 확인할 수 있습니다.
+            </p>
+          </div>
+
+          <p className="muted mt-3 text-[11.5px] leading-relaxed">
+            마케팅 강의에서 「○○ 로직 때문에 걸린다」는 말을 들으시면 두 가지를 확인하세요 —{' '}
+            <strong>①네이버가 공식적으로 그렇게 말한 적이 있나 ②우리 키워드에서 실제로 그런가.</strong> 둘 다 아니면
+            이 앱은 규칙으로 만들지 않습니다. D.I.A. 요소 목록도 네이버가 공개 설명한 것을 업계가 정리한 형태라,
+            공지처럼 원문을 그대로 인용할 수 있는 자료는 아닙니다.
+          </p>
+        </Card>
+
         {/* ─── 측정 한계 ─── */}
         <Card
           id="measure"
