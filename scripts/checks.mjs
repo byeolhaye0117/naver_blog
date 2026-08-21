@@ -3355,7 +3355,7 @@ ok(promoSkeleton.includes('한 곳에 몰아넣지 말고'), '한 곳에 몰지 
 ok(promoSkeleton.includes('㉮무엇이 있다'), '훅의 첫 조각을 요구한다')
 ok(promoSkeleton.includes('㉯제한이 있다'), '훅의 두 번째 조각을 요구한다')
 ok(promoSkeleton.includes('10만 원 아래로 맞췄어요'), '흘리는 예를 그대로 준다')
-ok(promoSkeleton.includes('정확한 인원 수·마감일은 6단계'), '다 밝히지는 않게 한다 (단계 번호도 맞다)')
+ok(promoSkeleton.includes('정확한 인원 수·마감일은 5단계'), '다 밝히지는 않게 한다 (단계 번호도 맞다)')
 ok(promoSkeleton.includes('「이벤트 진행 중입니다」는 훅이 아니다'), '내용 없는 예고를 막는다')
 
 /*
@@ -3392,14 +3392,19 @@ ok(promoSkeleton.includes('[영상:'), '영상 자리를 표기로 넣는다')
 ok(promoSkeleton.includes('10~20초'), '영상 길이까지 알려준다')
 ok(stripGuides(promoSkeleton).includes('[영상:'), '복사 본문에도 영상 자리가 남는다')
 // 홍보를 없애지는 않는다 — 이 글의 목적은 상담이다
-// 구간이 하나 줄어 번호가 앞당겨졌다 (2026-08-21)
-ok(promoSkeleton.includes('7단계 CTA'), 'CTA 는 7단계다')
-ok(promoSkeleton.includes('6단계 이벤트 본공개'), '이벤트는 6단계다')
-ok(promoSkeleton.includes('4단계 시설 소개 (430~520자'), '시설 소개를 늘렸다 (300~380 → 430~520)')
-ok(promoSkeleton.includes('5단계 신뢰 (400~480자'), '신뢰를 늘렸다 (200~250 → 400~480)')
+/*
+ * 구간이 하나 줄고(2026-08-21 운동 정보 제거) 골격 번호를 **지시문과 같게** 맞췄다 —
+ * 전에는 골격이 2단계부터 시작하고 마지막을 「CTA」라 불러서, 회원이 두 판을 나란히 보면
+ * 번호도 이름도 달랐다. 유형별 전면 점검에서 잡혔다.
+ */
+ok(promoSkeleton.includes('6단계 마무리'), '마지막은 6단계 마무리다 (지시문과 같은 이름)')
+ok(promoSkeleton.includes('5단계 이벤트 본공개'), '이벤트는 5단계다')
+ok(promoSkeleton.includes('3단계 시설 소개 (430~520자'), '시설 소개를 늘렸다 (300~380 → 430~520)')
+ok(promoSkeleton.includes('4단계 신뢰 (400~480자'), '신뢰를 늘렸다 (200~250 → 400~480)')
+ok(promoSkeleton.includes('1단계 후킹'), '후킹은 1단계다 (전에는 2단계였다)')
 ok(!promoSkeleton.includes('단계 운동 정보'), '운동 정보 단계가 남아 있지 않다')
 // 상담을 얹을 자리도 같이 옮겼다 — 번호가 어긋나면 회원이 엉뚱한 구간에 넣는다
-ok(promoSkeleton.includes('3·4·6·7단계 끝에'), '상담 얹을 단계 번호도 옮겼다')
+ok(promoSkeleton.includes('2·3·5·6단계 끝에'), '상담 얹을 단계 번호도 옮겼다')
 
 
 // ─────────────────────────────────────────────────────────────
@@ -3697,7 +3702,15 @@ const tbRevSkel = buildTemplate('review', {
 ok(tbRevSkel.includes('운동 정보를 설명하기 시작하면'), '후기에 정보를 욱여넣지 말라고 한다')
 ok(tbRevSkel.includes('정보 단락을 만들지 않는다'), '정보 단락 금지')
 ok(tbRevSkel.includes('상담 때 들은 말'), '대신 무엇을 쓰라고 알려준다')
-ok(tbRevSkel.includes('6단계 이벤트 (180~220자)'), '이벤트 단락을 줄였다 (280~320 → 180~220)')
+// 후기 골격도 지시문과 같은 번호로 맞췄다 (2026-08-21) — 이벤트는 5단계다
+ok(tbRevSkel.includes('5단계 이벤트 (180~220자)'), '이벤트 단락을 줄였다 (280~320 → 180~220)')
+/*
+ * **이벤트만 안 늘렸다.** 나머지 구간은 실측 최고 구간(1,700~2,200자)에 맞추느라 늘렸는데
+ * 여기만 그대로다 — 방문자가 선착순·마감을 길게 나열하면 대가성 광고로 읽힌다.
+ */
+ok(tbRevSkel.includes('3단계 방문·상담 후기 (550~680자'), '몸통을 늘렸다 (450~550 → 550~680)')
+ok(tbRevSkel.includes('1단계 후킹 (220~280자'), '후킹은 1단계다 (전에는 2단계 도입이었다)')
+ok(tbRevSkel.includes('6단계 마무리 (200~250자'), '마지막은 6단계 마무리다 (전에는 7단계 CTA)')
 ok(tbRevSkel.includes('한 대목만'), '혜택을 한 대목으로 모은다')
 ok(tbRevSkel.includes('[영상:'), '후기에도 영상 자리')
 
@@ -7966,7 +7979,87 @@ console.log('\n[91] 골격이 요구하는 값이 지시문에 실제로 들어 
 }
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[92] 완성된 예시 글 세 편이 그대로 통과하나 (2026-08-21)')
+console.log('\n[92] 유형별 — 지시문·골격·검수 세 판이 같은 말을 하나 (2026-08-21)')
+/*
+ * 회원 요청: "전체적으로 글쓸때 오류는 없는지 확인해줘 유형별로 모두."
+ *
+ * 훑어보니 이 저장소의 사고는 전부 같은 모양이었다 — **세 판 중 한쪽만 고친 것.**
+ * 그래서 눈으로 보지 말고 **값을 뽑아서 맞춰 본다.** 처음 돌렸을 때 잡힌 것:
+ *   · 후기글 골격 합계가 1,560~1,890 인데 분량 하한이 1,700 이었다 (골격대로 쓰면 미달)
+ *   · 홍보글·후기글 골격의 단계 번호·이름이 지시문과 달랐다 (마무리 vs CTA, 후킹 vs 도입)
+ *
+ * 이 검사는 **새 구간을 넣거나 자수를 옮길 때마다** 돈다. 골격만 고치고 스펙을 안 옮기면
+ * 여기서 걸린다.
+ */
+{
+  const SW_STORE = {
+    id: 's', name: 'MTO 쌍용점', legalName: 'MTO 피트니스 쌍용점',
+    womenOnly: false, open24: true, localKeywords: ['쌍용동 헬스장'],
+    location: '천안시 서북구 쌍용동', features: ['24시간 운영'], strengths: ['자세 교정'],
+    phone: '010-2455-2896', reserveUrl: 'https://booking.naver.com/x',
+  }
+  const KW = { promo: '쌍용동 헬스장', info: '다이어트 정체기', review: '쌍용동 헬스장' }
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  for (const t of ['promo', 'info', 'review']) {
+    const sys = buildSystemPrompt(t)
+    const user = buildUserPrompt({ type: t, store: SW_STORE, mainKeyword: KW[t], subKeywords: ['쌍용동 PT'], localKeyword: '쌍용동 헬스장', eventText: '3개월 9.9만원' })
+    const skel = buildTemplate(t, { store: SW_STORE, mainKeyword: KW[t], subKeywords: ['쌍용동 PT'], localKeyword: '쌍용동 헬스장', eventText: '3개월 9.9만원' })
+    const spec = SPECS[t]
+
+    /** 지시문에서 구간을 그대로 뽑는다 — 「N) 이름 lo~hi자, 소제목 있음/없음」 */
+    const spans = [...sys.matchAll(/^(\d)\) (.+?) (\d[\d,]*)~(\d[\d,]*)자, 소제목 (있음|없음)/gm)].map((m) => ({
+      n: +m[1], name: m[2].replace(/\*\*/g, ''),
+      lo: +m[3].replace(/,/g, ''), hi: +m[4].replace(/,/g, ''), head: m[5] === '있음',
+    }))
+    ok(spans.length >= 5, `${t} — 골격 구간을 읽었다`, `${spans.length}개`)
+
+    // ① 자수 합계가 분량 스펙 안인가 — 골격대로 써도 걸리지 않아야 한다
+    const lo = spans.reduce((a, x) => a + x.lo, 0)
+    const hi = spans.reduce((a, x) => a + x.hi, 0)
+    ok(lo >= spec.charMin, `${t} — 골격 최소 합계가 분량 하한 이상`, `${lo} ≥ ${spec.charMin}`)
+    ok(hi <= spec.charMax, `${t} — 골격 최대 합계가 분량 상한 이하`, `${hi} ≤ ${spec.charMax}`)
+
+    // ② 단계 번호가 1부터 빠짐없이
+    ok(spans.map((s) => s.n).join() === spans.map((_, i) => i + 1).join(), `${t} — 단계 번호가 이어진다`, spans.map((s) => s.n).join('·'))
+
+    // ③ 소제목 수(=「소제목 있음」 구간 수)가 검수 통과 범위 안인가
+    const headCount = spans.filter((s) => s.head).length
+    const h = checkPost({
+      type: t,
+      title: t === 'review' ? '쌍용동 헬스장 등록 후기, 3개월 10만 원대' : `${KW[t]} 3개월 10만 원대 안내`,
+      body: ['안녕하세요, MTO 피트니스 쌍용점입니다.', ...Array.from({ length: headCount }, (_, i) => `## 소제목${i + 1}\n` + '가'.repeat(300))].join('\n'),
+      mainKeyword: KW[t], subKeywords: [], tags: [], legalName: SW_STORE.legalName,
+    }).items.find((i) => i.id === 'headings')
+    ok(h?.level === 'pass', `${t} — 골격 소제목 ${headCount}개가 검수 통과`, `목표 ${h?.target}`)
+    const said = /소제목은 `## 소제목` 형식\. (\d)~(\d)개/.exec(sys)
+    ok(said && headCount >= +said[1] && headCount <= +said[2], `${t} — 지시문이 말하는 소제목 수와도 맞는다`, `골격 ${headCount}개 / 지시문 ${said?.[1]}~${said?.[2]}개`)
+
+    // ④ 메인 키워드 자리 수 == 목표 횟수, 그리고 자리 이름이 실제 구간인가
+    const slotLine = sys.split('\n').find((l) => l.includes('메인 키워드 **정확히'))
+    const slotNames = (slotLine?.match(/[①②③④⑤⑥⑦][^ ]+/g) ?? []).map((x) => x.slice(1))
+    const target = spec.mainTarget ?? spec.mainMin
+    ok(slotNames.length === target, `${t} — 메인 키워드 자리 수가 목표 횟수와 같다`, `${slotNames.length}자리 / ${target}회`)
+    for (const name of slotNames) {
+      const known = ['제목', '첫', '마무리'].some((k) => name.startsWith(k)) || spans.some((s) => s.name.includes(name))
+      ok(known, `${t} — 키워드 자리 「${name}」이 실제로 있는 구간이다`)
+    }
+
+    // ⑤ 상호명을 N회 쓰라고 시키면 값도 줘야 한다 (2026-08-21 회원이 물린 그 사고)
+    if (spec.legalNameMin > 0) ok(user.includes(SW_STORE.legalName), `${t} — 상호명을 시키니 값도 준다`)
+
+    // ⑥ 골격(손으로 쓰는 판)의 단계 자수가 지시문과 같은가
+    for (const s of spans) {
+      const nm = esc(s.name)
+      const same = new RegExp(`${nm}[^(]*\\(${s.lo}~${s.hi}자`).test(skel)
+      const other = new RegExp(`${nm}[^(]*\\((\\d[\\d,]*)~(\\d[\\d,]*)자`).exec(skel)
+      ok(same, `${t} — 골격의 「${s.name}」 자수가 지시문과 같다`, other ? `골격 ${other[1]}~${other[2]} / 지시문 ${s.lo}~${s.hi}` : '골격에 그 구간이 없다')
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[93] 완성된 예시 글 세 편이 그대로 통과하나 (2026-08-21)')
 /*
  * **이 저장소에서 네 번 난 사고를 잡으려고 만든 검사다** (scripts/golden.mjs 머리말).
  * 전부 「골격은 바꾸고 검수는 안 옮긴 것」이고, 문구 검사로는 안 잡힌다 — 완성된 글을
