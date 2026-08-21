@@ -70,6 +70,8 @@ const TARGETS = [
   'lib/analysis/peers.ts',
   // 경쟁 센 자리용 글쓰기 — 잰 발행량을 지시문·검수로 잇는다 (2026-08-20)
   'lib/writing/arena.ts',
+  // 네이버 공지 최신화 — 분류·병합은 순수 함수 (2026-08-20)
+  'lib/naver/notice.ts',
   'lib/store.ts',
   'lib/seed/stores.ts',
 ]

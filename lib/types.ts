@@ -1,5 +1,6 @@
 import type { PlaceReview } from './analysis/reviews'
 import type { OpeningRow } from './analysis/openings'
+import type { NoticeItem } from './naver/notice'
 
 // 앱 전체에서 쓰는 도메인 타입.
 
@@ -274,6 +275,14 @@ export interface DB {
    * 날**을 알 수 있다.
    */
   openingRuns?: OpeningRun[]
+  /**
+   * 네이버 공지·검색 로직 소식 — 매일 크론이 받아 온다 (app/api/cron/notice).
+   *
+   * 회원 요청 (2026-08-20): "네이버 로직과 공지사항을 항상 최신화해서 그에 맞는 글을 쓸 수
+   * 있도록 해줘." 받아서 알리는 것까지가 자동이고, 글쓰기 규칙으로 옮기는 것은 사람이
+   * 읽고 정한다 (lib/naver/notice.ts 주석).
+   */
+  noticeItems?: NoticeItem[]
 }
 
 /** 키워드 한 바퀴 측정 (lib/analysis/openings.ts 의 OpeningRow 를 그대로 저장한다) */

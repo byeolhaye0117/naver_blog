@@ -5,6 +5,7 @@ import { AiError, aiStatus, askLlm, canSearchWeb, extractJson } from '@/lib/ai/l
 import { buildFixPrompt, buildSystemPrompt, buildTitlePrompt, buildUserPrompt } from '@/lib/ai/prompt'
 import { PUBLISH_THRESHOLD, SPECS, checkPost, summarize } from '@/lib/writing/checker'
 import { arenaOf } from '@/lib/writing/arena'
+import { activeRules } from '@/lib/naver/notice'
 import { adviseRotation } from '@/lib/writing/rotation'
 import { fixList } from '@/lib/writing/next-action'
 import type { PostType } from '@/lib/types'
@@ -180,6 +181,8 @@ async function handle(req: Request, ms: () => string) {
       store,
       mainKeyword,
       arena,
+      // 네이버 공지에서 회원이 읽고 적어둔 규칙 (자동으로 만들지 않는다)
+      noticeRules: activeRules(db.noticeItems),
       introType: body.introType?.trim() || rotation.introType,
       angle: body.angle?.trim() || rotation.angle,
       format: body.format?.trim() || rotation.format,

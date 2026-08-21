@@ -7260,5 +7260,83 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(checkPost({ ...infoPost }).items.every((i) => i.id !== 'info-purity' || i.level !== 'fail'), '즉시수정으로 막지 않는다')
 }
 
+/*
+ * ─── 네이버 공지 최신화 (2026-08-20) ────────────────────────────
+ *
+ * 회원 요청: "네이버 로직과 공지사항을 항상 최신화해서 그에 맞는 글을 쓸 수 있도록 해줘."
+ *
+ * 앞 판은 가이드에 기준일을 손으로 박아 두고 「3개월 지났습니다」 배너만 띄웠다. 그건
+ * 최신화가 아니라 알림이었고, 실제로 못 보고 지나간 공식 문서가 셋 있었다 (웹 콘텐츠 스팸
+ * 사례 안내 · AI 콘텐츠 작성 가이드 1·2편).
+ *
+ * **여기서 지키는 것: 자동은 「모아서 알리는 것」까지다.** 제목만 보고 지시문을 고치면 읽지도
+ * 않은 문장으로 글쓰기 규칙이 바뀐다 — 이 저장소에서 짐작으로 넣은 규칙이 실측에 두 번
+ * 뒤집혔다(「굳은 자리」 등급 · 주제 집중도).
+ */
+{
+  const { classifyNotice, mergeNotices, unreviewed, activeRules, lastReviewed, noticeKey, NOTICE_SOURCES } = require(
+    `${OUT}/naver/notice.js`
+  )
+
+  ok(NOTICE_SOURCES.some((s) => s.id === 'naver_search'), '네이버 검색 공식 블로그를 본다')
+  ok(NOTICE_SOURCES.every((s) => s.why), '각 채널을 왜 보는지 적어 둔다')
+
+  // ── 무엇을 읽어야 하는가 (실제 제목으로 확인한다)
+  const real = [
+    ["알아두면 도움이 되는 '웹 콘텐츠 스팸 사례' 안내", true],
+    ['AI 시대에 사용자의 선택을 받는 콘텐츠 작성 가이드', true],
+    ['AI 시대에 사용자의 선택을 받는 콘텐츠 작성 가이드_실전편', true],
+    ['연관검색어 서비스 종료 안내드립니다.', true],
+    ['[당첨 공지] 모두의 회고 프로젝트 7월 당첨자를 발표합니다!', false],
+    ['[블로그 있어요!] 여섯번째 주인공은 누구일까요?', false],
+    ['[네이버 메이트] 2026년 8월, 스페셜 지원금 대상자를 공개합니다!', false],
+  ]
+  for (const [title, want] of real) {
+    ok(classifyNotice(title).relevant === want, `${want ? '읽어야 함' : '걸러냄'} — ${title.slice(0, 34)}`)
+  }
+  ok(classifyNotice("알아두면 도움이 되는 '웹 콘텐츠 스팸 사례' 안내").tags.includes('스팸·저품질'), '스팸 공지에 꼬리표를 단다')
+  ok(classifyNotice('검색 알고리즘 변경 이벤트 안내').relevant === true, '로직 얘기는 이벤트라는 말이 있어도 읽는다')
+  ok(classifyNotice('').relevant === false, '제목이 없으면 걸러낸다')
+
+  // ── 병합: 회원이 남긴 것을 지운다면 그게 제일 나쁜 버그다
+  const mk = (url, date, title, over = {}) => ({ url, date, title, source: 's', tags: [], relevant: true, ...over })
+  const before = [mk('https://a/1', '2026-08-01', '가', { reviewedAt: '2026-08-02T00:00:00Z', rule: '전화번호 금지' })]
+  const after = mergeNotices(before, [mk('https://a/1?fromRss=true', '2026-08-01', '가 (제목 수정)')], 50)
+  ok(after.length === 1, '추적 파라미터가 붙어도 같은 글로 본다', String(after.length))
+  ok(after[0].reviewedAt === '2026-08-02T00:00:00Z', '확인 표시를 지우지 않는다')
+  ok(after[0].rule === '전화번호 금지', '적어둔 규칙을 지우지 않는다')
+  ok(after[0].title === '가 (제목 수정)', '제목은 새것으로 갱신한다')
+  ok(noticeKey('https://a/1?x=1') === noticeKey('https://a/1'), '주소 열쇠는 파라미터를 뗀다')
+
+  const many = mergeNotices([], [mk('https://a/1', '2026-08-01', '가'), mk('https://a/2', '2026-08-05', '나')], 1)
+  ok(many.length === 1 && many[0].date === '2026-08-05', '최신부터 남긴다', JSON.stringify(many.map((m) => m.date)))
+
+  // ── 안 읽은 것 / 규칙 / 마지막 확인일
+  const list = [
+    mk('https://a/1', '2026-08-01', '스팸 안내', { reviewedAt: '2026-08-10T00:00:00Z', rule: '전화번호 금지' }),
+    mk('https://a/2', '2026-08-05', '로직 변경'),
+    mk('https://a/3', '2026-08-06', '이벤트', { relevant: false }),
+  ]
+  ok(unreviewed(list).length === 1, '안 읽은 중요한 공지만 센다', String(unreviewed(list).length))
+  ok(unreviewed(list)[0].url === 'https://a/2', '걸러진 글은 안 읽음으로 세지 않는다')
+  ok(activeRules(list).length === 1 && activeRules(list)[0].rule === '전화번호 금지', '적어둔 규칙만 지시문으로 간다')
+  ok(activeRules([mk('https://a/9', '2026-08-01', '가', { rule: '   ' })]).length === 0, '빈 규칙은 반영하지 않는다')
+  ok(lastReviewed(list) === '2026-08-10T00:00:00Z', '마지막 확인일을 데이터에서 읽는다')
+  ok(lastReviewed([]) === null, '확인한 적이 없으면 null (날짜를 지어내지 않는다)')
+
+  // ── 지시문에 실제로 들어가나
+  const upRule = buildUserPrompt({
+    type: 'info',
+    mainKeyword: '헬스 초보 운동 순서',
+    subKeywords: [],
+    noticeRules: [{ rule: '이미지로만 전달한 핵심은 텍스트로도 쓴다', title: 'AI 콘텐츠 가이드', date: '2026-06-04' }],
+  })
+  ok(upRule.includes('## 네이버 공지에서 확인한 규칙'), '지시문에 공지 규칙 묶음이 들어간다')
+  ok(upRule.includes('이미지로만 전달한 핵심은 텍스트로도 쓴다'), '적어둔 문장이 그대로 들어간다')
+  ok(upRule.includes('2026-06-04'), '어느 공지에서 왔는지 함께 적는다')
+  const upNo = buildUserPrompt({ type: 'info', mainKeyword: '헬스 초보 운동 순서', subKeywords: [] })
+  ok(!upNo.includes('## 네이버 공지에서 확인한 규칙'), '적어둔 규칙이 없으면 아무 줄도 안 붙는다')
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
