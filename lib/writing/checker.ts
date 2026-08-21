@@ -2124,7 +2124,9 @@ export function checkPost(input: CheckInput): CheckResult {
    * 같게 보고, **말투만 방문객 쪽이어야 한다**는 것은 지시문에서 잡는다 (여기서 말투까지
    * 재려 들면 「내가 받았다」와 「지금 신청하세요」를 낱말로는 못 가른다).
    *
-   * 정보글은 대상이 아니다 — 이벤트 글이 아니고, 홍보는 마지막 구간에만 모인다.
+   * 정보글은 대상이 아니다 — 이벤트 글이 아니다. (2026-08-21 주석 정정: 전에는 「홍보는
+   * 마지막 구간에만 모인다」고 적어 뒀는데 그 구간이 없어졌다. 지금은 정보글에 이벤트가
+   * 아예 안 들어간다 — `info-purity`·`info-promo-source` 가 본다.)
    */
   if (input.type !== 'info' && input.eventText?.trim()) {
     const introText = parsed.intro
