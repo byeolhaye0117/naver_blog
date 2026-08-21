@@ -28,6 +28,7 @@ const { isPartialMonth, completedMonths, momentumOf } = require(`${OUT}/naver/da
 const { prescriptionKey, upsertPrescription, findPrescription, prescriptionAgeDays, isPrescriptionStale } = require(
   `${OUT}/analysis/prescription.js`
 )
+import { GOLDEN_POSTS } from './golden.mjs'
 let fails = 0
 const ok = (cond, label, extra = '') => {
   if (!cond) fails++
@@ -7685,6 +7686,63 @@ console.log('\n[88] 정보글 신뢰 — 전언으로 쓰지 않는다 (2026-08-
   ok(isys.includes('모르는 것을 밝히는 데서 온다'), '왜 그런지도 한 줄 적는다')
   // 숫자를 지어내라는 말로 읽히면 안 된다 — 이 앱은 확인 안 된 수치를 계속 막아 왔다
   ok(isys.includes('모르면 범위, 알면 숫자'), '모르면 범위로 쓰라고 함께 못 박는다')
+}
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[89] 완성된 예시 글 세 편이 그대로 통과하나 (2026-08-21)')
+/*
+ * **이 저장소에서 네 번 난 사고를 잡으려고 만든 검사다** (scripts/golden.mjs 머리말).
+ * 전부 「골격은 바꾸고 검수는 안 옮긴 것」이고, 문구 검사로는 안 잡힌다 — 완성된 글을
+ * 넣어 봐야 잡힌다.
+ *
+ * **걸렸을 때 예시 글부터 고치지 않는다.** 어느 쪽이 틀렸는지 먼저 정한다:
+ *   · 골격이 맞으면 → 예시 글을 새 골격에 맞게 고친다
+ *   · 검수가 안 옮겨진 것이면 → 검수를 고친다 (예시 글은 그대로 둔다)
+ * 글만 고쳐서 통과시키면 검수가 반대를 시키는 상태가 그대로 남는다.
+ */
+for (const g of GOLDEN_POSTS) {
+  const r = checkPost(g.input)
+  const failed = r.items.filter((i) => i.level === 'fail')
+  const warned = r.items.filter((i) => i.level === 'warn')
+  ok(
+    failed.length === 0,
+    `${g.label} — 즉시수정 0건`,
+    failed.map((i) => `${i.id}(${i.value})`).join(' · ') || '없음'
+  )
+  ok(r.score >= PUBLISH_THRESHOLD, `${g.label} — 발행선 통과`, `${r.score} ≥ ${PUBLISH_THRESHOLD}`)
+  /*
+   * 주의도 0 으로 둔다. 「막지는 않는 항목」이라 느슨하게 두고 싶지만, 그러면 골격을 바꿔
+   * 통과가 주의로 내려앉아도 이 검사가 조용하다 — 그게 정확히 우리가 놓쳤던 자리다.
+   */
+  ok(
+    warned.length === 0,
+    `${g.label} — 주의 0건`,
+    warned.map((i) => `${i.id}(${i.value})`).join(' · ') || '없음'
+  )
+  /*
+   * 골격을 바꿀 때 제일 먼저 어긋나는 둘을 따로 못 박는다 — 구간을 늘리거나 줄이면
+   * 이 둘이 같이 안 움직여서 사고가 났다 (2026-08-05 · 2026-08-20 · 2026-08-21).
+   */
+  const spec = SPECS[g.input.type]
+  const chars = r.items.find((i) => i.id === 'charCount')
+  const heads = r.items.find((i) => i.id === 'headings')
+  ok(chars?.level === 'pass', `${g.label} — 분량이 스펙 안 (${spec.charMin}~${spec.charMax})`, chars?.value)
+  ok(heads?.level === 'pass', `${g.label} — 소제목 수가 스펙 안`, `${heads?.value} / 목표 ${heads?.target}`)
+}
+/*
+ * 정보글은 「업체가 안 드러나는 것」이 이 글의 정의다. 위 항목들과 겹치지만, 겹쳐도
+ * 여기 한 줄 더 둔다 — 이 글의 성격이 바뀌면 다른 어떤 항목보다 먼저 알아야 한다.
+ */
+{
+  const info = GOLDEN_POSTS.find((g) => g.input.type === 'info')
+  const r = checkPost(info.input)
+  const purity = r.items.find((i) => i.id === 'info-purity')
+  ok(purity?.level === 'pass', '정보글 예시에 업체 흔적이 하나도 없다', purity?.value)
+  // 지점을 통째로 넘겼는데도 새지 않아야 한다 (지시문·골격이 값을 흘리는지 함께 본다)
+  ok(Boolean(info.input.store && info.input.legalName), '지점 정보를 넘긴 상태로 검사한다')
+  for (const leak of ['MTO 피트니스 쌍용점', '010-2455-2896', 'booking.naver.com']) {
+    ok(!info.input.body.includes(leak), `정보글 본문에 업체 정보가 없다 — ${leak}`)
+  }
 }
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
