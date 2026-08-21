@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { guard } from '@/lib/api'
-import { noticeKey } from '@/lib/naver/notice'
+import { collectNotices, mergeNotices, noticeKey } from '@/lib/naver/notice'
+import { fetchBlogFeed } from '@/lib/naver/blogrss'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,4 +40,39 @@ export const PATCH = guard('공지를 저장하지 못했습니다.', async (req
 
   if (!result) return NextResponse.json({ error: '그 공지를 찾을 수 없습니다.' }, { status: 404 })
   return NextResponse.json({ items: (await readDB()).noticeItems ?? [] })
+})
+
+/** 크론과 같은 상한 — 채널 2곳 × 최근 50건이면 넉넉하다 */
+const KEEP = 120
+
+/**
+ * **지금 받아오기** — 크론을 기다리지 않고 화면에서 누른다.
+ *
+ * 크론은 매일 아침 7시에 돌지만, 새 공지가 났다는 얘기를 들었을 때 바로 확인할 수 있어야
+ * 한다. 「지금 뚫릴 만한 키워드」와 같은 방식이다 (자동 + 버튼, 재는 함수는 하나).
+ *
+ * 하나도 못 읽은 경우 저장하지 않는다 — 빈 목록으로 덮으면 「새 공지가 없다」로 보인다.
+ */
+export const POST = guard('공지를 받아오지 못했습니다.', async () => {
+  const { items: fresh, failed } = await collectNotices({ feed: (id) => fetchBlogFeed(id) })
+  if (!fresh.length) {
+    return NextResponse.json(
+      { error: '공지를 하나도 읽지 못했습니다 (네이버 호출 실패). 기존 목록을 그대로 둡니다.', failed },
+      { status: 502 }
+    )
+  }
+
+  const before = (await readDB()).noticeItems ?? []
+  const known = new Set(before.map((n) => noticeKey(n.url)))
+  const added = fresh.filter((n) => !known.has(noticeKey(n.url)))
+
+  await mutate((cur) => {
+    cur.noticeItems = mergeNotices(cur.noticeItems, fresh, KEEP)
+  })
+
+  return NextResponse.json({
+    items: (await readDB()).noticeItems ?? [],
+    added: added.length,
+    failed,
+  })
 })

@@ -7324,6 +7324,28 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(lastReviewed(list) === '2026-08-10T00:00:00Z', '마지막 확인일을 데이터에서 읽는다')
   ok(lastReviewed([]) === null, '확인한 적이 없으면 null (날짜를 지어내지 않는다)')
 
+  // ── 받아오기 루프 — 크론과 버튼이 같은 함수를 쓴다 (라우트는 테스트가 못 읽는다)
+  {
+    const { collectNotices } = require(`${OUT}/naver/notice.js`)
+    const feeds = {
+      naver_search: { items: [{ title: "'웹 콘텐츠 스팸 사례' 안내", link: 'https://a/1', date: '2026-07-06' }] },
+      blogpeople: { items: [{ title: '[당첨 공지] 7월 당첨자 발표', link: 'https://b/1', date: '2026-08-19' }] },
+    }
+    const got = await collectNotices({ feed: async (id) => feeds[id] ?? null })
+    ok(got.items.length === 2, `채널을 모두 돈다 — ${got.items.length}건`)
+    ok(got.items.find((n) => n.url === 'https://a/1').relevant === true, '스팸 공지는 읽어야 함으로 표시한다')
+    ok(got.items.find((n) => n.url === 'https://b/1').relevant === false, '당첨 공지는 걸러낸다')
+    ok(got.items[0].source === '네이버 검색 공식 블로그', '어느 채널에서 왔는지 남긴다')
+    ok(got.failed.length === 0, '다 읽었으면 실패 목록이 비어 있다')
+
+    // 한 채널이 죽어도 다른 채널은 살린다
+    const half = await collectNotices({ feed: async (id) => (id === 'naver_search' ? feeds.naver_search : null) })
+    ok(half.items.length === 1 && half.failed.length === 1, '한 채널만 죽으면 나머지는 받는다', half.failed.join())
+    // 전부 죽으면 빈 결과 — 라우트가 이걸 보고 저장을 건너뛴다 (빈 목록으로 덮으면 「새 공지 없음」이 된다)
+    const none = await collectNotices({ feed: async () => null })
+    ok(none.items.length === 0 && none.failed.length === 2, '전부 죽으면 아무것도 안 준다')
+  }
+
   // ── 지시문에 실제로 들어가나
   const upRule = buildUserPrompt({
     type: 'info',

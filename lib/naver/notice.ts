@@ -138,3 +138,46 @@ export function lastReviewed(items: NoticeItem[] | undefined): string | null {
   const dates = (items ?? []).map((n) => n.reviewedAt).filter((d): d is string => Boolean(d))
   return dates.length ? dates.sort().slice(-1)[0] : null
 }
+
+/**
+ * 채널을 돌며 공지를 받아 온다 — **크론과 화면 버튼이 같은 함수를 쓴다.**
+ *
+ * 라우트 파일은 테스트가 못 읽으므로(scripts/test.mjs 는 lib 만 컴파일한다) 여기에 둔다.
+ * 두 곳에 같은 루프를 복사하면 한쪽만 고치는 날이 온다 — 이 저장소에서 여러 번 겪었다.
+ *
+ * RSS 받아오기는 **주입**받는다. 그래야 진짜 호출 없이 「한 채널만 죽었을 때 어떻게 되나」를
+ * 테스트가 확인할 수 있다.
+ */
+export interface CollectDeps {
+  feed: (blogId: string) => Promise<{ items: { title: string; link: string; date: string }[] } | null>
+}
+
+export interface CollectResult {
+  items: NoticeItem[]
+  /** 못 읽은 채널 이름 */
+  failed: string[]
+}
+
+export async function collectNotices(deps: CollectDeps): Promise<CollectResult> {
+  const items: NoticeItem[] = []
+  const failed: string[] = []
+  for (const src of NOTICE_SOURCES) {
+    const feed = await deps.feed(src.id).catch(() => null)
+    if (!feed) {
+      failed.push(src.name)
+      continue
+    }
+    for (const item of feed.items) {
+      const verdict = classifyNotice(item.title)
+      items.push({
+        url: item.link,
+        source: src.name,
+        title: item.title,
+        date: item.date,
+        tags: verdict.tags,
+        relevant: verdict.relevant,
+      })
+    }
+  }
+  return { items, failed }
+}
