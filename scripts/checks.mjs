@@ -5450,15 +5450,40 @@ ok(infoSys.includes('6) 마무리'), '그 자리를 정보 마무리로 바꿨�
 ok(infoSys.includes('홍보성 게시물로 분류'), '왜 빼는지(분류 위험) 밝힌다')
 ok(infoSys.includes('어느 단계에도 시설·가격·이벤트·업체 이야기를 쓰지 않는다'), '어느 단계에도 안 섞는다 (예외 없음)')
 
-// 인사·상호명으로 열지 않는다 (옛 판은 반대였다)
-ok(infoSys.includes('인사·상호명·업체 소개로 열지 않는다'), '인사로 열지 말라고 한다')
+/*
+ * **인사는 하되 상호명은 안 붙인다** (2026-08-21). 회원: "정보성글 인사말이 없어서 어색해
+ * 인사 문구는 넣어주면 좋을거 같아."
+ *
+ * 2026-08-20 에 뺐던 것은 상호명이지 인사가 아니었는데, 「안녕하세요, ○○입니다」가 한
+ * 덩어리라 인사까지 같이 나갔다. 갈라 놓으면 둘 다 지킬 수 있다 — 인사는 네이버가 홍보성으로
+ * 보는 여섯 가지에 없고, 실측에서도 순위 손해가 없었다 (인사 27% / 아닌 글 32%, 구간 겹침).
+ */
+ok(infoSys.includes('**첫 문장은 인사다**'), '인사로 열라고 한다')
+ok(infoSys.includes('상호명을 붙이지 않는다'), '다만 상호명은 붙이지 말라고 한다')
+ok(infoSys.includes('업체 소개로 열지 않는다'), '업체 소개로는 열지 말라고 한다')
+ok(!infoSys.includes('인사·상호명·업체 소개로 열지 않는다'), '「인사하지 마라」를 지웠다')
 ok(!infoSys.includes('첫 문장에서 인사와 정식 상호명으로 누가 말하는지 밝힌다'), '「인사로 밝혀라」를 지웠다')
 /*
  * **지시와 검수가 반대가 되지 않게** 한다. 2026-08-10 에 지시는 「인사로 열지 마라」인데
  * 검수는 인사를 요구해서 서로 반대였던 적이 있다. 이번에는 검수 쪽도 같이 껐다.
  */
 const greetInfo = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터 바꿔보세요', body: '제가 상담할 때 이 질문을 제일 많이 받습니다.\n\n## 왜\n혈당이 낮게 유지되다 떨어지면서 생깁니다.', mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' })
-ok(!greetInfo.items.some((i) => i.id === 'intro-greeting'), '정보글에는 인사 검사를 하지 않는다 (지시와 반대가 되면 안 된다)')
+{
+  const item = greetInfo.items.find((i) => i.id === 'intro-greeting')
+  ok(Boolean(item), '정보글에도 인사 검사가 생긴다 (2026-08-21)')
+  ok(item.label === '첫 문장 인사', `정보글은 상호명을 요구하지 않는다 — ${item.label}`)
+  ok(item.target.includes('상호명은 넣지 않습니다'), '상호명은 넣지 말라고 목표에 적는다')
+  ok(item.level === 'warn' && item.value === '없음', `인사가 없으면 주의 — ${item.value}`)
+  // 인사만 있으면 통과한다 — 상호명이 없어도
+  const greeted = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터 바꿔보세요', body: '안녕하세요. 오늘은 폭식 얘기를 정리해 봤습니다.\n\n## 왜\n혈당이 낮게 유지되다 떨어지면서 생깁니다.', mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' })
+  const gi = greeted.items.find((i) => i.id === 'intro-greeting')
+  ok(gi.level === 'pass', `인사만 있으면 통과 — ${gi.value}`)
+  // 그리고 그 글은 순수성도 통과해야 한다 (인사는 홍보 신호가 아니다)
+  ok(greeted.items.find((i) => i.id === 'info-purity')?.level === 'pass', '인사가 있어도 정보글 순수성은 통과')
+  // 홍보글은 그대로 상호명까지 요구한다
+  const promoItem = checkPost({ ...goodPromo, body: '쌍용동 헬스장 이야기입니다.\n\n## 소제목\n' + '가'.repeat(1800) }).items.find((i) => i.id === 'intro-greeting')
+  ok(promoItem.label === '첫 문장 인사 + 정식 상호명', '홍보글은 상호명까지 그대로 요구한다')
+}
 const greetPromo = checkPost({ ...goodPromo, body: '쌍용동 헬스장 이야기입니다.\n\n## 소제목\n' + '가'.repeat(1800) })
 ok(greetPromo.items.some((i) => i.id === 'intro-greeting'), '홍보글에는 인사 검사가 그대로 있다')
 
@@ -5490,7 +5515,8 @@ const infoSkeleton = buildTemplate('info', { mainKeyword: '폭식 멈추는 방�
  * 지킨다** — 그 자리가 비면 다음에 또 한쪽만 고치게 된다.
  */
 ok(!infoSkeleton.includes('안녕하세요, MTO 피트니스 쌍용점입니다'), '골격이 인사 + 상호명으로 열지 않는다')
-ok(infoSkeleton.includes('인사·상호명·업체 소개로 열지 않는다'), '골격도 인사로 열지 말라고 적는다')
+ok(infoSkeleton.includes('**⓪첫 문장은 인사다**'), '골격도 인사로 열라고 적는다')
+ok(infoSkeleton.includes('**상호명은 붙이지 않는다**'), '골격도 상호명은 빼라고 적는다')
 ok(infoSkeleton.includes('상담에서 들은 질문이다'), '골격도 화자를 센터로 적는다')
 ok(infoSkeleton.includes('교대근무라 오후에 눈뜨고'), '골격도 첫 문장에 독자를 못 박게 한다 (셀프 체크 ①)')
 ok(infoSkeleton.includes('4단계 고를 때 기준'), '골격에도 대안 비교 구간이 있다 (셀프 체크 ③)')

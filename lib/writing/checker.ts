@@ -1008,14 +1008,30 @@ export function checkPost(input: CheckInput): CheckResult {
    */
   if (input.type === 'info') {
     const hits: string[] = []
-    // 지역 키워드 — 본문에서는 조연으로 필요하지만 제목에는 넣지 않는다
-    if (input.localKeyword && countLoose(title, input.localKeyword) > 0) hits.push(`지역 키워드「${input.localKeyword}」`)
+    /*
+     * 주어진 키워드에 든 말은 어느 것도 잡지 않는다. 회원이 정한 키워드를 못 쓰게 막으면
+     * 검사가 아니라 방해다.
+     */
+    const kw = [input.mainKeyword, ...(input.subKeywords ?? [])].filter(Boolean).join(' ')
+    /*
+     * **지역 키워드를 메인으로 잡는 정보글이 있다** (2026-08-21 확인). 회원이 실제로 그렇게
+     * 쓰고 계신다 — 「천안 헬스장 다이어트 폭식 왜 반복될까?」·「쌍용동 24시헬스장 생리 중
+     * 운동법」. 지역 키워드 1페이지 170편이 **전부** 제목에 그 지역 키워드를 달고 있으니,
+     * 그 자리를 노리는 글이라면 제목에 있는 게 맞다.
+     *
+     * 그래서 **키워드로 지정된 지역명은 잡지 않는다.** 잡는 것은 메인이 정보 키워드인데
+     * 지역명이 그 앞에 얹혀 메인을 뒤로 미는 경우다 — 회원이 물린 「쌍용동 헬스장 PT추천,
+     * 다이어트 정체기 …」가 그 모양이었다.
+     */
+    const localIsKeyword = Boolean(input.localKeyword) && countLoose(kw, input.localKeyword!) > 0
+    if (input.localKeyword && !localIsKeyword && countLoose(title, input.localKeyword) > 0) {
+      hits.push(`지역 키워드「${input.localKeyword}」`)
+    }
     if (input.legalName && countLoose(title, input.legalName) > 0) hits.push(`상호명「${input.legalName}」`)
     /*
      * 주어진 키워드에 없는데 제목에 붙는 업체·홍보 낱말들. 「PT추천」이 회원이 물린 그 말이다.
      * 키워드 자체에 들어 있으면 잡지 않는다 — 「PT」가 메인 키워드인 글도 있다.
      */
-    const kw = [input.mainKeyword, ...(input.subKeywords ?? [])].filter(Boolean).join(' ')
     const EXTRAS = /PT\s*추천|피티\s*추천|헬스장\s*추천|센터\s*추천|업체\s*추천|문의|상담|예약|이벤트|할인|특가|무료|혜택|마감|선착순/gi
     for (const m of new Set(title.match(EXTRAS) ?? [])) {
       if (!countLoose(kw, m)) hits.push(`「${m.trim()}」`)
@@ -1726,11 +1742,22 @@ export function checkPost(input: CheckInput): CheckResult {
    *
    * 후기글은 건너뛴다 — 화자가 방문객이라 센터 이름으로 인사하면 오히려 틀린다.
    *
-   * **정보글도 건너뛴다** (2026-08-20, 영상 개편). 정보글은 업체를 드러내지 않기로 했는데
-   * (SPECS.info 주석), 이 검사가 남아 있으면 **지시는 「인사하지 마라」, 검수는 「인사해라」**
-   * 가 되어 정반대가 된다. 2026-08-10 에 정확히 그 상태였고 회원이 그걸로 한 번 겪었다.
+   * **정보글은 인사만 본다** (2026-08-21). 회원: "정보성글 인사말이 없어서 어색해 인사
+   * 문구는 넣어주면 좋을거 같아."
+   *
+   * 2026-08-20 에 정보글을 이 검사에서 통째로 뺐었다. 그때 뺀 것은 **상호명** 때문이지
+   * 인사 때문이 아니었는데, 둘이 한 항목에 묶여 있어서 인사까지 같이 나갔다.
+   *
+   * 갈라 놓으면 둘 다 지킬 수 있다:
+   *   · 인사   — 네이버 홍보성 게시물 여섯 가지(전화·링크·플레이스·혜택·방문 유도·상호명)
+   *              어디에도 없다. 실측에서도 순위 손해가 없었다 (인사로 시작 27% / 아닌 글
+   *              32%, 구간 겹침). **넣어서 잃는 것이 없다.**
+   *   · 상호명 — 그건 여섯 가지 중 하나다. 정보글에서는 계속 안 쓴다.
+   *
+   * 그래서 정보글은 `greeted` 만 보고 `namedInOpening` 은 보지 않는다. 아래 분기가
+   * 유형별로 갈리는 이유다.
    */
-  if (input.type !== 'review' && input.type !== 'info') {
+  if (input.type !== 'review') {
     const opening = prose.slice(0, 80)
     const greeted = /안녕하세[요셔]|반갑습니다/.test(opening)
     /*
@@ -1740,21 +1767,41 @@ export function checkPost(input: CheckInput): CheckResult {
     const legal = input.legalName?.trim() ?? ''
     const flat = (t: string) => t.replace(/\s+/g, '')
     const namedInOpening = legal ? flat(opening).includes(flat(legal)) : false
+    // 정보글은 인사만 본다 — 상호명은 이 글에 안 들어간다 (위 주석)
+    const wantsName = input.type !== 'info'
     add({
       id: 'intro-greeting',
       group: '분량·구조',
-      label: '첫 문장 인사 + 정식 상호명',
-      level: greeted && namedInOpening ? 'pass' : greeted || namedInOpening ? 'warn' : 'fail',
-      value: greeted
-        ? namedInOpening
-          ? '통과'
-          : '인사는 있는데 정식 상호명이 없음'
-        : namedInOpening
-          ? '상호명은 있는데 인사가 없음'
+      label: wantsName ? '첫 문장 인사 + 정식 상호명' : '첫 문장 인사',
+      level: wantsName
+        ? greeted && namedInOpening
+          ? 'pass'
+          : greeted || namedInOpening
+            ? 'warn'
+            : 'fail'
+        : // 정보글 — 인사만 있으면 통과. 없으면 주의까지만 (막을 일은 아니다)
+          greeted
+          ? 'pass'
+          : 'warn',
+      value: wantsName
+        ? greeted
+          ? namedInOpening
+            ? '통과'
+            : '인사는 있는데 정식 상호명이 없음'
+          : namedInOpening
+            ? '상호명은 있는데 인사가 없음'
+            : '없음'
+        : greeted
+          ? '인사 있음'
           : '없음',
-      target: '「안녕하세요, (정식 상호명)입니다」로 시작 (순위 기준이 아니라 우리 규칙)',
-      hint:
-        greeted && namedInOpening
+      target: wantsName
+        ? '「안녕하세요, (정식 상호명)입니다」로 시작 (순위 기준이 아니라 우리 규칙)'
+        : '「안녕하세요」로 연다 (상호명은 넣지 않습니다)',
+      hint: !wantsName
+        ? greeted
+          ? undefined
+          : '첫 문장을 「안녕하세요」로 여세요. 인사 없이 본론부터 시작하면 어색합니다. **다만 상호명은 붙이지 않습니다** — 인사는 네이버가 홍보성으로 보는 여섯 가지(전화·링크·플레이스·혜택·방문 유도·상호명)에 없지만 상호명은 그중 하나입니다. 「안녕하세요. 오늘은 …를 정리해 봤습니다」처럼 인사 뒤에 바로 이 글이 무슨 글인지로 넘어가세요.'
+        : greeted && namedInOpening
           ? undefined
           : legal
             ? `글 맨 처음을 「안녕하세요, ${legal}입니다」로 여세요. 「저희는 ○○점입니다」처럼 줄이면 읽는 사람이 상호를 못 알아보고 검색도 못 합니다.`
