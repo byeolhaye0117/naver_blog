@@ -399,6 +399,74 @@ export default function GuidePage() {
           </p>
         </Card>
 
+        {/* ─── 정보글 개편 ─── */}
+        <Card
+          id="info-purity"
+          title="정보글에는 업체를 하나도 드러내지 않습니다"
+          subtitle="회원이 주신 영상(머니코치 최준호)을 분석하고 1페이지 67편으로 대조해 2026-08-20에 개편했습니다."
+        >
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-rose-900 dark:text-rose-200">
+            <strong className="font-bold">근거는 네이버 공식 공지입니다.</strong>
+            <p className="mt-1.5">
+              「홍보성 게시물은 …특정 상품이나 서비스를 구매 사용하도록 권하거나 <strong>연락을 유도하는</strong> 등의
+              활동이 해당됩니다.」 즉 순위 이전에 <strong>분류</strong>의 문제입니다. 정보글에 연락처 한 줄이 들어가면
+              그 글은 정보글로 안 세어질 수 있습니다.
+            </p>
+          </div>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[520px] text-[12px]">
+              <thead>
+                <tr className="muted bd border-b text-left">
+                  <th className="py-1.5 pr-3 font-semibold">정보글에 넣지 않는 것</th>
+                  <th className="py-1.5 pr-3 font-semibold">예</th>
+                  <th className="py-1.5 text-right font-semibold">1페이지 정보글 38편</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['전화번호·명함', '「전화 주세요」', '5%'],
+                  ['플레이스·위치', '「찾아오시는 길」·지도', '11%'],
+                  ['상호명', '「저희 ○○점에서는」', '—'],
+                  ['홍보 링크', '홈페이지·카톡·예약 링크', '26%'],
+                  ['혜택 낱말', '이벤트·무료·할인·견적', '3%'],
+                  ['방문·연락 유도', '「문의 주세요」', '8%'],
+                ].map((row) => (
+                  <tr key={row[0]} className="bd border-b last:border-0 align-top">
+                    <td className="py-1.5 pr-3 font-semibold whitespace-nowrap">{row[0]}</td>
+                    <td className="muted py-1.5 pr-3">{row[1]}</td>
+                    <td className="tnum py-1.5 text-right">{row[2]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-3 text-[12px] leading-relaxed">
+            1페이지 정보형 38편 중 <strong>25편(66%)</strong>이 위 여섯 가지가 하나도 없는 순수 정보글이었습니다.
+            그래서 정보글에서 <strong>인사·상호명·예약 링크·상담 유도·마지막 센터 소개 구간을 전부 뺐습니다.</strong>{' '}
+            지시문에 상호명과 링크를 <strong>주지도 않습니다</strong> — 값을 주면 쓰게 되기 때문입니다.
+          </p>
+
+          <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+            <strong className="font-bold">이 개편은 회원님이 전에 요청하신 두 가지를 덮습니다.</strong>
+            <p className="mt-1.5">
+              ① 「정보성 8 : 홍보성 2 느낌으로 글 마지막에는 홍보가 들어갈 수 있게」(8/07) → 이제 <strong>정보 10 : 홍보 0</strong>{' '}
+              입니다. ② 「화자는 센타로 해서 상호명도 함께 소개될 수 있게」(8/10) → 이제 <strong>상호명을 쓰지 않습니다.</strong>{' '}
+              되돌리려면 말씀만 주세요. 「마지막 홍보 구간」 칸을 채우면 지금도 쓸 수는 있지만, 검수가 분류 위험을 알립니다.
+            </p>
+          </div>
+
+          <p className="muted mt-3 text-[11.5px] leading-relaxed">
+            <strong>영상에서 한 가지는 안 따랐습니다.</strong> 영상은 홍보글도 홍보 요소를 2개 이하로 줄이라고 합니다.
+            그런데 1페이지 업체형 글 46편의 홍보 요소는 <strong>중간값 3개</strong>였고 2개 이하는 37%뿐이었습니다(4~5개인
+            글도 13편). 우리 실측과 어긋나서 홍보글은 그대로 뒀습니다.
+            <br />
+            검수는 <strong>주의까지만</strong> 합니다 — 1페이지에 링크를 달고도 올라온 정보글이 26% 있었습니다. 못 오른
+            글은 표본에 없으니 「링크가 있으면 못 오른다」는 증명되지 않았고, 확실한 것은 분류 위험입니다.
+          </p>
+        </Card>
+
         {/* ─── 발행 후 타임라인 ─── */}
         <Card
           id="timeline"
