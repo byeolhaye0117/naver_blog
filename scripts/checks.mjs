@@ -7296,6 +7296,27 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   }
   ok(classifyNotice("알아두면 도움이 되는 '웹 콘텐츠 스팸 사례' 안내").tags.includes('스팸·저품질'), '스팸 공지에 꼬리표를 단다')
   ok(classifyNotice('검색 알고리즘 변경 이벤트 안내').relevant === true, '로직 얘기는 이벤트라는 말이 있어도 읽는다')
+  /*
+   * **꼬리표가 붙었다고 다 읽어야 하는 것은 아니다** (프로덕션에서 고쳤다).
+   *
+   * 처음엔 꼬리표 하나면 「읽어야 함」으로 봤다. 실제로 100건을 받아보니 46건이 걸렸다 —
+   * 「8월, 이달의 블로그를 소개합니다」까지 「블로그」 꼬리표로 걸렸다. 46건짜리 목록은
+   * 아무도 안 읽으니 알림이 아니라 소음이다. 기준을 좁혀 9건이 됐다.
+   */
+  const weakOnly = [
+    ['8월, 이달의 블로그를 소개합니다!', ['블로그']],
+    ['AI 브리핑이 클립 영상을 더해 더욱 풍부해집니다.', ['AI']],
+    ['사진도, 정보도 한눈에! 네이버 플레이스 검색 화면이 새로워졌습니다.', ['플레이스']],
+  ]
+  for (const [title, want] of weakOnly) {
+    const v = classifyNotice(title)
+    ok(v.relevant === false, `약한 꼬리표만으로는 읽어야 함이 아니다 — ${title.slice(0, 26)}`)
+    ok(want.every((w) => v.tags.includes(w)), '그래도 꼬리표는 남긴다 (전부 보기에서 확인한다)', v.tags.join())
+  }
+  // 실제로 받은 것 중 읽어야 하는 것들
+  ok(classifyNotice('신뢰도 중심 통합 랭킹 모델 A/B 테스트 진행 안내').relevant === true, '랭킹 모델 공지는 읽는다')
+  ok(classifyNotice("블로그 검색결과에서 '내돈내산' 글만 모아볼 수 있어요!").relevant === true, '내돈내산 정책은 읽는다')
+  ok(classifyNotice('블로그 내돈내산 방문 인증 대상 확대 안내 (MY플레이스 결제내역)').relevant === true, '대가성 표기 관련은 읽는다')
   ok(classifyNotice('').relevant === false, '제목이 없으면 걸러낸다')
 
   // ── 병합: 회원이 남긴 것을 지운다면 그게 제일 나쁜 버그다
