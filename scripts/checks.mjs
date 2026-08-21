@@ -4541,7 +4541,46 @@ ok(countCta('').count === 0, '빈 글은 0')
 ok(countCta('상담상담').count === 2, '붙어 있어도 센다')
 
 ok(CTA_MIN_BY_TYPE.promo === 6, '홍보글 하한 6회 (6회 이상 1~3위 60% / 0~1회 14%)')
-ok(CTA_MIN_BY_TYPE.info === 2, '정보글은 2회 — 마지막 구간이 상담 유도 구간이 됐다 (홍보글 6과는 여전히 멀다)')
+/*
+ * **정보글 2 → 0** (2026-08-21). 2 였던 이유는 「센터 소개 + 상담 유도」 구간이었고, 그
+ * 구간이 2026-08-20 에 없어졌다. 남겨두니 홍보를 다 걷어낸 정보글에 서로 반대되는 두 줄이
+ * 같이 떴다 — 「상담 안내를 지우세요」(info-purity)와 「2회는 넘기세요」(cta-invite).
+ */
+ok(CTA_MIN_BY_TYPE.info === 0, '정보글은 0회 — 상담 유도 구간이 없어졌다')
+{
+  const infoClean = checkPost({
+    type: 'info',
+    title: '폭식 멈추는 방법, 순서부터 바꿔보세요',
+    mainKeyword: '폭식 멈추는 방법',
+    subKeywords: ['다이어트 폭식'],
+    localKeyword: '천안헬스장',
+    tags: ['폭식멈추는방법'],
+    body: '## 왜 저녁에 몰리나\n혈당이 낮게 유지되다 떨어지면서 생깁니다. 천안 헬스장에서 상담하다 보면 이 질문을 제일 많이 받습니다.',
+  })
+  ok(infoClean.items.every((i) => i.id !== 'cta-invite'), '정보글에는 상담 유도 항목을 만들지 않는다')
+  // 홍보글·후기글에는 그대로 있다
+  ok(checkPost({ ...goodPromo }).items.some((i) => i.id === 'cta-invite'), '홍보글에는 그대로 있다')
+  /*
+   * **지역 키워드는 업체를 드러내는 것이 아니다.** 골격이 한때 「본문에는 지역·업체를 쓰지
+   * 않는다」로 적혀 있어서 지시문·검수와 반대였다. 지역명이 있어도 순수성은 통과해야 한다.
+   */
+  ok(infoClean.items.find((i) => i.id === 'info-purity')?.level === 'pass', '지역명이 있어도 정보글 순수성은 통과')
+  ok(infoClean.items.find((i) => i.id === 'localKeyword')?.level === 'pass', '지역 키워드 1회는 통과')
+  const iskel2 = buildTemplate('info', { mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], localKeyword: '천안헬스장' })
+  ok(!iskel2.includes('본문에는 지역·업체를 쓰지 않는다'), '골격에서 반대되던 문장을 지웠다')
+  ok(iskel2.includes('지역 키워드 "천안헬스장"를 본문에 1~2회'), '골격도 본문에 넣으라고 한다 (지시문·검수와 같은 말)')
+
+  /*
+   * **목표 문구가 정보글에 「넣어라」로 읽히면 안 된다.** 판정은 원래도 「없어도 통과」였지만
+   * 회원이 보는 것은 그 한 줄이다 — 「0~1회」·「1~2개」를 보고 넣으면 `info-purity` 가 잡는다.
+   */
+  const tgt = (id, patch) => checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터', mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], body: '## 소제목\n내용', ...patch }).items.find((i) => i.id === id)?.target
+  ok(tgt('phone').startsWith('0회'), `정보글 전화번호 목표는 0회 — ${tgt('phone')}`)
+  ok(tgt('links').startsWith('0개'), `정보글 외부 링크 목표는 0개 — ${tgt('links')}`)
+  // 홍보글·후기글은 그대로다 (예약 링크·전화가 그 글의 일이다)
+  ok(tgt('phone', { type: 'promo' }) === 'CTA에 1회', '홍보글 전화번호 목표는 그대로')
+  ok(tgt('links', { type: 'review' }).startsWith('1~2개'), '후기글 링크 목표는 그대로')
+}
 ok(CTA_MIN_BY_TYPE.review === 2, '후기글은 방문자 화자 — 여섯 번 권하면 대가성 광고가 된다')
 
 const ctaBody = (n) => ['[이미지: 대표]', '쌍용동 헬스장입니다. 제가 안내드릴게요.', '', '[이미지: 2]',

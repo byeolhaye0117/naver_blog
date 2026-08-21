@@ -1446,6 +1446,13 @@ export function checkPost(input: CheckInput): CheckResult {
    */
   const cta = countCta(scanText)
   const ctaMin = CTA_MIN_BY_TYPE[input.type]
+  /*
+   * **정보글에는 이 항목을 만들지 않는다** (2026-08-21). 하한이 0 이라 늘 통과이기도 하지만,
+   * 그보다 이 항목이 정보글에 대고 하는 말이 `info-purity` 와 반대다 — 한쪽은 「상담 안내를
+   * 지우세요」, 한쪽은 「2회는 넘기세요」. 정보글의 다음 행동은 상담이 아니라 「오늘 이것부터」다
+   * (content.ts 의 CTA_MIN_BY_TYPE 주석).
+   */
+  if (ctaMin > 0)
   add({
     id: 'cta-invite',
     group: '내용 균형',
@@ -1500,7 +1507,12 @@ export function checkPost(input: CheckInput): CheckResult {
     label: '전화번호 노출',
     level: level(phoneCount <= 1, phoneCount <= 2),
     value: `${phoneCount}회`,
-    target: input.type === 'promo' ? 'CTA에 1회' : '0~1회',
+    /*
+     * **정보글은 0 회다** (2026-08-21). 판정은 원래도 「없어도 통과」였지만 목표 문구가
+     * 「0~1회」라서, 회원이 그 줄만 보면 한 번은 넣어도 되는 줄로 읽는다. 그리고 넣으면
+     * `info-purity` 가 잡는다 — 화면의 두 줄이 서로 다른 말을 하게 된다.
+     */
+    target: input.type === 'promo' ? 'CTA에 1회' : input.type === 'info' ? '0회 (정보글에는 넣지 않습니다)' : '0~1회',
     hint: phoneCount > 1 ? '전화번호 도배는 상업성 과다 신호입니다.' : undefined,
     weight: 2,
   })
@@ -1511,7 +1523,8 @@ export function checkPost(input: CheckInput): CheckResult {
     label: '외부 링크',
     level: level(linkCount <= 2, linkCount <= 3),
     value: `${linkCount}개`,
-    target: '1~2개 (예약 링크 포함)',
+    // 위 phone 과 같은 이유 — 「1~2개」는 정보글에 링크를 넣으라는 말로 읽힌다
+    target: input.type === 'info' ? '0개 (홍보 링크는 정보글에 넣지 않습니다)' : '1~2개 (예약 링크 포함)',
     hint: linkCount > 2 ? '상업성 외부 링크가 많으면 어뷰징 의심을 받습니다.' : undefined,
     weight: 2,
   })
