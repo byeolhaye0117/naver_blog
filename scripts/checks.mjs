@@ -5354,32 +5354,44 @@ console.log('\n[82] 정보글 — 화자는 센터, 정보 8 : 홍보 2')
  * 순위 기준이 아니다 — 이 글의 목적(신뢰 축적) 쪽 규칙이다.
  */
 const infoSys = buildSystemPrompt('info')
-ok(infoSys.includes('화자는 센터(사장·운영자) 본인이다'), '정보글 화자도 센터다')
-ok(infoSys.includes('파는 글이 아니다'), '그래도 파는 글은 아니라고 못 박는다')
-ok(infoSys.includes('정보 8 : 홍보 2'), '비중을 숫자로 적는다')
-ok(infoSys.includes('시설·가격·이벤트는 마지막 구간에서만'), '시설·가격·이벤트를 마지막 구간에 가둔다')
-ok(infoSys.includes('센터 소개 + 상담 유도 400~500자'), '마지막 구간 분량을 늘렸다')
-ok(infoSys.includes('1~4단계에는 시설·가격·이벤트를 쓰지 않는다'), '앞에 안 섞어서 비중을 맞추라고 한다')
-ok(!infoSys.includes('아는 사람이 옆에서 알려주듯'), '「아는 사람」 화자를 지웠다')
 
 /*
- * **인사 + 상호명을 다시 넣었다** (2026-08-10, 같은 날 두 번째 판). 회원:
- * "맨 처음에 내가 누군지 없어. 화자는 센타로 해서 해주고 상호명도 함께 소개될 수 있게."
- * 앞 판은 「인사와 상호명으로 열지 않는다」였는데, 검수(`intro-greeting`)는 처음부터
- * 정보글에도 인사 + 정식 상호명을 요구하고 있었다 — 지시와 검사가 서로 반대였다.
+ * ── 정보글을 개편했다 (2026-08-20) ─────────────────────────────
+ *
+ * 회원이 영상을 주며 "이 영상을 분석해서 정보성글 다시 개편하자"고 했다
+ * (머니코치 최준호, 「열심히 쓴 글이 쓰레기 취급받는 이유」).
+ *
+ * 영상 근거는 네이버 공식 공지다 — 「연락을 유도하는 활동」이 홍보성 게시물이다. 금지 목록
+ * 여섯 가지: 전화번호·플레이스/위치·상호명 반복·홍보 링크·혜택 낱말·방문 유도.
+ * 우리 실측도 같은 방향이었다 — 1페이지 정보형 38편 중 25편(66%)이 홍보 요소 0개.
+ *
+ * **이 개편은 회원의 옛 요청 두 개를 덮는다.** 조용히 바꾸지 않으려고 여기 적어 둔다:
+ *   ① "정보성 8 : 홍보성 2 느낌으로 글 마지막에는 홍보가 들어갈 수 있게" (2026-08-07)
+ *   ② "화자는 센타로 해서 해주고 상호명도 함께 소개될 수 있게" (2026-08-10)
  */
-ok(infoSys.includes('첫 문장에서 인사와 정식 상호명으로 누가 말하는지 밝힌다'), '누가 쓴 글인지 밝히라고 한다')
-ok(infoSys.includes('「안녕하세요, (정식 상호명)입니다」'), '인사 문장을 그대로 준다')
-ok(!infoSys.includes('인사와 상호명으로 열지 않는다'), '「인사로 열지 말라」는 지웠다')
-ok(infoSys.includes('누가 쓴 글인지 밝히는 것은 홍보가 아니다'), '인사가 홍보가 아니라는 것을 구분해준다')
-// 정보글 검수도 같은 것을 요구해야 한다 (앞 판에서는 지시와 검사가 반대였다)
+ok(infoSys.includes('업체를 드러내지 않는다'), '정보글은 업체를 드러내지 않는다')
+ok(infoSys.includes('정보 10 : 홍보 0'), '비중을 숫자로 적는다 — 홍보 0')
+ok(!infoSys.includes('정보 8 : 홍보 2'), '옛 비중(8:2)이 남아 있지 않다')
+ok(!infoSys.includes('센터 소개 + 상담 유도'), '마지막 홍보 구간을 없앴다')
+ok(infoSys.includes('5) 마무리'), '그 자리를 정보 마무리로 바꿨다')
+ok(infoSys.includes('홍보성 게시물로 분류'), '왜 빼는지(분류 위험) 밝힌다')
+ok(infoSys.includes('어느 단계에도 시설·가격·이벤트·업체 이야기를 쓰지 않는다'), '어느 단계에도 안 섞는다 (예외 없음)')
+
+// 인사·상호명으로 열지 않는다 (옛 판은 반대였다)
+ok(infoSys.includes('인사·상호명·업체 소개로 열지 않는다'), '인사로 열지 말라고 한다')
+ok(!infoSys.includes('첫 문장에서 인사와 정식 상호명으로 누가 말하는지 밝힌다'), '「인사로 밝혀라」를 지웠다')
+/*
+ * **지시와 검수가 반대가 되지 않게** 한다. 2026-08-10 에 지시는 「인사로 열지 마라」인데
+ * 검수는 인사를 요구해서 서로 반대였던 적이 있다. 이번에는 검수 쪽도 같이 껐다.
+ */
 const greetInfo = checkPost({ type: 'info', title: '폭식 멈추는 방법, 순서부터 바꿔보세요', body: '제가 상담할 때 이 질문을 제일 많이 받습니다.\n\n## 왜\n혈당이 낮게 유지되다 떨어지면서 생깁니다.', mainKeyword: '폭식 멈추는 방법', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점' })
-const greetItem = greetInfo.items.find((i) => i.id === 'intro-greeting')
-ok(greetItem && greetItem.level !== 'pass', '정보글도 첫 문장 인사 + 상호명을 검사한다')
+ok(!greetInfo.items.some((i) => i.id === 'intro-greeting'), '정보글에는 인사 검사를 하지 않는다 (지시와 반대가 되면 안 된다)')
+const greetPromo = checkPost({ ...goodPromo, body: '쌍용동 헬스장 이야기입니다.\n\n## 소제목\n' + '가'.repeat(1800) })
+ok(greetPromo.items.some((i) => i.id === 'intro-greeting'), '홍보글에는 인사 검사가 그대로 있다')
 
 // 분량 — 회원: "정보성 글 분량이 부족한 거 같아 늘려서 업데이트 해줘"
 ok(SPECS.info.charMin === 2200 && SPECS.info.charMax === 3000, `정보글 분량 2,200~3,000자 — ${SPECS.info.charMin}~${SPECS.info.charMax}`)
-ok(SPECS.info.legalNameMin === 2, '정보글도 정식 상호명 2회 (도입 + 마지막 구간)')
+ok(SPECS.info.legalNameMin === 0, `정보글은 상호명을 요구하지 않는다 — ${SPECS.info.legalNameMin}회`)
 ok(infoSys.includes('방법 800~1,000자'), '정보 본문 최대 구간을 늘렸다')
 ok(infoSys.includes('종류를 늘리지 말고 깊이를 늘린다'), '자수만 늘리지 말라고 한다')
 
@@ -5661,8 +5673,12 @@ ok(!emptyNotePrompt.includes('이 안에서만 쓴다'), '없는 내용 묶음�
 // 홍보글에는 이벤트 칸이 따로 있으니 이 묶음을 내지 않는다
 const promoTypePrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], promoNote: NOTE })
 ok(!promoTypePrompt.includes('마지막 홍보 구간'), '홍보글에는 안 낸다 (이벤트 칸이 그 역할)')
-ok(buildSystemPrompt('info').includes('묶음이 있으면 **그 내용으로** 쓴다'), '구조 지시도 칸을 가리킨다')
-ok(buildSystemPrompt('info').includes('묶음이 없으면 가격·이벤트를 만들지 않는다'), '구조 지시에도 비었을 때 규칙을 적는다')
+/*
+ * 2026-08-20 개편 — 정보글에서 홍보 구간 자체를 없앴다. 구조 지시가 더는 홍보 칸을
+ * 가리키지 않는다. 칸을 채우면 검수(info-purity)가 분류 위험을 알린다.
+ */
+ok(!buildSystemPrompt('info').includes('묶음이 있으면 **그 내용으로** 쓴다'), '구조 지시가 홍보 칸을 가리키지 않는다')
+ok(buildSystemPrompt('info').includes('업체 이야기를 넣지 않는다'), '마무리에 업체 이야기를 넣지 말라고 한다')
 
 // ─── 검수: 적어두지 않은 금액을 잡는다
 const infoBody = (tailPromo) => `안녕하세요, MTO 피트니스 쌍용점입니다. 제가 상담할 때 폭식 멈추는 방법을 제일 많이 물으십니다.
@@ -7191,18 +7207,21 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   const store = { id: 's', name: '쌍용점', legalName: 'MTO 피트니스 쌍용점', phone: '010-2455-2896', reserveUrl: 'https://vo.la/Zbynx' }
   const infoPrompt = buildUserPrompt({ type: 'info', mainKeyword: '헬스 초보 운동 순서', localKeyword: '쌍용동 헬스장', subKeywords: [], store })
   ok(!infoPrompt.includes('- 전화: 010-2455-2896'), '정보글 지시문에 전화번호를 주지 않는다')
-  ok(infoPrompt.includes('전화번호를 쓰지 않는다'), '왜 안 주는지 지시문에 적는다')
-  ok(infoPrompt.includes('예약 링크: https://vo.la/Zbynx'), '예약 링크는 그대로 준다 (1페이지 정보글 4편 중 3편이 쓴다)')
-  ok(infoPrompt.includes('정식 상호명: MTO 피트니스 쌍용점'), '상호명은 그대로 준다 — 누가 쓴 글인지는 밝혀야 한다')
+  ok(!infoPrompt.includes('예약 링크: https://vo.la/Zbynx'), '예약 링크도 주지 않는다 (2026-08-20 개편)')
+  ok(!infoPrompt.includes('정식 상호명: MTO 피트니스 쌍용점'), '상호명도 주지 않는다 — 값을 주면 쓰게 된다')
+  ok(infoPrompt.includes('업체를 드러내는 것을 하나도 쓰지 않는다'), '무엇을 쓰지 말아야 하는지 한 줄로 준다')
+  ok(infoPrompt.includes('홍보성 게시물로 분류한다'), '왜 그런지(네이버 공지) 밝힌다')
 
   const promoPrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: [], store })
   ok(promoPrompt.includes('- 전화: 010-2455-2896'), '홍보글에는 전화번호를 그대로 준다')
+  ok(promoPrompt.includes('예약 링크: https://vo.la/Zbynx'), '홍보글에는 예약 링크도 준다')
+  ok(promoPrompt.includes('정식 상호명: MTO 피트니스 쌍용점'), '홍보글에는 상호명을 준다')
 
-  const sys = buildSystemPrompt('info')
-  ok(sys.includes('예약 링크만 쓰고 전화번호는 쓰지 않는다'), '골격도 같은 말을 한다')
-
-  // ── 검수: 본문에 전화번호가 박히면 알린다
-  /* 정보글 표본 — 이 항목만 보므로 골격은 최소로 둔다 */
+  // ── 검수: 정보글 순수성 (영상이 든 여섯 가지)
+  /*
+   * 표본은 **개편 전 모양**의 정보글이다 — 인사 + 상호명으로 열고 마지막에 상호명을 한 번 더
+   * 쓴다. 개편으로 이게 무엇에 걸리는지 보여주는 것이 이 표본의 일이다.
+   */
   const infoPost = {
     type: 'info',
     title: '헬스 초보 운동 순서, 뭐부터 해야 할까요?',
@@ -7216,22 +7235,29 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
       '헬스 초보 운동 순서를 물어보시는 분이 많아서 정리해 드립니다.',
       '## 무엇부터 하면 되나',
       '가'.repeat(600),
-      '## 상담을 받고 싶다면',
-      '예약 링크로 연락 주시면 안내해 드릴게요. MTO 피트니스 쌍용점에서 기다리겠습니다.',
+      '## 오늘부터 할 것',
+      '가벼운 무게로 자세부터 익히세요. MTO 피트니스 쌍용점에서 자주 보는 실수입니다.',
     ].join('\n'),
   }
-  const phoneItem = (patch) => checkPost({ ...infoPost, ...patch }).items.find((i) => i.id === 'info-phone')
-  ok(phoneItem({}), '정보글에는 이 항목이 생긴다')
-  ok(phoneItem({}).level === 'pass', '전화번호가 없으면 통과')
-  const withPhone = phoneItem({ body: infoPost.body + '\n문의는 010-2455-2896 으로 주세요.' })
-  ok(withPhone.level === 'warn', `전화번호가 있으면 주의 — ${withPhone.level}`)
-  ok(withPhone.value.includes('010-2455-2896'), '어느 번호가 걸렸는지 보여준다', withPhone.value)
-  ok(withPhone.hint.includes('0편'), '왜 그런지 실측으로 말한다')
-  ok(!checkPost({ ...goodPromo, body: goodPromo.body + '\n010-2455-2896' }).items.some((i) => i.id === 'info-phone'), '홍보글에는 이 항목을 만들지 않는다')
-  // 주의 하나로 점수가 무너지지 않는다 (표본 4편짜리 근거다)
-  const a = checkPost({ ...infoPost }).score
-  const b = checkPost({ ...infoPost, body: infoPost.body + '\n010-2455-2896' }).score
-  ok(a - b <= 3, `표본이 작은 근거라 점수를 크게 깎지 않는다 — ${a} → ${b}`)
+  const pure = (patch) => checkPost({ ...infoPost, ...patch }).items.find((i) => i.id === 'info-purity')
+  ok(pure({}), '정보글에는 순수성 항목이 생긴다')
+  ok(pure({ legalName: undefined }).level === 'pass', '아무것도 없으면 통과')
+  ok(pure({ body: infoPost.body + '\n문의는 010-2455-2896 으로 주세요.' }).value.includes('전화번호'), '전화번호를 잡는다')
+  ok(pure({ body: infoPost.body + '\n자세한 건 https://vo.la/Zbynx 에서 보세요.' }).value.includes('링크'), '링크를 잡는다')
+  ok(pure({ body: infoPost.body + '\n찾아오시는 길은 아래를 보세요.' }).value.includes('플레이스·위치'), '위치 안내를 잡는다')
+  ok(pure({ body: infoPost.body + '\n8월 이벤트로 할인 중입니다.' }).value.includes('혜택 낱말'), '혜택 낱말을 잡는다')
+  ok(pure({ body: infoPost.body + '\n궁금하시면 편하게 문의 주세요.' }).value.includes('방문·연락 유도'), '연락 유도를 잡는다')
+  // 상호명은 설정이 있을 때만 센다 (infoPost 본문에 상호명이 두 번 들어 있다)
+  ok(pure({}).value.includes('상호명'), '상호명이 본문에 있으면 잡는다', pure({}).value)
+  ok(pure({}).level === 'warn', '있으면 주의 — 막지는 않는다')
+  ok(pure({}).hint.includes('66%'), '왜 그런지 실측으로 말한다')
+  ok(!checkPost({ ...goodPromo }).items.some((i) => i.id === 'info-purity'), '홍보글에는 이 항목을 만들지 않는다')
+  /*
+   * **막지 않는다.** 1페이지에 링크를 달고도 올라온 글이 26% 있었다 — 「링크가 있으면 못
+   * 오른다」는 우리 표본으로 증명되지 않는다(못 오른 글은 표본에 없다). 확실한 것은 분류
+   * 위험이고, 그건 알릴 일이지 막을 일이 아니다.
+   */
+  ok(checkPost({ ...infoPost }).items.every((i) => i.id !== 'info-purity' || i.level !== 'fail'), '즉시수정으로 막지 않는다')
 }
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
