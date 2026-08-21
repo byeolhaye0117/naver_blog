@@ -21,6 +21,26 @@ export default function NoticeCard({ items }: { items: NoticeItem[] }) {
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
+  const [pulling, setPulling] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  /** 크론을 기다리지 않고 지금 받아온다 (매일 아침 7시에도 자동으로 돈다) */
+  async function pull() {
+    setPulling(true)
+    setError(null)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/notice', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? '받아오지 못했습니다.')
+      setList(json.items as NoticeItem[])
+      setMsg(json.added > 0 ? `새 공지 ${json.added}건을 받았습니다.` : '새로 올라온 공지가 없습니다.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '받아오지 못했습니다.')
+    } finally {
+      setPulling(false)
+    }
+  }
 
   const relevant = list.filter((n) => n.relevant)
   const pending = relevant.filter((n) => !n.reviewedAt)
@@ -56,9 +76,17 @@ export default function NoticeCard({ items }: { items: NoticeItem[] }) {
         </Badge>
       }
     >
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={pull} disabled={pulling} className={btnPrimary}>
+          {pulling ? '받아오는 중…' : '지금 받아오기'}
+        </button>
+        <span className="muted text-[11px]">매일 아침 7시에도 자동으로 받아옵니다</span>
+        {msg && <span className="muted text-[11px]">{msg}</span>}
+      </div>
+
       {list.length === 0 ? (
         <p className="muted text-[12.5px]">
-          아직 받아온 공지가 없습니다. 매일 밤(07시 KST) 자동으로 받아옵니다.
+          아직 받아온 공지가 없습니다. 위 「지금 받아오기」를 누르거나 내일 아침을 기다리세요.
         </p>
       ) : (
         <>

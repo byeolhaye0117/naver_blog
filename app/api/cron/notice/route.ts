@@ -1,13 +1,7 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { fetchBlogFeed } from '@/lib/naver/blogrss'
-import {
-  NOTICE_SOURCES,
-  classifyNotice,
-  mergeNotices,
-  unreviewed,
-  type NoticeItem,
-} from '@/lib/naver/notice'
+import { collectNotices, mergeNotices, unreviewed } from '@/lib/naver/notice'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -37,26 +31,7 @@ export async function GET(req: Request) {
     }
   }
 
-  const fresh: NoticeItem[] = []
-  const failed: string[] = []
-  for (const src of NOTICE_SOURCES) {
-    const feed = await fetchBlogFeed(src.id)
-    if (!feed) {
-      failed.push(src.name)
-      continue
-    }
-    for (const item of feed.items) {
-      const verdict = classifyNotice(item.title)
-      fresh.push({
-        url: item.link,
-        source: src.name,
-        title: item.title,
-        date: item.date,
-        tags: verdict.tags,
-        relevant: verdict.relevant,
-      })
-    }
-  }
+  const { items: fresh, failed } = await collectNotices({ feed: (id) => fetchBlogFeed(id) })
 
   if (!fresh.length) {
     return NextResponse.json(
