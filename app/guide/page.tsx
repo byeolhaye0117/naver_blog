@@ -4,21 +4,25 @@ import { RISK_TERMS, COMMERCIAL_LIMITS } from '@/lib/writing/banned'
 import { SPECS } from '@/lib/writing/checker'
 import { PageHeader } from '@/components/AppShell'
 import { Badge, Card } from '@/components/ui'
+import { readDB } from '@/lib/store'
+import { lastReviewed, unreviewed } from '@/lib/naver/notice'
+import NoticeCard from '@/components/NoticeCard'
 
 export const dynamic = 'force-dynamic'
 
-/** 지식 베이스 기준일 — 3개월 이상 지나면 최신 알고리즘 변화를 다시 확인해야 한다 */
-const KB_DATE = '2026-07-23'
-
-function monthsSince(d: string): number {
-  const then = new Date(d)
-  const now = new Date()
-  return (now.getFullYear() - then.getFullYear()) * 12 + (now.getMonth() - then.getMonth())
-}
-
-export default function GuidePage() {
+export default async function GuidePage() {
   const keys = keyStatus()
-  const stale = monthsSince(KB_DATE) >= 3
+  /*
+   * **기준일을 손으로 박지 않는다** (2026-08-20).
+   *
+   * 앞 판은 `const KB_DATE = '2026-07-23'` 을 두고 「3개월 지났습니다」 배너를 띄웠다. 그건
+   * 최신화가 아니라 최신화를 잊지 말라는 알림이었고, 실제로 우리가 못 보고 지나간 공식 문서가
+   * 셋 있었다. 이제 매일 받아오는 공지에서 **마지막으로 확인한 날**을 그대로 쓴다.
+   */
+  const db = await readDB()
+  const notices = db.noticeItems ?? []
+  const pending = unreviewed(notices)
+  const reviewedAt = lastReviewed(notices)
 
   return (
     <>
@@ -28,14 +32,18 @@ export default function GuidePage() {
       />
 
       <div className="space-y-4">
-        {stale && (
+        {pending.length > 0 && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3.5 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
-            <strong className="font-bold">기준일이 {KB_DATE} 입니다 (3개월 이상 경과).</strong> 네이버 랭킹
-            기준은 바뀝니다. 노출이 떨어졌거나 알고리즘이 바뀐 것 같으면 최신 변화를 검색해 확인하고, 달라진
-            점을 이 문서에 반영하세요. Claude에게 &quot;네이버 블로그 알고리즘 최신 변화 확인해줘&quot;라고
-            요청하면 됩니다.
+            <strong className="font-bold">아직 안 읽은 네이버 공지가 {pending.length}건 있습니다.</strong>{' '}
+            네이버 랭킹 기준과 정책은 바뀝니다. 아래 「네이버 공지 · 검색 로직 소식」에서 읽고, 글쓰기에 반영할
+            것이 있으면 한 줄로 적어 두세요 — 적어둔 것만 AI 지시문에 들어갑니다.
+            {reviewedAt && (
+              <span className="muted"> (마지막 확인: {reviewedAt.slice(0, 10)})</span>
+            )}
           </div>
         )}
+
+        <NoticeCard items={notices} />
 
         {/* ─── API 키 · 배포 (상세 절차는 /deploy 한 곳에만 둔다) ─── */}
         <Card
@@ -882,7 +890,9 @@ export default function GuidePage() {
         </Card>
 
         <p className="muted px-1 text-[11px] leading-relaxed">
-          지식 베이스 기준일 {KB_DATE}. ✓ 표시는 네이버 공식 발표, 그 외는 실무 검증 통설입니다. 네이버는
+          네이버 공지는 매일 자동으로 받아옵니다 (마지막 확인{' '}
+          {reviewedAt ? reviewedAt.slice(0, 10) : '없음 — 위에서 읽고 확인해 주세요'}). ✓ 표시는 네이버 공식 발표,
+          그 외는 실무 검증 통설입니다. 네이버는
           &quot;저품질 블로그&quot;라는 개념을 공식적으로 부인하지만, 의심 콘텐츠를 자체 시스템에서
           후순위로 걸러냅니다.
         </p>
