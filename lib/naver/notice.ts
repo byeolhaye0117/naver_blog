@@ -42,7 +42,7 @@ const TOPICS: { tag: string; re: RegExp }[] = [
   { tag: '스팸·저품질', re: /(스팸|어뷰징|저품질|남용|제재|불이익|악용)/ },
   { tag: '검색 로직', re: /(로직|알고리즘|랭킹|순위|C-?Rank|씨랭크|D\.?I\.?A|다이아|에어서치|스마트블록)/i },
   { tag: '콘텐츠 가이드', re: /(가이드|작성|콘텐츠|좋은 (문서|글)|권장|원칙|체크)/ },
-  { tag: '정책·약관', re: /(정책|약관|운영원칙|이용약관|개정|변경 안내)/ },
+  { tag: '정책·약관', re: /(정책|약관|운영원칙|이용약관|개정|변경 안내|대가성|내돈내산|협찬|인증 대상)/ },
   { tag: 'AI', re: /(AI|인공지능|브리핑|생성형)/i },
   { tag: '블로그', re: /(블로그|포스트|이웃|서로이웃)/ },
   { tag: '플레이스', re: /(플레이스|스마트플레이스|예약|영수증)/ },
@@ -53,8 +53,20 @@ const TOPICS: { tag: string; re: RegExp }[] = [
   { tag: '검색어 도구', re: /(연관검색어|자동완성|검색어 추천|키워드 도구|서치어드바이저|웹마스터)/ },
 ]
 
+/**
+ * **이것 중 하나라도 걸려야 「읽어야 함」이다.**
+ *
+ * 처음엔 꼬리표가 하나라도 붙으면 읽어야 할 것으로 봤다. 프로덕션에서 100건을 받아보니
+ * **46건이 「읽어야 함」**으로 나왔다 — 「8월, 이달의 블로그를 소개합니다」까지 「블로그」
+ * 꼬리표로 걸렸다. 46건짜리 목록은 아무도 안 읽으므로 그건 알림이 아니라 소음이다.
+ *
+ * 「블로그」·「플레이스」·「AI」는 공식 채널 글 대부분에 들어간다. 꼬리표로는 남기되
+ * **그것만으로는 읽어야 할 것으로 치지 않는다.**
+ */
+const STRONG = ['스팸·저품질', '검색 로직', '정책·약관', '검색어 도구', '콘텐츠 가이드']
+
 /** 읽을 필요가 거의 없는 것 — 이벤트·당첨·모집 */
-const NOISE = /(당첨|이벤트 안내|모집합니다|공모|챌린지|주인공은|지원금|스페셜|블로그 있어요)/
+const NOISE = /(당첨|이벤트 안내|모집합니다|공모|챌린지|주인공은|지원금|스페셜|블로그 있어요|이달의 블로그)/
 
 export interface NoticeVerdict {
   /** 우리 일과 관련 있나 */
@@ -70,13 +82,12 @@ export function classifyNotice(title: string): NoticeVerdict {
    * 「스팸·저품질」과 「검색 로직」은 잡음 규칙보다 세다 — 이벤트 글에 그 낱말이 들어가는
    * 일은 거의 없고, 들어갔다면 읽어야 한다.
    */
-  const strong =
-    tags.includes('스팸·저품질') ||
-    tags.includes('검색 로직') ||
-    tags.includes('정책·약관') ||
-    tags.includes('검색어 도구')
-  if (!strong && NOISE.test(t)) return { relevant: false, tags }
-  return { relevant: tags.length > 0, tags }
+  const strong = tags.some((x) => STRONG.includes(x))
+  const noisy = NOISE.test(t)
+  if (!strong && noisy) return { relevant: false, tags }
+  // 잡음 규칙보다 세다 — 이벤트 글에 「스팸」·「로직」이 들어갔다면 읽어야 한다
+  if (strong) return { relevant: true, tags }
+  return { relevant: false, tags }
 }
 
 export interface NoticeItem {
