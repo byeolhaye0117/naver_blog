@@ -3322,9 +3322,19 @@ const promoSkeleton = buildTemplate('promo', {
  */
 ok(!promoSkeleton.includes('시설 스펙을 나열하지 않는다'), '시설 소개를 통째로 막지 않는다')
 ok(promoSkeleton.includes('우리 센터에 무엇이 있나'), '시설 구간이 답할 질문을 준다')
-ok(promoSkeleton.includes('운동하는 방법을 다시 설명하지 않는다'), '두 구간이 같은 내용이 되지 않게 막는다')
-ok(promoSkeleton.includes('주제를 하나만 잡는다'), '정보 구간은 한 주제로 좁힌다')
-ok(promoSkeleton.includes('자극(어디에 오는지)'), '무엇을 쓰라고 짚어준다 (실측으로 갈린 말)')
+/*
+ * **2026-08-21 에 「운동 정보」 구간을 뺐다** (회원: "홍보글에 운동 정보 넣는것도 빼주고").
+ * 위 세 줄은 그 구간이 있을 때를 지키던 검사였다. 지우지 않고 **반대를 지키게** 바꾼다 —
+ * 자리가 비면 다음에 또 한쪽만 고치게 된다.
+ *
+ * 정보 종류 하한(5)은 실측이라 그대로 두고, **채우는 자리만 옮겼다.** 운동 정보 없이
+ * 시설·신뢰·이벤트만으로 써서 세니 정보 7종류였다 (content.ts 의 INFO_MIN_BY_TYPE 주석).
+ */
+ok(promoSkeleton.includes('운동하는 방법을 설명하지 않는다'), '시설 구간에서 운동을 가르치지 말라고 한다')
+ok(!promoSkeleton.includes('운동 정보 소제목'), '골격에 운동 정보 구간이 없다')
+ok(!promoSkeleton.includes('주제를 하나만 잡는다'), '운동 주제를 고르라는 안내를 지웠다')
+ok(promoSkeleton.includes('여기서도 운동을 가르치지 않는다'), '신뢰 구간에서도 가르치지 말라고 한다')
+ok(promoSkeleton.includes('재본 값 7종류'), '그래도 정보 종류가 채워진다는 근거를 준다')
 ok(promoSkeleton.includes('천국의 계단 4대" (X)'), '시설 소개의 나쁜 예와 좋은 예를 같이 준다')
 /*
  * 「중간 CTA 를 넣지 않는다」를 지웠다 (2026-08-07). 정반대가 실측으로 나왔다 —
@@ -3344,7 +3354,7 @@ ok(promoSkeleton.includes('한 곳에 몰아넣지 말고'), '한 곳에 몰지 
 ok(promoSkeleton.includes('㉮무엇이 있다'), '훅의 첫 조각을 요구한다')
 ok(promoSkeleton.includes('㉯제한이 있다'), '훅의 두 번째 조각을 요구한다')
 ok(promoSkeleton.includes('10만 원 아래로 맞췄어요'), '흘리는 예를 그대로 준다')
-ok(promoSkeleton.includes('정확한 인원 수·마감일은 7단계'), '다 밝히지는 않게 한다 (단계 번호도 맞다)')
+ok(promoSkeleton.includes('정확한 인원 수·마감일은 6단계'), '다 밝히지는 않게 한다 (단계 번호도 맞다)')
 ok(promoSkeleton.includes('「이벤트 진행 중입니다」는 훅이 아니다'), '내용 없는 예고를 막는다')
 
 /*
@@ -3381,10 +3391,14 @@ ok(promoSkeleton.includes('[영상:'), '영상 자리를 표기로 넣는다')
 ok(promoSkeleton.includes('10~20초'), '영상 길이까지 알려준다')
 ok(stripGuides(promoSkeleton).includes('[영상:'), '복사 본문에도 영상 자리가 남는다')
 // 홍보를 없애지는 않는다 — 이 글의 목적은 상담이다
-ok(promoSkeleton.includes('8단계 CTA'), '구간이 하나 늘어 CTA 는 8단계다')
-ok(promoSkeleton.includes('7단계 이벤트 본공개'), '이벤트는 7단계로 밀렸다')
-ok(promoSkeleton.includes('4단계 운동 정보 (300~380자'), '운동 정보는 짧게')
-ok(promoSkeleton.includes('5단계 시설 소개 (300~380자'), '시설 소개 구간이 생겼다')
+// 구간이 하나 줄어 번호가 앞당겨졌다 (2026-08-21)
+ok(promoSkeleton.includes('7단계 CTA'), 'CTA 는 7단계다')
+ok(promoSkeleton.includes('6단계 이벤트 본공개'), '이벤트는 6단계다')
+ok(promoSkeleton.includes('4단계 시설 소개 (430~520자'), '시설 소개를 늘렸다 (300~380 → 430~520)')
+ok(promoSkeleton.includes('5단계 신뢰 (400~480자'), '신뢰를 늘렸다 (200~250 → 400~480)')
+ok(!promoSkeleton.includes('단계 운동 정보'), '운동 정보 단계가 남아 있지 않다')
+// 상담을 얹을 자리도 같이 옮겼다 — 번호가 어긋나면 회원이 엉뚱한 구간에 넣는다
+ok(promoSkeleton.includes('3·4·6·7단계 끝에'), '상담 얹을 단계 번호도 옮겼다')
 
 
 // ─────────────────────────────────────────────────────────────
@@ -4160,10 +4174,11 @@ const rkSkel = buildTemplate('promo', {
   mainKeyword: '쌍용동 헬스장',
   subKeywords: ['쌍용동 24시 헬스장', '쌍용동 PT'],
 })
-ok(rkSkel.includes('운동 정보 (300~380자'), '골격도 운동 정보를 짧게')
-ok(rkSkel.includes('시설 소개 (300~380자'), '골격에 시설 소개 구간이 있다')
-ok(rkSkel.includes('이벤트 본공개 (280~330자'), '골격의 이벤트도 늘렸다')
-ok(rkSkel.includes('공감 (250~300자'), '공감을 줄여 이벤트로 옮겼다')
+ok(!rkSkel.includes('운동 정보 ('), '골격에 운동 정보 구간이 없다 (2026-08-21)')
+ok(rkSkel.includes('시설 소개 (430~520자'), '그 자수가 시설 소개로 갔다')
+ok(rkSkel.includes('신뢰 (400~480자'), '신뢰로도 갔다')
+ok(rkSkel.includes('이벤트 본공개 (300~360자'), '골격의 이벤트도 늘렸다')
+ok(rkSkel.includes('공감 (280~330자'), '공감도 늘렸다')
 /*
  * 「줄인 자리다」를 뺐다 (2026-08-06). 홍보 종류 수는 순위와 무관했고, 회원이 그대로
  * 반박한 지점이다 — "이벤트 문구는 줄이지 않아." 자수 예산은 유지하되(전체 분량을 지켜야
@@ -4187,12 +4202,18 @@ ok(buildSystemPrompt('promo').includes('정보 5종류 이상'), 'AI 지시문�
  * 순위를 가른 것은 정보의 **종류 수**이고 분량이 아니어서, 종류를 유지하고 자수만 옮겼다.
  */
 ok(!buildSystemPrompt('promo').includes('해결 620~720자'), '「해결」 한 덩어리를 없앴다')
-ok(buildSystemPrompt('promo').includes('운동 정보 300~380자'), '운동 정보는 짧게')
-ok(buildSystemPrompt('promo').includes('시설 소개 300~380자'), '시설 소개 구간을 만들었다')
-ok(buildSystemPrompt('promo').includes('종류 수이고 분량이 아니다'), '분량이 아니라 종류라고 밝힌다')
+/*
+ * 2026-08-21 — 운동 정보 구간을 뺐다. 아래 두 줄은 그 구간을 지키던 검사이고, 지금은
+ * **없다는 것**과 자수가 어디로 갔는지를 지킨다.
+ */
+ok(!buildSystemPrompt('promo').includes('운동 정보 300~380자'), '지시문에 운동 정보 구간이 없다')
+ok(buildSystemPrompt('promo').includes('시설 소개 430~520자'), '시설 소개로 자수를 옮겼다')
+ok(buildSystemPrompt('promo').includes('신뢰 400~480자'), '신뢰로도 자수를 옮겼다')
+ok(buildSystemPrompt('promo').includes('종류 수가 신호이고 분량은 아니었다'), '분량이 아니라 종류라고 밝힌다')
+ok(buildSystemPrompt('promo').includes('운동을 가르쳐서 채우는 것이 아니다'), '어디서 정보 종류를 채우는지 다시 적었다')
 ok(!buildSystemPrompt('promo').includes('**시설 스펙을 나열하지 않는다.**'), '시설 소개 자체를 막지 않는다')
 ok(buildSystemPrompt('promo').includes('10개 이상 몰아넣지 않는다'), '대신 상한만 남긴다 (밀도 10 이상 1~3위 0%)')
-ok(buildSystemPrompt('promo').includes('이벤트 280~330자'), '이벤트를 늘렸다 (220~260 → 280~330)')
+ok(buildSystemPrompt('promo').includes('이벤트 300~360자'), '이벤트도 늘렸다 (280~330 → 300~360)')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[62] 키워드 횟수 — 실측으로 기준을 다시 잡았다')
@@ -4741,7 +4762,7 @@ const revGoodTpl = buildTemplate('review', { mainKeyword: '쌍용동 헬스장',
 ok(!revGoodTpl.includes('아쉬웠던 점 1가지'), '골격에서도 아쉬움이 사라졌다')
 ok(revGoodTpl.includes('좋았던 점·만족한 점'), '골격이 좋았던 점을 시킨다')
 ok(revGoodTpl.includes('없는 후기·사례 창작 금지'), '지어내지 말라는 말은 그대로 남긴다')
-ok(promoTitleRule.includes('소제목은 `## 소제목` 형식. 5~6개'), '홍보글 소제목은 5~6개 (구간이 늘었다)')
+ok(promoTitleRule.includes('소제목은 `## 소제목` 형식. 4~5개'), '홍보글 소제목은 4~5개 (운동 정보 구간이 빠졌다)')
 // 정보글도 2026-08-20 에 「고를 때 기준」 구간이 늘어 5~6개가 됐다. 후기글만 4~5개다
 ok(buildSystemPrompt('info').includes('소제목은 `## 소제목` 형식. 5~6개'), '정보글도 5~6개 (구간이 늘었다)')
 ok(buildSystemPrompt('review').includes('소제목은 `## 소제목` 형식. 4~5개'), '후기글은 4~5개 그대로')
@@ -5005,11 +5026,20 @@ const REQ79 = {
   mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동 24시 헬스장'],
 }
 const noExtra = buildUserPrompt(REQ79)
-ok(!noExtra.includes('운동 정보 구간의 주제'), '비워두면 주제 묶음이 안 들어간다')
+ok(!noExtra.includes('이것만 다룬다'), '비워두면 주제 묶음이 안 들어간다')
 ok(!noExtra.includes('이번 글 요청'), '비워두면 요청 묶음도 안 들어간다')
 
-const withTopic = buildUserPrompt({ ...REQ79, infoTopic: '다이어트 첫 달에 할 것' })
-ok(withTopic.includes('## 운동 정보 구간의 주제 (이것만 다룬다)'), '주제 묶음이 들어간다')
+/*
+ * **2026-08-21 — 이 묶음은 정보글 전용이 됐다.** 회원 요청으로 홍보글의 운동 정보 구간을
+ * 뺐으니, 그 구간의 주제를 지정하는 이 묶음도 홍보글에는 갈 자리가 없다. 화면에서도 칸을
+ * 감췄지만, 옛 글을 불러오면 값이 남아 있을 수 있어서 **지시문 쪽에서도 무시한다.**
+ */
+const promoTopic = buildUserPrompt({ ...REQ79, infoTopic: '다이어트 첫 달에 할 것' })
+ok(!promoTopic.includes('이것만 다룬다'), '홍보글에는 주제 묶음이 안 들어간다')
+ok(!promoTopic.includes('다이어트 첫 달에 할 것'), '옛 글에 남은 주제 값이 홍보 지시문으로 새지 않는다')
+
+const withTopic = buildUserPrompt({ ...REQ79, type: 'info', infoTopic: '다이어트 첫 달에 할 것' })
+ok(withTopic.includes('## 이 글에서 다룰 주제 (이것만 다룬다)'), '정보글에는 주제 묶음이 들어간다')
 ok(withTopic.includes('다이어트 첫 달에 할 것'), '적은 주제를 그대로 넣는다')
 ok(withTopic.includes('다른 주제로 새지 않는다'), '한 주제만 다루라고 못박는다')
 ok(withTopic.includes('5종류 이상'), '그 주제 안에서 정보 5종류를 요구한다 (실측 기준 유지)')
@@ -7498,6 +7528,124 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(orphaned.level === 'warn', `사진에만 있는 내용이 셋이면 주의 — ${orphaned?.level}`)
   ok(orphaned.hint.includes('텍스트로도'), '네이버가 뭐라고 했는지 알려준다')
   ok(!checkPost({ ...goodPromo, body: '이미지 없는 글입니다.' }).items.some((i) => i.id === 'image-text'), '이미지가 없으면 항목을 만들지 않는다')
+}
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[87] 홍보글에서 운동 정보 구간을 뺐다 (2026-08-21)')
+/*
+ * 회원: "일단 홍보글에 운동 정보 넣는것도 빼주고."
+ *
+ * **정보 종류 하한(5)이 실측이라 먼저 쟀다.** 운동 정보 구간 없이 시설·신뢰·이벤트만으로
+ * 홍보글을 써서 countSignals 로 세니 정보 7종류였다. 아래가 그 측정을 테스트로 굳힌 것이다 —
+ * 이 값이 5 아래로 떨어지면 구간을 빼는 근거가 무너진다.
+ */
+{
+  const { countSignals, INFO_MIN_BY_TYPE } = require(`${OUT}/analysis/content.js`)
+  /** 운동을 가르치지 않고 「우리가 무엇을 하는지」만 쓴 홍보글 */
+  const NO_LECTURE = [
+    '안녕하세요, MTO 피트니스 쌍용점입니다. 8월 등록분만 3개월 이용권을 10만 원 아래로 맞췄어요.',
+    '',
+    '## 등록해놓고 못 가게 되는 이유',
+    '갈 때마다 기다리는 게 쌓여서입니다. 그래서 상담 오시면 이 얘기부터 합니다.',
+    '',
+    '## 무엇이 있는지부터',
+    '웨이트존과 유산소존이 벽으로 나뉘어 있습니다. 천국의 계단이 4대라 몰리는 시간에도 바로 올라가실 수 있어요. 라커와 샤워실은 각 열두 칸이고 24시간 운영입니다. 궁금한 점은 상담 때 물어보세요.',
+    '',
+    '## 자세를 어떻게 봐드리나',
+    '자세가 무너지면 무게를 먼저 내립니다. 스쿼트에서 무릎이 안쪽으로 말리면 그 세트는 멈추고 다시 잡아드려요. 처음 오신 초보 회원은 첫 2주 동안 루틴을 같이 짭니다. 샤워실은 매일 두 번 정리합니다.',
+    '',
+    '## 8월 등록 혜택',
+    '3개월 이용권을 10만 원 아래로 맞췄고 선착순 30분까지입니다. 상담 때 조건 안내드릴게요.',
+    '',
+    '## 예약은 이렇게',
+    '전화 010-2455-2896 으로 편하게 주세요.',
+  ].join('\n')
+  const sig = countSignals(NO_LECTURE)
+  ok(
+    sig.info >= INFO_MIN_BY_TYPE.promo,
+    `운동을 안 가르쳐도 정보 하한을 넘는다 — ${sig.info}종류 ≥ ${INFO_MIN_BY_TYPE.promo} (${sig.infoFound.join('·')})`
+  )
+  // 하한 자체는 실측이라 그대로 둔다 — 구간을 빼면서 기준을 같이 낮추면 근거가 없어진다
+  ok(INFO_MIN_BY_TYPE.promo === 5, `홍보글 정보 하한은 5 그대로 — ${INFO_MIN_BY_TYPE.promo}`)
+
+  // 골격 합계가 분량 스펙 안에 들어가는가 (구간을 빼고 자수만 안 옮기면 하한에 걸린다)
+  const psys = buildSystemPrompt('promo')
+  const budgets = [...psys.matchAll(/(\d[\d,]*)~(\d[\d,]*)자, 소제목 있음/g)].map((m) => [Number(m[1]), Number(m[2])])
+  const phook = /후킹 (\d+)~(\d+)자/.exec(psys)
+  ok(Boolean(phook) && budgets.length === 5, `골격은 후킹 + 5구간이다 — ${budgets.length}구간`)
+  const plo = budgets.reduce((a, b) => a + b[0], Number(phook?.[1] ?? 0))
+  const phi = budgets.reduce((a, b) => a + b[1], Number(phook?.[2] ?? 0))
+  ok(plo >= SPECS.promo.charMin, `홍보 골격 최소 합계가 하한 이상 — ${plo} ≥ ${SPECS.promo.charMin}`)
+  ok(phi <= SPECS.promo.charMax, `홍보 골격 최대 합계가 상한 이하 — ${phi} ≤ ${SPECS.promo.charMax}`)
+
+  // 소제목 검사도 같이 옮겼는가 (골격 5구간 = 소제목 5개)
+  const h5 = checkPost({ ...goodPromo, body: ['안녕하세요, MTO 피트니스 쌍용점입니다.', ...Array.from({ length: 5 }, (_, i) => `## 소제목${i + 1}\n` + '가'.repeat(360))].join('\n') })
+  ok(h5.items.find((i) => i.id === 'headings')?.level === 'pass', `소제목 5개가 통과한다 — ${h5.items.find((i) => i.id === 'headings')?.value}`)
+  ok(h5.items.find((i) => i.id === 'headings')?.target === '4~5개', '홍보글 목표가 4~5개로 돌아왔다')
+}
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[88] 정보글 신뢰 — 전언으로 쓰지 않는다 (2026-08-21)')
+/*
+ * 회원: "정보글을 조금더 신뢰성있고 사람들에게 도움이 될만한 정보로 작성할 수 있게 해줘."
+ *
+ * 출처 쪽은 이미 `fact-source`(출처가 있나)와 `source-lead`(앞에 세웠나)가 본다. 비어 있던
+ * 것은 그 사이 — 출처 없이 「~라고 하더라구요」로 넘어가는 문장이다. 회원이 처음 이 얘기를
+ * 꺼낼 때 든 예가 정확히 이 모양이었다 ("이렇게 됬다더라 하면 안 되는 거잖아").
+ */
+{
+  const infoOf = (body) =>
+    checkPost({
+      type: 'info',
+      title: '폭식 멈추는 방법, 순서부터 바꿔보세요',
+      mainKeyword: '폭식 멈추는 방법',
+      subKeywords: ['다이어트 폭식'],
+      tags: ['폭식멈추는방법'],
+      body,
+    }).items.find((i) => i.id === 'hearsay')
+
+  const BASE = '## 왜 저녁에 몰리나\n혈당이 낮게 유지되다 떨어지면서 생깁니다.'
+  ok(!infoOf(BASE), '전언이 없으면 항목을 만들지 않는다')
+  ok(infoOf(`${BASE} 낮에 단백질을 챙기면 줄어든다고 하더라구요.`)?.level === 'warn', '「~하더라구요」를 잡는다')
+  ok(infoOf(`${BASE} 그렇게 하면 낫다던데요.`)?.level === 'warn', '「~다던데요」도 잡는다')
+  ok(infoOf(`${BASE} 아침을 거르면 안 된다는 말이 있죠.`)?.level === 'warn', '「~라는 말이 있죠」도 잡는다')
+  const hit = infoOf(`${BASE} 줄어든다고 하더라구요. 그렇다고 하네요.`)
+  ok(hit.value.includes('하더라구요'), `무엇이 걸렸는지 보여준다 — ${hit.value}`)
+  ok(hit.hint.includes('제가 상담하면서 보면'), '어떻게 바꾸면 되는지 알려준다')
+  /*
+   * **막지는 않는다.** 순위 근거가 아니라 신뢰 문제이고, 한 번쯤 섞이는 것은 사람이 쓴
+   * 글에서도 흔하다. 점수를 79로 묶는 `fail` 은 확인 안 된 사실 쪽(fact-source)의 몫이다.
+   */
+  ok(hit.level === 'warn', '주의까지만 한다 (막지 않는다)')
+
+  /*
+   * **후기글은 대상에서 뺀다.** 방문객이 실제로 들은 말을 옮기는 자연스러운 말투이고,
+   * 거기서는 이게 무기다 — 「~하시더라구요」는 이 앱이 후기글에 권장까지 한다.
+   */
+  const rev = checkPost({
+    type: 'review',
+    title: '쌍용동 헬스장 등록 후기, 상담만 받아봤어요',
+    mainKeyword: '쌍용동 헬스장',
+    subKeywords: [],
+    tags: ['쌍용동헬스장'],
+    body: '## 가보니\n자세를 봐주시더라구요. 처음이라 그랬는데 괜찮다고 하네요.',
+  })
+  ok(rev.items.every((i) => i.id !== 'hearsay'), '후기글에는 항목이 안 생긴다 (거기서는 들은 말이 무기다)')
+
+  // 지시문·골격에도 같은 셋이 들어갔는가 (한쪽만 적으면 손으로 쓴 글과 기준이 갈린다)
+  const isys = buildSystemPrompt('info')
+  const iskel = buildTemplate('info', { mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'] })
+  for (const [needle, label] of [
+    ['이 방법이 안 맞는 경우를 한 줄 밝힌다', '①한계를 밝히라고 한다'],
+    ['전언으로 쓰지 않는다', '②전언으로 쓰지 말라고 한다'],
+    ['수량은 숫자로 적는다', '③얼버무리는 부사 대신 숫자를 쓰라고 한다'],
+  ]) {
+    ok(isys.includes(needle), `지시문 — ${label}`)
+    ok(iskel.includes(needle), `골격 — ${label}`)
+  }
+  ok(isys.includes('모르는 것을 밝히는 데서 온다'), '왜 그런지도 한 줄 적는다')
+  // 숫자를 지어내라는 말로 읽히면 안 된다 — 이 앱은 확인 안 된 수치를 계속 막아 왔다
+  ok(isys.includes('모르면 범위, 알면 숫자'), '모르면 범위로 쓰라고 함께 못 박는다')
 }
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)

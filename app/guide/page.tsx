@@ -617,6 +617,132 @@ export default async function GuidePage() {
           </p>
         </Card>
 
+        {/* ─── 유형별 역할 정리 ─── */}
+        <Card
+          id="roles"
+          title="홍보글에서 운동 정보를 뺐습니다 — 세 유형의 역할"
+          subtitle="회원님 요청으로 2026-08-21에 정리했습니다. 「가르치는 글」은 정보글 하나로 모았습니다."
+        >
+          <p className="text-[12px] leading-relaxed">
+            홍보글의 <strong>「운동 정보」 구간(300~380자)을 통째로 뺐습니다.</strong> 그 자수는 시설 소개(300~380 →
+            430~520)와 신뢰(200~250 → 400~480)로 옮겼습니다. 홍보글 소제목도 5~6개에서 <strong>4~5개</strong>로 함께
+            돌렸습니다.
+          </p>
+
+          {/*
+            **기준을 먼저 재고 뺐다.** 정보 종류 하한 5 는 141편·135편 두 번 재현된 실측이라
+            구간을 뺀다고 같이 낮출 수 없다. 재보니 안 낮춰도 됐다 — 그 측정을 여기 적는다.
+          */}
+          <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-emerald-900 dark:text-emerald-200">
+            <strong className="font-bold">기준을 낮추지 않고 뺐습니다.</strong>
+            <p className="mt-1.5">
+              홍보글에도 <strong>「읽는 사람이 가져갈 정보 5종류 이상」</strong>이라는 기준이 있습니다 (141편·135편 두 번
+              재현: 3~4종류 1~3위 17~21% / 5종류 이상 40%). 구간을 빼면 이게 깨질까 봐 <strong>먼저 재봤습니다</strong> —
+              운동 정보 없이 시설·신뢰·이벤트만으로 홍보글을 써서 세어 보니 <strong>정보 7종류</strong>가 나왔습니다
+              (자세·루틴·유산소·세트·초보·스쿼트·무게).
+              <br />
+              시설을 구체적으로 적으면 유산소존·프리웨이트가 나오고, 신뢰 구간에서 「자세가 무너지면 무게를 먼저
+              내립니다」를 쓰면 나머지가 찹니다. <strong>운동을 가르쳐야 채워지는 값이 아니었습니다.</strong>
+            </p>
+          </div>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[520px] text-[12px]">
+              <thead>
+                <tr className="muted bd border-b text-left">
+                  <th className="py-1.5 pr-3 font-semibold">유형</th>
+                  <th className="py-1.5 pr-3 font-semibold">답하는 질문</th>
+                  <th className="py-1.5 font-semibold">운동을 가르치나</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['홍보글', '우리 센터에 무엇이 있고, 오시면 무엇을 해드리나', '아니요 (2026-08-21부터)'],
+                  ['정보글', '이걸 어떻게 하면 되나', '네 — 여기가 그 자리입니다'],
+                  ['후기글', '가보니 어땠나', '아니요 — 들은 말을 옮기는 정도'],
+                ].map((row) => (
+                  <tr key={row[0]} className="bd border-b last:border-0 align-top">
+                    <td className="py-1.5 pr-3 font-semibold whitespace-nowrap">{row[0]}</td>
+                    <td className="muted py-1.5 pr-3">{row[1]}</td>
+                    <td className="py-1.5">{row[2]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="muted mt-3 text-[11.5px] leading-relaxed">
+            홍보글 신뢰 구간에서 쓰는 문장이 <strong>가르치는 말과 헷갈리기 쉽습니다.</strong> 기준은 하나입니다 —
+            읽는 사람이 따라 할 순서를 주면 가르치는 것이고(「스쿼트는 이렇게 하세요」), 오시면 우리가 무엇을
+            해드리는지 쓰면 홍보글입니다(「스쿼트에서 무릎이 말리면 그 세트는 멈추고 다시 잡아드려요」). 뒤쪽만 써도
+            정보 종류는 채워집니다.
+            <br />
+            글쓰기 화면의 <strong>「운동 정보 주제」 칸은 정보글에서만</strong> 보이도록 바꿨습니다 — 홍보글에는 그
+            주제가 갈 자리가 없어졌기 때문입니다.
+          </p>
+        </Card>
+
+        {/* ─── 정보글 신뢰 ─── */}
+        <Card
+          id="trust"
+          title="정보글 신뢰 — 아는 것을 더 쓰는 게 아니라 모르는 것을 밝힙니다"
+          subtitle="회원님 요청으로 2026-08-21에 넣었습니다. 출처 규칙은 이미 있었고, 비어 있던 세 자리를 채웠습니다."
+        >
+          <div className="space-y-3">
+            {[
+              {
+                n: '①',
+                t: '이 방법이 안 맞는 경우를 한 줄 밝힙니다',
+                d: (
+                  <>
+                    무릎이 아픈 분 · 교대근무로 시간이 불규칙한 분 · 이미 해봤는데 안 됐던 분. 안 맞는 경우를 짚고,
+                    그때는 무엇을 보면 되는지 반 문장을 붙입니다. <strong>「누구에게나 좋습니다」로 닫지 않습니다.</strong>{' '}
+                    한계를 밝히는 글이 안 밝히는 글보다 믿깁니다.
+                  </>
+                ),
+              },
+              {
+                n: '②',
+                t: '전언으로 쓰지 않습니다',
+                d: (
+                  <>
+                    「~라고 하더라구요」·「~라던데요」·「~라는 말이 있죠」는 출처가 있어도 소문처럼 읽힙니다. 자료가
+                    있으면 <strong>출처를 문장 앞에 세우고 단정으로</strong> 끝내고, 없으면 우리가 본 것으로 바꿉니다
+                    (「제가 상담하면서 보면」). 검수에 <strong>「전언으로 쓴 문장」</strong> 항목을 새로 넣었습니다
+                    (주의까지만 — 후기글은 대상이 아닙니다, 거기선 들은 말이 무기니까요).
+                  </>
+                ),
+              },
+              {
+                n: '③',
+                t: '수량은 숫자로 적습니다',
+                d: (
+                  <>
+                    「많이」·「자주」·「대부분」·「꽤」로 넘어가지 않고 몇 분·몇 세트·며칠에 한 번인지 적습니다.{' '}
+                    <strong>숫자를 지어내라는 말이 아닙니다</strong> — 모르면 범위로 쓰고(「사흘에 한 번 정도」),
+                    얼버무리는 부사가 자리를 차지하지 않게 하라는 뜻입니다.
+                  </>
+                ),
+              },
+            ].map((x) => (
+              <div key={x.n} className="bd rounded-xl border px-3.5 py-3">
+                <p className="text-[12.5px] leading-relaxed font-semibold">
+                  <span className="tnum mr-1.5">{x.n}</span>
+                  {x.t}
+                </p>
+                <p className="mt-1.5 text-[12px] leading-relaxed">{x.d}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="muted mt-3 text-[11.5px] leading-relaxed">
+            <strong>출처 규칙을 더 조이지는 않았습니다.</strong> 이미 두 항목이 보고 있습니다 — 연구·수치를 인용하면
+            출처가 있는지(<strong>즉시수정</strong>), 그 출처를 문장 앞에 세웠는지. 비어 있던 것은 그 사이였습니다:
+            출처가 아예 없이 「~라고 하더라구요」로 넘어가는 문장. 회원님이 처음 이 얘기를 꺼내실 때 드신 예가 정확히
+            그 모양이었습니다 — 「감으로 이렇게 했더니 이렇게 됬다더라 하면 안 되는 거잖아」.
+          </p>
+        </Card>
+
         {/* ─── 발행 후 타임라인 ─── */}
         <Card
           id="timeline"
@@ -778,8 +904,8 @@ export default async function GuidePage() {
                   ['정식 상호명', `${SPECS.promo.legalNameMin}회 이상`, '—', '—'],
                   ['지역 키워드', '메인이 지역', '본문 1~2회 + 태그', '메인이 지역'],
                   ['제목', '28~40자 · 금액 앞 20자', '28~40자 · 질문형', '28~40자 + "후기" 명시'],
-                  // 후기글만 4~5개다 — 홍보글·정보글은 구간이 하나씩 늘었다 (checker 의 headings 주석)
-                  ['소제목', '5~6개', '5~6개', '4~5개'],
+                  // 정보글만 5~6개다 — 홍보글은 운동 정보 구간이 빠져 다시 5구간이 됐다 (2026-08-21)
+                  ['소제목', '4~5개', '5~6개', '4~5개'],
                   ['이미지', '5~10장', '5~10장', '5~10장'],
                   ['해시태그', '8~12개', '8~12개', '8~12개'],
                   ['외부 링크', '1~2개', '0~1개 권장', '1~2개'],
