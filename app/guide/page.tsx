@@ -533,6 +533,27 @@ export default async function GuidePage() {
             </p>
           </div>
 
+          {/*
+            **인사만 되살렸다** (2026-08-21). 회원: "정보성글 인사말이 없어서 어색해."
+            08-20 에 뺀 것은 상호명이지 인사가 아니었는데 「안녕하세요, ○○입니다」가 한
+            덩어리라 같이 나갔다. 갈라 놓으면 둘 다 지킬 수 있다.
+          */}
+          <div className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/8 px-3.5 py-3 text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">
+            <strong className="font-bold">인사는 되살렸습니다 (2026-08-21).</strong>
+            <p className="mt-1.5">
+              회원님 요청 — 「정보성글 인사말이 없어서 어색해」. 맞는 지적이었고, 사실 08-20에 뺀 것은{' '}
+              <strong>상호명이지 인사가 아니었습니다.</strong> 「안녕하세요, ○○입니다」가 한 덩어리라 인사까지 같이
+              나갔던 겁니다.
+              <br />
+              둘을 갈라 놓으면 둘 다 지킬 수 있습니다. <strong>인사는 위 여섯 가지 어디에도 없고</strong>, 실측에서도
+              순위 손해가 없었습니다(인사로 시작 27% / 아닌 글 32% — 구간이 겹칩니다). 상호명은 여섯 가지 중
+              하나입니다.
+              <br />
+              그래서 정보글은 이렇게 엽니다 — 「안녕하세요, MTO 피트니스 쌍용점입니다」(X) →{' '}
+              <strong>「안녕하세요. 오늘은 ○○ 얘기를 정리해 봤습니다」</strong>(O).
+            </p>
+          </div>
+
           <p className="muted mt-3 text-[11.5px] leading-relaxed">
             <strong>영상에서 한 가지는 안 따랐습니다.</strong> 영상은 홍보글도 홍보 요소를 2개 이하로 줄이라고 합니다.
             그런데 1페이지 업체형 글 46편의 홍보 요소는 <strong>중간값 3개</strong>였고 2개 이하는 37%뿐이었습니다(4~5개인
@@ -679,6 +700,86 @@ export default async function GuidePage() {
             <br />
             글쓰기 화면의 <strong>「운동 정보 주제」 칸은 정보글에서만</strong> 보이도록 바꿨습니다 — 홍보글에는 그
             주제가 갈 자리가 없어졌기 때문입니다.
+          </p>
+        </Card>
+
+        {/* ─── 정보글 키워드를 무엇으로 잡나 ─── */}
+        <Card
+          id="info-keyword"
+          title="정보글 키워드를 지역 키워드로 잡아도 되나"
+          subtitle="회원님 질문에 답하려고 지역 키워드 22개 · 1페이지 170편을 다시 셌습니다 (2026-08-21)."
+        >
+          <p className="text-[12px] leading-relaxed">
+            <strong>먼저 확실한 것 하나.</strong> 지역 키워드 1페이지 <strong>170편이 전부</strong> 제목에 그 지역
+            키워드를 달고 있었습니다. 예외가 없습니다. 「폭식 멈추는 방법」으로 쓴 글은 아무리 잘 써도 「쌍용동
+            헬스장」 1페이지에 <strong>나오지 않습니다.</strong> 그 자리를 노리는 글이면 지역 키워드가 메인이어야
+            합니다.
+          </p>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[520px] text-[12px]">
+              <thead>
+                <tr className="muted bd border-b text-left">
+                  <th className="py-1.5 pr-3 font-semibold">제목 형태</th>
+                  <th className="py-1.5 pr-3 text-right font-semibold">편수</th>
+                  <th className="py-1.5 pr-3 text-right font-semibold">1~3위</th>
+                  <th className="py-1.5 text-right font-semibold">중간 순위</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['지역 키워드 + 정보 주제', '47편', '30%', '5위'],
+                  ['지역 키워드 + 업체 소개·후기', '123편', '30%', '5위'],
+                ].map((row) => (
+                  <tr key={row[0]} className="bd border-b last:border-0">
+                    <td className="py-1.5 pr-3 font-semibold whitespace-nowrap">{row[0]}</td>
+                    <td className="tnum py-1.5 pr-3 text-right">{row[1]}</td>
+                    <td className="tnum py-1.5 pr-3 text-right">{row[2]}</td>
+                    <td className="tnum py-1.5 text-right">{row[3]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-3 text-[12px] leading-relaxed">
+            <strong>정보 주제를 얹어도 순위 차이는 없었습니다</strong> — 둘 다 1~3위 30%, 중간 5위. 유리하지도
+            불리하지도 않은, <strong>그 판에 실제로 있는 또 하나의 형태</strong>입니다. 1~3위 51편 중 14편(27%)이 그
+            형태였습니다.
+          </p>
+          <p className="muted mt-2 text-[11.5px] leading-relaxed">
+            실제 상위 사례: 「배방 헬스장 배방PT <strong>유산소는 운동 전? 운동 후? 언제 하는 게 좋을까요?</strong>」(2위)
+            · 「성정동헬스장 <strong>하체운동 | 뒷벅지 자극 제대로 느껴본 3가지</strong>」(2위) · 「두정역 근처 헬스장
+            알아볼 때 <strong>거리보다 중요했던 4가지</strong>」(1위)
+          </p>
+
+          {/*
+            **불리한 쪽도 적는다.** 지역 키워드를 메인으로 잡으면 홍보글이 뛰는 판에 정보글이
+            들어가는 것인데, 그 판에서 가장 뚜렷한 신호(상담 유도 횟수)를 정보글은 쓸 수 없다.
+            숨기면 회원이 나중에 "왜 안 오르지"를 혼자 겪는다.
+          */}
+          <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+            <strong className="font-bold">다만 한 가지 걸리는 게 있습니다.</strong>
+            <p className="mt-1.5">
+              지역 키워드 자리에서 <strong>가장 일관되게 나온 신호가 「상담·예약·문의」 횟수</strong>입니다. 이번에도
+              같은 방향이었습니다 — 0~1회 26% / 2~5회 34% / <strong>6회 이상 44%</strong>(중간 4위). 이 앱에서 세
+              표본에 걸쳐 재현된 몇 안 되는 신호입니다.
+              <br />
+              그런데 정보글은 그 말을 <strong>쓰지 않기로 한 글</strong>입니다(홍보성 분류를 피하려고). 즉 지역
+              키워드를 메인으로 잡으면 <strong>가장 센 카드를 빼고 그 판에 들어가는 셈</strong>입니다.
+              <br />
+              실제로 홍보 신호가 0종류인 26편은 1~3위가 15%로 가장 낮았습니다(1~2종류 38% / 3종류 이상 27%). 다만
+              26편은 표본이 작고, 앞서 두 번 잰 결과에서는 홍보 종류 수가 순위와 무관했습니다 —{' '}
+              <strong>확실한 결론이라고 말하지는 않습니다.</strong>
+            </p>
+          </div>
+
+          <p className="mt-3 text-[12px] leading-relaxed">
+            <strong>그래서 이렇게 쓰시면 됩니다.</strong> 지역 순위를 노리는 글이면 지역 키워드를 메인으로 잡고 제목
+            뒤에 정보 주제를 얹으세요 — 지금 저장된 정보글 2편이 이미 그 형태입니다. 다만 그 판의 주력은 여전히
+            홍보글이고, 정보글은 <strong>같은 키워드를 다른 각도에서 한 번 더 두드리는 글</strong>로 보시는 게
+            맞습니다. 「폭식 멈추는 방법」 같은 순수 정보 키워드는 지역 경쟁을 피해 유입을 따로 만드는 쪽이고, 둘은
+            역할이 다릅니다.
           </p>
         </Card>
 
