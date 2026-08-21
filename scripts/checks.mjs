@@ -7689,7 +7689,112 @@ console.log('\n[88] 정보글 신뢰 — 전언으로 쓰지 않는다 (2026-08-
 }
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[89] 완성된 예시 글 세 편이 그대로 통과하나 (2026-08-21)')
+console.log('\n[89] 정보글 제목에 업체 말이 섞이는 것 (2026-08-21)')
+/*
+ * 회원이 나온 결과물을 보여줬다 — 제목이 「쌍용동 헬스장 PT추천, 다이어트 정체기 폭식
+ * 질문 4가지 답변」. 회원: "키워드에 pt는 없는데 제목에 왜 pt가 들어가는지 모르겠고."
+ *
+ * 원인은 지시문이었다 — 「지역 키워드를 1~2회 넣는다」라고만 하고 **어디에** 넣으라는 말이
+ * 없어서 모델이 제일 눈에 띄는 자리(제목 맨 앞)에 넣었다. 지시문도 고쳤지만, 지시문만
+ * 고치면 다음에 또 나온다 (`event-hook` 이 그 경로였다). 그래서 검수도 만든다.
+ */
+{
+  const titleOf = (title, patch = {}) =>
+    checkPost({
+      type: 'info',
+      title,
+      body: '## 소제목\n' + '가'.repeat(600),
+      mainKeyword: '다이어트 정체기',
+      subKeywords: ['폭식'],
+      localKeyword: '쌍용동 헬스장',
+      tags: [],
+      legalName: 'MTO 피트니스 쌍용점',
+      ...patch,
+    }).items.find((i) => i.id === 'info-title-purity')
+
+  const bad = titleOf('쌍용동 헬스장 PT추천, 다이어트 정체기 폭식 질문 4가지 답변')
+  ok(bad?.level === 'warn', `회원이 물린 그 제목을 잡는다 — ${bad?.value}`)
+  ok(bad.value.includes('쌍용동 헬스장'), '지역 키워드가 제목에 있는 것을 짚는다')
+  ok(bad.value.includes('PT추천'), '키워드에 없는 「PT추천」을 짚는다')
+  ok(bad.hint.includes('제목 맨 앞은 정보 메인 키워드 자리'), '어떻게 고치는지 알려준다')
+
+  const good = titleOf('다이어트 정체기 폭식, 자주 받는 질문 4가지 답변')
+  ok(good?.level === 'pass', `정보 키워드로만 연 제목은 통과 — ${good?.value}`)
+
+  // 상호명·홍보 낱말도 같이 본다
+  ok(titleOf('다이어트 정체기, MTO 피트니스 쌍용점이 답해드립니다')?.value.includes('상호명'), '제목의 상호명도 잡는다')
+  ok(titleOf('다이어트 정체기 폭식, 무료 상담으로 풀어드려요')?.level === 'warn', '제목의 홍보 낱말도 잡는다')
+  /*
+   * **키워드에 들어 있으면 잡지 않는다.** 「PT」가 메인 키워드인 글도 있다 — 그때까지
+   * 잡으면 이 검사가 회원이 정한 키워드를 못 쓰게 막는 셈이 된다.
+   */
+  ok(
+    titleOf('PT 상담 전에 알아둘 것 5가지', { mainKeyword: 'PT 상담', subKeywords: [] })?.level === 'pass',
+    '키워드 자체에 든 말은 잡지 않는다'
+  )
+  // 홍보글·후기글에는 이 항목이 없다 (거기서는 지역·상호명이 제목에 들어가는 게 정상이다)
+  for (const t of ['promo', 'review']) {
+    ok(
+      checkPost({ ...goodPromo, type: t, title: '쌍용동 헬스장 3개월 10만 원대 후기' }).items.every(
+        (i) => i.id !== 'info-title-purity'
+      ),
+      `${t} 에는 항목이 안 생긴다`
+    )
+  }
+
+  /*
+   * ─── 자리 수가 곧 횟수여야 한다 ──────────────────────────────
+   * 같은 결과물에서 메인 키워드가 **제목 1회 · 본문 0회**였다. 목표는 3회인데 지시문이
+   * 자리를 다섯 개 불러줬고, 그중 「이벤트/후반」은 정보글에 없는 구간이었다.
+   */
+  for (const [t, n] of [['promo', 5], ['info', 3], ['review', 3]]) {
+    const line = buildSystemPrompt(t).split('\n').find((l) => l.includes('메인 키워드 **정확히'))
+    const slots = (line.match(/[①②③④⑤⑥⑦]/g) ?? []).length
+    ok(slots === n, `${t} — 자리 수가 목표 횟수와 같다`, `${slots}자리 / 목표 ${n}회`)
+    ok(line.includes(`(${n}자리 = ${n}회)`), `${t} — 자리 수가 곧 횟수라고 못 박는다`)
+  }
+  // 정보글 자리 목록에 없어진 구간이 남아 있지 않다
+  const infoSlotLine = buildSystemPrompt('info').split('\n').find((l) => l.includes('메인 키워드 **정확히'))
+  ok(!infoSlotLine.includes('이벤트'), '정보글 자리 목록에 이벤트 구간이 없다')
+  ok(!infoSlotLine.includes('시설'), '정보글 자리 목록에 시설 구간이 없다')
+  // 글자 그대로 쓰라는 말 — 「다이어트 중 정체기」로 쓰면 0회로 세어진다
+  ok(buildSystemPrompt('info').includes('키워드는 주어진 글자 그대로 쓴다'), '키워드를 쪼개 쓰지 말라고 한다')
+  ok(buildSystemPrompt('info').includes('한 번도 안 쓴 것으로 센다'), '왜 그런지(세는 방식)도 밝힌다')
+  // 지역 키워드는 본문에만
+  ok(buildSystemPrompt('info').includes('지역 키워드를 **본문에만**'), '지역 키워드 자리를 본문으로 못 박는다')
+  ok(buildSystemPrompt('info').includes('제목에는 넣지 않는다'), '제목에는 넣지 말라고 한다')
+}
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[90] 본문이 없는 소제목 (2026-08-21)')
+/*
+ * 같은 결과물에 있었다 — 「## 자주 나오는 질문 1, 2 …」 다음에 이미지 한 장만 오고 바로
+ * 다음 소제목이 왔다. 읽는 사람에게는 빈 칸이고, 소제목 수만 늘어서 기준(5~6개)을 넘긴다.
+ * 개수만 세는 `headings` 는 오히려 이걸로 개수가 채워져 통과에 가까워진다.
+ */
+{
+  const emptyOf = (body) =>
+    checkPost({ ...goodPromo, body }).items.find((i) => i.id === 'empty-heading')
+
+  const FULL = ['안녕하세요, MTO 피트니스 쌍용점입니다.', '## 하나', '내용입니다.', '## 둘', '내용입니다.'].join('\n')
+  ok(!emptyOf(FULL), '소제목마다 본문이 있으면 항목을 만들지 않는다')
+
+  const EMPTY = ['안녕하세요, MTO 피트니스 쌍용점입니다.', '## 비어 있는 소제목', '## 둘', '내용입니다.'].join('\n')
+  ok(emptyOf(EMPTY)?.level === 'warn', `본문 없이 넘어간 소제목을 잡는다 — ${emptyOf(EMPTY)?.value}`)
+  ok(emptyOf(EMPTY).value.includes('비어 있는 소제목'), '어느 소제목인지 보여준다')
+
+  // 사진만 두는 것도 빈 것으로 본다 — 검색은 사진 속 글자를 못 읽는다
+  const IMG_ONLY = ['안녕하세요, MTO 피트니스 쌍용점입니다.', '## 사진만 있는 소제목', '[이미지: 전경]', '## 둘', '내용입니다.'].join('\n')
+  ok(emptyOf(IMG_ONLY)?.level === 'warn', '사진만 있는 구간도 빈 것으로 본다')
+  // 마지막 소제목이 비어도 잡는다 (루프가 끝난 뒤라 놓치기 쉽다)
+  const LAST = ['안녕하세요, MTO 피트니스 쌍용점입니다.', '## 하나', '내용입니다.', '## 마지막이 비었다'].join('\n')
+  ok(emptyOf(LAST)?.value.includes('마지막이 비었다'), '마지막 소제목이 비어도 잡는다')
+  // 막지는 않는다 — 붙여넣기 전에 채우면 되는 것이다
+  ok(emptyOf(EMPTY).level !== 'fail', '주의까지만 한다')
+}
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[91] 완성된 예시 글 세 편이 그대로 통과하나 (2026-08-21)')
 /*
  * **이 저장소에서 네 번 난 사고를 잡으려고 만든 검사다** (scripts/golden.mjs 머리말).
  * 전부 「골격은 바꾸고 검수는 안 옮긴 것」이고, 문구 검사로는 안 잡힌다 — 완성된 글을

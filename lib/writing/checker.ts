@@ -294,6 +294,14 @@ export interface ParsedBody {
   videos: string[]
   /** 각 소제목 바로 위에 이미지가 있는지 */
   headingsWithImageAbove: number
+  /**
+   * 본문이 한 줄도 없는 소제목 — 소제목만 세우고 바로 다음 소제목으로 넘어간 자리.
+   *
+   * 회원이 보여준 정보글에 있었다 (2026-08-21): 「## 자주 나오는 질문 1, 2 …」 다음에
+   * 이미지 한 장이 오고 바로 「## 정체기 · 공복 유산소 …」가 왔다. 읽는 사람에게는 빈
+   * 칸이고, 소제목 수만 늘어서 스펙(5~6개)을 넘긴다.
+   */
+  emptyHeadings: string[]
   /** 소제목 없이 본문만 있는 도입부 */
   intro: string
 }
@@ -317,6 +325,9 @@ export function parseBody(body: string): ParsedBody {
   let lastMeaningful: 'image' | 'heading' | 'prose' | null = null
   let sawHeading = false
   const introLines: string[] = []
+  /** 본문 한 줄 없이 다음 소제목으로 넘어간 소제목 (2026-08-21) */
+  const emptyHeadings: string[] = []
+  let openHeading: string | null = null
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -338,6 +349,9 @@ export function parseBody(body: string): ParsedBody {
 
     const h = HEADING_RE.exec(trimmed)
     if (h) {
+      // 앞 소제목이 본문 없이 끝났으면 빈 구간이다 (이미지·영상만 있는 것도 빈 것으로 본다)
+      if (openHeading !== null) emptyHeadings.push(openHeading)
+      openHeading = h[1]
       headings.push(h[1])
       scanLines.push(h[1])
       if (lastMeaningful === 'image') headingsWithImageAbove++
@@ -349,8 +363,11 @@ export function parseBody(body: string): ParsedBody {
     proseLines.push(trimmed)
     scanLines.push(trimmed)
     if (!sawHeading) introLines.push(trimmed)
+    openHeading = null
     lastMeaningful = 'prose'
   }
+  // 마지막 소제목도 본문 없이 끝났을 수 있다
+  if (openHeading !== null) emptyHeadings.push(openHeading)
 
   return {
     prose: proseLines.join('\n'),
@@ -359,6 +376,7 @@ export function parseBody(body: string): ParsedBody {
     images,
     videos,
     headingsWithImageAbove,
+    emptyHeadings,
     intro: introLines.join('\n'),
   }
 }
@@ -687,6 +705,33 @@ export function checkPost(input: CheckInput): CheckResult {
     weight: 2,
   })
 
+  /*
+   * ─── 본문이 없는 소제목 (2026-08-21) ──────────────────────────
+   *
+   * 회원이 보여준 정보글에 있었다. 「## 자주 나오는 질문 1, 2 — 공복 유산소와 폭식 타이밍」
+   * 다음에 이미지 한 장만 오고 바로 「## 정체기 · 공복 유산소, 이렇게 답해드려요」가 왔다.
+   * 읽는 사람에게는 그냥 빈 칸이고, 소제목 수만 늘어서 스펙(5~6개)을 넘긴다.
+   *
+   * 위 `headings` 는 **개수만** 세므로 이걸 못 잡는다 — 오히려 빈 소제목이 개수를 채워서
+   * 통과에 가까워진다. 그래서 따로 본다.
+   *
+   * 이미지·영상만 있는 것도 빈 것으로 본다. 검색이 읽는 것은 글자이고, 사진만 있는 구간은
+   * 네이버 「콘텐츠 셀프 체크」 ⑤(멀티미디어 내용을 텍스트로도)와도 정면으로 어긋난다.
+   */
+  if (parsed.emptyHeadings.length) {
+    add({
+      id: 'empty-heading',
+      group: '분량·구조',
+      label: '본문이 없는 소제목',
+      // 막지는 않는다 — 붙여넣기 전에 채우면 되는 것이라 즉시수정까지 갈 일은 아니다
+      level: 'warn',
+      value: parsed.emptyHeadings.map((h) => `「${h.slice(0, 20)}」`).join(' · '),
+      target: '소제목마다 본문 한 문단 이상',
+      hint: '소제목만 세우고 바로 다음 소제목으로 넘어간 자리입니다. 읽는 사람에게는 빈 칸이고, 소제목 수만 늘어서 개수 기준을 넘기게 됩니다. 그 아래에 문단을 채우거나, 채울 내용이 없으면 **소제목을 지우세요**. 사진만 두는 것도 빈 것으로 봅니다 — 검색은 사진 속 글자를 읽지 못합니다.',
+      weight: 2,
+    })
+  }
+
   // ─── 키워드 ─────────────────────────────────────────────────
   /*
    * 도달 가능한 범위로 판정한다 (reachableKeywordRange 주석).
@@ -938,6 +983,54 @@ export function checkPost(input: CheckInput): CheckResult {
        * 가중치 4. 이 글의 성격을 정하는 항목이라 분량·키워드급으로 둔다. 다만 `fail` 이
        * 아니라서 점수를 79로 묶지는 않는다 — 회원이 알고도 넣을 수 있어야 한다.
        */
+      weight: 4,
+    })
+  }
+
+  /*
+   * ─── 정보글 제목에 업체 말이 섞였는가 (2026-08-21) ────────────────
+   *
+   * 회원이 나온 정보글을 보여줬다 — 제목이 「쌍용동 헬스장 PT추천, 다이어트 정체기 폭식
+   * 질문 4가지 답변」이었다. 회원: "키워드에 pt는 없는데 제목에 왜 pt가 들어가는지 모르겠고."
+   *
+   * 원인은 지시문이었다 (거기도 고쳤다 — 「지역 키워드를 1~2회」라고만 하고 어디에 넣으라는
+   * 말이 없었다). 다만 **지시문만 고치면 다음에 또 나온다.** 이 앱에서 이미 배운 것이다 —
+   * `event-hook` 도 지시문에는 있었는데 나온 글에 없어서 검사를 만들었다.
+   *
+   * `info-purity` 는 **본문만** 본다. 그런데 제목은 그 글이 무슨 글인지 정하는 자리라,
+   * 본문이 아무리 깨끗해도 제목에 업체 말이 있으면 업체 글로 읽힌다. 그래서 따로 본다.
+   *
+   * 지역명은 본문에서는 통과다 (조연으로 1~2회, `localKeyword`). **제목에서만** 잡는다 —
+   * 제목 맨 앞은 정보 메인 키워드 자리이고, 지역은 해시태그가 맡는다.
+   *
+   * `warn` 까지만 한다. 순위 근거가 아니라 분류·형태 문제이고, 회원이 알고도 넣을 수 있어야
+   * 한다 (`info-purity` 와 같은 무게로 둔다).
+   */
+  if (input.type === 'info') {
+    const hits: string[] = []
+    // 지역 키워드 — 본문에서는 조연으로 필요하지만 제목에는 넣지 않는다
+    if (input.localKeyword && countLoose(title, input.localKeyword) > 0) hits.push(`지역 키워드「${input.localKeyword}」`)
+    if (input.legalName && countLoose(title, input.legalName) > 0) hits.push(`상호명「${input.legalName}」`)
+    /*
+     * 주어진 키워드에 없는데 제목에 붙는 업체·홍보 낱말들. 「PT추천」이 회원이 물린 그 말이다.
+     * 키워드 자체에 들어 있으면 잡지 않는다 — 「PT」가 메인 키워드인 글도 있다.
+     */
+    const kw = [input.mainKeyword, ...(input.subKeywords ?? [])].filter(Boolean).join(' ')
+    const EXTRAS = /PT\s*추천|피티\s*추천|헬스장\s*추천|센터\s*추천|업체\s*추천|문의|상담|예약|이벤트|할인|특가|무료|혜택|마감|선착순/gi
+    for (const m of new Set(title.match(EXTRAS) ?? [])) {
+      if (!countLoose(kw, m)) hits.push(`「${m.trim()}」`)
+    }
+    add({
+      id: 'info-title-purity',
+      group: '내용 균형',
+      label: '정보글 제목 (업체 말이 섞였나)',
+      level: hits.length ? 'warn' : 'pass',
+      value: hits.length ? hits.join(' · ') : '없음 — 정보 키워드로만',
+      target: '정보 메인 키워드로 연다 (지역·상호명·홍보 낱말 없이)',
+      hint: hits.length
+        ? '제목은 이 글이 무슨 글인지 정하는 자리라, 본문을 아무리 깨끗하게 써도 제목에 업체 말이 있으면 업체 글로 읽힙니다. **제목 맨 앞은 정보 메인 키워드 자리**이고 지역은 해시태그가 맡습니다. 나쁜 예) 「쌍용동 헬스장 PT추천, 다이어트 정체기 폭식 질문 4가지 답변」 → 좋은 예) 「다이어트 정체기 폭식, 자주 받는 질문 4가지 답변」. 앞의 군더더기를 걷어내면 정보 키워드가 앞 7자 안으로 돌아옵니다.'
+        : undefined,
+      // `info-purity`(4)와 같은 무게 — 이 글의 성격을 정하는 자리다
       weight: 4,
     })
   }
