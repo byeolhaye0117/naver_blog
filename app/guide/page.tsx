@@ -950,6 +950,73 @@ export default async function GuidePage() {
           </p>
         </Card>
 
+        {/* ─── 매일 자동 초안 ─── */}
+        <Card
+          id="auto-draft"
+          title="정보글이 매일 한 편 자동으로 쓰입니다"
+          subtitle="회원님 요청으로 2026-08-21에 넣었습니다. 다만 발행 버튼은 회원님이 누르셔야 합니다."
+        >
+          {/*
+            **못 하는 것부터 적는다.** 네이버 블로그 글쓰기 API 는 없어졌고, 로그인 대행은
+            자동화 도구로 취급돼 계정이 위험하다. 이걸 안 적으면 회원이 「왜 자동으로 안
+            올라가지」를 혼자 기다리게 된다.
+          */}
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+            <strong className="font-bold">네이버에 자동으로 발행할 수는 없습니다.</strong>
+            <p className="mt-1.5">
+              네이버 블로그 <strong>글쓰기 API 가 없어졌습니다.</strong> 남은 방법은 회원님 계정으로 로그인해서 대신
+              올리는 것뿐인데, 그건 네이버가 <strong>자동화 도구로 취급</strong>해서 계정이 위험해집니다. 순위를 올리려고
+              만든 도구가 계정을 잃게 만들면 안 되니 그 방법은 쓰지 않습니다.
+            </p>
+          </div>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[460px] text-[12px]">
+              <thead>
+                <tr className="muted bd border-b text-left">
+                  <th className="py-1.5 pr-3 font-semibold">단계</th>
+                  <th className="py-1.5 font-semibold">누가</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['오늘 쓸 키워드·주제 고르기', '자동 — 가장 오래 안 쓴 조합'],
+                  ['글쓰기 (제목·본문·해시태그)', '자동'],
+                  ['검수 + 걸리면 고쳐 쓰기', '자동'],
+                  ['초안으로 저장', '자동'],
+                  ['사진 넣기', '회원님'],
+                  ['복사해서 네이버에 붙이고 발행', '회원님'],
+                ].map((row) => (
+                  <tr key={row[0]} className="bd border-b last:border-0">
+                    <td className="py-1.5 pr-3">{row[0]}</td>
+                    <td className={`py-1.5 ${row[1] === '회원님' ? 'font-semibold' : 'muted'}`}>{row[1]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-3 text-[12px] leading-relaxed">
+            <strong>매일 새벽 5시</strong>에 한 편 써 둡니다. 아침에 대시보드를 열면 맨 위에{' '}
+            <strong>「오늘 정보글 초안이 준비됐습니다」</strong>가 뜨고, 거기서 바로 열 수 있습니다.
+          </p>
+
+          {/*
+            자동화가 유사문서를 만드는 것이 가장 흔한 실패다. 어떻게 피하는지 적어 둔다.
+          */}
+          <p className="muted mt-3 text-[11.5px] leading-relaxed">
+            <strong>매일 비슷한 글이 되지 않게</strong> 키워드와 주제를 곱해서 돌립니다. 순위 추적에 등록하신 키워드
+            4개 × 주제 10개 = <strong>40가지 조합</strong>이라, 같은 조합이 다시 오기 전에 한 달이 지납니다. 주제가
+            연달아 나오지도 않습니다 — 키워드가 달라도 주제가 같으면 본문이 닮으니까요.
+            <br />
+            <strong>점수가 낮아도 지우지 않습니다.</strong> 85점에 못 미치면 그렇게 적어서 남깁니다 — 지워버리면
+            무엇이 왜 모자랐는지 보실 기회가 없고, 「오늘은 왜 글이 없지」가 됩니다. 검수 항목을 보고 「고쳐 쓰기」를
+            한 번 더 누르시면 됩니다.
+            <br />
+            크론이 두 번 불리거나 손으로 한 번 더 누르셔도 <strong>하루 한 편</strong>입니다.
+          </p>
+        </Card>
+
         {/* ─── 발행 후 타임라인 ─── */}
         <Card
           id="timeline"

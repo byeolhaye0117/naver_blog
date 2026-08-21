@@ -962,6 +962,34 @@ const both = nextActions({ ...base, posts: [{ status: 'draft' }, { status: 'publ
 ok(both[0].id === 'draft', `쓰던 것부터 끝낸다 — ${both[0].id}`)
 ok(both.some((a) => a.id === 'rank'), '순위 등록은 뒤에 남는다')
 
+/*
+ * **오늘 자동 초안은 맨 위에 따로 낸다** (2026-08-21). 아래 「초안 N편」에 섞이면 어제 것과
+ * 구별이 안 되고, 그러면 매일 준비해 두는 의미가 없다 — 오늘 것을 오늘 올려야 간격이 붙는다.
+ */
+{
+  const TODAY = '2026-08-21'
+  const autoPost = { id: 'a1', status: 'draft', type: 'info', format: 'auto', mainKeyword: '쌍용동 헬스장', topicGroup: '새벽 운동 시작하기', createdAt: `${TODAY}T20:00:00.000Z` }
+  const withAuto = nextActions({ ...base, today: TODAY, posts: [autoPost] })
+  ok(withAuto[0].id === 'auto-draft', `오늘 자동 초안이 맨 위 — ${withAuto[0].id}`)
+  ok(withAuto[0].href === '/write?id=a1', '그 글을 바로 연다')
+  ok(withAuto[0].why.includes('쌍용동 헬스장') && withAuto[0].why.includes('새벽 운동'), '무엇으로 썼는지 밝힌다')
+  ok(withAuto[0].why.includes('자동 발행을 열어두지'), '발행은 회원이 눌러야 한다고 알린다')
+  // 같은 글을 「초안 N편」이 다시 가리키지 않는다
+  ok(!withAuto.some((a) => a.id === 'draft'), '오늘 초안 하나뿐이면 「초안 N편」을 또 내지 않는다')
+
+  // 어제 자동 초안은 오늘 것이 아니다 — 평범한 초안으로 센다
+  const yday = nextActions({ ...base, today: TODAY, posts: [{ ...autoPost, createdAt: '2026-08-20T20:00:00.000Z' }] })
+  ok(yday[0].id === 'draft', `어제 자동 초안은 맨 위가 아니다 — ${yday[0].id}`)
+
+  // 오늘 것 + 다른 초안이 함께 있으면 둘 다 나오되 개수가 겹치지 않는다
+  const mixed = nextActions({ ...base, today: TODAY, posts: [autoPost, { id: 'b1', status: 'draft' }] })
+  ok(mixed[0].id === 'auto-draft' && mixed.some((a) => a.id === 'draft'), '오늘 것과 나머지가 따로 나온다')
+  ok(mixed.find((a) => a.id === 'draft').title.includes('1편'), '나머지 개수에서 오늘 것을 뺀다')
+
+  // today 를 안 넘기면 예전처럼 동작한다 (화면이 못 넘겨도 터지지 않는다)
+  ok(nextActions({ ...base, posts: [autoPost] })[0].id === 'draft', 'today 가 없으면 평범한 초안으로 센다')
+}
+
 // 순위 하락은 균형·주기보다 급하다
 const fallen = nextActions({
   ...base,
@@ -8170,6 +8198,94 @@ for (const g of GOLDEN_POSTS) {
   for (const leak of ['010-2455-2896', 'booking.naver.com']) {
     ok(!info.input.body.includes(leak), `정보글 본문에 연락 수단이 없다 — ${leak}`)
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026-08-21)')
+/*
+ * 회원 요청: "정보성 블로그가 매일 1편씩 자동으로 작성되게 만들고 싶어."
+ *
+ * **네이버 자동 발행은 안 한다** (글쓰기 API 가 없어졌고, 로그인 대행은 계정이 위험하다).
+ * 자동인 것은 「매일 초안 한 편을 써서 검수까지 돌려 둔다」까지다.
+ *
+ * 여기서 테스트하는 것은 **결정** 부분이다 — 틀리면 매일 같은 글을 쓰거나 하루에 여러 편을
+ * 쓰는 종류의 실수이고, 둘 다 유사문서·발행간격 쪽에서 손해가 난다.
+ */
+{
+  const { INFO_TOPICS, AUTO_MARK, isAutoDraft, hasTodayAutoDraft, pickAssignment, draftNote } =
+    require(`${OUT}/writing/autodraft.js`)
+
+  const post = (patch) => ({ id: 'p', type: 'info', status: 'draft', storeId: 's', title: '', body: '', mainKeyword: '', subKeywords: [], tags: [], createdAt: '2026-08-21T00:00:00.000Z', updatedAt: '', ...patch })
+
+  // ── 하루 한 편 (크론 재시도·손으로 한 번 더 눌러도)
+  const auto = post({ format: AUTO_MARK, createdAt: '2026-08-21T20:00:00.000Z' })
+  ok(isAutoDraft(auto), '자동 초안임을 글에 남긴다')
+  ok(hasTodayAutoDraft([auto], '2026-08-21'), '오늘 것이 있으면 다시 쓰지 않는다')
+  ok(!hasTodayAutoDraft([auto], '2026-08-22'), '날이 바뀌면 다시 쓴다')
+  ok(!hasTodayAutoDraft([post({ createdAt: '2026-08-21T20:00:00.000Z' })], '2026-08-21'), '손으로 쓴 글은 오늘 몫으로 세지 않는다')
+  ok(!hasTodayAutoDraft([], '2026-08-21') && !hasTodayAutoDraft(undefined, '2026-08-21'), '글이 없어도 터지지 않는다')
+
+  // ── 무엇을 쓸 차례인가
+  const KWS = ['쌍용동 헬스장', '두정동 헬스장']
+  const first = pickAssignment({ posts: [], keywords: KWS })
+  ok(first?.mainKeyword === KWS[0], `글이 없으면 첫 키워드부터 — ${first?.mainKeyword}`)
+  ok(INFO_TOPICS.includes(first.topic), '주제도 목록 안에서 고른다')
+  ok(first.why.includes('아직 안 쓴'), '왜 이 조합인지 밝힌다')
+  // 같은 입력이면 늘 같은 답 — 크론이 두 번 돌아도 흔들리지 않는다
+  ok(JSON.stringify(pickAssignment({ posts: [], keywords: KWS })) === JSON.stringify(first), '같은 입력이면 같은 답')
+  ok(!pickAssignment({ posts: [], keywords: [] }), '키워드가 없으면 아무것도 고르지 않는다')
+  ok(!pickAssignment({ posts: [], keywords: ['  '] }), '빈 키워드만 있어도 마찬가지')
+
+  /*
+   * **같은 조합을 이어서 고르지 않는다.** 이게 틀리면 매일 같은 글이 나온다 — 자동화가
+   * 오히려 유사문서를 만드는 가장 흔한 실패다.
+   */
+  {
+    const used = []
+    let posts = []
+    for (let i = 0; i < 8; i++) {
+      const a = pickAssignment({ posts, keywords: KWS })
+      used.push(`${a.mainKeyword}|${a.topic}`)
+      posts = [post({ mainKeyword: a.mainKeyword, topicGroup: a.topic, format: AUTO_MARK, createdAt: `2026-08-${String(10 + i).padStart(2, '0')}T20:00:00.000Z` }), ...posts]
+    }
+    ok(new Set(used).size === used.length, `여덟 번 돌려도 조합이 겹치지 않는다 — ${new Set(used).size}/8`)
+    // 주제도 바로 되풀이하지 않는다 (키워드가 달라도 본문이 닮는다)
+    const topics = used.map((u) => u.split('|')[1])
+    let repeated = 0
+    for (let i = 1; i < topics.length; i++) if (topics[i] === topics[i - 1]) repeated++
+    ok(repeated === 0, `주제가 연달아 나오지 않는다 — 연속 ${repeated}회`)
+  }
+
+  // 조합을 다 쓰면 가장 오래된 것부터 다시 돈다 (멈추지 않는다)
+  {
+    const oneTopic = ['새벽 운동 시작하기']
+    const posts = [post({ mainKeyword: KWS[0], topicGroup: oneTopic[0], createdAt: '2026-08-20T00:00:00.000Z' })]
+    const a = pickAssignment({ posts, keywords: [KWS[0]], topics: oneTopic })
+    ok(a?.mainKeyword === KWS[0] && a.topic === oneTopic[0], '쓸 조합이 하나뿐이면 그것을 다시 고른다')
+    ok(a.why.includes('오래 안 썼'), '되돌아온 것임을 밝힌다')
+  }
+
+  // 홍보글·후기글은 로테이션을 흔들지 않는다 (본문이 전혀 다르다)
+  {
+    const noise = [post({ type: 'promo', mainKeyword: KWS[0], topicGroup: INFO_TOPICS[0] })]
+    ok(
+      JSON.stringify(pickAssignment({ posts: noise, keywords: KWS })) === JSON.stringify(first),
+      '정보글이 아닌 글은 차례 계산에 넣지 않는다'
+    )
+  }
+
+  /*
+   * **점수로 거르지 않는다.** 발행선에 못 미쳐도 남기고 화면에서 알린다 — 지우면 회원이
+   * 무엇이 모자랐는지 볼 기회가 없고, 「오늘은 왜 글이 없지」가 된다.
+   */
+  ok(draftNote(92, PUBLISH_THRESHOLD).level === 'good', '발행선을 넘으면 그렇게 알린다')
+  ok(draftNote(79, PUBLISH_THRESHOLD).level === 'warn', '못 미치면 주의로 알린다')
+  ok(draftNote(79, PUBLISH_THRESHOLD).text.includes('고쳐 쓰기'), '무엇을 하면 되는지 알려준다')
+
+  // 화면의 주제 칩과 자동 초안이 **같은 목록**을 본다 (두 곳에 적으면 한쪽만 늘어난다)
+  const { readFileSync: rf } = require('node:fs')
+  const editor = rf(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+  ok(editor.includes('INFO_TOPICS') && !/const INFO_TOPIC_IDEAS = \[/.test(editor), '화면이 목록을 따로 들고 있지 않다')
 }
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
