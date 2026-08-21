@@ -7404,8 +7404,57 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   const infoPrompt = buildUserPrompt({ type: 'info', mainKeyword: '헬스 초보 운동 순서', localKeyword: '쌍용동 헬스장', subKeywords: [], store })
   ok(!infoPrompt.includes('- 전화: 010-2455-2896'), '정보글 지시문에 전화번호를 주지 않는다')
   ok(!infoPrompt.includes('예약 링크: https://vo.la/Zbynx'), '예약 링크도 주지 않는다 (2026-08-20 개편)')
-  ok(!infoPrompt.includes('정식 상호명: MTO 피트니스 쌍용점'), '상호명도 주지 않는다 — 값을 주면 쓰게 된다')
-  ok(infoPrompt.includes('업체를 드러내는 것을 하나도 쓰지 않는다'), '무엇을 쓰지 말아야 하는지 한 줄로 준다')
+  /*
+   * **상호명은 되살렸다** (2026-08-21). 회원: "인사말에 상호명이 안나오고."
+   *
+   * 2026-08-20 에는 「값을 주면 쓰게 된다」며 안 줬는데, 인사 형식이 상호명을 요구하게 된
+   * 뒤로는 **골격이 시키는 값을 지시문이 숨기는 상태**가 됐다. 모델은 없는 것을 못 쓴다.
+   * 전화·링크는 그대로 안 준다 — 그건 여전히 이 글에 자리가 없다.
+   */
+  ok(infoPrompt.includes('정식 상호명: MTO 피트니스 쌍용점'), '상호명은 준다 (인사에 쓰라고 시키니까)')
+  ok(infoPrompt.includes('인사 문장에 딱 1회만 쓴다'), '어디에 몇 번 쓸지를 같은 줄에 붙인다')
+  ok(infoPrompt.includes('업체를 드러내는 것이 하나도 들어가지 않는다'), '무엇을 쓰지 말아야 하는지 한 줄로 준다')
+  ok(infoPrompt.includes('인사에서 밝히는 정식 상호명 1회를 빼면'), '그 한 줄이 상호명 1회 예외를 함께 적는다')
+  /*
+   * **막으면서 값을 주지는 않는다** (2026-08-21). 골격이 「쓰지 마라」고 한 것들의 값이
+   * 지시문에 실려 오고 있었다 — 위치·시설 특징·고유 강점·24시간 운영·이벤트 텍스트.
+   * 상호명과 정반대 방향의 같은 사고다: 저쪽은 시키면서 안 줬고 이쪽은 막으면서 줬다.
+   */
+  const rich = buildUserPrompt({
+    type: 'info',
+    mainKeyword: '헬스 초보 운동 순서',
+    localKeyword: '쌍용동 헬스장',
+    subKeywords: [],
+    eventText: '3개월 9.9만원, 선착순 30명',
+    store: { ...store, location: '천안시 서북구 쌍용동', features: ['24시간 운영'], strengths: ['자세 교정'], open24: true },
+  })
+  for (const [needle, label] of [
+    ['천안시 서북구 쌍용동', '위치'],
+    ['- 시설 특징:', '시설 특징'],
+    ['- 고유 강점:', '고유 강점'],
+    ['- 24시간 운영:', '운영시간'],
+    ['9.9만원', '이벤트 내용'],
+    ['## 진행 중인 이벤트', '이벤트 묶음'],
+    ['## 이벤트', '이벤트 「없음」 줄'],
+  ]) {
+    ok(!rich.includes(needle), `정보글 지시문에 ${label}을(를) 주지 않는다`)
+  }
+  // 홍보글에는 그대로 다 준다 — 그 글이 쓰는 값이다
+  const promoRich = buildUserPrompt({
+    type: 'promo',
+    mainKeyword: '쌍용동 헬스장',
+    subKeywords: [],
+    eventText: '3개월 9.9만원, 선착순 30명',
+    store: { ...store, location: '천안시 서북구 쌍용동', features: ['24시간 운영'], strengths: ['자세 교정'], open24: true },
+  })
+  for (const [needle, label] of [
+    ['천안시 서북구 쌍용동', '위치'],
+    ['- 시설 특징:', '시설 특징'],
+    ['9.9만원', '이벤트 내용'],
+    ['- 전화: 010-2455-2896', '전화번호'],
+  ]) {
+    ok(promoRich.includes(needle), `홍보글에는 ${label}을(를) 그대로 준다`)
+  }
   ok(infoPrompt.includes('홍보성 게시물로 분류한다'), '왜 그런지(네이버 공지) 밝힌다')
 
   const promoPrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: [], store })
@@ -7868,7 +7917,56 @@ console.log('\n[90] 본문이 없는 소제목 (2026-08-21)')
 }
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n[91] 완성된 예시 글 세 편이 그대로 통과하나 (2026-08-21)')
+console.log('\n[91] 골격이 요구하는 값이 지시문에 실제로 들어 있나 (2026-08-21)')
+/*
+ * 회원 지적: "인사말에 상호명이 안나오고 검수 항목 고쳐쓰기가 되지 않아."
+ *
+ * **두 증상이 한 원인이었다.** 2026-08-21 에 정보글 인사 형식을 「안녕하세요, (키워드)
+ * (업체명)입니다」로 정했는데, 지시문의 지점 정보 블록은 2026-08-20 부터 정보글에
+ * 「정식 상호명: **주지 않는다**」를 보내고 있었다. **모델은 없는 것을 쓸 수 없다.**
+ * 고쳐 쓰기도 같은 지시문을 다시 쓰므로 몇 번을 눌러도 그 항목만은 못 고친다.
+ *
+ * 이 저장소에서 반복된 사고의 또 다른 얼굴이다 — 한쪽만 고쳤다. 골격을 바꿀 때
+ * **그 골격이 필요로 하는 값이 지시문에 있는지**까지 봐야 한다. 그래서 검사로 만든다.
+ */
+{
+  const STORE_FULL = {
+    id: 's',
+    name: 'MTO 쌍용점',
+    legalName: 'MTO 피트니스 쌍용점',
+    localKeywords: ['쌍용동 헬스장'],
+    phone: '010-2455-2896',
+    reserveUrl: 'https://booking.naver.com/x',
+  }
+  for (const t of ['promo', 'info', 'review']) {
+    const p = buildUserPrompt({ type: t, store: STORE_FULL, mainKeyword: '쌍용동 헬스장', subKeywords: [] })
+    const spec = SPECS[t]
+    /*
+     * **상호명을 쓰라고 시키면 상호명을 줘야 한다.** 이 한 줄이 회원이 물린 그 사고를 잡는다.
+     */
+    if (spec.legalNameMin > 0) {
+      ok(p.includes(STORE_FULL.legalName), `${t} — 상호명을 ${spec.legalNameMin}회 시키니 값도 준다`)
+    }
+    // 반대로 「주지 않는다」가 남아 있으면 안 된다 (옛 판의 잔재)
+    ok(!p.includes('정식 상호명: **주지 않는다**'), `${t} — 「상호명을 주지 않는다」가 남아 있지 않다`)
+  }
+
+  // 정보글은 1회짜리다 — 홍보글 자리 목록(후킹·본문 중반·마무리)을 주면 세 군데에 쓴다
+  const infoP = buildSystemPrompt('info')
+  ok(infoP.includes('인사 문장에 딱 1회'), '정보글 상호명 자리는 인사 한 곳뿐이라고 적는다')
+  ok(!infoP.includes('정식 상호명을 정확히 1회 이상 쓴다 (후킹·본문 중반·마무리)'), '홍보글 자리 목록을 정보글에 흘리지 않는다')
+  ok(buildSystemPrompt('promo').includes('후킹·본문 중반·마무리'), '홍보글은 세 자리를 그대로 준다')
+
+  /*
+   * **정보글에 주지 않는 값도 그대로 지킨다.** 상호명만 되살린 것이지 연락 수단까지
+   * 되살린 게 아니다 — 값을 주면 쓰게 된다는 원칙은 그쪽에 그대로 남아 있다.
+   */
+  const infoUser = buildUserPrompt({ type: 'info', store: STORE_FULL, mainKeyword: '쌍용동 헬스장', subKeywords: [] })
+  ok(!infoUser.includes('- 전화: 010-2455-2896'), '정보글 지시문에는 전화번호를 주지 않는다')
+}
+
+// ─────────────────────────────────────────────────────────────
+console.log('\n[92] 완성된 예시 글 세 편이 그대로 통과하나 (2026-08-21)')
 /*
  * **이 저장소에서 네 번 난 사고를 잡으려고 만든 검사다** (scripts/golden.mjs 머리말).
  * 전부 「골격은 바꾸고 검수는 안 옮긴 것」이고, 문구 검사로는 안 잡힌다 — 완성된 글을
