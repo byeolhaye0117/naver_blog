@@ -4742,7 +4742,9 @@ ok(!revGoodTpl.includes('아쉬웠던 점 1가지'), '골격에서도 아쉬움�
 ok(revGoodTpl.includes('좋았던 점·만족한 점'), '골격이 좋았던 점을 시킨다')
 ok(revGoodTpl.includes('없는 후기·사례 창작 금지'), '지어내지 말라는 말은 그대로 남긴다')
 ok(promoTitleRule.includes('소제목은 `## 소제목` 형식. 5~6개'), '홍보글 소제목은 5~6개 (구간이 늘었다)')
-ok(buildSystemPrompt('info').includes('소제목은 `## 소제목` 형식. 4~5개'), '다른 유형은 4~5개 그대로')
+// 정보글도 2026-08-20 에 「고를 때 기준」 구간이 늘어 5~6개가 됐다. 후기글만 4~5개다
+ok(buildSystemPrompt('info').includes('소제목은 `## 소제목` 형식. 5~6개'), '정보글도 5~6개 (구간이 늘었다)')
+ok(buildSystemPrompt('review').includes('소제목은 `## 소제목` 형식. 4~5개'), '후기글은 4~5개 그대로')
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[73] 회원이 직접 쓴 홍보글에서 나온 오탐 두 개')
@@ -5373,7 +5375,8 @@ ok(infoSys.includes('업체를 드러내지 않는다'), '정보글은 업체를
 ok(infoSys.includes('정보 10 : 홍보 0'), '비중을 숫자로 적는다 — 홍보 0')
 ok(!infoSys.includes('정보 8 : 홍보 2'), '옛 비중(8:2)이 남아 있지 않다')
 ok(!infoSys.includes('센터 소개 + 상담 유도'), '마지막 홍보 구간을 없앴다')
-ok(infoSys.includes('5) 마무리'), '그 자리를 정보 마무리로 바꿨다')
+// 2026-08-20 에 「고를 때 기준」이 4) 로 들어가면서 마무리가 6) 이 됐다
+ok(infoSys.includes('6) 마무리'), '그 자리를 정보 마무리로 바꿨다')
 ok(infoSys.includes('홍보성 게시물로 분류'), '왜 빼는지(분류 위험) 밝힌다')
 ok(infoSys.includes('어느 단계에도 시설·가격·이벤트·업체 이야기를 쓰지 않는다'), '어느 단계에도 안 섞는다 (예외 없음)')
 
@@ -5392,18 +5395,60 @@ ok(greetPromo.items.some((i) => i.id === 'intro-greeting'), '홍보글에는 인
 // 분량 — 회원: "정보성 글 분량이 부족한 거 같아 늘려서 업데이트 해줘"
 ok(SPECS.info.charMin === 2200 && SPECS.info.charMax === 3000, `정보글 분량 2,200~3,000자 — ${SPECS.info.charMin}~${SPECS.info.charMax}`)
 ok(SPECS.info.legalNameMin === 0, `정보글은 상호명을 요구하지 않는다 — ${SPECS.info.legalNameMin}회`)
-ok(infoSys.includes('방법 800~1,000자'), '정보 본문 최대 구간을 늘렸다')
+/*
+ * 「방법」은 여전히 최대 구간이다. 2026-08-20 에 구간이 하나 늘면서 800~1,000 → 700~900 으로
+ * 줄었지만, **다른 어느 구간보다 크다**는 것이 이 검사가 지키려던 것이다. 숫자를 박아 두면
+ * 구간을 조정할 때마다 이 줄만 고치게 되므로, 「가장 큰가」로 바꿔서 확인한다.
+ */
+{
+  const spans = [...infoSys.matchAll(/^\d\) (.+?) (\d[\d,]*)~(\d[\d,]*)자/gm)].map((m) => [
+    m[1],
+    Number(m[3].replace(/,/g, '')),
+  ])
+  const biggest = spans.slice().sort((a, b) => b[1] - a[1])[0]
+  ok(biggest?.[0] === '방법', `정보 본문 최대 구간은 「방법」이다 — ${biggest?.[0]} ${biggest?.[1]}자`)
+}
 ok(infoSys.includes('종류를 늘리지 말고 깊이를 늘린다'), '자수만 늘리지 말라고 한다')
 
 const infoSkeleton = buildTemplate('info', { mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], localKeyword: '천안헬스장', store: { id: 's', name: 'MTO 쌍용점', legalName: 'MTO 피트니스 쌍용점', localKeywords: ['천안헬스장'], phone: '010-2455-2896' } })
-ok(infoSkeleton.includes('안녕하세요, MTO 피트니스 쌍용점입니다'), '골격 첫 문장이 인사 + 상호명이다')
+/*
+ * **손으로 쓰는 판과 기계가 쓰는 판이 같은 말을 하는가** (2026-08-20).
+ *
+ * 지시문에서 정보글의 홍보를 걷어냈는데 골격만 옛 판이었다 — 인사 + 상호명으로 열고
+ * 마지막에 「센터 소개 + 상담 유도」 400~500자가 있었다. 그 골격대로 손으로 쓰면 그 글이
+ * 검수의 `info-purity` 에 걸린다. 아래 네 줄은 옛 판을 지키던 검사였고, **지금은 반대를
+ * 지킨다** — 그 자리가 비면 다음에 또 한쪽만 고치게 된다.
+ */
+ok(!infoSkeleton.includes('안녕하세요, MTO 피트니스 쌍용점입니다'), '골격이 인사 + 상호명으로 열지 않는다')
+ok(infoSkeleton.includes('인사·상호명·업체 소개로 열지 않는다'), '골격도 인사로 열지 말라고 적는다')
 ok(infoSkeleton.includes('상담에서 들은 질문이다'), '골격도 화자를 센터로 적는다')
-ok(infoSkeleton.includes('센터 소개 + 상담 유도 (400~500자)'), '골격의 마무리 분량도 같이 옮겼다')
-ok(infoSkeleton.includes('정보 본문 합계 1,600~2,000자'), '골격의 정보 본문도 늘렸다')
-ok(infoSkeleton.includes('정보 8 : 홍보 2'), '골격에도 비중을 적는다')
+ok(infoSkeleton.includes('교대근무라 오후에 눈뜨고'), '골격도 첫 문장에 독자를 못 박게 한다 (셀프 체크 ①)')
+ok(infoSkeleton.includes('4단계 고를 때 기준'), '골격에도 대안 비교 구간이 있다 (셀프 체크 ③)')
+ok(infoSkeleton.includes('사진에만 있는 내용이 없는가'), '골격에도 사진 내용을 본문에 적으라고 한다 (셀프 체크 ⑤)')
+ok(!infoSkeleton.includes('센터 소개 + 상담 유도 ('), '골격에서 센터 소개 구간을 없앴다')
+ok(!infoSkeleton.includes('정보 8 : 홍보 2'), '골격에서 옛 비중(8:2)이 사라졌다')
+ok(infoSkeleton.includes('6단계 마무리'), '그 자리가 정보 마무리로 바뀌었다')
+// 골격 구간 합계도 지시문과 같아야 한다 — 한쪽만 옮기면 골격대로 써도 분량에 걸린다
+for (const span of ['1단계 후킹 (250~300자', '2단계 왜 그런지 (350~450자', '3단계 방법 (700~900자', '4단계 고를 때 기준 (350~450자', '5단계 흔한 실수 (350~450자', '6단계 마무리 (250~350자']) {
+  ok(infoSkeleton.includes(span), `골격 구간 분량이 지시문과 같다 — ${span})`)
+}
+/*
+ * **골격에 업체 흔적이 남지 않았는가.** 지점 정보를 통째로 넘겨도 본문에 상호명·전화번호가
+ * 새지 않아야 한다 (해시태그 안내의 지역 키워드는 본문이 아니다).
+ */
+for (const leak of ['MTO 피트니스 쌍용점', '010-2455-2896']) {
+  ok(!infoSkeleton.includes(leak), `골격에 업체 정보가 새지 않는다 — ${leak}`)
+}
 ok(!infoSkeleton.includes('전화/문의 한 줄이면 충분'), '「한 줄이면 충분」을 지웠다')
 
-// ─── 홍보가 어디에 있는지를 본다 (개수가 아니라 자리)
+/*
+ * ─── 정보글에 홍보가 하나라도 있는가 (2026-08-20 뒤집힘)
+ *
+ * 예전 항목 `info-promo-tail` 은 「홍보를 마지막 구간에 모아라」였다 — 마지막 구간이 비면
+ * 걸렸다. 정보글에서 홍보를 전부 걷어내면서 그 항목이 `info-purity` 와 정반대를 시키게 돼서
+ * 없앴다 (lib/writing/checker.ts 의 「없앤 검사」 주석). 아래는 **없앴다는 사실 자체**와
+ * 새 기준을 함께 고정한다 — 한쪽만 고치면 회원 화면에 서로 반대되는 두 줄이 뜬다.
+ */
 const infoBase = {
   type: 'info',
   title: '천안헬스장 다니는데 폭식 못 끊는 이유, 순서부터 바꿔보세요',
@@ -5413,7 +5458,7 @@ const infoBase = {
   tags: ['폭식멈추는방법', '다이어트폭식', '천안헬스장'],
   legalName: 'MTO 피트니스 쌍용점',
 }
-const tailItem = (body) => checkPost({ ...infoBase, body }).items.find((i) => i.id === 'info-promo-tail')
+const tailItem = (body) => checkPost({ ...infoBase, body }).items.find((i) => i.id === 'info-purity')
 
 const INFO_GOOD = `폭식 멈추는 방법을 찾으시는 분들이 많습니다. 제가 상담할 때 이 질문을 제일 많이 받아요.
 
@@ -5425,22 +5470,28 @@ const INFO_GOOD = `폭식 멈추는 방법을 찾으시는 분들이 많습니�
 
 ## 저희 센터에서는 이렇게 하실 수 있어요
 위 순서를 그대로 하시려면 웨이트실과 유산소존이 나뉘어 있는 게 편합니다. MTO 피트니스 쌍용점은 24시간 운영이라 새벽 근무 마치고도 오실 수 있어요. 궁금한 점은 상담 때 여쭤보시면 되고, 예약은 전화로 편하게 주세요.`
-ok(tailItem(INFO_GOOD)?.level === 'pass', `앞은 깨끗하고 뒤에 모였으면 통과 — ${tailItem(INFO_GOOD)?.value}`)
+// 옛 판에서 「통과」였던 글 — 마지막에 상호명·상담·전화를 모은 글이다. 지금은 통과가 아니다
+ok(tailItem(INFO_GOOD)?.level !== 'pass', `마지막에 모아도 통과가 아니다 — ${tailItem(INFO_GOOD)?.value}`)
 
-// 앞 구간에 홍보가 섞이면 잡는다 — 이게 회원이 지적한 바로 그 지점이다
-const INFO_MIXED = INFO_GOOD.replace('웨이트 40분 먼저 하고', '저희 센터는 24시간 운영이고 상담도 예약으로 받습니다. 웨이트 40분 먼저 하고')
-const mixed = tailItem(INFO_MIXED)
-ok(mixed?.level !== 'pass', `정보 구간에 홍보가 섞이면 통과 못 한다 — ${mixed?.value}`)
-ok(mixed?.hint?.includes('앞에 안 섞어서 맞춥니다'), '비중을 맞추는 방법을 알려준다')
-
-// 마지막 구간이 비면 잡는다 (홍보 2가 없는 것)
-const INFO_NO_TAIL = INFO_GOOD.replace(/## 저희 센터에서는[\s\S]*$/, '## 정리하며\n습관을 바꾸는 게 핵심이에요. 순서부터 바꿔보세요.')
-const noTail = tailItem(INFO_NO_TAIL)
-ok(noTail?.level !== 'pass', `마지막 구간이 비면 통과 못 한다 — ${noTail?.value}`)
-ok(noTail?.hint?.includes('350~450자'), '무엇을 얼마나 쓰면 되는지 알려준다')
-
-// 홍보글·후기글에는 이 항목이 없다 (홍보글은 홍보가 앞에도 있어야 한다)
-ok(checkPost({ ...goodPromo }).items.every((i) => i.id !== 'info-promo-tail'), '홍보글에는 항목이 안 생긴다')
+/*
+ * **깨끗한 정보글이 아무 데도 안 걸려야 한다.** 옛 항목이 살아 있으면 이 글이 「마지막
+ * 구간이 비었습니다」로 걸렸다 — 회원이 그 말을 따르면 이번엔 `info-purity` 에 걸린다.
+ */
+const INFO_CLEAN = INFO_GOOD.replace(
+  /## 저희 센터에서는[\s\S]*$/,
+  '## 오늘부터 이것 하나만\n오늘 저녁 한 끼만 순서를 바꿔보세요. 웨이트를 먼저 하고 유산소를 뒤에 붙이는 것, 그거 하나면 첫날은 충분합니다. 흔히 여기서 실패하는 지점은 첫 주에 강도를 한꺼번에 올리는 것입니다. 며칠 단위로 조금씩 올리세요.'
+)
+const clean = checkPost({ ...infoBase, body: INFO_CLEAN })
+ok(clean.items.find((i) => i.id === 'info-purity')?.level === 'pass', `홍보를 다 뺀 정보글은 순수성 통과 — ${clean.items.find((i) => i.id === 'info-purity')?.value}`)
+ok(clean.items.every((i) => i.id !== 'info-promo-tail'), '「홍보는 마지막 구간에」 항목은 없앴다 (info-purity 와 반대를 시켰다)')
+ok(
+  !clean.items.some((i) => i.level !== 'pass' && i.hint?.includes('마지막 구간이 비었습니다')),
+  '깨끗한 정보글에 「홍보를 채우라」는 말이 뜨지 않는다'
+)
+// 어느 유형에도 이 항목이 남아 있지 않다
+for (const t of ['promo', 'review']) {
+  ok(checkPost({ ...goodPromo, type: t }).items.every((i) => i.id !== 'info-promo-tail'), `${t} 에도 항목이 없다`)
+}
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[83] 플레이스 리뷰 — 실제 리뷰로 신뢰 주기')
@@ -5659,17 +5710,19 @@ console.log('\n[85] 정보글 마지막 홍보 — 적어둔 것만 쓴다')
  * 아니면 거짓 광고인데 — **글만 봐서는 어느 쪽인지 알 수 없다.** 그게 문제였다.
  */
 const NOTE = '1:1 PT 공동구매 500회 진행 중, 회당 45,000원(VAT 별도), 10회 단위 등록 가능'
+/*
+ * **2026-08-20 에 뒤집혔다.** 정보글에서 홍보 구간을 없애면서 홍보 칸도 정보글 화면에서
+ * 뺐다. 그래서 이제는 「적어둔 것만 쓴다」가 아니라 **「아예 쓰지 않는다」**다.
+ *
+ * 아래 두 줄은 옛 묶음이 되살아나지 않는지를 지킨다 — 칸에 값이 들어와도(예전 글을 불러오면
+ * 남아 있을 수 있다) 정보글 지시문은 홍보 구간을 만들지 않아야 한다.
+ */
 const promoPrompt = buildUserPrompt({ type: 'info', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], promoNote: NOTE })
-ok(promoPrompt.includes('## 마지막 홍보 구간에 넣을 내용 (이 안에서만 쓴다)'), '적어둔 내용을 따로 낸다')
-ok(promoPrompt.includes(NOTE), '적은 것을 그대로 넣는다')
-ok(promoPrompt.includes('없는 가격·기간·인원·혜택을 보태지 않는다'), '보태지 말라고 한다')
-ok(promoPrompt.includes('그대로 나열하지는 말고'), '나열이 아니라 이어서 쓰라고 한다')
+ok(!promoPrompt.includes('마지막 홍보 구간'), '정보글 지시문에 홍보 구간 묶음이 없다')
+ok(!promoPrompt.includes(NOTE), '옛 글에 남은 홍보 칸 값이 지시문으로 새지 않는다')
 
-// 비었을 때가 더 중요하다 — 지시가 없으면 모델이 그 자리를 채운다
 const emptyNotePrompt = buildUserPrompt({ type: 'info', mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'] })
-ok(emptyNotePrompt.includes('가격·이벤트·혜택을 만들지 않는다'), '비면 만들지 말라고 못 박는다')
-ok(emptyNotePrompt.includes('시설·운영시간과 상담·예약 안내만으로'), '대신 무엇을 쓸지 알려준다')
-ok(!emptyNotePrompt.includes('이 안에서만 쓴다'), '없는 내용 묶음을 만들지 않는다')
+ok(!emptyNotePrompt.includes('마지막 홍보 구간'), '칸이 비어도 마찬가지다')
 // 홍보글에는 이벤트 칸이 따로 있으니 이 묶음을 내지 않는다
 const promoTypePrompt = buildUserPrompt({ type: 'promo', mainKeyword: '쌍용동 헬스장', subKeywords: ['쌍용동PT'], promoNote: NOTE })
 ok(!promoTypePrompt.includes('마지막 홍보 구간'), '홍보글에는 안 낸다 (이벤트 칸이 그 역할)')
@@ -5697,14 +5750,13 @@ const srcItem = (patch) => checkPost({ type: 'info', title: '폭식 멈추는 �
 const MADE_UP = infoBody('1:1 PT 공동구매 500회 진행 중인데 회당 45,000원입니다.')
 ok(srcItem({ body: MADE_UP }).level === 'fail', `칸이 비었는데 금액·이벤트가 있으면 즉시수정 — ${srcItem({ body: MADE_UP }).value}`)
 ok(srcItem({ body: MADE_UP }).group === '저품질 위험', '저품질 위험으로 분류한다')
-ok(srcItem({ body: MADE_UP }).hint.includes('「마지막 홍보 내용」 칸'), '어디에 적으면 되는지 알려준다')
-ok(srcItem({ body: MADE_UP, promoNote: NOTE }).level === 'pass', '칸에 그 조건을 적으면 통과한다')
-
-// 칸에 적었는데 **다른** 금액이 나오면 잡는다 (AI 가 숫자를 바꿔 쓰는 일이 있다)
-const WRONG_PRICE = infoBody('1:1 PT 공동구매 진행 중인데 회당 39,000원입니다.')
-const wrong = srcItem({ body: WRONG_PRICE, promoNote: NOTE })
-ok(wrong.level === 'fail', `적어둔 금액과 다르면 잡는다 — ${wrong.value}`)
-ok(wrong.value.includes('39,000원'), '어떤 금액이 문제인지 보여준다')
+ok(srcItem({ body: MADE_UP }).hint.includes('홍보글이 맡습니다'), '가격·이벤트는 홍보글 몫이라고 알려준다')
+/*
+ * **옛 판에서는 칸에 적으면 통과였다.** 지금은 적어뒀든 아니든 정보글에 금액이 있으면
+ * 잘못이다 — 대조할 칸 자체가 없어졌다.
+ */
+ok(srcItem({ body: MADE_UP, promoNote: NOTE }).level === 'fail', '칸에 적어뒀어도 정보글에는 못 쓴다')
+ok(srcItem({ body: MADE_UP }).value.includes('45,000원'), '어떤 금액이 문제인지 보여준다')
 
 // 시설·상담만 쓴 마무리는 칸이 비어도 통과 (그게 기본 동작이다)
 const FACILITY_ONLY = infoBody('웨이트실과 프리웨이트실이 나뉘어 있고 24시간 운영이라 새벽에도 오실 수 있어요.')
@@ -7379,6 +7431,73 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(upRule.includes('2026-06-04'), '어느 공지에서 왔는지 함께 적는다')
   const upNo = buildUserPrompt({ type: 'info', mainKeyword: '헬스 초보 운동 순서', subKeywords: [] })
   ok(!upNo.includes('## 네이버 공지에서 확인한 규칙'), '적어둔 규칙이 없으면 아무 줄도 안 붙는다')
+}
+
+/*
+ * ─── 네이버 「콘텐츠 셀프 체크」 반영 (2026-08-20) ──────────────────
+ *
+ * 회원이 영상에서 시작된 흐름으로 네이버 공식 문서를 읽고 "1. 반영하고" 라고 했다.
+ * 네이버가 낸 자가 점검표 5가지 중 **우리 앱에 없던 셋**을 넣었다:
+ *   ① 독자 및 목적 — 누가 어떤 상황에서 읽는지 (후킹)
+ *   ③ 대안 및 비교 분석 — 다른 선택지와 장단점 (새 구간)
+ *   ⑤ 맥락에 맞는 이미지 — 사진으로 전한 내용을 텍스트로도 (검수)
+ * ②절차·경험과 ④객관적 근거는 이미 있었다 (voice·info-substance·fact-source·source-lead).
+ */
+{
+  const { imagesOnlyInCaption } = require(`${OUT}/writing/checker.js`)
+  const sys = buildSystemPrompt('info')
+
+  // ── ① 독자 및 목적
+  ok(sys.includes('누가 어떤 상황에서 읽는지 한 문장으로 못 박는다'), '후킹에서 독자를 못 박게 한다')
+  ok(sys.includes('회의 30분 전에 식사를 마쳐야 하는 직장인'), '네이버가 든 좋은 예를 그대로 준다')
+  ok(sys.includes('「많은 분들이」·「요즘 다들」로 열지 않는다'), '일반론으로 열지 말라고 한다')
+
+  // ── ③ 대안 및 비교
+  ok(sys.includes('4) 고를 때 기준'), '대안 비교 구간이 골격에 있다')
+  ok(sys.includes('방법이 하나뿐인 것처럼 쓰지 않는다'), '대안을 들라고 한다')
+  ok(sys.includes('우리가 실제로 안 해본 것을 해봤다고 쓰지 않는다'), '겪지 않은 비교를 지어내지 말라고 한다')
+
+  /*
+   * **골격 예산이 스펙 안에 들어가는가.** 구간을 하나 늘리면 합계가 상한을 넘어서 골격대로
+   * 써도 검수에 걸린다 — 2026-08-05 에 홍보글에서 실제로 겪었다.
+   */
+  {
+    /*
+     * **「소제목 있음」까지 붙여서 센다.** 「소제목」에서 끊으면 후킹의 「소제목 **없음**」도
+     * 걸려서, 아래에서 후킹을 한 번 더 더할 때 이중으로 세진다 — 2026-08-20 에 실제로
+     * 2,900 을 3,200 으로 읽고 멀쩡한 골격이 상한을 넘은 것처럼 나왔다.
+     */
+    const budgets = [...sys.matchAll(/(\d[\d,]*)~(\d[\d,]*)자, 소제목 있음/g)].map((m) => [
+      Number(m[1].replace(/,/g, '')),
+      Number(m[2].replace(/,/g, '')),
+    ])
+    // 후킹은 「소제목 없음」이라 위 정규식에 안 걸린다 — 따로 더한다
+    const hook = /후킹 (\d+)~(\d+)자/.exec(sys)
+    ok(Boolean(hook) && budgets.length >= 4, `골격 구간을 다 읽었다 — 후킹 + ${budgets.length}구간`)
+    const lo = budgets.reduce((a, b) => a + b[0], Number(hook?.[1] ?? 0))
+    const hi = budgets.reduce((a, b) => a + b[1], Number(hook?.[2] ?? 0))
+    ok(lo >= SPECS.info.charMin, `골격 최소 합계가 분량 하한 이상 — ${lo} ≥ ${SPECS.info.charMin}`)
+    ok(hi <= SPECS.info.charMax, `골격 최대 합계가 분량 상한 이하 — ${hi} ≤ ${SPECS.info.charMax}`)
+  }
+
+  // ── ⑤ 사진 내용이 본문에도 있나
+  ok(imagesOnlyInCaption(['스쿼트 자세 시범'], '스쿼트 자세를 이렇게 잡으세요').length === 0, '설명 낱말이 본문에 있으면 통과')
+  ok(imagesOnlyInCaption(['인바디 결과지'], '오늘은 호흡 얘기만 합니다').length === 1, '사진에만 있는 내용을 찾는다')
+  ok(imagesOnlyInCaption(['대표 이미지'], '아무 말').length === 0, '「대표 이미지」처럼 표기용 말은 세지 않는다')
+  ok(imagesOnlyInCaption(['전경 사진'], '아무 말').length === 0, '「전경·사진」도 표기용으로 본다')
+  ok(imagesOnlyInCaption([''], '아무 말').length === 0, '빈 설명은 건너뛴다')
+  // 띄어쓰기가 달라도 같은 말로 본다
+  ok(imagesOnlyInCaption(['천국의 계단'], '천국의계단이 네 대 있습니다').length === 0, '띄어쓰기 차이로 거짓 경고를 내지 않는다')
+
+  const imgItem = (patch) => checkPost({ ...goodPromo, ...patch }).items.find((i) => i.id === 'image-text')
+  ok(imgItem({}), '이미지가 있는 글에는 항목이 생긴다')
+  ok(imgItem({}).level === 'pass' || imgItem({}).level === 'warn', '통과 아니면 주의까지만 (막지 않는다)')
+  const orphaned = imgItem({
+    body: ['[이미지: 인바디 결과지]', '[이미지: 라커룸 열쇠]', '[이미지: 주차장 입구]', '안녕하세요, MTO 피트니스 쌍용점입니다.', '## 소제목', '가'.repeat(1800)].join('\n'),
+  })
+  ok(orphaned.level === 'warn', `사진에만 있는 내용이 셋이면 주의 — ${orphaned?.level}`)
+  ok(orphaned.hint.includes('텍스트로도'), '네이버가 뭐라고 했는지 알려준다')
+  ok(!checkPost({ ...goodPromo, body: '이미지 없는 글입니다.' }).items.some((i) => i.id === 'image-text'), '이미지가 없으면 항목을 만들지 않는다')
 }
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)

@@ -492,6 +492,38 @@ export function findLatinWords(text: string, extraAllow: string[] = []): string[
   return found
 }
 
+/**
+ * **이미지로만 전달한 내용이 있나** — 설명에 있는 말이 본문에도 있는지 본다.
+ *
+ * 네이버가 낸 「콘텐츠 셀프 체크」 다섯 번째 항목이다: 「멀티미디어로 전달한 내용을
+ * 텍스트로도 함께 제공하였나요」. AI 브리핑 인용 FAQ 에도 같은 말이 있다 — 「이미지를
+ * 곁들이더라도 이미지의 핵심 정보는 텍스트로 함께 작성해 주시는 것이 인용에 유리합니다」.
+ *
+ * 판정은 **느슨하게** 한다. 설명에서 두 글자 이상 낱말을 뽑아, **하나라도** 본문에 있으면
+ * 통과다. 설명을 본문에 그대로 옮기라는 뜻이 아니라 「사진에만 있고 글에는 없는 내용」을
+ * 찾는 것이기 때문이다.
+ */
+export function imagesOnlyInCaption(captions: string[], prose: string): string[] {
+  const flat = (t: string) => (t ?? '').replace(/\s+/g, '')
+  const body = flat(prose)
+  const out: string[] = []
+  for (const raw of captions) {
+    const caption = (raw ?? '').trim()
+    if (!caption) continue
+    /*
+     * 조사·기호를 떼고 두 글자 이상만 본다. 「대표」·「전경」처럼 사진 표기용으로만 쓰는
+     * 말은 본문에 없는 게 정상이라 뺀다 — 그것까지 잡으면 거짓 경고만 는다.
+     */
+    const words = caption
+      .split(/[\s,·:;()\[\]/]+/)
+      .map((w) => w.replace(/[의는은이가을를에서와과로도만]$/, ''))
+      .filter((w) => w.length >= 2 && !/^(대표|전경|사진|이미지|모습|배지|썸네일)$/.test(w))
+    if (!words.length) continue
+    if (!words.some((w) => body.includes(flat(w)))) out.push(caption)
+  }
+  return out
+}
+
 export function checkPost(input: CheckInput): CheckResult {
   const spec = SPECS[input.type]
   const parsed = parseBody(input.body)
@@ -630,21 +662,23 @@ export function checkPost(input: CheckInput): CheckResult {
     group: '분량·구조',
     label: '소제목 개수',
     /*
-     * 홍보글만 5~6개다 — 「해결」 한 구간을 「운동 정보」와 「시설 소개」로 쪼개면서
-     * 구간이 하나 늘었다 (lib/ai/prompt.ts 의 STRUCTURE.promo 주석).
+     * 후기글만 4~5개다. 홍보글은 「해결」을 「운동 정보」와 「시설 소개」로 쪼개면서 구간이
+     * 하나 늘었고(lib/ai/prompt.ts 의 STRUCTURE.promo 주석), 정보글은 네이버 「콘텐츠 셀프
+     * 체크」 ③(대안·비교)을 넣느라 「고를 때 기준」 구간이 하나 늘었다 (2026-08-20).
+     * 골격을 늘려 놓고 검수 범위를 안 옮기면, 골격대로 쓴 글이 검수에 걸린다.
      */
     level:
-      input.type === 'promo'
+      input.type === 'review'
         ? level(
-            parsed.headings.length >= 5 && parsed.headings.length <= 6,
-            parsed.headings.length >= 4 && parsed.headings.length <= 7
-          )
-        : level(
             parsed.headings.length >= 4 && parsed.headings.length <= 5,
             parsed.headings.length >= 3 && parsed.headings.length <= 6
+          )
+        : level(
+            parsed.headings.length >= 5 && parsed.headings.length <= 6,
+            parsed.headings.length >= 4 && parsed.headings.length <= 7
           ),
     value: `${parsed.headings.length}개`,
-    target: input.type === 'promo' ? '5~6개' : '4~5개',
+    target: input.type === 'review' ? '4~5개' : '5~6개',
     hint: '소제목은 스캔 가능성 = 체류시간입니다. `## 소제목` 형식으로 적으세요.',
     weight: 2,
   })
@@ -777,7 +811,7 @@ export function checkPost(input: CheckInput): CheckResult {
    * 없는 글 29%. **순위로 잃는 것이 없다.** 그러니 상담을 받으려고 쓰는 글이면 제목에서
    * 밝히는 편이 맞다.
    *
-   * 정보글은 대상이 아니다 — 그 글의 홍보는 마지막 구간에만 모인다(`info-promo-tail`).
+   * 정보글은 대상이 아니다 — 그 글에는 홍보를 아예 넣지 않는다(`info-purity`).
    * 「상담·등록·문의」는 홍보로 세지 않는다. 후기글 제목에 거의 다 들어가는 말이라
    * 그걸 인정하면 이 검사가 아무것도 안 잡는다.
    */
@@ -1184,6 +1218,33 @@ export function checkPost(input: CheckInput): CheckResult {
   }
 
   // ─── 이미지·태그 ─────────────────────────────────────────────
+  /*
+   * ─── 사진에만 있고 글에는 없는 내용 (2026-08-20) ────────────────
+   *
+   * 네이버 「콘텐츠 셀프 체크」 다섯 번째 항목을 그대로 검사한다 — 「멀티미디어로 전달한
+   * 내용을 텍스트로도 함께 제공하였나요」. AI 브리핑 인용에도 같은 조건이 붙는다.
+   *
+   * `warn` 까지만 한다. 설명은 「무엇을 찍을지」 적는 자리라 본문과 말이 겹치지 않는 것이
+   * 정상인 경우가 있다 (「대표 이미지」·「전경」). 순위 근거로 잰 적은 없고, 네이버가 권한 것이다.
+   */
+  {
+    const orphan = imagesOnlyInCaption(parsed.images, prose)
+    if (parsed.images.length > 0) {
+      add({
+        id: 'image-text',
+        group: '이미지·태그',
+        label: '사진 내용이 본문에도 있나',
+        level: orphan.length >= 3 ? 'warn' : 'pass',
+        value: orphan.length ? `${orphan.length}장이 본문에 없음 — 「${orphan[0].slice(0, 20)}」` : '전부 본문에도 있음',
+        target: '사진으로 전한 내용은 글로도 쓴다',
+        hint: orphan.length
+          ? '네이버가 낸 콘텐츠 셀프 체크 다섯 번째 항목입니다 — 「멀티미디어로 전달한 내용을 텍스트로도 함께 제공하였나요」. AI 브리핑 인용 조건에도 같은 말이 있습니다. 사진에만 있는 내용은 검색이 읽지 못합니다. 그 사진이 무엇을 보여주는지 본문 문장에 한 번 써주세요.'
+          : undefined,
+        weight: 1,
+      })
+    }
+  }
+
   add({
     id: 'images',
     group: '이미지·태그',
@@ -1597,49 +1658,21 @@ export function checkPost(input: CheckInput): CheckResult {
   }
 
   /*
-   * ─── 정보글: 홍보가 마지막 구간에 모여 있는가 ─────────────────
+   * ─── 없앤 검사: `info-promo-tail` (2026-08-20) ────────────────
    *
-   * **순위 기준이 아니다.** 회원 요청이다 — "화자는 센타 입장에서 정보성 주제를 알려주는
-   * 느낌으로 해주고 정보성 8 : 홍보성 2 느낌으로 글 마지막에는 홍보가 들어갈 수 있게 해줘."
+   * 「홍보는 마지막 구간에 모아라」를 보던 항목이었다. 회원 요청에서 나왔다 — "정보성 8 :
+   * 홍보성 2 느낌으로 글 마지막에는 홍보가 들어갈 수 있게 해줘"(2026-08-07). 마지막 소제목을
+   * 경계로 나눠서 앞 구간 홍보 ≤1종류 · 뒤 구간 ≥2종류면 통과였다.
    *
-   * 나온 글은 마지막 구간에 홍보가 있긴 했는데, 그 앞 정보 구간에도 「천안헬스장 다닌다고」
-   * 처럼 우리 얘기가 섞여 있었다. 비중은 뒤를 늘려서 맞추는 게 아니라 **앞에 안 섞어서**
-   * 맞춘다 — 정보 구간에서 우리 센터를 끌어오면 정보글이 쌓으려던 신뢰가 그 자리에서 없어진다.
+   * **`info-purity` 와 정반대를 시킨다.** 정보글에서 홍보를 전부 걷어낸 뒤(2026-08-20), 깨끗한
+   * 정보글 하나에 두 항목이 같이 떴다 — 한쪽은 "상호명·상담을 지우세요", 다른 쪽은 "마지막
+   * 구간이 비었습니다, 상호명 1회 + 상담 안내를 350~450자로 쓰세요". 회원이 어느 쪽을 따라도
+   * 다른 쪽에 걸린다.
    *
-   * 그래서 홍보 낱말의 **개수**가 아니라 **자리**를 본다 (개수 상한은 4로 완화했다,
-   * content.ts 의 PROMO_MAX_BY_TYPE 주석). 마지막 소제목을 경계로 나눠서:
-   *   앞 구간 홍보 종류 ≤ 1  · 마지막 구간 홍보 종류 ≥ 2  → 통과
-   * 앞에 1종류를 허용하는 이유는 지역 키워드가 조연으로 들어가야 하기 때문이다 (정보글의
-   * 지역 신호는 그렇게 확보한다). 「상담」 한 번 스치는 것까지 잡으면 글이 부자연스러워진다.
+   * 이 저장소에서 지시와 검수가 반대가 된 것은 이번이 두 번째다 (2026-08-10 인사 검사).
+   * 앞 구간이 더러운 것을 잡던 역할은 `info-purity` 가 글 전체에서 대신 본다 — 그쪽이 더
+   * 넓게 보고, 「자리를 옮겨라」가 아니라 「지워라」라고 말한다.
    */
-  if (input.type === 'info' && parsed.headings.length > 0) {
-    const lastHeading = parsed.headings[parsed.headings.length - 1]
-    const cut = parsed.scan.lastIndexOf(lastHeading)
-    const head = cut > 0 ? parsed.scan.slice(0, cut) : parsed.scan
-    const tail = cut > 0 ? parsed.scan.slice(cut) : ''
-    const headPromo = countSignals(head).promo
-    const tailPromo = countSignals(tail).promo
-    const cleanHead = headPromo <= 1
-    const hasTail = tailPromo >= 2
-    add({
-      id: 'info-promo-tail',
-      group: '내용 균형',
-      label: '홍보는 마지막 구간에',
-      level: cleanHead && hasTail ? 'pass' : cleanHead || hasTail ? 'warn' : 'fail',
-      value: `정보 구간 ${headPromo}종류 · 마지막 구간 ${tailPromo}종류`,
-      target: '정보 구간 1종류 이하 · 마지막 구간 2종류 이상 (정보 8 : 홍보 2)',
-      hint: !cleanHead
-        ? '정보 구간에 홍보가 섞였습니다. 시설·가격·이벤트·상호명·상담 안내를 마지막 구간으로 옮기세요 — 정보 8 : 홍보 2 는 뒤를 늘려서 맞추는 게 아니라 앞에 안 섞어서 맞춥니다. 지역 키워드 한 번은 괜찮습니다.'
-        : !hasTail
-          ? '마지막 구간이 비었습니다. 앞에서 설명한 방법을 우리 센터에서 어떻게 할 수 있는지로 잇고, 필요한 시설 두세 개 + 정식 상호명 1회 + 상담·예약 안내를 350~450자로 쓰세요.'
-          : undefined,
-      /*
-       * 가중치 3. 순위 근거가 없어 정보 종류(5)보다 낮게 두지만, 이 글의 목적 자체가
-       * 「홍보를 참아서 신뢰를 쌓는 것」이라 인사 검사(2)보다는 높다.
-       */
-      weight: 3,
-    })
-  }
 
   /*
    * ─── 인용에 출처가 붙어 있는가 ─────────────────────────────────
@@ -1891,50 +1924,36 @@ export function checkPost(input: CheckInput): CheckResult {
   })
 
   /*
-   * ─── 정보글: 마지막 홍보가 「적어둔 것」인가 ────────────────────
+   * ─── 정보글에 가격·이벤트가 있는가 ────────────────────────────
    *
-   * 회원 지적 — "정보글에 마지막 홍보를 넣어달란 게 알아서 작성해달란 게 아니라, 내가 원하는
-   * 홍보글 칸을 넣어서 거기 정보를 주면 그에 맞게 작성해달란 거였어."
+   * 원래는 「마지막 홍보가 **적어둔 것**인가」였다. 회원이 홍보 칸에 적은 조건과 본문 금액을
+   * 대조해서, 적어두지 않은 금액이 나오면 지어낸 것으로 봤다 (회원 지적, 2026-08-11 —
+   * 모델이 「1:1 PT 공동구매 500회, 회당 45,000원」을 스스로 만들어냈다).
    *
-   * 앞 판에서 「센터 소개 + 상담 유도 400~500자」만 시켰더니 모델이 그 자리를 스스로 채웠다 —
-   * 「1:1 PT 공동구매 500회, 회당 45,000원」처럼. 실제 조건이면 다행이고 아니면 거짓 광고다.
-   * **어느 쪽인지 글만 봐서는 알 수 없다는 게 문제다.**
+   * **2026-08-20 에 대조할 것이 없어졌다.** 정보글에서 홍보 구간을 없애면서 홍보 칸도 정보글
+   * 화면에서 뺐다. 그래서 기준이 단순해진다 — **정보글에 금액이나 이벤트가 있으면 그 자체가
+   * 잘못이다.** 적어뒀는지 따질 필요가 없다.
    *
-   * 그래서 **금액**만 대조한다. 「24시간」·「4대」 같은 숫자는 지점 정보에서 오므로 대상이
-   * 아니고, 전화번호는 「원」이 없어서 안 걸린다. 좁게 잡는 대신 확실하게 잡는다.
+   * 지어낸 가격은 거짓 광고이므로 여기만 `fail` 이다 (`info-purity` 는 `warn` 이다 — 상호명은
+   * 회원이 알고도 넣을 수 있지만, 확인 안 된 금액은 그렇지 않다). 「24시간」·「4대」 같은
+   * 숫자는 「원」이 없어서 안 걸리고, 전화번호도 마찬가지다.
    */
   if (input.type === 'info') {
-    const note = input.promoNote?.trim() ?? ''
-    const noteDigits = note.replace(/[^0-9]/g, '')
     /** 「45,000원」·「9.9만원」·「99000원」 — 금액만 본다 */
     const MONEY = /\d[\d,.]*\s*만?\s*원/g
     const money = Array.from(new Set(input.body.match(MONEY) ?? []))
-    const unsourced = money.filter((m) => {
-      const digits = m.replace(/[^0-9]/g, '')
-      return digits.length > 0 && !noteDigits.includes(digits)
-    })
-    // 이벤트를 말하는 낱말 — 적어둔 것이 없는데 나오면 만들어낸 것이다
+    // 이벤트를 말하는 낱말 — 정보글에는 나올 자리가 없다
     const eventWord = /이벤트|공동구매|특가|프로모션|할인|선착순|마감/.exec(prose)?.[0]
-    const invented = unsourced.length > 0 || (!note && Boolean(eventWord))
-    if (money.length > 0 || eventWord || note) {
+    const bad = money.length > 0 || Boolean(eventWord)
+    if (bad) {
       add({
         id: 'info-promo-source',
         group: '저품질 위험',
-        label: '마지막 홍보가 적어둔 내용인가',
-        level: invented ? 'fail' : 'pass',
-        value: invented
-          ? unsourced.length
-            ? `적어두지 않은 금액: ${unsourced.slice(0, 3).join(' · ')}`
-            : `적어둔 내용이 없는데 「${eventWord}」가 있음`
-          : note
-            ? `적어둔 내용 안에서 씀${money.length ? ` (금액 ${money.length}개 확인)` : ''}`
-            : '가격·이벤트 없음',
-        target: '홍보 칸에 적은 조건만 (적지 않은 금액·이벤트는 만들지 않습니다)',
-        hint: invented
-          ? note
-            ? `글에 있는 금액이 홍보 칸에 없습니다. 조건이 맞으면 홍보 칸에 그 금액을 적고, 아니면 본문에서 지우세요 — 확인 안 된 가격은 거짓 광고가 됩니다.`
-            : 'AI 가 없는 조건을 만들었습니다. 「마지막 홍보 내용」 칸에 실제 조건(무엇을·얼마에·언제까지)을 적고 다시 쓰거나, 본문에서 그 대목을 지우세요. 칸이 비어 있으면 시설·상담 안내만 들어갑니다.'
-          : undefined,
+        label: '정보글에 가격·이벤트',
+        level: 'fail',
+        value: money.length ? `금액: ${money.slice(0, 3).join(' · ')}` : `「${eventWord}」가 있음`,
+        target: '정보글에는 금액·이벤트를 쓰지 않습니다',
+        hint: '정보글은 지수를 쌓는 글이고 가격·이벤트는 홍보글이 맡습니다. 이 대목을 지우세요 — 확인 안 된 가격은 거짓 광고가 되고, 홍보 요소가 들어가면 네이버가 이 글을 홍보성 게시물로 분류합니다.',
         weight: 4,
       })
     }
