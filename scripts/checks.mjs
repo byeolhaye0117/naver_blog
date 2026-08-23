@@ -8417,5 +8417,53 @@ console.log('\n[95] 자동 초안이 조용히 실패하지 않는가 (2026-08-2
   ok(keys.includes('autoDraftRuns'), '실행 기록도 백업에 포함된다')
 }
 
+console.log('\n[96] 크론이 /api/write 의 응답을 제대로 읽는가 (2026-08-23)')
+/*
+ * **주소보다 이게 먼저였다.**
+ *
+ * 자동 초안이 한 편도 안 나온 진짜 이유는 크론이 `data.body` 를 읽은 것이었다. /api/write 는
+ * `{ draft: { title, body, tags }, ... }` 를 돌려준다. JSON 파싱은 성공하고 `body` 만
+ * undefined 라서 「글을 쓰지 못했습니다」로 조용히 끝났다 — 배포 주소를 고쳤어도 한 편도
+ * 안 나왔을 것이다.
+ *
+ * **타입 검사가 못 잡는 종류다.** fetch 응답은 그냥 any 이고, 라우트 파일은 테스트가
+ * 컴파일하지도 않는다. 그래서 두 파일의 **글자를 맞대어** 본다 — 이 저장소에서 「한쪽만
+ * 고친 것」을 잡는 데 이미 여러 번 쓴 방법이다.
+ */
+{
+  const { readFileSync: rf } = require('node:fs')
+  const write = rf(new URL('../app/api/write/route.ts', import.meta.url), 'utf8')
+  const cron = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
+
+  /*
+   * /api/write 의 성공 응답은 **초안을 draft 안에 담는다.** 이게 바뀌면 아래 검사들이
+   * 근거를 잃으므로 먼저 못 박는다.
+   */
+  ok(/return NextResponse\.json\(\{\s*\n\s*draft,/.test(write), '/api/write 는 초안을 draft 로 감싸 돌려준다')
+  ok(!/^\s{6}body: draft\.body,/m.test(write), '본문을 최상위 body 로도 돌려주지 않는다 (하나만 있어야 한다)')
+
+  // 크론은 그 모양대로 읽는다
+  ok(cron.includes('draft?.body'), '크론이 draft.body 를 읽는다')
+  // 주석은 빼고 본다 — 「예전에 data.body 를 읽어서 깨졌다」고 적어둔 주석까지 걸리면 안 된다
+  const code = cron.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  ok(!/\bdata\.body\b/.test(code) && !/\bdata\.title\b/.test(code), '최상위 body·title 을 읽지 않는다')
+  ok(cron.includes('best.draft?.title') && cron.includes('best.draft?.tags'), '제목·태그도 같은 자리에서 꺼낸다')
+
+  /*
+   * **모자라면 한 번 더 부른다.** /api/write 는 한 요청에 한 번만 쓴다 (두 번 쓰면 함수
+   * 실행 한도를 넘긴다). 그래서 「85점 미만·분량 미달」이면 부르는 쪽이 초안을 들고 다시
+   * 부르게 돼 있다 — 화면(Editor.tsx)이 그렇게 하고 있고, 크론도 같아야 손으로 쓴 글과
+   * 같은 수준이 나온다.
+   */
+  ok(write.includes('needsRevise') && write.includes('charMin'), '/api/write 가 「더 고쳐야 한다」를 알려준다')
+  ok(cron.includes('needsRevise') && cron.includes('charMin'), '크론이 그 신호를 본다')
+  ok(/issues: first\.data\.fixIssues/.test(cron), '고쳐 쓰기에 걸린 항목을 그대로 넘긴다')
+  const editor = rf(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+  ok(editor.includes('fixIssues'), '화면도 같은 항목을 넘긴다 (둘이 같은 절차를 쓴다)')
+
+  // 고쳐 쓰기 응답에는 rotation 이 없다 — 첫 응답 것을 지켜야 3축이 빈 값으로 저장되지 않는다
+  ok(/rotation: first\.data\.rotation/.test(cron), '고쳐 써도 유사성 3축은 첫 응답 값을 지킨다')
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

@@ -13,6 +13,31 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 /**
+ * **글쓰기 라우트가 돌려주는 모양.** 여기를 틀리면 아무 소리 없이 아무것도 안 만들어진다.
+ *
+ * 2026-08-23 에 정확히 그랬다 — 이 크론이 최상위 `body` 를 읽었는데 실제 응답은
+ * `{ draft: { title, body, tags }, ... }` 였다. 파싱은 성공하고 그 값만 undefined 라
+ * 「글을 쓰지 못했습니다」로 조용히 끝났다. **주소 문제보다 이게 먼저였다** — 주소를
+ * 고쳤어도 한 편도 안 나왔을 것이다.
+ *
+ * 라우트끼리의 약속은 타입 검사가 못 잡는다 (fetch 는 그냥 any 다). 그래서
+ * scripts/checks.mjs [96] 이 두 파일의 글자를 맞대어 본다.
+ */
+interface WriteReply {
+  draft?: { title?: string; body?: string; tags?: string[] }
+  check?: { score?: number }
+  /** 무엇으로 썼는지 — 유사성 방지 3축. 저장해야 다음 글이 다른 조합을 고른다 */
+  rotation?: { introType?: string; angle?: string; format?: string; topicGroup?: string }
+  /** 85점 미만 — 부르는 쪽이 초안을 들고 한 번 더 불러야 한다 */
+  needsRevise?: boolean
+  charCount?: number
+  charMin?: number
+  /** 고쳐 쓰기에 그대로 넘길 항목 목록 */
+  fixIssues?: string[]
+  error?: string
+}
+
+/**
  * **정보글 초안을 매일 한 편 써 둔다** (2026-08-21, 회원 요청).
  *
  * ── 왜 /api/write 를 다시 부르나 ─────────────────────────────
@@ -139,50 +164,65 @@ async function run(
    * 우회 비밀값이 있으면 함께 보내고, 없으면 아래에서 「무엇이 돌아왔는지」를 기록에 남긴다.
    */
   const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
-  const res = await fetch(`${base}/api/write`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...(bypass ? { 'x-vercel-protection-bypass': bypass } : {}),
-    },
-    body: JSON.stringify({
-      type: 'info',
-      storeId: store.id,
-      mainKeyword: assignment.mainKeyword,
-      subKeywords: [],
-      infoTopic: assignment.topic,
-    }),
-  })
-
-  const raw = await res.text()
-  const data = (() => {
-    try {
-      return JSON.parse(raw)
-    } catch {
-      return null
-    }
-  })() as
-    | {
-        title?: string
-        body?: string
-        tags?: string[]
-        check?: { score?: number }
-        /** 무엇으로 썼는지 — 유사성 방지 3축. 저장해야 다음 글이 다른 조합을 고른다 */
-        rotation?: { introType?: string; angle?: string; format?: string; topicGroup?: string }
-        error?: string
+  const ask = async (extra: Record<string, unknown> = {}) => {
+    const res = await fetch(`${base}/api/write`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(bypass ? { 'x-vercel-protection-bypass': bypass } : {}),
+      },
+      body: JSON.stringify({
+        type: 'info',
+        storeId: store.id,
+        mainKeyword: assignment.mainKeyword,
+        subKeywords: [],
+        infoTopic: assignment.topic,
+        ...extra,
+      }),
+    })
+    const raw = await res.text()
+    const data = (() => {
+      try {
+        return JSON.parse(raw) as WriteReply
+      } catch {
+        return null
       }
-    | null
+    })()
+    return { res, raw, data }
+  }
 
-  if (!res.ok || !data?.body) {
+  const first = await ask()
+
+  if (!first.res.ok || !first.data?.draft?.body) {
     /*
      * JSON 이 아니면 앞부분을 그대로 남긴다 — 배포 보호에 막히면 로그인 HTML 이 오는데,
      * 「글을 쓰지 못했습니다」만 남기면 그게 무엇 때문인지 영영 모른다.
      */
     const error =
-      data?.error ??
-      (data ? '글을 쓰지 못했습니다.' : `JSON 이 아닌 응답 (상태 ${res.status}) — ${raw.slice(0, 160)}`)
+      first.data?.error ??
+      (first.data
+        ? `글을 쓰지 못했습니다 (응답에 draft.body 가 없습니다) — ${first.raw.slice(0, 160)}`
+        : `JSON 이 아닌 응답 (상태 ${first.res.status}) — ${first.raw.slice(0, 160)}`)
     await record({ ok: false, keyword: assignment.mainKeyword, topic: assignment.topic, error })
-    return NextResponse.json({ error, assignment, status: res.status }, { status: 502 })
+    return NextResponse.json({ error, assignment, status: first.res.status }, { status: 502 })
+  }
+
+  /*
+   * **모자라면 한 번 고쳐 쓴다** — 화면이 하는 것과 같다 (app/write/Editor.tsx).
+   *
+   * /api/write 는 일부러 한 요청에 한 번만 쓴다 (두 번 쓰면 함수 실행 한도를 넘긴다).
+   * 그래서 「85점 미만」·「분량 미달」이면 **부르는 쪽이** 초안과 걸린 항목을 들고 한 번 더
+   * 부르게 돼 있다. 크론이 그걸 안 하면 손으로 쓴 글보다 늘 한 단계 나쁜 초안이 쌓인다.
+   *
+   * 두 번째가 실패하면 첫 번째 것을 그대로 쓴다 — 못 쓴 것보다 낫고, 화면에서 「고쳐 쓰기」를
+   * 다시 누를 수 있다.
+   */
+  const short = (first.data.charCount ?? 0) < (first.data.charMin ?? 0)
+  let best = first.data
+  if (first.data.needsRevise || short) {
+    const second = await ask({ draft: first.data.draft, issues: first.data.fixIssues ?? [] })
+    if (second.res.ok && second.data?.draft?.body) best = { ...second.data, rotation: first.data.rotation }
+    else console.warn('[draft] 고쳐 쓰기 실패 — 첫 초안을 그대로 저장한다', second.raw.slice(0, 160))
   }
 
   const now = new Date().toISOString()
@@ -191,20 +231,20 @@ async function run(
     type: 'info',
     status: 'draft',
     storeId: store.id,
-    title: data.title ?? '',
-    body: data.body,
+    title: best.draft?.title ?? '',
+    body: best.draft?.body ?? '',
     mainKeyword: assignment.mainKeyword,
     subKeywords: [],
-    tags: data.tags ?? [],
+    tags: best.draft?.tags ?? [],
     /*
      * **유사성 3축은 /api/write 가 고른 것을 그대로 저장한다.** 안 저장하면 다음 글에서
      * 「최근에 안 쓴 것」을 다시 계산할 때 빈 값만 보이고, 도입·형식·소재가 매번 같아진다
      * (lib/ai/prompt.ts 의 rotation 주석 — 손으로 쓸 때 이미 겪은 일이다).
      */
-    introType: data.rotation?.introType,
-    angle: data.rotation?.angle,
-    format: data.rotation?.format,
-    topicGroup: data.rotation?.topicGroup,
+    introType: best.rotation?.introType,
+    angle: best.rotation?.angle,
+    format: best.rotation?.format,
+    topicGroup: best.rotation?.topicGroup,
     // 자동 초안은 자기 칸에 남긴다 — 위 3축을 건드리지 않는다
     auto: true,
     autoTopic: assignment.topic,
@@ -220,7 +260,7 @@ async function run(
     keyword: assignment.mainKeyword,
     topic: assignment.topic,
     postId: post.id,
-    score: data.check?.score ?? null,
+    score: best.check?.score ?? null,
   })
 
   return NextResponse.json({
@@ -229,6 +269,6 @@ async function run(
     keyword: assignment.mainKeyword,
     topic: assignment.topic,
     why: assignment.why,
-    score: data.check?.score ?? null,
+    score: best.check?.score ?? null,
   })
 }
