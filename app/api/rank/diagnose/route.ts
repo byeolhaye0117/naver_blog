@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { analyzePastedSerp } from '@/lib/analysis/serp'
-import { diagnose, diagnosisToPrescription, fromAppPost, fromPublished } from '@/lib/analysis/diagnose'
+import { actionPlan, diagnose, diagnosisToPrescription, fromAppPost, fromPublished } from '@/lib/analysis/diagnose'
 import { recentBlogCount, topBlogPosts } from '@/lib/naver/blogsection'
 import { fetchPublishedPost, measureTopPosts } from '@/lib/naver/blogpost'
 import { buildCutline } from '@/lib/analysis/cutline'
@@ -117,6 +117,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       diagnosis: result,
+      // 지금 고칠 것 / 다음 글부터 할 것 — 화면이 두 갈래로 나눠 보여준다 (2026-08-23)
+      plan: actionPlan(result),
       rank,
       daysSincePublish,
       postId: appPost?.id ?? null,

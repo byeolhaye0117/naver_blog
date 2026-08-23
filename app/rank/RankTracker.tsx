@@ -13,13 +13,22 @@ import {
   rankLabel,
   type RankView,
 } from '@/lib/analysis/rank'
-import { FIRST_PAGE, OUT_OF_RANGE, SETTLE_DAYS, shouldDiagnose, type Diagnosis } from '@/lib/analysis/diagnose'
+import {
+  FIRST_PAGE,
+  OUT_OF_RANGE,
+  SETTLE_DAYS,
+  shouldDiagnose,
+  type ActionPlan,
+  type Diagnosis,
+} from '@/lib/analysis/diagnose'
 import { SECTION_CAP } from '@/lib/naver/blogsection'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
 import LineChart from '@/components/LineChart'
 
 interface DiagnoseResult {
   diagnosis: Diagnosis
+  /** 지금 고칠 것 / 다음 글부터 할 것 (2026-08-23) */
+  plan?: ActionPlan
   rank: number | null
   daysSincePublish: number
   /** 앱에서 쓴 글이면 그 id — 네이버에서 읽어온 글은 null */
@@ -657,9 +666,21 @@ export default function RankTracker({
                             ? `내 글은 네이버에서 직접 읽었습니다 (${got.measuredMine.charCount.toLocaleString()}자 · 이미지 ${got.measuredMine.imageCount}장). 앱에서 쓰지 않은 글도 진단합니다.`
                             : `내 글은 앱에 저장된 본문으로 비교했습니다 (${got.measuredMine.charCount.toLocaleString()}자 · 이미지 ${got.measuredMine.imageCount}장).`}
                         </p>
-                        {got.diagnosis.fixes.length > 0 && (
-                          <ul className="mt-2 space-y-1.5">
-                            {got.diagnosis.fixes.map((f) => (
+                        {/*
+                          **지금 고칠 것과 다음 글에 할 것을 가른다** (2026-08-23 회원 요청).
+                          「제목이 짧다」는 그 글을 열어 고치면 되지만 「상위가 최근 글로 계속
+                          교체된다」는 그 글을 고쳐도 안 된다 — 섞어 놓으면 안 되는 일에
+                          시간을 쓰게 된다. 갈래를 나누는 규칙은 lib/analysis/diagnose.ts 에 있다.
+                        */}
+                        {([
+                          { key: 'now', head: '① 지금 그 글을 열어 고치세요', note: got.plan?.nowNote, list: got.plan?.now ?? [] },
+                          { key: 'next', head: '② 다음 글부터는 이렇게 쓰세요', note: got.plan?.nextNote, list: got.plan?.next ?? [] },
+                        ] as const).map((g) => g.list.length > 0 && (
+                          <div key={g.key} className="mt-2.5">
+                            <p className="text-[12px] font-bold">{g.head}</p>
+                            {g.note && <p className="muted mt-0.5 text-[11px] leading-relaxed">{g.note}</p>}
+                          <ul className="mt-1.5 space-y-1.5">
+                            {g.list.map((f) => (
                               <li key={f.id} className="panel bd rounded-xl border px-3 py-2.5">
                                 {/*
                                   비교값을 ml-auto 로 같은 줄 오른쪽에 붙였더니, 휴대폰에서
@@ -679,7 +700,8 @@ export default function RankTracker({
                               </li>
                             ))}
                           </ul>
-                        )}
+                          </div>
+                        ))}
                         {got.diagnosis.note && (
                           <p className="muted mt-2 text-[11px] leading-relaxed">{got.diagnosis.note}</p>
                         )}

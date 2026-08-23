@@ -6,6 +6,7 @@ import { readDB } from '@/lib/store'
 import { measureTopPosts } from '@/lib/naver/blogpost'
 import { buildCutline } from '@/lib/analysis/cutline'
 import { scanSponsorship } from '@/lib/analysis/agency'
+import { actionPlan, diagnose, fromAppPost, pickMyPost } from '@/lib/analysis/diagnose'
 
 export const dynamic = 'force-dynamic'
 // 상위 글 본문까지 읽으므로(6개) 기본 10초로는 뒤쪽이 잘린다
@@ -64,7 +65,8 @@ export async function POST(req: Request) {
     const cutline = buildCutline(measured)
 
     // 우리 지점 이름을 넘겨야 "우리 상호" 와 "남의 상호" 를 가를 수 있다
-    const myNames = (await readDB()).stores.flatMap((st) => [st.name, st.legalName])
+    const db = await readDB()
+    const myNames = db.stores.flatMap((st) => [st.name, st.legalName])
 
     const analysis = analyzePastedSerp(
       keyword,
@@ -88,7 +90,42 @@ export async function POST(req: Request) {
       ...scanSponsorship(m.text, titleOf.get(m.url) ?? ''),
     }))
 
-    return NextResponse.json({ analysis, sponsorScan })
+    /*
+     * **우리 글이 무엇이 부족한지도 함께 낸다** (2026-08-23).
+     *
+     * 회원: "이거는 상위노출 분석이랑 똑같잖아. 발행한 우리 글에 정확이 부족한점 그래서
+     * 발행한 후 어떻게해야하고 앞으로발행할건 어떻게 해야하는지 알려주면 좋겠어."
+     *
+     * 진단기는 이미 있었다 — 순위 화면에서만 돌고 있었을 뿐이다. 여기서 한 번 더
+     * 조회하지 않는다: 상위 글은 방금 읽었고(cutline), 우리 글 본문은 앱에 있다.
+     */
+    const mine = (() => {
+      const post = pickMyPost(db.posts, keyword)
+      if (!post) return null
+      const target = db.rankTargets.find((t) => t.keyword.trim() === keyword)
+      const snaps = target
+        ? db.rankSnapshots
+            .filter((s) => s.targetId === target.id)
+            .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+        : []
+      const rank = snaps.length ? (snaps[snaps.length - 1].rank ?? null) : null
+      const days = post.publishedAt
+        ? Math.floor((Date.now() - Date.parse(post.publishedAt)) / 86400000)
+        : 0
+      const diagnosis = diagnose({ post: fromAppPost(post), serp: analysis, rank, daysSincePublish: days })
+      return {
+        postId: post.id,
+        title: post.title,
+        publishedUrl: post.publishedUrl ?? null,
+        publishedAt: post.publishedAt ?? null,
+        days,
+        rank,
+        diagnosis,
+        plan: actionPlan(diagnosis),
+      }
+    })()
+
+    return NextResponse.json({ analysis, sponsorScan, mine })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : '상위노출 분석 중 오류가 발생했습니다.' },

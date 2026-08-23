@@ -2012,7 +2012,7 @@ ok(SPL.usable.length + SPL.rivals.length + SPL.otherTrades.length === 4, '문체
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[39] 발행 후 실패 진단')
-const { diagnose, diagnosisToPrescription, shouldDiagnose, fromAppPost, fromPublished, OUT_OF_RANGE, FIRST_PAGE, SETTLE_DAYS } =
+const { diagnose, diagnosisToPrescription, shouldDiagnose, fromAppPost, fromPublished, actionPlan, pickMyPost, OUT_OF_RANGE, FIRST_PAGE, SETTLE_DAYS } =
   require(`${OUT}/analysis/diagnose.js`)
 
 // 발행 직후의 낮은 순위는 실패가 아니다
@@ -2069,6 +2069,96 @@ ok(DX.verdict.includes(`${OUT_OF_RANGE}위 안에 안 잡힙니다`) && DX.verdi
 ok(Array.isArray(DX.passed) && Array.isArray(DX.skipped), '통과·건너뜀 목록을 돌려준다')
 ok(DX.fixes.length + DX.passed.length + DX.skipped.length >= 8, '검사한 항목 수가 고친 항목 수보다 많다',
   `고침 ${DX.fixes.length} + 통과 ${DX.passed.length} + 못잼 ${DX.skipped.length}`)
+
+/*
+ * **지금 고칠 것과 다음 글에 할 것을 가른다** (2026-08-23 회원 요청).
+ *
+ * 회원: "발행한 우리 글에 정확이 부족한점 그래서 발행한 후 어떻게해야하고 앞으로발행할건
+ * 어떻게 해야하는지 알려주면 좋겠어."
+ *
+ * 고칠 것을 한 줄로 늘어놓기만 하면 성격이 정반대인 것이 섞인다. 「제목이 짧다」는 그 글을
+ * 열어 고치면 되지만, 「상위가 최근 글로 계속 교체된다」는 그 글을 아무리 고쳐도 안 된다
+ * (발행일은 고쳐지지 않는다). 섞어 두면 안 되는 일에 시간을 쓰거나 되는 일을 넘긴다.
+ */
+{
+  // 갈래를 안 정한 항목이 하나라도 있으면 그 항목은 화면에서 **사라진다** — 둘 다 아닌 곳으로 간다
+  ok(DX.fixes.every((f) => f.when === 'now' || f.when === 'next'), '모든 항목이 갈래를 밝힌다',
+    DX.fixes.filter((f) => !f.when).map((f) => f.id).join(' · '))
+
+  const plan = actionPlan(DX)
+  ok(plan.now.length + plan.next.length === DX.fixes.length, '나눠도 하나도 잃지 않는다',
+    `${plan.now.length} + ${plan.next.length} = ${DX.fixes.length}`)
+
+  const nowIds = plan.now.map((f) => f.id)
+  const nextIds = plan.next.map((f) => f.id)
+  // 그 글을 열어 고치면 되는 것
+  for (const id of ['title-short', 'title-no-keyword', 'body-short', 'body-images', 'headings', 'tokens']) {
+    ok(nowIds.includes(id), `「${id}」 는 지금 그 글에서 고친다`)
+  }
+  /*
+   * 그 글로는 안 되는 것. **최신성이 특히 중요하다** — 발행일은 수정해도 바뀌지 않는데
+   * 「지금 고치세요」에 넣으면 회원이 고치고 나서 왜 최신 글로 안 쳐주는지 묻게 된다.
+   */
+  for (const id of ['freshness', 'dominated', 'rival-brands']) {
+    ok(nextIds.includes(id), `「${id}」 는 그 글을 고쳐서 되는 일이 아니다`)
+  }
+  ok(plan.nowNote.includes('발행일은 고쳐도 바뀌지 않습니다'), '발행일은 못 고친다는 것을 함께 말한다')
+  ok(plan.nextNote.includes('다음 글'), '다음 글 이야기임을 밝힌다')
+
+  // 고칠 게 없을 때도 두 줄 다 말이 되게 (빈 화면에 아무 말도 없으면 「안 돌았나」가 된다)
+  const clean = actionPlan({ verdict: '', fixes: [], passed: [], skipped: [] })
+  ok(clean.now.length === 0 && clean.next.length === 0, '고칠 게 없으면 둘 다 비어 있다')
+  ok(clean.nowNote.includes('고칠 것은 없습니다'), '고칠 게 없으면 없다고 말한다', clean.nowNote)
+  ok(clean.nextNote.includes('그대로'), '다음 글도 그대로 가면 된다고 말한다')
+}
+
+/*
+ * **상위노출 분석 화면이 우리 글을 찾을 수 있어야 한다.**
+ *
+ * 회원: "이거는 상위노출 분석이랑 똑같잖아." 그 화면은 남의 글 통계만 보여주고 있었다.
+ * 진단기는 이미 있었는데 우리 글을 찾는 조각이 없어서 순위 화면에서만 돌았다.
+ */
+{
+  const post = (patch) => ({ id: 'x', status: 'published', mainKeyword: '', body: '본문', ...patch })
+  const a = post({ id: 'a', mainKeyword: '쌍용동 헬스장', publishedAt: '2026-07-01' })
+  const b = post({ id: 'b', mainKeyword: '쌍용동헬스장', publishedAt: '2026-08-01' })
+  /*
+   * **띄어쓰기가 다르면 다른 키워드다.** 회원은 「쌍용동헬스장」과 「쌍용동 헬스장」을 따로
+   * 추적하고 있다 (검색 결과가 다르다). 정확히 같은 것이 있으면 그것을 쓴다 — 안 그러면
+   * 「쌍용동 헬스장」 분석에 「쌍용동헬스장」 글의 진단이 붙는다.
+   */
+  ok(pickMyPost([b, a], '쌍용동 헬스장')?.id === 'a', '정확히 같은 키워드의 글을 먼저 고른다')
+  ok(pickMyPost([a, b], '쌍용동헬스장')?.id === 'b', '반대쪽도 마찬가지')
+  // 정확히 같은 것이 없을 때만 띄어쓰기를 무시한다 (아예 못 찾는 것보다는 낫다)
+  ok(pickMyPost([a], '쌍용동헬스장')?.id === 'a', '없으면 띄어쓰기를 무시하고 찾는다')
+  // 같은 키워드로 여러 편이면 가장 최근 것 — 그게 지금 그 자리를 노리는 글이다
+  const older = post({ id: 'old', mainKeyword: '쌍용동 헬스장', publishedAt: '2026-06-01' })
+  ok(pickMyPost([older, a], '쌍용동 헬스장')?.id === 'a', '여러 편이면 가장 최근 것')
+  // 초안·빈 글은 진단할 대상이 아니다
+  ok(!pickMyPost([post({ status: 'draft', mainKeyword: '쌍용동 헬스장' })], '쌍용동 헬스장'), '초안은 고르지 않는다')
+  ok(!pickMyPost([post({ mainKeyword: '쌍용동 헬스장', body: '  ' })], '쌍용동 헬스장'), '본문이 비면 고르지 않는다')
+  ok(!pickMyPost([a], '두정동 헬스장'), '다른 키워드 글을 끌어오지 않는다')
+  ok(!pickMyPost(undefined, '쌍용동 헬스장') && !pickMyPost([a], '  '), '입력이 비어도 터지지 않는다')
+}
+
+/*
+ * **화면이 두 갈래를 실제로 그려야 한다.** 갈래를 만들어 놓고 화면이 fixes 를 통째로
+ * 늘어놓으면 아무것도 달라지지 않는다 — 이 저장소에서 「한쪽만 고친 것」이 반복된 자리다.
+ */
+{
+  const { readFileSync: rf } = require('node:fs')
+  const gap = rf(new URL('../app/serp/MyPostGap.tsx', import.meta.url), 'utf8')
+  ok(gap.includes('plan.now') && gap.includes('plan.next'), '상위노출 분석 화면이 두 갈래로 그린다')
+  ok(gap.includes('f.mine') && gap.includes('f.theirs'), '우리 값과 상위 기준을 나란히 놓는다')
+  const serpUi = rf(new URL('../app/serp/SerpAnalyzer.tsx', import.meta.url), 'utf8')
+  ok(serpUi.includes('MyPostGap') && serpUi.includes('json.mine'), '분석 결과에서 우리 글 진단을 받아 넘긴다')
+  const serpApi = rf(new URL('../app/api/serp/route.ts', import.meta.url), 'utf8')
+  ok(serpApi.includes('pickMyPost') && serpApi.includes('actionPlan'), '상위노출 분석이 우리 글까지 진단한다')
+  const rank = rf(new URL('../app/rank/RankTracker.tsx', import.meta.url), 'utf8')
+  ok(rank.includes('plan?.now') && rank.includes('plan?.next'), '순위 화면도 같은 두 갈래로 그린다')
+  const rankApi = rf(new URL('../app/api/rank/diagnose/route.ts', import.meta.url), 'utf8')
+  ok(rankApi.includes('actionPlan'), '순위 진단도 갈래를 함께 내려준다')
+}
 
 // 네이버에서 읽어온 글은 소제목을 못 재므로 "건너뜀" 에 이유가 남아야 한다
 const PUB_FOR_SKIP = fromPublished(
