@@ -63,8 +63,17 @@ export interface ActionInput {
   stores: Store[]
   posts: Post[]
   rankTargets: RankTarget[]
-  /** 순위가 직전 조회보다 떨어진 키워드 수 */
-  fallenCount: number
+  /**
+   * 순위가 직전 조회보다 떨어진 키워드.
+   *
+   * **개수만 받다가 목록으로 바꿨다** (2026-08-23). 회원: "밀린키워드 분석을 원해서
+   * 상위노출분석을 눌렀는데 정작 분석 창이 아니라 상위 노출 키워드 분석탭으로 가고 있어."
+   *
+   * 개수만 알면 링크를 `/serp` 로밖에 못 건다. 그러면 빈 입력칸이 뜨고, **앱이 이미 아는
+   * 키워드를 회원이 다시 타이핑해야 한다.** 어느 키워드가 밀렸는지까지 받아야 분석을
+   * 바로 띄울 수 있다 (`/serp?keyword=…` 는 열자마자 스스로 분석한다).
+   */
+  fallen: { keyword: string }[]
   /**
    * 발행 2주가 지났는데 1페이지 밖인 항목 — 진단이 준비돼 있다는 뜻이다.
    *
@@ -96,7 +105,8 @@ function missingType(b: ActionInput['balance']): { type: string; label: string }
  * 항목이 없을 수는 없다 — 다 잘 돌아가고 있으면 다음 글감을 고르는 것이 할 일이다.
  */
 export function nextActions(input: ActionInput): NextAction[] {
-  const { stores, posts, rankTargets, fallenCount, stuck, balance, cadence, keys } = input
+  const { stores, posts, rankTargets, stuck, balance, cadence, keys } = input
+  const fallen = (input.fallen ?? []).filter((f) => f.keyword?.trim())
   const out: NextAction[] = []
 
   const drafts = posts.filter((p) => p.status === 'draft')
@@ -214,13 +224,21 @@ export function nextActions(input: ActionInput): NextAction[] {
     })
   }
 
-  if (fallenCount > 0) {
+  if (fallen.length) {
+    /*
+     * **키워드를 링크에 실어 보낸다.** `/serp?keyword=…` 는 열자마자 스스로 분석을 돌린다
+     * (SerpAnalyzer 의 autoRan). 키워드 없이 보내면 빈 입력칸만 뜨고, 회원은 앱이 이미
+     * 아는 키워드를 다시 타이핑해야 한다 — 「분석 창이 아니라 키워드 분석 탭으로 간다」는
+     * 지적이 정확히 이것이었다. 앱 안의 다른 「상위노출 분석」 링크는 전부 키워드를 싣고
+     * 있었고 여기만 빠져 있었다.
+     */
+    const first = fallen[0].keyword.trim()
     out.push({
       id: 'fallen',
-      title: `밀린 키워드 ${fallenCount}개의 원인을 확인하세요`,
-      why: '지금 그 자리를 차지한 글들의 제목·최신성·소재를 보면 무엇이 부족했는지 나옵니다.',
-      href: '/serp',
-      cta: '상위노출 분석',
+      title: `밀린 키워드 ${fallen.length}개의 원인을 확인하세요`,
+      why: `「${first}」부터 봅니다 — 지금 그 자리를 차지한 글들의 제목·최신성·소재를 보면 무엇이 부족했는지 나옵니다${fallen.length > 1 ? ` (나머지 ${fallen.length - 1}개는 순위 화면에서 이어서 볼 수 있습니다)` : ''}.`,
+      href: `/serp?keyword=${encodeURIComponent(first)}`,
+      cta: `「${first}」 분석 열기`,
       tone: 'bad',
     })
   }

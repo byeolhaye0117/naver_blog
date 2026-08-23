@@ -53,7 +53,8 @@ export default async function Dashboard() {
     // 오늘 자동 초안을 가려내려면 오늘 날짜가 필요하다 (nextActions 는 시각을 안 만든다)
     today: new Date().toISOString().slice(0, 10),
     autoDraftRuns: db.autoDraftRuns,
-    fallenCount: fallen.length,
+    // 개수가 아니라 **어느 키워드가** 밀렸는지 넘긴다 — 그래야 분석을 바로 띄운다
+    fallen: fallen.map((v) => ({ keyword: v.target.keyword })),
     // 발행 2주가 지났는데 1페이지 밖인 것 — 크론이 밤에 진단해 처방을 만들어 둔다
     stuck: views
       .filter((v) => {
