@@ -60,6 +60,22 @@ export default async function PostsPage() {
         runs={db.autoDraftRuns}
         today={today}
         hasTodayDraft={hasTodayAutoDraft(db.posts, today)}
+        plan={db.autoDraftPlan}
+        /*
+         * 고를 수 있는 키워드 — 순위 추적에 등록한 것이 먼저다 (회원이 「이걸로 올라가고
+         * 싶다」고 적어둔 목록이라 자동 글이 그 밖으로 나가지 않는다). 지점의 지역 키워드도
+         * 함께 보여준다 — 아직 순위 추적을 안 걸었어도 고를 수 있어야 한다.
+         */
+        keywordPool={[
+          ...new Set(
+            [
+              ...db.rankTargets.map((t) => t.keyword),
+              ...db.stores.flatMap((s) => s.localKeywords ?? []),
+            ]
+              .map((k) => k.trim())
+              .filter(Boolean)
+          ),
+        ]}
       />
 
       <StorageNotice />

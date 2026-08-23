@@ -265,11 +265,44 @@ export interface AutoDraftRun {
   manual?: boolean
 }
 
+/**
+ * **매일 자동 초안을 무엇으로 쓸지 회원이 정해 둔 것** (2026-08-23 요청).
+ *
+ * "매일 새벽에 정보성 글이 발행되잖아 그거 주제랑 키워드 내가 원하는걸로 선택해서 하고 싶어."
+ *
+ * 세 단계로 정할 수 있게 한다 — 아무것도 안 정해도 지금처럼 돌아간다.
+ *   ① **아무 설정 없음** → 순위 추적 키워드 × 기본 주제 10개를 돌아가며 쓴다 (여태 방식)
+ *   ② **범위만 고름** (keywords·topics) → 고른 것 안에서만 돌아가며 쓴다
+ *   ③ **차례까지 지정** (queue) → 줄 세운 순서대로 하나씩 꺼내 쓴다. 다 쓰면 ②로 돌아간다
+ *
+ * ②를 남겨둔 이유: 매일 하나씩 지정하게 하면 결국 손으로 쓰는 것과 같아진다. 회원이
+ * 「이 다섯 키워드로만 돌려줘」라고 한 번 정해두면 그 뒤로는 손대지 않아도 된다.
+ */
+export interface AutoDraftPlan {
+  /** 자동 초안을 아예 멈춘다 — 지우는 것보다 끄는 편이 낫다 (설정이 남는다) */
+  off?: boolean
+  /** 쓸 키워드. 비어 있으면 순위 추적에 등록한 키워드 전부 */
+  keywords?: string[]
+  /** 쓸 주제. 비어 있으면 기본 주제 목록 전부. 직접 적은 주제도 들어간다 */
+  topics?: string[]
+  /** 다음에 쓸 것들 — 위에서부터 하나씩. 성공했을 때만 빠진다 */
+  queue?: { keyword: string; topic: string }[]
+  /** 마지막으로 고친 때 */
+  updatedAt?: string
+}
+
 export interface DB {
   stores: Store[]
   posts: Post[]
   /** 매일 자동 초안 실행 기록 — 조용히 실패하지 않게 (2026-08-23) */
   autoDraftRuns?: AutoDraftRun[]
+  /**
+   * 자동 초안을 무엇으로 쓸지 (2026-08-23 회원 요청).
+   *
+   * **목록이 아니라 덩어리 하나다.** store.ts 의 DB_OBJECT_KEYS 에 이름이 없으면 저장은
+   * 성공하고 다음 읽기에서 조용히 사라진다 — 그 사고가 이 저장소에서 이미 있었다.
+   */
+  autoDraftPlan?: AutoDraftPlan
   rankTargets: RankTarget[]
   rankSnapshots: RankSnapshot[]
   placeRanks: PlaceRank[]
