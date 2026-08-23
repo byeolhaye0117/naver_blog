@@ -25,6 +25,18 @@ export interface Fix {
   action: string
   /** high = 이것부터 고친다 */
   severity: 'high' | 'mid'
+  /**
+   * **이미 올린 그 글을 고쳐서 되는 일인가, 다음 글부터 할 일인가.**
+   *
+   * 회원 지적 (2026-08-23): "발행한 우리 글에 정확히 부족한점 그래서 발행한 후
+   * 어떻게해야하고 앞으로발행할건 어떻게 해야하는지 알려주면 좋겠어."
+   *
+   * 여태 고칠 것을 한 줄로 늘어놓기만 했다. 그런데 **성격이 전혀 다른 것이 섞여 있다** —
+   * 「제목이 짧다」는 지금 열어서 고치면 되지만, 「상위가 최근 글로 계속 교체된다」는
+   * 그 글을 아무리 고쳐도 해결되지 않는다 (발행일은 고쳐지지 않는다). 섞어 놓으면
+   * 회원은 안 되는 일에 시간을 쓰거나, 되는 일을 안 하고 넘긴다.
+   */
+  when: 'now' | 'next'
 }
 
 /**
@@ -152,6 +164,7 @@ export function diagnose(input: {
       theirs: `상위 평균 ${theirTitle}자`,
       action: `제목을 ${Math.max(28, theirTitle - 4)}~${theirTitle + 4}자로 다시 쓰세요. 세부 의도(새벽·여성전용·가격·초보 같은 말)를 더 담으면 자연스럽게 길어집니다.`,
       severity: 'high',
+      when: 'now',
     })
   }
 
@@ -164,6 +177,7 @@ export function diagnose(input: {
       theirs: `상위 글 ${serp.stats.keywordInTitleRate}%가 제목에 포함`,
       action: `제목 앞부분에 "${kw}"를 그대로 넣으세요.`,
       severity: 'high',
+      when: 'now',
     })
   } else if (kw && pos > 6 && serp.stats.keywordFrontRate >= 50) {
     fixes.push({
@@ -173,6 +187,7 @@ export function diagnose(input: {
       theirs: `상위 글 ${serp.stats.keywordFrontRate}%가 앞 7자 안`,
       action: `"${kw}"를 제목 맨 앞으로 옮기세요.`,
       severity: 'high',
+      when: 'now',
     })
   } else if (kw && pos >= 0) {
     passed.push(pos <= 6 ? '제목 맨 앞에 메인 키워드가 있습니다' : '제목에 메인 키워드가 있습니다')
@@ -197,6 +212,7 @@ export function diagnose(input: {
         action: `본문을 ${n(c.charTarget)}자쯤으로 맞추세요. 분량만 채우지 말고 구체 수치(가격·운영시간·기구 수·거리)와 직접 겪은 장면을 더하세요. 그 이상 늘리는 것은 도움이 안 됩니다 — 실측에서 3,000자를 넘긴 글은 평균 7.5위였습니다.`,
         // 분량은 순위를 가르는 항목이 아니다 (홍보글에서는 무관했다) — 급을 낮춘다
         severity: 'mid',
+        when: 'now',
       })
     }
     /*
@@ -214,6 +230,7 @@ export function diagnose(input: {
         theirs: `실측 최적 ${IMAGE_BEST_MIN}~${IMAGE_BEST_MAX}장`,
         action: `직접 촬영한 이미지를 ${c.imageTarget}장으로 맞추세요.`,
         severity: 'high',
+        when: 'now',
       })
     } else {
       fixes.push({
@@ -223,6 +240,7 @@ export function diagnose(input: {
         theirs: `실측 최적 ${IMAGE_BEST_MIN}~${IMAGE_BEST_MAX}장`,
         action: `${IMAGE_BEST_MIN}~${IMAGE_BEST_MAX}장으로 줄이세요. 실측에서 11장 이상은 1~3위 비율이 18%로 떨어졌습니다 (6~10장은 54%). 사진을 늘려 채우는 것은 도움이 안 됩니다.`,
         severity: 'mid',
+        when: 'now',
       })
     }
     if (!c.videoExpected) passed.push('영상 — 상위권도 절반 미만이라 필수가 아닙니다')
@@ -235,6 +253,7 @@ export function diagnose(input: {
         theirs: `상위 글 절반 이상이 영상 ${Math.max(1, c.videoMedian)}개`,
         action: '30초~3분 영상 1개를 넣으세요 (시설 한 바퀴·기구 사용 장면).',
         severity: 'mid',
+        when: 'now',
       })
     }
   }
@@ -254,6 +273,7 @@ export function diagnose(input: {
       theirs: '4~6개 권장',
       action: '소제목을 4개 이상으로 나누세요. 상위 제목에 반복되는 말을 소제목으로 쓰면 스마트블록에 걸릴 기회가 생깁니다.',
       severity: 'mid',
+      when: 'now',
     })
   }
 
@@ -278,6 +298,7 @@ export function diagnose(input: {
       theirs: '상위 제목에 반복 등장',
       action: `"${missingTokens.slice(0, 3).join('", "')}" 를 소제목이나 본문에 자연스럽게 넣으세요. 검색하는 사람이 실제로 알고 싶은 것입니다.`,
       severity: 'mid',
+      when: 'now',
     })
   }
 
@@ -294,6 +315,7 @@ export function diagnose(input: {
       action:
         '같은 방식(방문 후기)으로 맞붙되, 그 업체 이름은 절대 쓰지 마세요 — 남의 가게를 홍보하는 글이 됩니다. 우리 지점 강점을 같은 자리에 놓고, 후기 편수를 늘리는 쪽이 실효가 있습니다.',
       severity: 'mid',
+      when: 'next',
     })
   }
 
@@ -312,6 +334,7 @@ export function diagnose(input: {
       action:
         '이 키워드는 최신성 압박이 큽니다. 고쳐 쓴 뒤에도 밀리면 같은 주제를 새 글로 다시 올리는 편이 빠릅니다.',
       severity: 'mid',
+      when: 'next',
     })
   }
 
@@ -326,6 +349,7 @@ export function diagnose(input: {
       theirs: `"${worst.name}" 가 ${worst.count}칸`,
       action: `이 키워드는 정면으로 이기기 어렵습니다. "${kw} 가격"·"${kw} 새벽" 처럼 세부 의도를 붙인 키워드로 우회하세요.`,
       severity: 'mid',
+      when: 'next',
     })
   }
 
@@ -352,6 +376,80 @@ export function diagnose(input: {
     note: fixes.length
       ? undefined
       : '이 키워드는 글 품질 문제가 아닙니다. 블로그 지수(C-Rank)가 쌓여야 하는 구간이니 정보글을 꾸준히 올리거나, 세부 의도를 붙인 키워드로 우회하세요.',
+  }
+}
+
+/**
+ * 이 키워드로 **우리가 이미 발행한 글**을 찾는다.
+ *
+ * 상위노출 분석 화면이 「상위 글은 이렇더라」만 보여주고 있었다 (회원: "이거는 상위노출
+ * 분석이랑 똑같잖아"). 우리 글을 찾아야 「그래서 우리 글은 무엇이 부족한가」를 말할 수 있다.
+ *
+ * **띄어쓰기는 무시하되 정확히 같은 것을 먼저 본다.** 회원은 「쌍용동헬스장」과
+ * 「쌍용동 헬스장」을 **따로** 추적하고 있다 — 둘은 검색 결과가 다른 별개의 키워드다.
+ * 그래서 정확히 일치하는 글이 있으면 그것을 쓰고, 없을 때만 띄어쓰기를 무시하고 찾는다.
+ */
+export function pickMyPost<T extends { status: string; mainKeyword: string; body: string; publishedAt?: string }>(
+  posts: T[] | undefined,
+  keyword: string
+): T | null {
+  const kw = keyword.trim()
+  if (!kw) return null
+  const flat = (v: string) => v.replace(/\s+/g, '')
+  const published = (posts ?? [])
+    .filter((p) => p.status === 'published' && p.body.trim())
+    // 같은 키워드로 여러 편이면 **가장 최근 것** — 그게 지금 그 자리를 노리는 글이다
+    .sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''))
+  return (
+    published.find((p) => p.mainKeyword.trim() === kw) ??
+    published.find((p) => flat(p.mainKeyword) === flat(kw)) ??
+    null
+  )
+}
+
+export interface ActionPlan {
+  /** 이미 올린 그 글을 열어서 고치면 되는 것 */
+  now: Fix[]
+  /** 그 글로는 안 되는 것 — 다음 글부터 */
+  next: Fix[]
+  /** 「지금 그 글」에 대한 한 줄 */
+  nowNote: string
+  /** 「다음 글」에 대한 한 줄 */
+  nextNote: string
+}
+
+/**
+ * 진단을 **두 갈래 실행 계획**으로 나눈다.
+ *
+ * ── 왜 나누나 (2026-08-23 회원 지적) ────────────────────────
+ * "발행한 우리 글에 정확히 부족한점 그래서 발행한 후 어떻게해야하고 앞으로발행할건
+ * 어떻게 해야하는지 알려주면 좋겠어."
+ *
+ * 여태는 고칠 것을 한 줄로 늘어놓기만 했다. 그런데 그 안에 **성격이 정반대인 것**이
+ * 섞여 있다:
+ *   · 「제목이 짧다」·「이미지가 3장이다」 → 지금 그 글을 열어 고치면 끝난다
+ *   · 「상위가 최근 글로 계속 교체된다」·「한 블로그가 선점했다」 → 그 글을 아무리
+ *     고쳐도 달라지지 않는다. 다음 글의 키워드·주기를 바꿔야 하는 이야기다
+ *
+ * 섞어 두면 회원은 **안 되는 일에 시간을 쓰거나, 되는 일을 안 하고 넘긴다.** 그래서
+ * 「지금 그 글에 할 것」과 「다음 글부터 할 것」을 갈라서 준다.
+ */
+export function actionPlan(d: Diagnosis): ActionPlan {
+  const now = d.fixes.filter((f) => f.when === 'now')
+  const next = d.fixes.filter((f) => f.when === 'next')
+  return {
+    now,
+    next,
+    /*
+     * **발행일은 못 고친다는 것을 함께 말한다.** 네이버에서 글을 수정해도 그 글의
+     * 발행 시점은 그대로다. 이걸 안 알려주면 「고쳤는데 왜 최신 글로 안 쳐주지」가 된다.
+     */
+    nowNote: now.length
+      ? `네이버에서 그 글을 열어 ${now.length}가지를 고치세요. 제목·본문·사진은 고칠 수 있지만 **발행일은 고쳐도 바뀌지 않습니다** — 최신성이 문제인 키워드라면 아래 「다음 글부터」를 보세요.`
+      : '이미 올린 글에서 고칠 것은 없습니다. 글 자체는 상위권 기준을 맞췄습니다.',
+    nextNote: next.length
+      ? `이건 그 글을 고쳐서 되는 것이 아닙니다 — ${next.length}가지는 다음 글의 키워드·형식·주기를 바꿔야 합니다.`
+      : '다음 글은 지금 방식 그대로 이어가시면 됩니다.',
   }
 }
 

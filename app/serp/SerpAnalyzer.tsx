@@ -9,8 +9,27 @@ import { Badge, Card, Empty, Field, MockNotice, Stat, inputClass } from '@/compo
 import { IconDoc, IconPencil, IconTarget, IconTrend } from '@/components/icons'
 import { naverBlogTabUrl, naverSearchUrl } from '@/lib/analysis/rank'
 import { parsePastedSerp, toEditableText } from '@/lib/analysis/paste'
+import type { ActionPlan, Diagnosis } from '@/lib/analysis/diagnose'
+import MyPostGap from './MyPostGap'
 
 type Mode = 'auto' | 'paste'
+
+/**
+ * 이 키워드로 **우리가 이미 발행한 글**의 진단.
+ *
+ * 회원 지적 (2026-08-23): "이거는 상위노출 분석이랑 똑같잖아. 발행한 우리 글에 정확이
+ * 부족한점 ... 알려주면 좋겠어." 상위 글 통계만 보여주고 우리 글 이야기는 없었다.
+ */
+export interface MyGap {
+  postId: string
+  title: string
+  publishedUrl: string | null
+  publishedAt: string | null
+  days: number
+  rank: number | null
+  diagnosis: Diagnosis
+  plan: ActionPlan
+}
 
 interface SponsorRow {
   url: string
@@ -29,6 +48,8 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
    * 본문은 커트라인 계산에 이미 읽으므로 조회가 더 늘지 않는다.
    */
   const [sponsor, setSponsor] = useState<SponsorRow[]>([])
+  /** 우리 글 진단 — 이 키워드로 발행한 글이 있을 때만 */
+  const [mine, setMine] = useState<MyGap | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -55,6 +76,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
       if (!res.ok) throw new Error(json.error ?? '분석에 실패했습니다.')
       setData(json.analysis)
       setSponsor(json.sponsorScan ?? [])
+      setMine(json.mine ?? null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '분석 중 오류가 발생했습니다.')
       // 자동이 막혔을 때 사용자가 손으로 탭을 찾아 옮겨가지 않게, 붙여넣기 칸을 바로 펼쳐 준다
@@ -97,6 +119,7 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
       setData(json.analysis)
       // 붙여넣기 경로는 본문을 읽지 않으므로 대가성 표기를 알 수 없다 — 비워 둔다
       setSponsor([])
+      setMine(json.mine ?? null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '분석 중 오류가 발생했습니다.')
     } finally {
@@ -319,6 +342,8 @@ export default function SerpAnalyzer({ initialKeyword }: { initialKeyword: strin
                 ` 날짜를 아는 항목은 ${data.stats.datedCount}개라, 최신성은 그 ${data.stats.datedCount}개로만 계산했습니다.`}
             </p>
           )}
+
+          {mine && <MyPostGap mine={mine} keyword={data.keyword} />}
 
           <Card
             title="이 키워드로 상위 가려면"
