@@ -968,7 +968,7 @@ ok(both.some((a) => a.id === 'rank'), '순위 등록은 뒤에 남는다')
  */
 {
   const TODAY = '2026-08-21'
-  const autoPost = { id: 'a1', status: 'draft', type: 'info', format: 'auto', mainKeyword: '쌍용동 헬스장', topicGroup: '새벽 운동 시작하기', createdAt: `${TODAY}T20:00:00.000Z` }
+  const autoPost = { id: 'a1', status: 'draft', type: 'info', auto: true, mainKeyword: '쌍용동 헬스장', autoTopic: '새벽 운동 시작하기', createdAt: `${TODAY}T20:00:00.000Z` }
   const withAuto = nextActions({ ...base, today: TODAY, posts: [autoPost] })
   ok(withAuto[0].id === 'auto-draft', `오늘 자동 초안이 맨 위 — ${withAuto[0].id}`)
   ok(withAuto[0].href === '/write?id=a1', '그 글을 바로 연다')
@@ -8212,14 +8212,29 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
  * 쓰는 종류의 실수이고, 둘 다 유사문서·발행간격 쪽에서 손해가 난다.
  */
 {
-  const { INFO_TOPICS, AUTO_MARK, isAutoDraft, hasTodayAutoDraft, pickAssignment, draftNote } =
+  const { INFO_TOPICS, isAutoDraft, hasTodayAutoDraft, pickAssignment, draftNote } =
     require(`${OUT}/writing/autodraft.js`)
 
   const post = (patch) => ({ id: 'p', type: 'info', status: 'draft', storeId: 's', title: '', body: '', mainKeyword: '', subKeywords: [], tags: [], createdAt: '2026-08-21T00:00:00.000Z', updatedAt: '', ...patch })
 
   // ── 하루 한 편 (크론 재시도·손으로 한 번 더 눌러도)
-  const auto = post({ format: AUTO_MARK, createdAt: '2026-08-21T20:00:00.000Z' })
+  const auto = post({ auto: true, createdAt: '2026-08-21T20:00:00.000Z' })
   ok(isAutoDraft(auto), '자동 초안임을 글에 남긴다')
+  /*
+   * **유사성 3축을 자동 초안 표시로 쓰지 않는다** (2026-08-21 프로덕션 데이터에서 발견).
+   * 처음엔 format 에 'auto' 를, topicGroup 에 주제를 박았는데 그 둘은 로테이션이 쓰는 칸이다
+   * (INFO_FORMATS 「① 단계형」·TOPIC_GROUPS 「B. 다이어트」). 거기에 다른 값을 넣으면
+   * 「최근에 안 쓴 형식」 계산이 망가져 **매번 같은 형식으로 쓰게 된다** — 자동화가
+   * 유사문서를 만드는 바로 그 경로다.
+   */
+  ok(!isAutoDraft(post({ format: 'auto' })), 'format 에 auto 가 있어도 자동 초안으로 세지 않는다')
+  ok(isAutoDraft(post({ auto: true, format: '① 단계형 — 순서대로 정리 (1→2→3)' })), '3축은 그대로 두고 자기 칸으로 가린다')
+  {
+    // 로테이션이 쓰는 값이 살아 있으면 다음 글이 다른 조합을 고를 수 있다
+    const real = post({ auto: true, autoTopic: INFO_TOPICS[0], format: '② Q&A형 — 자주 받는 질문 3~4개에 답', topicGroup: 'B. 다이어트 (식단·정체기·공복 유산소·근손실·야식·칼로리)' })
+    ok(real.format.startsWith('②') && real.topicGroup.startsWith('B.'), '자동 초안도 3축을 제 값으로 들고 있다')
+    ok(isAutoDraft(real) && real.autoTopic === INFO_TOPICS[0], '주제는 따로 남는다')
+  }
   ok(hasTodayAutoDraft([auto], '2026-08-21'), '오늘 것이 있으면 다시 쓰지 않는다')
   ok(!hasTodayAutoDraft([auto], '2026-08-22'), '날이 바뀌면 다시 쓴다')
   ok(!hasTodayAutoDraft([post({ createdAt: '2026-08-21T20:00:00.000Z' })], '2026-08-21'), '손으로 쓴 글은 오늘 몫으로 세지 않는다')
@@ -8246,7 +8261,7 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
     for (let i = 0; i < 8; i++) {
       const a = pickAssignment({ posts, keywords: KWS })
       used.push(`${a.mainKeyword}|${a.topic}`)
-      posts = [post({ mainKeyword: a.mainKeyword, topicGroup: a.topic, format: AUTO_MARK, createdAt: `2026-08-${String(10 + i).padStart(2, '0')}T20:00:00.000Z` }), ...posts]
+      posts = [post({ mainKeyword: a.mainKeyword, autoTopic: a.topic, auto: true, createdAt: `2026-08-${String(10 + i).padStart(2, '0')}T20:00:00.000Z` }), ...posts]
     }
     ok(new Set(used).size === used.length, `여덟 번 돌려도 조합이 겹치지 않는다 — ${new Set(used).size}/8`)
     // 주제도 바로 되풀이하지 않는다 (키워드가 달라도 본문이 닮는다)
@@ -8259,7 +8274,7 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
   // 조합을 다 쓰면 가장 오래된 것부터 다시 돈다 (멈추지 않는다)
   {
     const oneTopic = ['새벽 운동 시작하기']
-    const posts = [post({ mainKeyword: KWS[0], topicGroup: oneTopic[0], createdAt: '2026-08-20T00:00:00.000Z' })]
+    const posts = [post({ mainKeyword: KWS[0], autoTopic: oneTopic[0], createdAt: '2026-08-20T00:00:00.000Z' })]
     const a = pickAssignment({ posts, keywords: [KWS[0]], topics: oneTopic })
     ok(a?.mainKeyword === KWS[0] && a.topic === oneTopic[0], '쓸 조합이 하나뿐이면 그것을 다시 고른다')
     ok(a.why.includes('오래 안 썼'), '되돌아온 것임을 밝힌다')
@@ -8267,7 +8282,7 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
 
   // 홍보글·후기글은 로테이션을 흔들지 않는다 (본문이 전혀 다르다)
   {
-    const noise = [post({ type: 'promo', mainKeyword: KWS[0], topicGroup: INFO_TOPICS[0] })]
+    const noise = [post({ type: 'promo', mainKeyword: KWS[0], autoTopic: INFO_TOPICS[0] })]
     ok(
       JSON.stringify(pickAssignment({ posts: noise, keywords: KWS })) === JSON.stringify(first),
       '정보글이 아닌 글은 차례 계산에 넣지 않는다'

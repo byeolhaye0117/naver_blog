@@ -43,8 +43,14 @@ export const INFO_TOPICS: string[] = [
   '주 2회밖에 못 갈 때 짜는 순서',
 ]
 
-/** 자동으로 쓴 초안임을 글에 남긴다 — 화면에서 가려 보고, 로테이션 계산에서도 쓴다 */
-export const AUTO_MARK = 'auto'
+/*
+ * **유사성 3축(format·topicGroup)에 값을 넣지 않는다.**
+ *
+ * 처음엔 `format: 'auto'` 와 `topicGroup: 주제` 로 저장했는데, 그 둘은 이미 로테이션이
+ * 쓰는 칸이다 (INFO_FORMATS·TOPIC_GROUPS). 거기에 다른 값을 넣으면 「최근에 안 쓴 형식」
+ * 계산이 망가져서 **매번 같은 형식으로 쓰게 된다** — 자동화가 유사문서를 만드는 바로 그
+ * 경로다. 그래서 자동 초안은 `auto`·`autoTopic` 이라는 자기 칸을 쓴다 (lib/types.ts).
+ */
 
 export interface Assignment {
   /** 정보글 메인 키워드 (지역 키워드를 메인으로 잡는다 — 2026-08-21 회원 결정) */
@@ -56,8 +62,8 @@ export interface Assignment {
 }
 
 /** 그 글이 이 자동 초안 기능으로 쓰인 것인가 */
-export function isAutoDraft(p: Pick<Post, 'format'>): boolean {
-  return p.format === AUTO_MARK
+export function isAutoDraft(p: Pick<Post, 'auto'>): boolean {
+  return p.auto === true
 }
 
 /** YYYY-MM-DD */
@@ -110,12 +116,12 @@ export function pickAssignment(args: {
 
   /** 그 조합을 마지막으로 쓴 순서 (0 = 가장 최근). 안 썼으면 Infinity */
   const lastUsed = (kw: string, topic: string): number => {
-    const i = infoPosts.findIndex((p) => p.mainKeyword === kw && p.topicGroup === topic)
+    const i = infoPosts.findIndex((p) => p.mainKeyword === kw && p.autoTopic === topic)
     return i < 0 ? Infinity : i
   }
   /** 그 주제를 마지막으로 쓴 순서 — 키워드가 달라도 본문이 닮는다 */
   const topicLastUsed = (topic: string): number => {
-    const i = infoPosts.findIndex((p) => p.topicGroup === topic)
+    const i = infoPosts.findIndex((p) => p.autoTopic === topic)
     return i < 0 ? Infinity : i
   }
 
