@@ -936,7 +936,7 @@ const { nextActions } = require(`${OUT}/writing/next-action.js`)
 const OKB = { level: 'good', ratio: '2 : 1', info: 2, promo: 1, review: 1 }
 const OKC = { level: 'good', last14: 5 }
 const KEYS = { search: true, searchAd: true }
-const base = { stores: [{ id: 's' }], posts: [], rankTargets: [], fallenCount: 0, stuck: [], balance: OKB, cadence: OKC, keys: KEYS }
+const base = { stores: [{ id: 's' }], posts: [], rankTargets: [], fallen: [], stuck: [], balance: OKB, cadence: OKC, keys: KEYS }
 
 // 순서: 지점 → 첫 키워드 → 초안 → 검수완료 → 순위 등록
 const noStore = nextActions({ ...base, stores: [] })
@@ -995,12 +995,44 @@ const fallen = nextActions({
   ...base,
   posts: [{ status: 'published' }],
   rankTargets: [{ id: 't' }],
-  fallenCount: 2,
+  fallen: [{ keyword: '쌍용동 헬스장' }, { keyword: '두정동 헬스장' }],
   stuck: [],
   balance: { level: 'warn', ratio: '0 : 1', info: 0, promo: 1, review: 0 },
 })
 ok(fallen[0].id === 'fallen', `밀린 키워드가 먼저 — ${fallen[0].id}`)
 ok(fallen[0].title.includes('2개'), '몇 개가 밀렸는지 밝힌다')
+/*
+ * **키워드를 링크에 실어야 한다** (2026-08-23). 회원: "밀린키워드 분석을 원해서
+ * 상위노출분석을 눌렀는데 정작 분석 창이 아니라 상위 노출 키워드 분석탭으로 가고 있어."
+ *
+ * `/serp` 는 키워드가 있으면 **열자마자 스스로 분석**하고, 없으면 빈 입력칸만 띄운다.
+ * 앱이 이미 아는 키워드를 회원이 다시 타이핑하게 만들고 있었다.
+ */
+ok(fallen[0].href === '/serp?keyword=%EC%8C%8D%EC%9A%A9%EB%8F%99%20%ED%97%AC%EC%8A%A4%EC%9E%A5',
+  `분석할 키워드를 링크에 담는다 — ${fallen[0].href}`)
+ok(fallen[0].cta.includes('쌍용동 헬스장'), '버튼에도 어느 키워드인지 적는다', fallen[0].cta)
+ok(fallen[0].why.includes('나머지 1개'), '나머지가 있으면 그것도 알려준다')
+ok(
+  nextActions({ ...base, posts: [{ status: 'published' }], rankTargets: [{ id: 't' }], fallen: [{ keyword: '두정동 헬스장' }] })[0].why.includes('나머지') === false,
+  '하나뿐이면 「나머지」를 붙이지 않는다'
+)
+// 빈 키워드가 섞여 들어와도 링크가 깨지지 않는다
+ok(
+  nextActions({ ...base, posts: [{ status: 'published' }], rankTargets: [{ id: 't' }], fallen: [{ keyword: '  ' }] }).every((a) => a.id !== 'fallen'),
+  '키워드가 비어 있으면 분석하라고 하지 않는다'
+)
+/*
+ * **앱 안의 「상위노출 분석」 링크는 전부 키워드를 실어야 한다.** 이번에 대시보드
+ * 하나만 빠져 있었다 — 나머지 여덟 곳은 처음부터 제대로 하고 있었다.
+ */
+{
+  const { readFileSync: rf } = require('node:fs')
+  const bare = ['../lib/writing/next-action.ts'].filter((f) => {
+    const t = rf(new URL(f, import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    return /href: '\/serp'/.test(t)
+  })
+  ok(bare.length === 0, '키워드 없이 /serp 로 보내는 곳이 없다', bare.join(' · '))
+}
 
 // 균형이 깨졌으면 무엇을 쓸지까지 정해 준다
 const unbal = nextActions({
