@@ -5,6 +5,7 @@ import { useState } from 'react'
 import type { AutoDraftPlan, AutoDraftRun } from '@/lib/types'
 import { INFO_TOPICS, autoDraftStatus, normalizePlan, planSummary } from '@/lib/writing/autodraft'
 import { Badge, btnGhost, btnPrimary, inputClass } from '@/components/ui'
+import TopicExplorer from './TopicExplorer'
 
 /**
  * **매일 정보글 초안 — 지금 어떤 상태인가, 그리고 직접 한 편 쓰기.**
@@ -46,6 +47,19 @@ export default function AutoDraftPanel({
 
   /** 고를 수 있는 주제 — 기본 목록 + 회원이 직접 적어 넣은 것 */
   const topicPool = [...INFO_TOPICS, ...(plan.topics ?? []).filter((t) => !INFO_TOPICS.includes(t))]
+
+  /**
+   * 주제 하나를 목록에 더한다 — **더하면서 곧바로 켠다.**
+   *
+   * 더하기만 하고 꺼진 채로 두면 회원은 담은 줄 알지만 실제로는 안 쓰인다 (고른 것이 없으면
+   * 기본 10개 전부를 쓰는 규칙이라 티도 안 난다). 탐색기에서 담을 때도 같은 함수를 쓴다.
+   */
+  const addTopic = (raw: string) =>
+    setPlan((p) => {
+      const t = raw.replace(/\s+/g, ' ').trim()
+      if (!t || (p.topics ?? []).includes(t)) return p
+      return { ...p, topics: [...(p.topics ?? []), t] }
+    })
 
   const toggle = (key: 'keywords' | 'topics', value: string) =>
     setPlan((p) => {
@@ -257,8 +271,7 @@ export default function AutoDraftPanel({
                 type="button"
                 disabled={!newTopic.trim()}
                 onClick={() => {
-                  const t = newTopic.trim()
-                  setPlan((p) => ({ ...p, topics: [...(p.topics ?? []), t] }))
+                  addTopic(newTopic)
                   setNewTopic('')
                 }}
                 className={`${btnGhost} !py-2.5 !text-[12px]`}
@@ -266,6 +279,13 @@ export default function AutoDraftPanel({
                 주제 더하기
               </button>
             </div>
+
+            {/*
+              **주제를 지어내지 않고 재서 고른다** (2026-08-23 회원 요청). 위 기본 목록 10개는
+              우리가 앉아서 만든 것이라, 사람들이 실제로 검색하는지 확인한 적이 없다.
+              탐색기에서 담은 주제는 곧바로 위 ③ 목록에 켜진 채로 들어간다.
+            */}
+            <TopicExplorer onPick={addTopic} />
           </section>
 
           <div className="bd flex flex-wrap items-center gap-2 border-t pt-3">

@@ -8709,5 +8709,132 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
   }
 }
 
+console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 고른다 (2026-08-23)')
+/*
+ * 회원 요청: "주제도 단순히 새벽운동 어떻게 하나 이런게 아니라 실제로 다이어트나 체중증량을
+ * 원하는 주제들을 리서치해서 그에 맞는 주제를 탐색하는 탐색기를 만들어서 그거중에 내가
+ * 선택해서 하고 싶어."
+ *
+ * 기본 주제 10개는 **우리가 앉아서 지어낸 것**이다. 그럴듯해 보이지만 사람들이 실제로
+ * 검색하는지 확인한 적이 없다. 그래서 씨앗만 우리가 넣고 후보는 네이버에서 가져온다.
+ */
+{
+  const { TOPIC_SEEDS, classifyIntent, toTopic, rankCandidates, candidateWhy, buildCandidates } =
+    require(`${OUT}/writing/topic-explore.js`)
+  const { ARENA_HIGH: HI, ARENA_LOW: LO } = require(`${OUT}/writing/arena.js`)
+
+  // 회원이 콕 집어 말한 두 갈래가 있어야 한다
+  ok(TOPIC_SEEDS.some((s) => s.label.includes('다이어트')), '다이어트 갈래가 있다')
+  ok(TOPIC_SEEDS.some((s) => s.label.includes('체중 증량')), '체중 증량 갈래가 있다')
+  ok(TOPIC_SEEDS.every((s) => s.queries.length > 0), '갈래마다 물어볼 말이 있다')
+  ok(new Set(TOPIC_SEEDS.map((s) => s.id)).size === TOPIC_SEEDS.length, '갈래 id 가 겹치지 않는다')
+
+  /*
+   * **업체를 찾는 말을 정보글 주제로 쓰면 홍보글이 된다.** 정보글은 신뢰도를 쌓으려고 쓰는
+   * 것이고(정보 : 홍보 = 2 : 1 의 '2'), 그 자리는 이미 홍보글이 맡고 있다.
+   */
+  ok(classifyIntent('다이어트 정체기') === 'info', '순수한 정보성 말은 정보로')
+  ok(classifyIntent('쌍용동 헬스장') === 'local', '「○○동」이 붙으면 업체 찾는 말')
+  ok(classifyIntent('헬스장 근처') === 'local', '「근처」도 마찬가지')
+  ok(classifyIntent('헬스장 가격') === 'buy', '가격은 구매 의도')
+  ok(classifyIntent('헬스장 추천') === 'buy', '추천도 구매 의도')
+  ok(classifyIntent('PT 일일권') === 'buy', '일일권도')
+  // 우리 지역 키워드는 띄어쓰기가 달라도 걸러야 한다 (「쌍용동헬스장」·「쌍용동 헬스장」)
+  ok(classifyIntent('쌍용동헬스장 후기', ['쌍용동 헬스장']) === 'local', '우리 지역 키워드는 띄어쓰기와 무관하게 거른다')
+  // 정보성 말에 우연히 지역처럼 보이는 글자가 있어도 잘못 걸지 않는다
+  ok(classifyIntent('공복 유산소') === 'info', '멀쩡한 정보성 말을 잘못 거르지 않는다')
+  ok(classifyIntent('단백질 섭취량') === 'info', '식단 관련도 정보성')
+
+  /*
+   * **말을 바꾸지 않는다.** 검색어를 다듬어 「예쁘게」 만들면 그건 다시 우리가 지어낸 주제다.
+   * 공백만 정리한다.
+   */
+  ok(toTopic('  다이어트   정체기  ') === '다이어트 정체기', '앞뒤·겹친 공백만 정리한다')
+  ok(toTopic('다이어트정체기') === '다이어트정체기', '붙여 쓴 말을 임의로 띄우지 않는다')
+
+  /*
+   * **줄 세우는 기준은 이미 실측으로 정한 값을 쓴다** (arena.ts 의 300편 / 100편).
+   * 같은 사실에 두 기준이 생기면 어느 쪽이 맞는지 아무도 모르게 된다.
+   */
+  const c = (topic, monthlySearch, recent30) => ({ topic, seedId: 's', monthlySearch, recent30, intent: 'info', from: 'searchad', why: '' })
+  const sorted = rankCandidates([
+    c('경쟁 센 것', 90000, HI + 10),
+    c('경쟁 적은 것', 1000, LO - 10),
+    c('경쟁 보통 큰 검색량', 50000, LO + 10),
+    c('경쟁 보통 작은 검색량', 100, LO + 10),
+  ])
+  ok(sorted[0].topic === '경쟁 적은 것', '경쟁 적은 자리가 먼저 — 검색량이 작아도', sorted[0].topic)
+  ok(sorted[1].topic === '경쟁 보통 큰 검색량', '같은 경쟁 수준이면 검색량 큰 것', sorted[1].topic)
+  ok(sorted[3].topic === '경쟁 센 것', '경쟁 센 자리는 뒤로', sorted[3].topic)
+  // 못 잰 것을 0 으로 바꿔 유리하게 쓰지 않는다 — 뒤로 밀되 버리지도 않는다
+  const withNull = rankCandidates([c('못 잰 것', null, null), c('경쟁 적은 것', 10, LO - 1)])
+  ok(withNull[0].topic === '경쟁 적은 것', '못 잰 것을 「경쟁 없음」으로 치지 않는다')
+  ok(withNull.length === 2, '못 쟀다고 버리지도 않는다')
+
+  // 한 줄 설명 — 못 쟀으면 못 쟀다고 말한다
+  ok(candidateWhy(1200, 40).includes('월 1,200회 검색'), '검색량을 그대로 적는다')
+  ok(candidateWhy(1200, 40).includes('경쟁 적은 자리'), '경쟁 수준을 붙인다')
+  ok(candidateWhy(null, 40).includes('검색광고 키가 없습니다'), '왜 검색량을 모르는지 밝힌다')
+  ok(candidateWhy(1200, null).includes('발행량은 못 쟀습니다'), '못 잰 것을 못 쟀다고 말한다')
+
+  /*
+   * **두 곳에서 온 같은 말은 한 번만.** 자동완성과 연관검색어는 겹치는데, 겹칠 때 검색량을
+   * 아는 쪽을 버리면 회원이 볼 수 있는 정보가 줄어든다.
+   */
+  const built = buildCandidates({
+    seedId: 'diet',
+    suggestions: ['다이어트 정체기', '다이어트 식단', '쌍용동 헬스장 가격'],
+    adRows: [
+      { keyword: '다이어트 정체기', monthlySearch: 8000 },
+      { keyword: '공복 유산소', monthlySearch: 3000 },
+    ],
+    recent: { '다이어트 정체기': 40 },
+    myLocalKeywords: ['쌍용동 헬스장'],
+  })
+  const jeongche = built.find((x) => x.topic === '다이어트 정체기')
+  ok(built.filter((x) => x.topic === '다이어트 정체기').length === 1, '겹친 말은 한 번만 나온다')
+  ok(jeongche.monthlySearch === 8000, '겹칠 때 검색량을 아는 쪽을 살린다')
+  ok(jeongche.recent30 === 40, '잰 발행량이 붙는다')
+  ok(built.find((x) => x.topic === '다이어트 식단').from === 'autocomplete', '자동완성에서 온 것은 그렇게 표시한다')
+  // 업체 찾는 말은 목록에 남되 갈래가 붙는다 (버리지 않고 화면이 걸러 보여준다)
+  ok(built.find((x) => x.topic === '쌍용동 헬스장 가격')?.intent !== 'info', '업체 찾는 말에 정보 갈래를 주지 않는다')
+  // 이미 고른 주제는 다시 권하지 않는다
+  const again = buildCandidates({
+    seedId: 'diet',
+    suggestions: ['다이어트 정체기'],
+    adRows: [],
+    recent: {},
+    exclude: ['다이어트정체기'],
+  })
+  ok(again.length === 0, '이미 고른 주제는 띄어쓰기가 달라도 다시 권하지 않는다')
+
+  /*
+   * **화면·라우트가 실제로 이걸 쓴다.** 만들어만 두고 안 쓰면 아무것도 달라지지 않는다.
+   */
+  {
+    const { readFileSync: rf } = require('node:fs')
+    const api = rf(new URL('../app/api/autodraft/topics/route.ts', import.meta.url), 'utf8')
+    ok(api.includes('gatherSuggestions'), '자동완성에서 가져온다')
+    ok(api.includes('keywordTool'), '검색광고 연관검색어에서 가져온다')
+    ok(api.includes('recentBlogCount'), '경쟁(최근 30일 발행량)을 잰다')
+    // 정보성인 것만 발행량을 잰다 — 업체 찾는 말에 조회를 쓰면 회원 시간만 버린다
+    ok(/classifyIntent\([\s\S]{0,80}=== 'info'/.test(api), '잴 대상을 정보성으로 좁힌다')
+    ok(api.includes('note'), '몇 개를 걸렀고 못 쟀는지 함께 돌려준다')
+
+    const ui = rf(new URL('../app/posts/TopicExplorer.tsx', import.meta.url), 'utf8')
+    ok(ui.includes('TOPIC_SEEDS'), '화면이 같은 갈래 목록을 쓴다 (두 곳에 적지 않는다)')
+    ok(ui.includes('note.dropped') && ui.includes('note.measured'), '무엇을 걸렀고 몇 개를 쟀는지 화면에 밝힌다')
+    ok(ui.includes('onPick'), '고른 주제를 설정으로 넘긴다')
+
+    const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
+    ok(panel.includes('<TopicExplorer onPick={addTopic} />'), '탐색기에서 담은 주제가 설정 목록으로 들어간다')
+    /*
+     * **담으면서 곧바로 켜야 한다.** 더하기만 하고 꺼진 채로 두면 회원은 담은 줄 알지만
+     * 실제로는 안 쓰인다 — 고른 것이 없으면 기본 10개를 전부 쓰는 규칙이라 티도 안 난다.
+     */
+    ok(/const addTopic[\s\S]{0,400}topics: \[\.\.\.\(p\.topics \?\? \[\]\), t\]/.test(panel), '담으면 켜진 채로 들어간다')
+  }
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

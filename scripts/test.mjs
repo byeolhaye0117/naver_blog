@@ -52,6 +52,7 @@ const TARGETS = [
   // 요청 반영 검사 (2026-08-19)
   'lib/writing/request.ts',
   'lib/writing/next-action.ts',
+  'lib/writing/topic-explore.ts',
   'lib/ai/llm.ts',
   'lib/ai/prompt.ts',
   'lib/writing/export.ts',
