@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { newId } from '@/lib/id'
-import { AUTO_MARK, hasTodayAutoDraft, pickAssignment } from '@/lib/writing/autodraft'
+import { hasTodayAutoDraft, pickAssignment } from '@/lib/writing/autodraft'
 import type { Post } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -87,7 +87,15 @@ export async function GET(req: Request) {
   })
 
   const data = (await res.json().catch(() => null)) as
-    | { title?: string; body?: string; tags?: string[]; check?: { score?: number }; error?: string }
+    | {
+        title?: string
+        body?: string
+        tags?: string[]
+        check?: { score?: number }
+        /** 무엇으로 썼는지 — 유사성 방지 3축. 저장해야 다음 글이 다른 조합을 고른다 */
+        rotation?: { introType?: string; angle?: string; format?: string; topicGroup?: string }
+        error?: string
+      }
     | null
 
   if (!res.ok || !data?.body) {
@@ -108,9 +116,18 @@ export async function GET(req: Request) {
     mainKeyword: assignment.mainKeyword,
     subKeywords: [],
     tags: data.tags ?? [],
-    // 무엇으로 골랐는지 남긴다 — 다음 로테이션이 이 값을 읽는다
-    topicGroup: assignment.topic,
-    format: AUTO_MARK,
+    /*
+     * **유사성 3축은 /api/write 가 고른 것을 그대로 저장한다.** 안 저장하면 다음 글에서
+     * 「최근에 안 쓴 것」을 다시 계산할 때 빈 값만 보이고, 도입·형식·소재가 매번 같아진다
+     * (lib/ai/prompt.ts 의 rotation 주석 — 손으로 쓸 때 이미 겪은 일이다).
+     */
+    introType: data.rotation?.introType,
+    angle: data.rotation?.angle,
+    format: data.rotation?.format,
+    topicGroup: data.rotation?.topicGroup,
+    // 자동 초안은 자기 칸에 남긴다 — 위 3축을 건드리지 않는다
+    auto: true,
+    autoTopic: assignment.topic,
     createdAt: now,
     updatedAt: now,
   }

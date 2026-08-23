@@ -113,7 +113,7 @@ export function nextActions(input: ActionInput): NextAction[] {
     out.push({
       id: 'auto-draft',
       title: '오늘 정보글 초안이 준비됐습니다',
-      why: `「${todayAuto.mainKeyword}」 · ${todayAuto.topicGroup ?? '주제 미상'} — 사진만 넣으면 올릴 수 있습니다. 발행은 회원님이 누르셔야 합니다 (네이버는 자동 발행을 열어두지 않습니다).`,
+      why: `「${todayAuto.mainKeyword}」 · ${todayAuto.autoTopic ?? '주제 미상'} — 사진만 넣으면 올릴 수 있습니다. 발행은 회원님이 누르셔야 합니다 (네이버는 자동 발행을 열어두지 않습니다).`,
       href: `/write?id=${todayAuto.id}`,
       cta: '오늘 초안 열기',
       tone: 'warn',

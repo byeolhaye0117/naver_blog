@@ -94,6 +94,19 @@ export interface Post {
   angle?: string
   format?: string
   topicGroup?: string
+  /*
+   * ─── 매일 자동 초안 (2026-08-21) ────────────────────────────
+   *
+   * **유사성 3축과 섞지 않으려고 칸을 따로 뒀다.** 처음엔 `format` 에 'auto' 를 박고
+   * `topicGroup` 에 주제를 넣었는데, 그 둘은 이미 로테이션이 쓰는 칸이다
+   * (INFO_FORMATS 「① 단계형」·TOPIC_GROUPS 「B. 다이어트」). 거기에 다른 값을 넣으면
+   * **「최근에 안 쓴 형식」 계산이 망가져서 매번 같은 형식으로 쓰게 된다** — 자동화가
+   * 유사문서를 만드는 바로 그 경로다. 프로덕션 데이터를 보다 발견했다.
+   */
+  /** 매일 크론이 쓴 초안인가 */
+  auto?: boolean
+  /** 자동 초안이 고른 이번 글의 주제 (autodraft 의 INFO_TOPICS — TOPIC_GROUPS 와 다른 축이다) */
+  autoTopic?: string
   sponsorship?: Sponsorship
   /**
    * 진행 중인 이벤트·혜택 (홍보글·후기글). 골격 생성 때 이벤트 구간에 반영된다.
