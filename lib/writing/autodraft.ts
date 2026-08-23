@@ -61,6 +61,122 @@ export interface Assignment {
   why: string
 }
 
+/** 실행 기록은 이만큼만 남긴다 — 두 주면 「요즘 도나」를 보는 데 충분하다 */
+export const AUTO_DRAFT_RUNS_KEEP = 30
+
+/**
+ * 크론이 자기 앱을 부를 주소를 고른다.
+ *
+ * ── 왜 순서가 중요한가 (2026-08-23) ─────────────────────────
+ * 처음엔 `VERCEL_URL` 만 썼다. 그건 **배포별 주소**(naver-blog-abc123-…vercel.app)라,
+ * 배포 보호가 켜져 있으면 로그인 페이지가 돌아온다 — 크론은 실패하는데 화면에는 아무 흔적이
+ * 없다. 회원이 "안뜨는데? 제대로 하고 있는거 맞아?" 라고 물은 그 상태다.
+ *
+ * `VERCEL_PROJECT_PRODUCTION_URL` 은 **운영 도메인**이라 보호를 받지 않는다. 그걸 먼저 쓴다.
+ */
+export function baseUrlFor(env: Record<string, string | undefined>): string | null {
+  const prod = env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
+  if (prod) return `https://${prod.replace(/^https?:\/\//, '')}`
+  const explicit = env.NEXT_PUBLIC_BASE_URL?.trim()
+  if (explicit) return explicit.replace(/\/+$/, '')
+  const dep = env.VERCEL_URL?.trim()
+  if (dep) return `https://${dep.replace(/^https?:\/\//, '')}`
+  return null
+}
+
+/**
+ * 마지막 실행이 이만큼 오래됐으면 「멈췄다」고 본다.
+ *
+ * 하루로 잡으면 안 된다 — 크론은 새벽 5시에 도는데 회원이 새벽 3시에 화면을 열면 어제
+ * 기록이 마지막이고, 그건 정상이다. 이틀이 비면 그때는 정말 안 돈 것이다.
+ */
+export const AUTO_DRAFT_STALE_DAYS = 2
+
+/** YYYY-MM-DD 두 날 사이의 일수 (시간대에 흔들리지 않게 UTC 자정으로만 잰다) */
+function daysBetween(from: string, to: string): number {
+  const parse = (s: string) => Date.parse(`${s.slice(0, 10)}T00:00:00.000Z`)
+  const a = parse(from)
+  const b = parse(to)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0
+  return Math.round((b - a) / 86_400_000)
+}
+
+/**
+ * 마지막 실행이 회원에게 알릴 만한 상태인가.
+ *
+ * ── 무엇을 알리고 무엇을 삼키나 ─────────────────────────────
+ * **성공은 조용히 지나간다** — 초안이 화면에 뜨니까 그게 곧 알림이다.
+ * **오늘 실패로 기록됐으면 알린다** — 회원은 글이 준비된 줄 알고 기다리게 된다.
+ * **오늘 기록이 아직 없는 것은 알리지 않는다** — 크론 시각 전일 뿐인 경우가 대부분이고,
+ * 그걸 매번 띄우면 하루의 대부분이 「아직 안 돌았습니다」로 덮인다. 처음 켠 날에도 마찬가지다.
+ *
+ * 대신 **기록이 끊긴 것**은 잡는다 — 마지막 실행이 이틀 넘게 전이면 크론이 멈춘 것이다.
+ * (2026-08-23: 처음엔 「한 번도 안 돌았습니다」를 띄웠는데, 그건 방금 켠 것과 고장난 것을
+ * 구별하지 못해 새로 만든 지점에서도 경고가 떴다.)
+ */
+export function autoDraftAlert(
+  runs: { date: string; ok: boolean; error?: string }[] | undefined,
+  today: string
+): { level: 'warn' | 'bad'; text: string } | null {
+  const list = runs ?? []
+  const todays = list.filter((r) => r.date === today)
+  if (todays.some((r) => r.ok)) return null
+  const failed = todays.find((r) => !r.ok)
+  if (failed) {
+    return { level: 'bad', text: `오늘 자동 초안이 실패했습니다 — ${failed.error ?? '이유가 기록되지 않았습니다'}` }
+  }
+  const last = list
+    .map((r) => (r.date ?? '').slice(0, 10))
+    .filter(Boolean)
+    .sort()
+    .pop()
+  if (!last) return null
+  const days = daysBetween(last, today)
+  if (days >= AUTO_DRAFT_STALE_DAYS) {
+    return { level: 'warn', text: `자동 초안이 ${days}일째 돌지 않았습니다 (마지막 실행 ${last}).` }
+  }
+  return null
+}
+
+/**
+ * 발행 관리 화면 맨 위에 한 줄로 보여줄 상태.
+ *
+ * 대시보드의 `autoDraftAlert` 와 **일부러 다르다**. 저기는 「알릴 만한 일이 있을 때만」
+ * 끼어드는 자리라 조용해야 하고, 여기는 회원이 자동 초안을 보러 온 자리라 **아무 일도
+ * 없어도 지금 상태를 말해줘야 한다** — 그게 없으면 "안뜨는데? 제대로 하고 있는거 맞아?"
+ * 로 다시 돌아온다.
+ */
+export function autoDraftStatus(
+  runs: { date: string; ok: boolean; error?: string; at?: string; manual?: boolean }[] | undefined,
+  today: string,
+  hasTodayDraft: boolean
+): { level: 'good' | 'warn' | 'bad'; text: string; canRun: boolean } {
+  const list = runs ?? []
+  const todays = list.filter((r) => r.date === today)
+  if (hasTodayDraft) {
+    return { level: 'good', text: '오늘 초안이 준비됐습니다. 아래 목록 맨 위에 있습니다.', canRun: false }
+  }
+  const failed = todays.find((r) => !r.ok)
+  if (failed) {
+    return {
+      level: 'bad',
+      text: `오늘 실패했습니다 — ${failed.error ?? '이유가 기록되지 않았습니다'}`,
+      canRun: true,
+    }
+  }
+  const last = [...list].sort((a, b) => (a.at ?? a.date).localeCompare(b.at ?? b.date)).pop()
+  if (!last) {
+    return { level: 'warn', text: '아직 실행 기록이 없습니다. 매일 새벽 5시에 한 편씩 씁니다.', canRun: true }
+  }
+  const days = daysBetween(last.date, today)
+  const when = days === 0 ? '오늘' : days === 1 ? '어제' : `${days}일 전(${last.date})`
+  return {
+    level: days >= AUTO_DRAFT_STALE_DAYS ? 'warn' : 'good',
+    text: `마지막 실행 ${when} · ${last.ok ? '성공' : '실패'}${last.manual ? ' (직접 실행)' : ''}. 오늘 몫은 새벽 5시에 씁니다.`,
+    canRun: true,
+  }
+}
+
 /** 그 글이 이 자동 초안 기능으로 쓰인 것인가 */
 export function isAutoDraft(p: Pick<Post, 'auto'>): boolean {
   return p.auto === true

@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { newId } from '@/lib/id'
 import { hasTodayAutoDraft, pickAssignment } from '@/lib/writing/autodraft'
-import type { Post } from '@/lib/types'
+import { AUTO_DRAFT_RUNS_KEEP, baseUrlFor } from '@/lib/writing/autodraft'
+import type { AutoDraftRun, Post } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 /*
@@ -35,8 +36,72 @@ export async function GET(req: Request) {
     }
   }
 
-  const db = await readDB()
+  const t0 = Date.now()
   const today = new Date().toISOString().slice(0, 10)
+
+  /*
+   * **성공이든 실패든 남긴다** (2026-08-23). 회원: "안뜨는데? 제대로 하고 있는거 맞아?"
+   * 그때 이 크론만 아무 흔적이 없어서 「실패했나 안 돌았나」를 구별할 수 없었다.
+   * 조용히 실패하는 자동화는 없는 것보다 나쁘다 — 회원은 글이 준비된 줄 알고 기다린다.
+   */
+  const record = async (run: Omit<AutoDraftRun, 'date' | 'at' | 'ms'>) => {
+    const entry: AutoDraftRun = { ...run, date: today, at: new Date().toISOString(), ms: Date.now() - t0 }
+    await mutate((d) => {
+      d.autoDraftRuns = [entry, ...(d.autoDraftRuns ?? [])].slice(0, AUTO_DRAFT_RUNS_KEEP)
+    })
+    return entry
+  }
+
+  try {
+    return await run(today, record)
+  } catch (e) {
+    const error = e instanceof Error ? e.message : '알 수 없는 오류'
+    console.error('[draft] 실패', error)
+    await record({ ok: false, error })
+    return NextResponse.json({ error }, { status: 500 })
+  }
+}
+
+/**
+ * **손으로 지금 한 편** — 화면의 「지금 한 편 쓰기」 버튼이 부른다.
+ *
+ * 크론이 실패한 날 회원이 할 수 있는 일이 있어야 한다. 화면에 「실패했습니다」만 뜨고
+ * 다음 날까지 기다리라고 하면 그건 알림이 아니라 통보다.
+ *
+ * **비밀값을 요구하지 않는다.** 크론용 GET 과 달리 이건 회원이 브라우저에서 누르는 것이고,
+ * 이 앱의 다른 글쓰기 경로(/api/write)도 같은 자리에서 열려 있다 — 여기만 잠가도 막히는
+ * 것이 없다. 대신 **하루 한 편 제한은 그대로 걸린다** (아래 run 안의 검사).
+ */
+export async function POST(req: Request) {
+  const t0 = Date.now()
+  const today = new Date().toISOString().slice(0, 10)
+  const record = async (r: Omit<AutoDraftRun, 'date' | 'at' | 'ms'>) => {
+    const entry: AutoDraftRun = { ...r, date: today, at: new Date().toISOString(), ms: Date.now() - t0, manual: true }
+    await mutate((d) => {
+      d.autoDraftRuns = [entry, ...(d.autoDraftRuns ?? [])].slice(0, AUTO_DRAFT_RUNS_KEEP)
+    })
+    return entry
+  }
+  try {
+    /*
+     * 회원이 브라우저에서 누른 것이므로 **주소를 이미 알고 있다.** 환경변수가 없는 곳
+     * (로컬·미리보기)에서도 손으로는 돌아야 하니 요청이 온 주소를 예비로 넘긴다.
+     */
+    return await run(today, record, new URL(req.url).origin)
+  } catch (e) {
+    const error = e instanceof Error ? e.message : '알 수 없는 오류'
+    console.error('[draft] 손으로 실행 실패', error)
+    await record({ ok: false, error })
+    return NextResponse.json({ error }, { status: 500 })
+  }
+}
+
+async function run(
+  today: string,
+  record: (run: Omit<AutoDraftRun, 'date' | 'at' | 'ms'>) => Promise<AutoDraftRun>,
+  fallbackBase?: string
+) {
+  const db = await readDB()
 
   // 크론 재시도·손으로 한 번 더 누르기 — 어느 쪽이든 하루 한 편이다
   if (hasTodayAutoDraft(db.posts, today)) {
@@ -45,7 +110,8 @@ export async function GET(req: Request) {
 
   const store = db.stores?.[0]
   if (!store) {
-    return NextResponse.json({ skipped: '지점이 없습니다. 지점을 먼저 등록해주세요.' })
+    await record({ ok: false, error: '지점이 없습니다. 지점을 먼저 등록해주세요.' })
+    return NextResponse.json({ skipped: '지점이 없습니다.' })
   }
 
   /*
@@ -57,26 +123,28 @@ export async function GET(req: Request) {
   const pool = keywords.length ? keywords : (store.localKeywords ?? [])
   const assignment = pickAssignment({ posts: db.posts, keywords: pool })
   if (!assignment) {
-    return NextResponse.json({ skipped: '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록해주세요.' })
+    await record({ ok: false, error: '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록해주세요.' })
+    return NextResponse.json({ skipped: '쓸 키워드가 없습니다.' })
+  }
+
+  const base = baseUrlFor(process.env) ?? fallbackBase
+  if (!base) {
+    await record({ ok: false, error: '배포 주소를 찾지 못했습니다 (VERCEL_PROJECT_PRODUCTION_URL·VERCEL_URL).' })
+    return NextResponse.json({ error: '배포 주소를 찾지 못했습니다.' }, { status: 500 })
   }
 
   /*
-   * 자기 자신을 부른다. Vercel 은 VERCEL_URL 로 배포 주소를 준다 — 로컬에서는 없으므로
-   * 그때는 못 돈다고 분명히 답한다 (조용히 아무것도 안 하면 「왜 글이 없지」가 된다).
+   * **배포 보호(Deployment Protection)에 막히면 여기서 죽는다.** 그때 Vercel 은 로그인
+   * 페이지를 돌려주므로 JSON 파싱이 실패하고, 예전에는 그게 조용한 실패가 됐다.
+   * 우회 비밀값이 있으면 함께 보내고, 없으면 아래에서 「무엇이 돌아왔는지」를 기록에 남긴다.
    */
-  const base = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : process.env.NEXT_PUBLIC_BASE_URL?.trim()
-  if (!base) {
-    return NextResponse.json(
-      { error: '배포 주소를 찾지 못했습니다 (VERCEL_URL). 로컬에서는 이 크론이 돌지 않습니다.' },
-      { status: 500 }
-    )
-  }
-
+  const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
   const res = await fetch(`${base}/api/write`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(bypass ? { 'x-vercel-protection-bypass': bypass } : {}),
+    },
     body: JSON.stringify({
       type: 'info',
       storeId: store.id,
@@ -86,7 +154,14 @@ export async function GET(req: Request) {
     }),
   })
 
-  const data = (await res.json().catch(() => null)) as
+  const raw = await res.text()
+  const data = (() => {
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return null
+    }
+  })() as
     | {
         title?: string
         body?: string
@@ -99,10 +174,15 @@ export async function GET(req: Request) {
     | null
 
   if (!res.ok || !data?.body) {
-    return NextResponse.json(
-      { error: data?.error ?? '글을 쓰지 못했습니다.', assignment, status: res.status },
-      { status: 502 }
-    )
+    /*
+     * JSON 이 아니면 앞부분을 그대로 남긴다 — 배포 보호에 막히면 로그인 HTML 이 오는데,
+     * 「글을 쓰지 못했습니다」만 남기면 그게 무엇 때문인지 영영 모른다.
+     */
+    const error =
+      data?.error ??
+      (data ? '글을 쓰지 못했습니다.' : `JSON 이 아닌 응답 (상태 ${res.status}) — ${raw.slice(0, 160)}`)
+    await record({ ok: false, keyword: assignment.mainKeyword, topic: assignment.topic, error })
+    return NextResponse.json({ error, assignment, status: res.status }, { status: 502 })
   }
 
   const now = new Date().toISOString()
@@ -133,6 +213,14 @@ export async function GET(req: Request) {
   }
   await mutate((d) => {
     d.posts.unshift(post)
+  })
+
+  await record({
+    ok: true,
+    keyword: assignment.mainKeyword,
+    topic: assignment.topic,
+    postId: post.id,
+    score: data.check?.score ?? null,
   })
 
   return NextResponse.json({
