@@ -8587,5 +8587,254 @@ console.log('\n[96] 크론이 /api/write 의 응답을 제대로 읽는가 (2026
   ok(/rotation: first\.data\.rotation/.test(cron), '고쳐 써도 유사성 3축은 첫 응답 값을 지킨다')
 }
 
+console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2026-08-23)')
+/*
+ * 회원 요청: "매일 새벽에 정보성 글이 발행되잖아 그거 주제랑 키워드 내가 원하는걸로
+ * 선택해서 하고 싶어."
+ *
+ * 세 단계로 정할 수 있다 — 아무것도 안 정하면 여태처럼 돈다.
+ *   ① 아무 설정 없음 → 순위 추적 키워드 × 기본 주제
+ *   ② 범위만 고름   → 고른 것 안에서 로테이션
+ *   ③ 차례까지 지정 → 줄 세운 순서대로
+ */
+{
+  const { normalizePlan, planAssignment, popQueue, planSummary, INFO_TOPICS: TOPICS } =
+    require(`${OUT}/writing/autodraft.js`)
+  const FALLBACK = ['쌍용동 헬스장', '두정동 헬스장']
+
+  // ── ① 아무것도 안 정했으면 여태 방식 그대로
+  const auto = planAssignment({ plan: undefined, posts: [], fallbackKeywords: FALLBACK })
+  ok(auto?.mainKeyword === FALLBACK[0] && TOPICS.includes(auto.topic), '설정이 없으면 순위 추적 키워드로 돈다')
+  ok(planAssignment({ plan: {}, posts: [], fallbackKeywords: FALLBACK })?.mainKeyword === FALLBACK[0], '빈 설정도 마찬가지')
+
+  // ── 꺼두면 아무것도 안 쓴다 (지우는 것보다 끄는 편이 낫다 — 설정이 남는다)
+  ok(!planAssignment({ plan: { off: true }, posts: [], fallbackKeywords: FALLBACK }), '꺼두면 쓰지 않는다')
+  ok(planSummary({ off: true }).includes('꺼두셨습니다'), '꺼둔 것을 화면에 밝힌다')
+
+  // ── ② 고른 범위 안에서만
+  const scoped = planAssignment({
+    plan: { keywords: ['천안 헬스장'], topics: ['어깨가 자주 뭉칠 때'] },
+    posts: [],
+    fallbackKeywords: FALLBACK,
+  })
+  ok(scoped?.mainKeyword === '천안 헬스장', '고른 키워드만 쓴다', scoped?.mainKeyword)
+  ok(scoped?.topic === '어깨가 자주 뭉칠 때', '직접 적어 넣은 주제도 그대로 쓴다', scoped?.topic)
+  // 한쪽만 골랐으면 나머지는 기본값 — 둘 다 고르라고 강요하지 않는다
+  const halfway = planAssignment({ plan: { keywords: ['천안 헬스장'] }, posts: [], fallbackKeywords: FALLBACK })
+  ok(halfway?.mainKeyword === '천안 헬스장' && TOPICS.includes(halfway.topic), '키워드만 골라도 된다')
+
+  // ── ③ 줄 세운 것이 먼저다 (로테이션이 덮으면 정해 둔 의미가 없다)
+  const queued = planAssignment({
+    plan: { keywords: ['천안 헬스장'], queue: [{ keyword: '쌍용동 헬스장', topic: '체중 늘리기 첫 달' }] },
+    posts: [],
+    fallbackKeywords: FALLBACK,
+  })
+  ok(queued?.mainKeyword === '쌍용동 헬스장' && queued.topic === '체중 늘리기 첫 달', '예약이 범위 설정보다 앞선다')
+  ok(queued.why.includes('지정하신 순서'), '왜 이걸 쓰는지 밝힌다', queued.why)
+
+  /*
+   * **예약은 성공했을 때만 뺀다.** 실패한 날에도 빼면 회원이 정해 둔 글이 한 편도 안 나온 채
+   * 사라진다 — 「자동으로 써준다」는 약속을 조용히 어기는 것이다.
+   */
+  const q2 = [
+    { keyword: 'A', topic: '가' },
+    { keyword: 'B', topic: '나' },
+  ]
+  const after = popQueue({ queue: q2 }, { keyword: 'A', topic: '가' })
+  ok(after.queue.length === 1 && after.queue[0].keyword === 'B', '쓴 것만 빠지고 나머지는 남는다')
+  ok(popQueue({ queue: q2 }, { keyword: 'A', topic: '나' }).queue.length === 2, '조합이 다르면 빼지 않는다')
+  ok(popQueue(undefined, { keyword: 'A', topic: '가' }).queue.length === 0, '예약이 없어도 터지지 않는다')
+  // 뺀 뒤에도 나머지 설정은 그대로 — 예약 하나 쓸 때마다 고른 키워드가 날아가면 안 된다
+  const kept = popQueue({ keywords: ['천안 헬스장'], topics: ['가'], queue: q2 }, { keyword: 'A', topic: '가' })
+  ok(kept.keywords[0] === '천안 헬스장' && kept.topics[0] === '가', '예약을 빼도 범위 설정은 남는다')
+
+  /*
+   * **들어오는 자리에서 한 번만 정리한다.** 화면에서 온 값을 그대로 저장하면 빈 줄·중복이
+   * 섞이고, 그게 크론까지 가서 「키워드가 없습니다」로 실패하거나 로테이션을 한쪽으로 쏠리게 한다.
+   */
+  const dirty = normalizePlan({
+    keywords: ['  천안 헬스장  ', '천안 헬스장', '', '   '],
+    topics: [null, '가', '가'],
+    queue: [{ keyword: ' A ', topic: ' 가 ' }, { keyword: 'A', topic: '가' }, { keyword: '', topic: '나' }, { keyword: 'B' }],
+  })
+  ok(dirty.keywords.length === 1 && dirty.keywords[0] === '천안 헬스장', '공백을 떼고 중복을 없앤다')
+  ok(dirty.topics.length === 1, '주제도 마찬가지')
+  ok(dirty.queue.length === 1 && dirty.queue[0].keyword === 'A', '반쪽짜리·중복 예약을 버린다', JSON.stringify(dirty.queue))
+  ok(normalizePlan(undefined).off === false, '설정이 없으면 꺼진 것이 아니다 (기본은 켜짐)')
+
+  // ── 화면 한 줄 요약 — 설정을 열어 세어 보지 않아도 알 수 있어야 한다
+  ok(planSummary(undefined).includes('순위 추적 목록 전부'), '아무것도 안 정하면 그렇게 말한다', planSummary(undefined))
+  ok(planSummary({ keywords: ['a', 'b'] }).includes('키워드 2개 지정'), '고른 개수를 밝힌다')
+  ok(planSummary({ queue: [{ keyword: 'A', topic: '가' }] }).includes('예약 1건'), '예약이 있으면 먼저 말한다')
+
+  /*
+   * **덩어리 설정이 저장 후 살아 돌아와야 한다.** normalizeDB 는 목록만 옮기고 있었다 —
+   * 이름을 안 적으면 저장은 성공하고 다음 읽기에서 조용히 사라진다 (이미 겪은 사고다).
+   */
+  const { DB_OBJECT_KEYS, normalizeDB: norm } = require(`${OUT}/store.js`)
+  ok(DB_OBJECT_KEYS.includes('autoDraftPlan'), '덩어리 항목 목록에 이름이 있다')
+  const back = norm({ posts: [], autoDraftPlan: { keywords: ['천안 헬스장'], queue: [{ keyword: 'A', topic: '가' }] } })
+  ok(back.autoDraftPlan?.keywords?.[0] === '천안 헬스장', '저장한 설정이 살아 돌아온다')
+  ok(norm({ posts: [] }).autoDraftPlan === undefined, '설정한 적 없으면 빈 값을 만들지 않는다 (「없음」과 구별된다)')
+  ok(norm({ autoDraftPlan: [] }).autoDraftPlan === undefined, '엉뚱한 모양이면 무시한다')
+
+  /*
+   * **DB 에 목록이 아닌 항목을 만들면 반드시 여기 이름을 적어야 한다.** 이 검사가 없으면
+   * 다음에 설정 덩어리를 하나 더 만들 때 같은 사고가 그대로 반복된다.
+   */
+  {
+    const { readFileSync: rf } = require('node:fs')
+    const types = rf(new URL('../lib/types.ts', import.meta.url), 'utf8')
+    const block = types.match(/export interface DB \{([\s\S]*?)\n\}/)
+    const body = block[1].replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+    const objects = [...body.matchAll(/^\s*(\w+)\??:\s*([^\n]*)$/gm)]
+      .filter((m) => !m[2].includes('[]'))
+      .map((m) => m[1])
+    const missing = objects.filter((k) => !DB_OBJECT_KEYS.includes(k))
+    ok(missing.length === 0, 'DB 의 덩어리 항목이 전부 DB_OBJECT_KEYS 에 있다 (없으면 읽을 때 사라진다)', missing.join(' · '))
+  }
+
+  // 화면·크론이 실제로 이 설정을 본다 (만들어만 두고 안 쓰면 아무것도 달라지지 않는다)
+  {
+    const { readFileSync: rf } = require('node:fs')
+    const cron = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
+    ok(cron.includes('planAssignment'), '크론이 회원 설정을 보고 고른다')
+    ok(cron.includes('popQueue'), '크론이 쓴 예약을 뺀다')
+    ok(/d\.posts\.unshift\(post\)[\s\S]{0,600}popQueue/.test(cron), '예약은 글이 저장될 때 함께 빠진다 (성공했을 때만)')
+    const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
+    ok(panel.includes('/api/autodraft/plan'), '화면이 설정을 저장한다')
+    ok(panel.includes('planSummary'), '접힌 상태에서도 무엇으로 쓰는지 보여준다')
+    const api = rf(new URL('../app/api/autodraft/plan/route.ts', import.meta.url), 'utf8')
+    ok(api.includes('normalizePlan'), '저장 전에 정리한다')
+  }
+}
+
+console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 고른다 (2026-08-23)')
+/*
+ * 회원 요청: "주제도 단순히 새벽운동 어떻게 하나 이런게 아니라 실제로 다이어트나 체중증량을
+ * 원하는 주제들을 리서치해서 그에 맞는 주제를 탐색하는 탐색기를 만들어서 그거중에 내가
+ * 선택해서 하고 싶어."
+ *
+ * 기본 주제 10개는 **우리가 앉아서 지어낸 것**이다. 그럴듯해 보이지만 사람들이 실제로
+ * 검색하는지 확인한 적이 없다. 그래서 씨앗만 우리가 넣고 후보는 네이버에서 가져온다.
+ */
+{
+  const { TOPIC_SEEDS, classifyIntent, toTopic, rankCandidates, candidateWhy, buildCandidates } =
+    require(`${OUT}/writing/topic-explore.js`)
+  const { ARENA_HIGH: HI, ARENA_LOW: LO } = require(`${OUT}/writing/arena.js`)
+
+  // 회원이 콕 집어 말한 두 갈래가 있어야 한다
+  ok(TOPIC_SEEDS.some((s) => s.label.includes('다이어트')), '다이어트 갈래가 있다')
+  ok(TOPIC_SEEDS.some((s) => s.label.includes('체중 증량')), '체중 증량 갈래가 있다')
+  ok(TOPIC_SEEDS.every((s) => s.queries.length > 0), '갈래마다 물어볼 말이 있다')
+  ok(new Set(TOPIC_SEEDS.map((s) => s.id)).size === TOPIC_SEEDS.length, '갈래 id 가 겹치지 않는다')
+
+  /*
+   * **업체를 찾는 말을 정보글 주제로 쓰면 홍보글이 된다.** 정보글은 신뢰도를 쌓으려고 쓰는
+   * 것이고(정보 : 홍보 = 2 : 1 의 '2'), 그 자리는 이미 홍보글이 맡고 있다.
+   */
+  ok(classifyIntent('다이어트 정체기') === 'info', '순수한 정보성 말은 정보로')
+  ok(classifyIntent('쌍용동 헬스장') === 'local', '「○○동」이 붙으면 업체 찾는 말')
+  ok(classifyIntent('헬스장 근처') === 'local', '「근처」도 마찬가지')
+  ok(classifyIntent('헬스장 가격') === 'buy', '가격은 구매 의도')
+  ok(classifyIntent('헬스장 추천') === 'buy', '추천도 구매 의도')
+  ok(classifyIntent('PT 일일권') === 'buy', '일일권도')
+  // 우리 지역 키워드는 띄어쓰기가 달라도 걸러야 한다 (「쌍용동헬스장」·「쌍용동 헬스장」)
+  ok(classifyIntent('쌍용동헬스장 후기', ['쌍용동 헬스장']) === 'local', '우리 지역 키워드는 띄어쓰기와 무관하게 거른다')
+  // 정보성 말에 우연히 지역처럼 보이는 글자가 있어도 잘못 걸지 않는다
+  ok(classifyIntent('공복 유산소') === 'info', '멀쩡한 정보성 말을 잘못 거르지 않는다')
+  ok(classifyIntent('단백질 섭취량') === 'info', '식단 관련도 정보성')
+
+  /*
+   * **말을 바꾸지 않는다.** 검색어를 다듬어 「예쁘게」 만들면 그건 다시 우리가 지어낸 주제다.
+   * 공백만 정리한다.
+   */
+  ok(toTopic('  다이어트   정체기  ') === '다이어트 정체기', '앞뒤·겹친 공백만 정리한다')
+  ok(toTopic('다이어트정체기') === '다이어트정체기', '붙여 쓴 말을 임의로 띄우지 않는다')
+
+  /*
+   * **줄 세우는 기준은 이미 실측으로 정한 값을 쓴다** (arena.ts 의 300편 / 100편).
+   * 같은 사실에 두 기준이 생기면 어느 쪽이 맞는지 아무도 모르게 된다.
+   */
+  const c = (topic, monthlySearch, recent30) => ({ topic, seedId: 's', monthlySearch, recent30, intent: 'info', from: 'searchad', why: '' })
+  const sorted = rankCandidates([
+    c('경쟁 센 것', 90000, HI + 10),
+    c('경쟁 적은 것', 1000, LO - 10),
+    c('경쟁 보통 큰 검색량', 50000, LO + 10),
+    c('경쟁 보통 작은 검색량', 100, LO + 10),
+  ])
+  ok(sorted[0].topic === '경쟁 적은 것', '경쟁 적은 자리가 먼저 — 검색량이 작아도', sorted[0].topic)
+  ok(sorted[1].topic === '경쟁 보통 큰 검색량', '같은 경쟁 수준이면 검색량 큰 것', sorted[1].topic)
+  ok(sorted[3].topic === '경쟁 센 것', '경쟁 센 자리는 뒤로', sorted[3].topic)
+  // 못 잰 것을 0 으로 바꿔 유리하게 쓰지 않는다 — 뒤로 밀되 버리지도 않는다
+  const withNull = rankCandidates([c('못 잰 것', null, null), c('경쟁 적은 것', 10, LO - 1)])
+  ok(withNull[0].topic === '경쟁 적은 것', '못 잰 것을 「경쟁 없음」으로 치지 않는다')
+  ok(withNull.length === 2, '못 쟀다고 버리지도 않는다')
+
+  // 한 줄 설명 — 못 쟀으면 못 쟀다고 말한다
+  ok(candidateWhy(1200, 40).includes('월 1,200회 검색'), '검색량을 그대로 적는다')
+  ok(candidateWhy(1200, 40).includes('경쟁 적은 자리'), '경쟁 수준을 붙인다')
+  ok(candidateWhy(null, 40).includes('검색광고 키가 없습니다'), '왜 검색량을 모르는지 밝힌다')
+  ok(candidateWhy(1200, null).includes('발행량은 못 쟀습니다'), '못 잰 것을 못 쟀다고 말한다')
+
+  /*
+   * **두 곳에서 온 같은 말은 한 번만.** 자동완성과 연관검색어는 겹치는데, 겹칠 때 검색량을
+   * 아는 쪽을 버리면 회원이 볼 수 있는 정보가 줄어든다.
+   */
+  const built = buildCandidates({
+    seedId: 'diet',
+    suggestions: ['다이어트 정체기', '다이어트 식단', '쌍용동 헬스장 가격'],
+    adRows: [
+      { keyword: '다이어트 정체기', monthlySearch: 8000 },
+      { keyword: '공복 유산소', monthlySearch: 3000 },
+    ],
+    recent: { '다이어트 정체기': 40 },
+    myLocalKeywords: ['쌍용동 헬스장'],
+  })
+  const jeongche = built.find((x) => x.topic === '다이어트 정체기')
+  ok(built.filter((x) => x.topic === '다이어트 정체기').length === 1, '겹친 말은 한 번만 나온다')
+  ok(jeongche.monthlySearch === 8000, '겹칠 때 검색량을 아는 쪽을 살린다')
+  ok(jeongche.recent30 === 40, '잰 발행량이 붙는다')
+  ok(built.find((x) => x.topic === '다이어트 식단').from === 'autocomplete', '자동완성에서 온 것은 그렇게 표시한다')
+  // 업체 찾는 말은 목록에 남되 갈래가 붙는다 (버리지 않고 화면이 걸러 보여준다)
+  ok(built.find((x) => x.topic === '쌍용동 헬스장 가격')?.intent !== 'info', '업체 찾는 말에 정보 갈래를 주지 않는다')
+  // 이미 고른 주제는 다시 권하지 않는다
+  const again = buildCandidates({
+    seedId: 'diet',
+    suggestions: ['다이어트 정체기'],
+    adRows: [],
+    recent: {},
+    exclude: ['다이어트정체기'],
+  })
+  ok(again.length === 0, '이미 고른 주제는 띄어쓰기가 달라도 다시 권하지 않는다')
+
+  /*
+   * **화면·라우트가 실제로 이걸 쓴다.** 만들어만 두고 안 쓰면 아무것도 달라지지 않는다.
+   */
+  {
+    const { readFileSync: rf } = require('node:fs')
+    const api = rf(new URL('../app/api/autodraft/topics/route.ts', import.meta.url), 'utf8')
+    ok(api.includes('gatherSuggestions'), '자동완성에서 가져온다')
+    ok(api.includes('keywordTool'), '검색광고 연관검색어에서 가져온다')
+    ok(api.includes('recentBlogCount'), '경쟁(최근 30일 발행량)을 잰다')
+    // 정보성인 것만 발행량을 잰다 — 업체 찾는 말에 조회를 쓰면 회원 시간만 버린다
+    ok(/classifyIntent\([\s\S]{0,80}=== 'info'/.test(api), '잴 대상을 정보성으로 좁힌다')
+    ok(api.includes('note'), '몇 개를 걸렀고 못 쟀는지 함께 돌려준다')
+
+    const ui = rf(new URL('../app/posts/TopicExplorer.tsx', import.meta.url), 'utf8')
+    ok(ui.includes('TOPIC_SEEDS'), '화면이 같은 갈래 목록을 쓴다 (두 곳에 적지 않는다)')
+    ok(ui.includes('note.dropped') && ui.includes('note.measured'), '무엇을 걸렀고 몇 개를 쟀는지 화면에 밝힌다')
+    ok(ui.includes('onPick'), '고른 주제를 설정으로 넘긴다')
+
+    const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
+    ok(panel.includes('<TopicExplorer onPick={addTopic} />'), '탐색기에서 담은 주제가 설정 목록으로 들어간다')
+    /*
+     * **담으면서 곧바로 켜야 한다.** 더하기만 하고 꺼진 채로 두면 회원은 담은 줄 알지만
+     * 실제로는 안 쓰인다 — 고른 것이 없으면 기본 10개를 전부 쓰는 규칙이라 티도 안 난다.
+     */
+    ok(/const addTopic[\s\S]{0,400}topics: \[\.\.\.\(p\.topics \?\? \[\]\), t\]/.test(panel), '담으면 켜진 채로 들어간다')
+  }
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)

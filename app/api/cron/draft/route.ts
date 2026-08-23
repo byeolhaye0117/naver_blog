@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { newId } from '@/lib/id'
-import { hasTodayAutoDraft, pickAssignment } from '@/lib/writing/autodraft'
+import { hasTodayAutoDraft, planAssignment, popQueue } from '@/lib/writing/autodraft'
 import { AUTO_DRAFT_RUNS_KEEP, baseUrlFor } from '@/lib/writing/autodraft'
 import type { AutoDraftRun, Post } from '@/lib/types'
 
@@ -146,9 +146,18 @@ async function run(
    */
   const keywords = (db.rankTargets ?? []).map((t) => t.keyword).filter(Boolean)
   const pool = keywords.length ? keywords : (store.localKeywords ?? [])
-  const assignment = pickAssignment({ posts: db.posts, keywords: pool })
+
+  /*
+   * **회원이 정해 둔 것이 먼저다** (2026-08-23 요청: "그거 주제랑 키워드 내가 원하는걸로
+   * 선택해서 하고 싶어"). 예약해 둔 순서가 있으면 그것부터, 없으면 고른 범위 안에서
+   * 로테이션, 아무것도 안 정했으면 여태처럼 순위 추적 키워드 전부를 돈다.
+   */
+  if (db.autoDraftPlan?.off) {
+    return NextResponse.json({ skipped: '자동 초안을 꺼두셨습니다.', date: today })
+  }
+  const assignment = planAssignment({ plan: db.autoDraftPlan, posts: db.posts, fallbackKeywords: pool })
   if (!assignment) {
-    await record({ ok: false, error: '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록해주세요.' })
+    await record({ ok: false, error: '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록하거나 자동 초안 설정에서 키워드를 골라주세요.' })
     return NextResponse.json({ skipped: '쓸 키워드가 없습니다.' })
   }
 
@@ -253,6 +262,16 @@ async function run(
   }
   await mutate((d) => {
     d.posts.unshift(post)
+    /*
+     * **예약은 성공했을 때만 뺀다.** 실패한 날에도 빼면 회원이 정해 둔 글이 한 편도 안
+     * 나온 채 사라진다 — 「자동으로 써준다」는 약속을 조용히 어기는 것이다.
+     */
+    if (d.autoDraftPlan?.queue?.length) {
+      d.autoDraftPlan = popQueue(d.autoDraftPlan, {
+        keyword: assignment.mainKeyword,
+        topic: assignment.topic,
+      })
+    }
   })
 
   await record({

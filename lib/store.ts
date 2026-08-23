@@ -148,6 +148,17 @@ export const DB_LIST_KEYS = [
   'autoDraftRuns',
 ] as const
 
+/**
+ * **목록이 아닌 항목** — 하나짜리 설정 덩어리.
+ *
+ * DB_LIST_KEYS 와 같은 이유로 여기 모은다. `normalizeDB` 는 **여기 적히지 않은 것을
+ * 조용히 버린다** — 목록이든 덩어리든 마찬가지다. 자동 초안 계획(회원이 고른 키워드·주제)이
+ * 저장은 되는데 다음 읽기에서 사라지면, 회원은 자기가 고른 것이 왜 안 지켜지는지 알 길이 없다.
+ *
+ * 비어 있는 것과 없는 것을 구별해야 해서 빈 값으로 채우지 않는다 (undefined 그대로 둔다).
+ */
+export const DB_OBJECT_KEYS = ['autoDraftPlan'] as const
+
 /** stores 만 규칙이 다르다 — 비어 있으면 씨앗 데이터로 되돌린다 */
 function emptyDB(): DB {
   const db = { stores: SEED_STORES } as DB
@@ -167,8 +178,13 @@ export function normalizeDB(raw: unknown): DB {
   const db = {
     stores: Array.isArray(r.stores) && r.stores.length ? (r.stores as DB['stores']) : base.stores,
   } as DB
-  const w = db as unknown as Record<string, unknown[]>
+  const w = db as unknown as Record<string, unknown>
   for (const k of DB_LIST_KEYS) w[k] = Array.isArray(r[k]) ? (r[k] as unknown[]) : []
+  // 덩어리는 있을 때만 옮긴다 — 빈 객체를 넣으면 「설정한 적 없음」과 구별이 안 된다
+  for (const k of DB_OBJECT_KEYS) {
+    const v = r[k]
+    if (v && typeof v === 'object' && !Array.isArray(v)) w[k] = v
+  }
   return db
 }
 
