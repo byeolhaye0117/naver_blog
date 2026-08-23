@@ -236,9 +236,40 @@ export interface PlaceRank {
   note?: string
 }
 
+/**
+ * 매일 자동 초안이 **돌았는지, 돌았다면 어떻게 됐는지**.
+ *
+ * ── 왜 만들었나 (2026-08-23) ─────────────────────────────────
+ * 회원: "안뜨는데? 제대로 하고 있는거 맞아?" — 맞는 지적이었다. 크론은 20:00 UTC 에 돌았고
+ * 다른 크론(순위·관찰·조사·자리)은 같은 날 전부 기록을 남겼는데 **자동 초안만 아무 흔적이
+ * 없었다.** 실패했는지, 아예 안 돌았는지, 성공했는데 저장이 안 됐는지 구별할 방법이 없었다.
+ *
+ * 조용히 실패하는 자동화는 **없는 것보다 나쁘다** — 회원은 오늘 글이 준비된 줄 알고 기다린다.
+ * 그래서 성공이든 실패든 남긴다.
+ */
+export interface AutoDraftRun {
+  /** YYYY-MM-DD (UTC) */
+  date: string
+  at: string
+  ok: boolean
+  keyword?: string
+  topic?: string
+  /** 저장된 글 id (성공했을 때) */
+  postId?: string
+  score?: number | null
+  /** 왜 실패했나 — 회원 화면에 그대로 보여준다 */
+  error?: string
+  /** 몇 초 걸렸나 — 시간 초과를 가려내려면 필요하다 */
+  ms?: number
+  /** 회원이 「지금 한 편 쓰기」로 직접 돌린 것인가 — 크론이 도는지 판단할 때 구별해야 한다 */
+  manual?: boolean
+}
+
 export interface DB {
   stores: Store[]
   posts: Post[]
+  /** 매일 자동 초안 실행 기록 — 조용히 실패하지 않게 (2026-08-23) */
+  autoDraftRuns?: AutoDraftRun[]
   rankTargets: RankTarget[]
   rankSnapshots: RankSnapshot[]
   placeRanks: PlaceRank[]

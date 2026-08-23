@@ -5,6 +5,8 @@ import { PageHeader } from '@/components/AppShell'
 import { Stat } from '@/components/ui'
 import { IconBalance, IconCheck, IconDoc, IconTrend } from '@/components/icons'
 import PostList from './PostList'
+import AutoDraftPanel from './AutoDraftPanel'
+import { hasTodayAutoDraft } from '@/lib/writing/autodraft'
 import StorageNotice from '@/components/StorageNotice'
 
 export const dynamic = 'force-dynamic'
@@ -14,6 +16,7 @@ export default async function PostsPage() {
   const balance = balanceReport(db.posts)
   const cadence = cadenceReport(db.posts)
   const published = db.posts.filter((p) => p.status === 'published')
+  const today = new Date().toISOString().slice(0, 10)
 
   return (
     <>
@@ -52,6 +55,12 @@ export default async function PostsPage() {
           iconTone="gold"
         />
       </div>
+
+      <AutoDraftPanel
+        runs={db.autoDraftRuns}
+        today={today}
+        hasTodayDraft={hasTodayAutoDraft(db.posts, today)}
+      />
 
       <StorageNotice />
       <PostList posts={db.posts} stores={db.stores} evidence={poolStoredRuns(db.factorRuns)} />

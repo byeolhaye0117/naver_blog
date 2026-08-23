@@ -52,6 +52,7 @@ export default async function Dashboard() {
     rankTargets: db.rankTargets,
     // 오늘 자동 초안을 가려내려면 오늘 날짜가 필요하다 (nextActions 는 시각을 안 만든다)
     today: new Date().toISOString().slice(0, 10),
+    autoDraftRuns: db.autoDraftRuns,
     fallenCount: fallen.length,
     // 발행 2주가 지났는데 1페이지 밖인 것 — 크론이 밤에 진단해 처방을 만들어 둔다
     stuck: views

@@ -7,7 +7,7 @@
  * 그래서 순서에서 막힌 첫 지점을 찾아 그것만 크게 보여주고, 나머지는 접어 둔다.
  */
 import type { Post, RankTarget, Store } from '@/lib/types'
-import { isAutoDraft } from './autodraft'
+import { autoDraftAlert, isAutoDraft } from './autodraft'
 
 export type ActionTone = 'good' | 'warn' | 'bad'
 
@@ -79,6 +79,8 @@ export interface ActionInput {
   keys: { search: boolean; searchAd: boolean }
   /** 오늘 날짜 (YYYY-MM-DD) — 밖에서 받는다. 안에서 만들면 테스트가 시각에 흔들린다 */
   today?: string
+  /** 자동 초안 실행 기록 — 실패를 알리려면 필요하다 (2026-08-23) */
+  autoDraftRuns?: { date: string; ok: boolean; error?: string }[]
 }
 
 /** 부족한 글 유형 하나 — 무엇을 쓸지까지 정해 준다 */
@@ -109,6 +111,26 @@ export function nextActions(input: ActionInput): NextAction[] {
    * 오늘 날짜는 밖에서 받는다. 안에서 new Date() 를 부르면 테스트가 시각에 따라 흔들린다.
    */
   const todayAuto = drafts.find((p) => isAutoDraft(p) && (p.createdAt ?? '').slice(0, 10) === input.today)
+
+  /*
+   * **자동 초안이 실패했으면 그것부터 알린다** (2026-08-23). 회원이 "안뜨는데? 제대로 하고
+   * 있는거 맞아?"라고 물었을 때, 화면에는 아무 흔적이 없어서 실패했는지 안 돌았는지조차
+   * 알 수 없었다. 조용히 실패하는 자동화는 없는 것보다 나쁘다 — 준비된 줄 알고 기다린다.
+   *
+   * **오늘 초안이 이미 있으면 알리지 않는다.** 글이 눈앞에 있는데 「실패했습니다」가 같이
+   * 뜨면 어느 쪽이 맞는지 회원이 판단해야 한다.
+   */
+  const alert = input.today && !todayAuto ? autoDraftAlert(input.autoDraftRuns, input.today) : null
+  if (alert) {
+    out.push({
+      id: 'auto-draft-failed',
+      title: alert.level === 'bad' ? '오늘 자동 초안이 만들어지지 않았습니다' : '자동 초안이 멈춘 것 같습니다',
+      why: `${alert.text} 글 목록에서 「지금 한 편 쓰기」로 직접 돌려보실 수 있습니다.`,
+      href: '/posts',
+      cta: '글 목록 열기',
+      tone: alert.level === 'bad' ? 'bad' : 'warn',
+    })
+  }
   if (todayAuto) {
     out.push({
       id: 'auto-draft',

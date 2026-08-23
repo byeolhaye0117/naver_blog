@@ -145,6 +145,7 @@ export const DB_LIST_KEYS = [
   'studyPosts',
   'openingRuns',
   'noticeItems',
+  'autoDraftRuns',
 ] as const
 
 /** stores 만 규칙이 다르다 — 비어 있으면 씨앗 데이터로 되돌린다 */

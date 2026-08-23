@@ -8303,5 +8303,119 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
   ok(editor.includes('INFO_TOPICS') && !/const INFO_TOPIC_IDEAS = \[/.test(editor), '화면이 목록을 따로 들고 있지 않다')
 }
 
+console.log('\n[95] 자동 초안이 조용히 실패하지 않는가 (2026-08-23)')
+/*
+ * 회원: "안뜨는데? 제대로 하고 있는거 맞아?"
+ *
+ * 그날 크론은 **돌다가 실패했다.** 자기 앱을 부를 때 배포별 주소(VERCEL_URL)를 썼는데
+ * 배포 보호가 로그인 페이지를 돌려줘서 JSON 파싱이 깨졌고, 아무 기록도 남기지 않아서
+ * 화면에서는 「실패했나 안 돌았나」조차 구별할 수 없었다.
+ *
+ * 그래서 세 가지를 테스트한다 — **어느 주소로 부르나 · 실행 기록을 어떻게 읽나 ·
+ * 무엇을 알리고 무엇을 삼키나.**
+ */
+{
+  const { AUTO_DRAFT_RUNS_KEEP, AUTO_DRAFT_STALE_DAYS, baseUrlFor, autoDraftAlert, autoDraftStatus } =
+    require(`${OUT}/writing/autodraft.js`)
+
+  // ── ① 어느 주소로 자기 앱을 부르나
+  /*
+   * **운영 도메인이 먼저다.** VERCEL_URL 은 배포마다 달라지는 주소라 배포 보호에 막힌다 —
+   * 이번 실패의 원인이 정확히 이것이었다.
+   */
+  ok(
+    baseUrlFor({ VERCEL_PROJECT_PRODUCTION_URL: 'naver-blog-eta.vercel.app', VERCEL_URL: 'naver-blog-abc123.vercel.app' }) ===
+      'https://naver-blog-eta.vercel.app',
+    '운영 도메인이 배포별 주소보다 앞선다'
+  )
+  ok(baseUrlFor({ VERCEL_URL: 'x.vercel.app' }) === 'https://x.vercel.app', '운영 도메인이 없으면 배포별 주소라도 쓴다')
+  ok(
+    baseUrlFor({ NEXT_PUBLIC_BASE_URL: 'https://blog.example.com/', VERCEL_URL: 'x.vercel.app' }) ===
+      'https://blog.example.com',
+    '직접 적은 주소가 배포별 주소보다 앞서고, 끝 슬래시는 뗀다'
+  )
+  ok(baseUrlFor({ VERCEL_PROJECT_PRODUCTION_URL: 'https://a.com' }) === 'https://a.com', 'https 가 붙어 있어도 두 번 붙이지 않는다')
+  ok(baseUrlFor({ VERCEL_URL: '  ' }) === null, '빈 값은 주소로 치지 않는다')
+  ok(baseUrlFor({}) === null, '아무것도 없으면 null — 라우트가 그걸 기록에 남긴다')
+
+  // ── ② 기록은 얼마나 남기나
+  ok(AUTO_DRAFT_RUNS_KEEP >= 14, `두 주 넘게 남긴다 — ${AUTO_DRAFT_RUNS_KEEP}건`)
+  ok(AUTO_DRAFT_STALE_DAYS >= 2, '하루 비었다고 「멈췄다」고 하지 않는다 (크론은 새벽에 돈다)')
+
+  const TODAY = '2026-08-23'
+  const run = (patch) => ({ date: TODAY, ok: true, ...patch })
+
+  // ── ③ 대시보드는 **알릴 일이 있을 때만** 끼어든다
+  ok(autoDraftAlert([run({ ok: true })], TODAY) === null, '오늘 성공했으면 아무 말도 하지 않는다')
+  const bad = autoDraftAlert([run({ ok: false, error: 'JSON 이 아닌 응답 (상태 401)' })], TODAY)
+  ok(bad?.level === 'bad', '오늘 실패했으면 알린다')
+  ok(bad.text.includes('401'), '왜 실패했는지 그대로 보여준다', bad.text)
+  ok(
+    autoDraftAlert([run({ ok: false, error: 'x' }), run({ ok: true })], TODAY) === null,
+    '한 번 실패했어도 다시 돌아 성공했으면 알리지 않는다'
+  )
+  ok(autoDraftAlert([run({ ok: false })], TODAY).text.includes('기록되지 않았습니다'), '이유가 없으면 없다고 말한다')
+
+  /*
+   * **「아직 안 돌았습니다」는 띄우지 않는다.** 처음엔 기록이 없으면 경고를 띄웠는데,
+   * 그러면 ⓐ 방금 켠 지점과 ⓑ 고장난 크론을 구별하지 못하고 ⓒ 크론 시각(새벽 5시) 전까지
+   * 하루의 대부분이 경고로 덮인다. 실제로 「초안 N편을 검수하세요」를 밀어내서 테스트가 깨졌다.
+   */
+  ok(autoDraftAlert(undefined, TODAY) === null, '기록이 아예 없으면 조용하다')
+  ok(autoDraftAlert([], TODAY) === null, '빈 목록도 마찬가지')
+  ok(autoDraftAlert([run({ date: '2026-08-22' })], TODAY) === null, '어제 돌았고 오늘 아직이면 조용하다 (정상이다)')
+
+  // 대신 **끊긴 것**은 잡는다 — 이틀이 비면 크론이 멈춘 것이다
+  const stale = autoDraftAlert([run({ date: '2026-08-20' })], TODAY)
+  ok(stale?.level === 'warn', '이틀 넘게 안 돌면 알린다')
+  ok(stale.text.includes('3일째') && stale.text.includes('2026-08-20'), '며칠째인지·마지막이 언제인지 말한다', stale.text)
+  // 순서가 뒤죽박죽인 기록에서도 **가장 최근**을 본다
+  ok(
+    autoDraftAlert([run({ date: '2026-08-10' }), run({ date: '2026-08-22' })], TODAY) === null,
+    '기록 순서가 어떻든 마지막 실행으로 판단한다'
+  )
+
+  // ── ④ 발행 관리 화면은 **아무 일이 없어도** 지금 상태를 말한다
+  const done = autoDraftStatus([run({ ok: true })], TODAY, true)
+  ok(done.level === 'good' && !done.canRun, '오늘 초안이 있으면 좋다고 하고 버튼을 숨긴다')
+  const failedNow = autoDraftStatus([run({ ok: false, error: '지점이 없습니다.' })], TODAY, false)
+  ok(failedNow.level === 'bad' && failedNow.canRun, '실패한 날에는 직접 돌릴 수 있게 한다')
+  ok(failedNow.text.includes('지점이 없습니다.'), '무엇 때문인지 화면에 그대로 적는다')
+  const never = autoDraftStatus(undefined, TODAY, false)
+  ok(never.text.includes('새벽 5시'), '기록이 없어도 언제 도는지는 알려준다', never.text)
+  ok(never.canRun, '기록이 없을 때도 손으로 돌려볼 수 있다')
+  ok(autoDraftStatus([run({ date: '2026-08-22' })], TODAY, false).text.includes('어제'), '어제 돈 것은 「어제」라고 읽어준다')
+  ok(
+    autoDraftStatus([run({ date: '2026-08-22', manual: true })], TODAY, false).text.includes('직접 실행'),
+    '손으로 돌린 것은 그렇다고 밝힌다 — 크론이 도는지와 다른 이야기다'
+  )
+  ok(autoDraftStatus([run({ date: '2026-08-18' })], TODAY, false).level === 'warn', '오래 끊기면 발행 관리에서도 주의로')
+
+  /*
+   * **화면이 약속한 버튼이 실제로 있어야 한다.** 대시보드 문구가 「지금 한 편 쓰기로 직접
+   * 돌려보실 수 있습니다」라고 하는데 그 버튼이 없으면, 회원은 없는 것을 찾아 헤맨다.
+   */
+  const { readFileSync: rf2 } = require('node:fs')
+  const panel = rf2(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
+  const nextAction = rf2(new URL('../lib/writing/next-action.ts', import.meta.url), 'utf8')
+  ok(nextAction.includes('지금 한 편 쓰기'), '대시보드가 그 버튼을 가리킨다')
+  ok(panel.includes('지금 한 편 쓰기'), '가리킨 그 버튼이 화면에 있다')
+  ok(panel.includes("'/api/cron/draft', { method: 'POST' }"), '버튼이 실제로 초안 쓰기를 부른다')
+  const route = rf2(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
+  ok(/export async function POST/.test(route), '그 주소가 POST 를 받는다')
+  ok(/export async function GET/.test(route) && route.includes('CRON_SECRET'), '크론용 GET 은 비밀값을 그대로 검사한다')
+  // 실패해도 기록은 남는다 — 이번 사고의 핵심이다
+  ok((route.match(/await record\(/g) ?? []).length >= 4, '성공·실패·건너뜀을 모두 기록한다')
+  ok(route.includes('res.text()'), 'JSON 이 아닌 응답(로그인 HTML)도 읽어서 남긴다')
+  ok(route.includes('x-vercel-protection-bypass'), '배포 보호 우회 비밀값이 있으면 함께 보낸다')
+
+  const posts = rf2(new URL('../app/posts/page.tsx', import.meta.url), 'utf8')
+  ok(posts.includes('AutoDraftPanel') && posts.includes('autoDraftRuns'), '발행 관리 화면이 실행 기록을 넘긴다')
+
+  // 기록 목록이 DB 저장/복원 목록에 들어 있어야 내려받기·올리기에서 사라지지 않는다
+  const { DB_LIST_KEYS: keys } = require(`${OUT}/store.js`)
+  ok(keys.includes('autoDraftRuns'), '실행 기록도 백업에 포함된다')
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
