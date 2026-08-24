@@ -5,9 +5,17 @@ import { TOPIC_SEEDS, type TopicCandidate } from '@/lib/writing/topic-explore'
 import { Badge, btnGhost } from '@/components/ui'
 
 interface Note {
-  dropped: number
+  found: number
+  shown: number
+  overflow: number
+  /** 의료·제품처럼 우리가 손대면 안 되는 것 */
+  offlimit: number
+  /** 업체를 찾는 말 (지역·가격) */
+  local: number
+  /** 주제가 되기엔 짧은 것 */
+  thin: number
   measured: number
-  unmeasured: number
+  tried: number
   adKeys: boolean
   autocomplete: { asked: number; answered: number }
 }
@@ -127,9 +135,19 @@ export default function TopicExplorer({ onPick }: { onPick: (topic: string) => v
           */}
           {note && (
             <p className="muted mt-2 text-[11px] leading-relaxed">
-              {note.dropped > 0 && `업체를 찾는 말 ${note.dropped}개는 뺐습니다 (정보글 주제로 쓰면 홍보글이 됩니다). `}
-              {`발행량은 검색량 큰 ${note.measured}개만 쟀습니다`}
-              {note.unmeasured > 0 && ` — 나머지 ${note.unmeasured}개는 경쟁을 모릅니다`}.
+              네이버에서 {note.found.toLocaleString()}개를 받아 {note.shown}개를 보여드립니다.
+              {note.offlimit > 0 && (
+                <>
+                  {' '}
+                  약·주사·질병처럼 <b>헬스장이 쓰면 안 되는 말 {note.offlimit.toLocaleString()}개</b>는 검색량이 커도
+                  뺐습니다 (광고심의에 걸리고 블로그 주제도 흔들립니다).
+                </>
+              )}
+              {note.local > 0 && ` 업체를 찾는 말 ${note.local.toLocaleString()}개도 뺐습니다 — 정보글 주제로 쓰면 홍보글이 됩니다.`}
+              {note.thin > 0 && ` 「엉덩이」처럼 짧아서 글이 안 되는 말 ${note.thin.toLocaleString()}개도 뺐습니다.`}
+              {note.overflow > 0 && ` 남은 ${note.overflow.toLocaleString()}개는 순서가 뒤라 접었습니다.`}
+              {` 발행량(경쟁)은 검색량 큰 ${note.tried}개만 쟀고 ${note.measured}개가 답했습니다`}
+              {note.measured === 0 && ' — 네이버가 연달아 조회를 막은 것 같습니다. 잠시 뒤 다시 눌러보세요'}.
               {!note.adKeys && ' 검색광고 API 키가 없어 검색량은 샘플 값입니다.'}
               {note.autocomplete.answered < note.autocomplete.asked &&
                 ` 자동완성은 ${note.autocomplete.asked}번 중 ${note.autocomplete.answered}번만 응답했습니다.`}
