@@ -8968,6 +8968,23 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
 
     const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
     ok(/<TopicExplorer picked=\{plan\.topics \?\? \[\]\} onPick=\{addTopic\} \/>/.test(panel), '탐색기에서 담은 주제가 설정 목록으로 들어간다')
+
+    /*
+     * **저장된 것을 어디서 보나** (2026-08-24). 회원 질문: "저장된 내용 수정하거나 삭제
+     * 확인하고 싶으면 어디서 봐야해?" 여태 저장값은 편집 칩에 섞여만 있었고, 그 칩들은
+     * 탐색 결과 열두 줄 아래에 파묻혀 있었다.
+     */
+    ok(panel.includes('지금 저장된 설정'), '저장된 것을 한 곳에 모아 보여준다')
+    ok(panel.includes('const [stored, setStored]'), '저장본을 편집본과 따로 든다')
+    ok(panel.includes('const dirty = !same(plan, stored)'), '둘이 다른지 안다')
+    ok(panel.includes('아직 저장 안 됨') && panel.includes('되돌리기'), '안 저장된 변경을 알리고 되돌릴 수 있다')
+    /*
+     * **저장하면 저장본도 갱신돼야 한다.** 안 그러면 저장한 뒤에도 「아직 저장 안 됨」이
+     * 계속 떠서, 회원은 저장이 안 된 줄 알고 다시 누른다.
+     */
+    ok(/setPlan\(fresh\)[\s\S]{0,80}setStored\(fresh\)/.test(panel), '저장하면 저장본도 함께 갱신한다')
+    // 탐색 결과가 펼쳐진 채로 있으면 저장된 설정과 저장 버튼이 화면 밖으로 밀린다
+    ok(/<details[\s\S]{0,400}주제 탐색[\s\S]{0,300}<TopicExplorer/.test(panel), '탐색은 접어 둔다')
     /*
      * **담으면서 곧바로 켜야 한다.** 더하기만 하고 꺼진 채로 두면 회원은 담은 줄 알지만
      * 실제로는 안 쓰인다 — 고른 것이 없으면 기본 10개를 전부 쓰는 규칙이라 티도 안 난다.
