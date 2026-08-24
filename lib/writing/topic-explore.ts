@@ -21,7 +21,6 @@
  * 고르고 거르고 줄 세우는 규칙만 둔다 (라우트가 조회해서 넘겨준다). 「무엇을 정보글 주제로
  * 볼 것인가」는 틀리면 매일 엉뚱한 글이 나오는 종류라, 테스트가 볼 수 있는 자리에 있어야 한다.
  */
-import { ARENA_HIGH, ARENA_LOW } from './arena'
 
 /**
  * 탐색 씨앗 — **회원이 고르는 큰 갈래**.
@@ -114,6 +113,20 @@ const OFF_LIMIT_WORDS = [
   '골다공',
   '우울증',
   '불면증',
+  /*
+   * 2026-08-24 세 번째 실행. 「체중 증량」 갈래가 보충제로 뒤덮였다 — 단백질보충제 33,800회 ·
+   * 탄수화물보충제 · 벌크업보충제 · 벌크업프로틴 · 헬스부스터. 우리가 파는 물건이 아니고,
+   * 효과를 말하면 건강기능식품 광고가 된다.
+   *
+   * 「계산기」도 뺀다 — 도구를 찾는 검색이라 정보글로는 그 자리에 못 간다.
+   */
+  '보충제',
+  '프로틴',
+  '부스터',
+  '쉐이크',
+  '파우더',
+  '크레아틴',
+  '계산기',
 ]
 /** 「다이어트약」·「변비약」 — 낱말이 「약」으로 끝나면 약이다 */
 const DRUG_TAIL = /약$/
@@ -254,6 +267,8 @@ export interface TopicCandidate {
   intent: TopicIntent
   /** 어디서 온 후보인가 — 회원이 믿을 근거 */
   from: 'autocomplete' | 'searchad'
+  /** 발행량이 상한에 걸려 잘린 값인가 — 「4,286편」과 「4,286편 이상」은 다르다 */
+  cappedRecent?: boolean
   /** 왜 이 순서인지 한 줄 */
   why: string
 }
@@ -270,47 +285,55 @@ export function toTopic(query: string): string {
 }
 
 /**
- * 후보를 줄 세운다 — **수요는 큰데 경쟁이 적은 것**부터.
+ * 후보를 줄 세운다 — **발행량이 적은 것부터.**
  *
- * ── 왜 이 순서인가 ─────────────────────────────────────────
- * 발행량 경계(300편 / 100편)는 이 앱이 이미 실측으로 정한 값을 그대로 쓴다 (arena.ts).
- * 300편 이상은 갓 쓴 글이 바로 안 올라오던 자리였고, 100편 아래는 7일 이내 글이 1페이지에
- * 올라오던 자리였다. **여기서 새 기준을 만들지 않는다** — 같은 사실에 두 기준이 생기면
- * 어느 쪽이 맞는지 아무도 모르게 된다.
+ * ── 왜 「경쟁 등급」을 붙이지 않나 (2026-08-24) ──────────────
+ * 처음엔 arena.ts 의 실측 경계(300편/100편)로 「경쟁 센 자리」·「적은 자리」를 붙였다.
+ * 실제로 돌려보니 **열두 줄이 전부 「경쟁 센 자리」**였다:
  *
- * 검색량을 못 잰 것(검색광고 키 없음)은 **뒤로 밀되 버리지 않는다.** 모르는 것을 0으로
- * 바꿔 쓰면 없는 사실을 만들어내는 셈이다.
+ *   다이어트식단 4,286편 · 뱃살빼는법 4,286편 · 기초대사량 4,286편 · 내장지방빼는법 2,799편
+ *
+ * 당연하다. 그 경계는 **지역 헬스 키워드**로 잰 값이다 (쌍용동 헬스장 433편). 전국 단위
+ * 정보 키워드는 자릿수가 다르다. 판이 다른데 같은 경계를 쓰면 **모든 줄이 같은 말이 되어
+ * 아무 정보도 주지 못한다.**
+ *
+ * 그렇다고 여기서 새 경계를 지어내지도 않는다 — 전국 정보 키워드로 순위를 재본 적이 없다.
+ * 대신 **숫자를 그대로 보여주고 적은 순으로 줄 세운다.** 등급은 우리가 잰 판에서만 쓴다.
+ *
+ * 못 잰 것은 뒤로 밀되 버리지 않는다 — 모르는 것을 0으로 바꿔 쓰면 없는 사실을 만드는 셈이다.
  */
 export function rankCandidates(list: TopicCandidate[]): TopicCandidate[] {
-  const tier = (c: TopicCandidate): number => {
-    if (c.recent30 === null) return 1
-    if (c.recent30 < ARENA_LOW) return 0
-    if (c.recent30 < ARENA_HIGH) return 1
-    return 2
-  }
   return [...list].sort(
     (a, b) =>
-      tier(a) - tier(b) ||
+      Number(a.recent30 === null) - Number(b.recent30 === null) ||
+      (a.recent30 ?? 0) - (b.recent30 ?? 0) ||
       (b.monthlySearch ?? -1) - (a.monthlySearch ?? -1) ||
-      (a.recent30 ?? Number.MAX_SAFE_INTEGER) - (b.recent30 ?? Number.MAX_SAFE_INTEGER) ||
       a.topic.localeCompare(b.topic)
   )
 }
 
-/** 후보 한 줄 설명 — 화면에 그대로 쓴다 */
-export function candidateWhy(monthlySearch: number | null, recent30: number | null): string {
+/**
+ * 후보 한 줄 설명 — 화면에 그대로 쓴다.
+ *
+ * **잘린 값을 잰 값처럼 쓰지 않는다.** 블로그 섹션은 1,000건에서 잘리므로, 그 위는
+ * 「4,286편」이 아니라 「4,286편 이상」이다. 실제로 열두 줄 중 여덟 줄이 똑같이 4,286편으로
+ * 떴는데, 그건 우연이 아니라 전부 상한에 걸린 값이었다 — 같은 숫자를 정확한 값처럼
+ * 보여주면 회원이 그 둘을 비교해 판단하게 된다.
+ */
+export function candidateWhy(
+  monthlySearch: number | null,
+  recent30: number | null,
+  /** 상한에 걸려 잘린 값인가 (blogsection 의 note === 'atLeast') */
+  capped = false
+): string {
   const demand =
     monthlySearch === null
       ? '검색량은 못 쟀습니다 (검색광고 키가 없습니다)'
       : `월 ${monthlySearch.toLocaleString()}회 검색`
   if (recent30 === null) return `${demand} · 발행량은 못 쟀습니다`
-  const level =
-    recent30 < ARENA_LOW
-      ? '경쟁 적은 자리'
-      : recent30 < ARENA_HIGH
-        ? '경쟁 보통'
-        : '경쟁 센 자리'
-  return `${demand} · 최근 30일 ${recent30.toLocaleString()}편 (${level})`
+  return capped
+    ? `${demand} · 최근 30일 ${recent30.toLocaleString()}편 이상 (너무 많아 정확히 세지 못했습니다)`
+    : `${demand} · 최근 30일 ${recent30.toLocaleString()}편`
 }
 
 /**
@@ -379,11 +402,16 @@ export const SHOW_MAX = 12
  * 그래서 순서를 뒤집었다: **보여줄 것을 먼저 정하고, 그것만 잰다.** 그러면 화면에 뜨는
  * 모든 줄에 수요와 경쟁이 함께 있다.
  */
-export function attachRecent(list: TopicCandidate[], recent: Record<string, number | null>): TopicCandidate[] {
+export function attachRecent(
+  list: TopicCandidate[],
+  recent: Record<string, { count: number | null; capped?: boolean } | number | null>
+): TopicCandidate[] {
   return rankCandidates(
     list.map((c) => {
-      const recent30 = recent[c.topic] ?? null
-      return { ...c, recent30, why: candidateWhy(c.monthlySearch, recent30) }
+      const got = recent[c.topic]
+      const recent30 = typeof got === 'number' ? got : (got?.count ?? null)
+      const capped = typeof got === 'object' && got !== null ? got.capped === true : false
+      return { ...c, recent30, cappedRecent: capped, why: candidateWhy(c.monthlySearch, recent30, capped) }
     })
   )
 }

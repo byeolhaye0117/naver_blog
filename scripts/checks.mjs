@@ -8721,7 +8721,6 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
 {
   const { TOPIC_SEEDS, classifyIntent, toTopic, rankCandidates, candidateWhy, buildCandidates } =
     require(`${OUT}/writing/topic-explore.js`)
-  const { ARENA_HIGH: HI, ARENA_LOW: LO } = require(`${OUT}/writing/arena.js`)
 
   // 회원이 콕 집어 말한 두 갈래가 있어야 한다
   ok(TOPIC_SEEDS.some((s) => s.label.includes('다이어트')), '다이어트 갈래가 있다')
@@ -8784,6 +8783,20 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
    * 올라왔었다 — 지역명이 없어서 지역 검사를 통과했지만 이건 업체를 찾는 말이다.
    */
   ok(classifyIntent('여성전용헬스장') === 'local', '업체를 가리키는 말은 업체 찾기로')
+
+  /*
+   * **세 번째 실행** (2026-08-24). 「체중 증량」 갈래가 보충제로 뒤덮였다 —
+   * 단백질보충제 33,800회 · 탄수화물보충제 · 벌크업보충제 · 벌크업프로틴 · 헬스부스터.
+   * 우리가 파는 물건이 아니고, 효과를 말하면 건강기능식품 광고가 된다.
+   */
+  for (const bad of ['단백질보충제', '탄수화물보충제', '벌크업프로틴', '헬스부스터', '크레아틴']) {
+    ok(classifyIntent(bad) === 'offlimit', `「${bad}」 는 파는 물건이다`)
+  }
+  // 「계산기」는 도구를 찾는 검색이라 정보글로는 그 자리에 못 간다
+  ok(classifyIntent('비만도계산기') === 'offlimit', '도구를 찾는 검색은 뺀다')
+  // 막다가 멀쩡한 식단 주제까지 막으면 안 된다
+  ok(classifyIntent('운동 후 단백질 섭취 시간') === 'info', '단백질을 「언제 먹나」는 정보다')
+  ok(classifyIntent('벌크업 식단 짜는 법') === 'info', '식단 짜는 법도 정보다')
   ok(classifyIntent('헬스장 처음 가는 순서') === 'info', '같은 「헬스장」이라도 방법을 물으면 정보다')
   ok(classifyIntent('헬스 루틴 짜는 방법') === 'info', '운동 방법은 그대로 정보')
   // 한 낱말짜리 짧은 말로는 글을 못 쓴다
@@ -8812,24 +8825,37 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
    */
   const c = (topic, monthlySearch, recent30) => ({ topic, seedId: 's', monthlySearch, recent30, intent: 'info', from: 'searchad', why: '' })
   const sorted = rankCandidates([
-    c('경쟁 센 것', 90000, HI + 10),
-    c('경쟁 적은 것', 1000, LO - 10),
-    c('경쟁 보통 큰 검색량', 50000, LO + 10),
-    c('경쟁 보통 작은 검색량', 100, LO + 10),
+    c('많이 올라오는 것', 90000, 4286),
+    c('적게 올라오는 것', 1000, 40),
+    c('중간', 50000, 900),
+    c('못 잰 것', 99999, null),
   ])
-  ok(sorted[0].topic === '경쟁 적은 것', '경쟁 적은 자리가 먼저 — 검색량이 작아도', sorted[0].topic)
-  ok(sorted[1].topic === '경쟁 보통 큰 검색량', '같은 경쟁 수준이면 검색량 큰 것', sorted[1].topic)
-  ok(sorted[3].topic === '경쟁 센 것', '경쟁 센 자리는 뒤로', sorted[3].topic)
-  // 못 잰 것을 0 으로 바꿔 유리하게 쓰지 않는다 — 뒤로 밀되 버리지도 않는다
-  const withNull = rankCandidates([c('못 잰 것', null, null), c('경쟁 적은 것', 10, LO - 1)])
-  ok(withNull[0].topic === '경쟁 적은 것', '못 잰 것을 「경쟁 없음」으로 치지 않는다')
-  ok(withNull.length === 2, '못 쟀다고 버리지도 않는다')
+  ok(sorted[0].topic === '적게 올라오는 것', '발행량이 적은 것부터', sorted[0].topic)
+  ok(sorted[1].topic === '중간', '그다음이 중간', sorted[1].topic)
+  // 못 잰 것은 뒤로 밀되 버리지 않는다 — 0 으로 바꿔 유리하게 쓰지 않는다
+  ok(sorted[3].topic === '못 잰 것', '못 잰 것은 검색량이 커도 맨 뒤', sorted[3].topic)
+  ok(sorted.length === 4, '못 쟀다고 버리지 않는다')
 
   // 한 줄 설명 — 못 쟀으면 못 쟀다고 말한다
   ok(candidateWhy(1200, 40).includes('월 1,200회 검색'), '검색량을 그대로 적는다')
-  ok(candidateWhy(1200, 40).includes('경쟁 적은 자리'), '경쟁 수준을 붙인다')
+  ok(candidateWhy(1200, 40).includes('최근 30일 40편'), '발행량도 그대로 적는다')
   ok(candidateWhy(null, 40).includes('검색광고 키가 없습니다'), '왜 검색량을 모르는지 밝힌다')
   ok(candidateWhy(1200, null).includes('발행량은 못 쟀습니다'), '못 잰 것을 못 쟀다고 말한다')
+
+  /*
+   * **잘린 값을 잰 값처럼 쓰지 않는다.** 블로그 섹션은 1,000건에서 잘려서 그 위는 전부 같은
+   * 숫자(4,286)로 온다. 실제로 열두 줄 중 여덟 줄이 똑같이 4,286편으로 떴는데, 그건 우연이
+   * 아니라 전부 상한에 걸린 값이었다 — 정확한 값처럼 보여주면 회원이 그 둘을 비교해 판단한다.
+   */
+  ok(candidateWhy(1200, 4286, true).includes('4,286편 이상'), '잘린 값은 「이상」으로 적는다')
+  ok(candidateWhy(1200, 4286, true).includes('정확히 세지 못했습니다'), '왜 이상인지도 밝힌다')
+  ok(!candidateWhy(1200, 40).includes('이상'), '안 잘린 값에는 「이상」을 붙이지 않는다')
+
+  /*
+   * **등급을 붙이지 않는다.** 지역 키워드로 잰 경계(300편/100편)를 전국 정보 키워드에 쓰면
+   * 열두 줄이 전부 「경쟁 센 자리」가 된다 — 모든 줄이 같은 말이면 아무 정보도 아니다.
+   */
+  ok(!candidateWhy(1200, 4286, true).includes('경쟁'), '전국 키워드에 지역 경계로 등급을 붙이지 않는다')
 
   /*
    * **두 곳에서 온 같은 말은 한 번만.** 자동완성과 연관검색어는 겹치는데, 겹칠 때 검색량을
@@ -8878,13 +8904,16 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
    */
   {
     const pick = [c('많이 검색되는 것', 9000, null), c('덜 검색되는 것', 1000, null)]
-    const done = attachRecent(pick, { '많이 검색되는 것': 800, '덜 검색되는 것': 20 })
+    const done = attachRecent(pick, {
+      '많이 검색되는 것': { count: 4286, capped: true },
+      '덜 검색되는 것': { count: 20, capped: false },
+    })
     ok(done.every((x) => x.recent30 !== null), '보여줄 것에 전부 발행량이 붙는다')
     ok(done.every((x) => !x.why.includes('발행량은 못 쟀습니다')), '화면 문구도 함께 갱신된다')
-    // 경쟁이 적은 쪽이 앞으로 — 검색량이 작아도 (붙인 뒤 다시 줄 세운다)
-    ok(done[0].topic === '덜 검색되는 것', '붙이고 나서 다시 줄 세운다', done[0].topic)
+    ok(done[0].topic === '덜 검색되는 것', '붙이고 나서 발행량 적은 순으로 다시 줄 세운다', done[0].topic)
+    ok(done.find((x) => x.topic === '많이 검색되는 것').why.includes('이상'), '잘린 값은 「이상」으로 전해진다')
     // 못 잰 것이 섞여도 그 줄만 「못 쟀다」로 남는다
-    const partial = attachRecent(pick, { '많이 검색되는 것': 20 })
+    const partial = attachRecent(pick, { '많이 검색되는 것': { count: 20, capped: false } })
     ok(partial.find((x) => x.topic === '덜 검색되는 것').why.includes('못 쟀습니다'), '못 잰 줄만 그렇게 남는다')
   }
 
@@ -8912,6 +8941,7 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(/const pick = info\.slice\(0, SHOW_MAX\)/.test(api), '보여줄 것을 먼저 정한다')
     ok(/for \(const c of pick/.test(api), '그 목록만 잰다')
     ok(/attachRecent\(pick, recent\)/.test(api), '잰 값을 붙여 다시 줄 세운다')
+    ok(/note === 'atLeast'/.test(api), '잘린 값인지도 함께 넘긴다 (4,286편과 4,286편 이상은 다르다)')
 
     const ui = rf(new URL('../app/posts/TopicExplorer.tsx', import.meta.url), 'utf8')
     ok(ui.includes('TOPIC_SEEDS'), '화면이 같은 갈래 목록을 쓴다 (두 곳에 적지 않는다)')
