@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { readDB } from '@/lib/store'
 import { balanceReport, cadenceReport } from '@/lib/writing/rotation'
 import { poolStoredRuns } from '@/lib/analysis/factors'
@@ -5,8 +6,6 @@ import { PageHeader } from '@/components/AppShell'
 import { Stat } from '@/components/ui'
 import { IconBalance, IconCheck, IconDoc, IconTrend } from '@/components/icons'
 import PostList from './PostList'
-import AutoDraftPanel from './AutoDraftPanel'
-import { hasTodayAutoDraft } from '@/lib/writing/autodraft'
 import StorageNotice from '@/components/StorageNotice'
 
 export const dynamic = 'force-dynamic'
@@ -16,7 +15,6 @@ export default async function PostsPage() {
   const balance = balanceReport(db.posts)
   const cadence = cadenceReport(db.posts)
   const published = db.posts.filter((p) => p.status === 'published')
-  const today = new Date().toISOString().slice(0, 10)
 
   return (
     <>
@@ -56,27 +54,18 @@ export default async function PostsPage() {
         />
       </div>
 
-      <AutoDraftPanel
-        runs={db.autoDraftRuns}
-        today={today}
-        hasTodayDraft={hasTodayAutoDraft(db.posts, today)}
-        plan={db.autoDraftPlan}
-        /*
-         * 고를 수 있는 키워드 — 순위 추적에 등록한 것이 먼저다 (회원이 「이걸로 올라가고
-         * 싶다」고 적어둔 목록이라 자동 글이 그 밖으로 나가지 않는다). 지점의 지역 키워드도
-         * 함께 보여준다 — 아직 순위 추적을 안 걸었어도 고를 수 있어야 한다.
-         */
-        keywordPool={[
-          ...new Set(
-            [
-              ...db.rankTargets.map((t) => t.keyword),
-              ...db.stores.flatMap((s) => s.localKeywords ?? []),
-            ]
-              .map((k) => k.trim())
-              .filter(Boolean)
-          ),
-        ]}
-      />
+      {/*
+        **자동 작성은 자기 화면으로 옮겼다** (2026-08-24 회원 요청). 두 곳에 두면 어디서
+        고쳐야 하는지 회원이 판단해야 한다 — 여기는 길만 알려준다.
+      */}
+      <Link
+        href="/autodraft"
+        className="panel mb-4 flex items-center gap-2 rounded-xl px-4 py-3 text-[12.5px] font-semibold hover:bg-slate-500/8"
+      >
+        매일 정보글 초안 자동 작성
+        <span className="muted font-medium">— 무엇으로 쓸지 정하기 · 실행 기록 보기</span>
+        <span className="text-brand-600 dark:text-brand-100 ml-auto">자동 작성 열기 →</span>
+      </Link>
 
       <StorageNotice />
       <PostList posts={db.posts} stores={db.stores} evidence={poolStoredRuns(db.factorRuns)} />
