@@ -8539,6 +8539,9 @@ console.log('\n[95] 자동 초안이 조용히 실패하지 않는가 (2026-08-2
   const auto = rf2(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
   ok(auto.includes('AutoDraftPanel') && auto.includes('autoDraftRuns'), '자동 작성 화면이 실행 기록을 넘긴다')
   ok(auto.includes('isAutoDraft'), '자동으로 쓴 글 목록을 함께 보여준다')
+  // 이 화면 전체가 자동 작성이다 — 설정을 접어 두면 「저장한 목록이 안나오는데?」가 된다
+  ok(auto.includes('settingsOpen'), '자동 작성 화면에서는 설정이 펼쳐진 채로 열린다')
+  ok(panel.includes('<details open={settingsOpen}'), '펼침 여부를 화면이 정한다')
   const shell = rf2(new URL('../components/AppShell.tsx', import.meta.url), 'utf8')
   ok(/TAB_HREFS = \[[^\]]*'\/autodraft'/.test(shell), '하단 탭에 자동작성이 있다 (손가락이 닿는 자리)')
   ok(shell.includes("label: '자동 작성'"), '메뉴에도 있다')
@@ -8666,7 +8669,16 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
 
   // ── 화면 한 줄 요약 — 설정을 열어 세어 보지 않아도 알 수 있어야 한다
   ok(planSummary(undefined).includes('순위 추적 목록 전부'), '아무것도 안 정하면 그렇게 말한다', planSummary(undefined))
-  ok(planSummary({ keywords: ['a', 'b'] }).includes('키워드 2개 지정'), '고른 개수를 밝힌다')
+  /*
+   * **개수가 아니라 이름을 적는다** (2026-08-24). 처음엔 「키워드 1개 지정」이라고만 적었는데
+   * 회원이 그 줄을 보고 물었다: "저장한 목록이 안나오는데?" 개수는 목록이 아니다.
+   */
+  ok(planSummary({ keywords: ['봉명동 헬스장'], topics: ['키토다이어트'] }).includes('봉명동 헬스장'),
+    '무엇을 저장했는지 이름으로 보여준다', planSummary({ keywords: ['봉명동 헬스장'], topics: ['키토다이어트'] }))
+  ok(planSummary({ topics: ['키토다이어트'] }).includes('키토다이어트'), '주제도 이름으로')
+  // 많으면 한 줄에 다 못 넣는다 — 앞의 둘만 적고 나머지는 개수로
+  const many = planSummary({ keywords: ['가', '나', '다', '라'] })
+  ok(many.includes('가 · 나') && many.includes('외 2개'), '많으면 앞의 둘과 나머지 개수로 줄인다', many)
 
   /*
    * **덩어리 설정이 저장 후 살아 돌아와야 한다.** normalizeDB 는 목록만 옮기고 있었다 —
@@ -8974,11 +8986,30 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(/attachRecent\(pick, recent\)/.test(api), '잰 값을 붙여 다시 줄 세운다')
     ok(/note === 'atLeast'/.test(api), '잘린 값인지도 함께 넘긴다 (4,286편과 4,286편 이상은 다르다)')
 
-    const ui = rf(new URL('../app/posts/TopicExplorer.tsx', import.meta.url), 'utf8')
+    const ui = rf(new URL('../components/TopicExplorer.tsx', import.meta.url), 'utf8')
     ok(ui.includes('TOPIC_SEEDS'), '화면이 같은 갈래 목록을 쓴다 (두 곳에 적지 않는다)')
     ok(ui.includes('note.offlimit') && ui.includes('note.measured'), '무엇을 걸렀고 몇 개를 쟀는지 화면에 밝힌다')
     ok(ui.includes('note.overflow'), '접어둔 개수도 밝힌다 (조용히 자르면 「이게 전부」로 읽힌다)')
     ok(ui.includes('막은 것 같습니다'), '한 건도 못 쟀으면 왜 그런지 말해준다')
+
+    /*
+     * **글 작성 화면에서도 쓴다** (2026-08-24 회원 요청: "정보글 작성할때도 주제 탐색기
+     * 사용할 수 있게 해줘"). 거기 있던 주제 칩 여섯 개는 우리가 지어낸 것이라, 실제로
+     * 검색되는지 확인한 적이 없었다.
+     *
+     * **재는 방법과 거르는 규칙은 한 벌이어야 한다** — 두 벌이 되면 한쪽만 고치는 날이 온다.
+     * 그래서 화면을 복사하지 않고 같은 컴포넌트를 쓴다 (쓰임이 달라 버튼 글자만 바꾼다).
+     */
+    const editor2 = rf(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+    ok(editor2.includes("import TopicExplorer from '@/components/TopicExplorer'"), '글 작성 화면이 같은 탐색기를 쓴다')
+    ok(/pickLabel="이 주제로"/.test(editor2), '글 작성에서는 하나를 고른다 (담기가 아니다)')
+    ok(/picked=\{infoTopic\.trim\(\) \? \[infoTopic\.trim\(\)\] : \[\]\}/.test(editor2), '이미 고른 주제를 「고름」으로 표시한다')
+    ok(/onPick=\{\(t\) => setInfoTopic\(t\)\}/.test(editor2), '고른 주제가 이 글의 주제 칸에 들어간다')
+    // 결과가 펼쳐진 채로 있으면 아래 생성 버튼이 화면 밖으로 밀린다 (자동 작성에서 겪었다)
+    ok(/<details[\s\S]{0,300}주제 탐색[\s\S]{0,200}<TopicExplorer/.test(editor2), '글 작성에서도 접어 둔다')
+    // 탐색기가 두 벌이 되지 않았는지 (복사해 두면 한쪽만 고치게 된다)
+    const { existsSync } = require('node:fs')
+    ok(!existsSync(new URL('../app/posts/TopicExplorer.tsx', import.meta.url)), '탐색기를 복사해 두지 않았다')
     ok(ui.includes('onPick'), '고른 주제를 설정으로 넘긴다')
 
     const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')

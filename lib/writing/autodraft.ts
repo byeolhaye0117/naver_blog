@@ -323,15 +323,28 @@ export function planAssignment(args: {
 /**
  * 계획을 화면에 한 줄로 — 「지금 무엇으로 쓰이고 있나」.
  *
- * 설정 화면을 열어 체크박스를 세어 보지 않아도 알 수 있어야 한다.
+ * ── 개수만 세지 않는다 (2026-08-24) ─────────────────────────
+ * 처음엔 「키워드 1개 지정 · 주제 1개 지정」이라고만 적었다. 회원이 그 줄을 보고 물었다:
+ * "저장한 목록이 안나오는데?" **개수는 목록이 아니다** — 무엇을 저장했는지 확인하려면
+ * 접힌 칸을 열어야 했다.
+ *
+ * 그래서 몇 개 안 될 때는 **이름을 그대로 적는다.** 많으면 앞의 둘만 적고 나머지는 개수로
+ * 줄인다 (한 줄에 열 개를 늘어놓으면 그것도 못 읽는다).
  */
+function few(list: string[] | undefined, whenEmpty: string, label: string): string {
+  const items = (list ?? []).filter(Boolean)
+  if (!items.length) return whenEmpty
+  if (items.length <= 2) return `${label} ${items.join(' · ')}`
+  return `${label} ${items.slice(0, 2).join(' · ')} 외 ${items.length - 2}개`
+}
+
 export function planSummary(plan: AutoDraftPlan | undefined): string {
   const p = normalizePlan(plan)
   if (p.off) return '자동 초안을 꺼두셨습니다.'
-  const parts: string[] = []
-  parts.push(p.keywords?.length ? `키워드 ${p.keywords.length}개 지정` : '키워드는 순위 추적 목록 전부')
-  parts.push(p.topics?.length ? `주제 ${p.topics.length}개 지정` : `주제는 기본 ${INFO_TOPICS.length}개 전부`)
-  return parts.join(' · ')
+  return [
+    few(p.keywords, '키워드는 순위 추적 목록 전부', '키워드'),
+    few(p.topics, `주제는 기본 ${INFO_TOPICS.length}개 전부`, '주제'),
+  ].join(' · ')
 }
 
 /**

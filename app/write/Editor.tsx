@@ -8,6 +8,7 @@ import { checkPost } from '@/lib/writing/checker'
 import type { Arena } from '@/lib/writing/arena'
 import { buildTemplate, hasGuides, stripGuides } from '@/lib/writing/templates'
 import { INFO_TOPICS } from '@/lib/writing/autodraft'
+import TopicExplorer from '@/components/TopicExplorer'
 import { PUBLISH_THRESHOLD } from '@/lib/writing/checker'
 import { explainNonJson } from '@/lib/ai/httperror'
 
@@ -1155,6 +1156,29 @@ export default function Editor({
                           </button>
                         ))}
                       </div>
+
+                      {/*
+                        **주제도 재서 고를 수 있게 한다** (2026-08-24 회원 요청: "정보글
+                        작성할때도 주제 탐색기 사용할 수 있게 해줘").
+
+                        위 칩 여섯 개는 **우리가 지어낸 것**이다 — 사람들이 실제로 그렇게
+                        검색하는지 확인한 적이 없다. 탐색기는 네이버 자동완성·연관검색어에서
+                        실제 검색되는 문구를 가져와 발행량까지 재서 보여준다.
+
+                        접어 둔다 — 결과 열두 줄이 펼쳐지면 아래 「이번 글 요청」과 생성
+                        버튼이 화면 밖으로 밀린다 (자동 작성 화면에서 이미 겪었다).
+                      */}
+                      <details className="bd mt-2.5 rounded-xl border px-3.5 py-2.5">
+                        <summary className="cursor-pointer text-[12px] font-bold select-none">
+                          주제 탐색 — 실제로 검색되는 것에서 고르기
+                        </summary>
+                        <TopicExplorer
+                          picked={infoTopic.trim() ? [infoTopic.trim()] : []}
+                          onPick={(t) => setInfoTopic(t)}
+                          pickLabel="이 주제로"
+                          pickedLabel="고름"
+                        />
+                      </details>
                     </Field>
                   )}
 

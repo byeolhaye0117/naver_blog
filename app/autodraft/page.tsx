@@ -41,6 +41,8 @@ export default async function AutoDraftPage() {
         today={today}
         hasTodayDraft={hasTodayAutoDraft(db.posts, today)}
         plan={db.autoDraftPlan}
+        // 이 화면 전체가 자동 작성이다 — 설정을 접어 둘 이유가 없다 (2026-08-24)
+        settingsOpen
         /*
          * 고를 수 있는 키워드 — 순위 추적에 등록한 것이 먼저다 (회원이 「이걸로 올라가고
          * 싶다」고 적어둔 목록이라 자동 글이 그 밖으로 나가지 않는다). 지점의 지역 키워드도
