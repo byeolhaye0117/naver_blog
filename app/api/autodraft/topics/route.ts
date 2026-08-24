@@ -4,7 +4,7 @@ import { gatherSuggestions } from '@/lib/naver/autocomplete'
 import { keywordTool } from '@/lib/naver/searchad'
 import { recentBlogCount } from '@/lib/naver/blogsection'
 import { hasAdKeys } from '@/lib/naver/client'
-import { TOPIC_SEEDS, buildCandidates, classifyIntent, toTopic } from '@/lib/writing/topic-explore'
+import { SHOW_MAX, TOPIC_SEEDS, buildCandidates, classifyIntent, toTopic } from '@/lib/writing/topic-explore'
 
 export const dynamic = 'force-dynamic'
 // 자동완성 3개 + 검색광고 1회 + 발행량 여러 번을 순서대로 부른다
@@ -28,7 +28,15 @@ export const maxDuration = 60
  * 검색어 하나당 조회 한 번이라, 후보 40개를 다 재면 화면이 40초를 기다린다. 검색량 큰
  * 순서로 잘라 재고, **몇 개를 쟀고 몇 개를 못 쟀는지 화면에 밝힌다** — 조용히 자르지 않는다.
  */
-const MEASURE_TOP = 12
+const MEASURE_TOP = 10
+/**
+ * 발행량 조회 사이 간격.
+ *
+ * 첫 실행에서 **12개를 연달아 물었더니 12개 전부 실패했다** — 화면에는 「발행량은 못
+ * 쟀습니다」만 열두 줄 떴다. 네이버 블로그 섹션은 공식 API 가 아니라 연달아 두드리면 막힌다.
+ * 조금 늦더라도 답이 오는 편이 낫다.
+ */
+const GAP_MS = 400
 
 export async function POST(req: Request) {
   try {
@@ -59,9 +67,12 @@ export async function POST(req: Request) {
     const toMeasure = ranked.slice(0, MEASURE_TOP).map((r) => toTopic(r.keyword))
 
     const recent: Record<string, number | null> = {}
+    let measured = 0
     for (const q of toMeasure) {
       const got = await recentBlogCount(q).catch(() => null)
       recent[q] = got?.count ?? null
+      if (recent[q] !== null) measured++
+      await new Promise((r) => setTimeout(r, GAP_MS))
     }
 
     const candidates = buildCandidates({
@@ -74,17 +85,26 @@ export async function POST(req: Request) {
     })
 
     const info = candidates.filter((c) => c.intent === 'info')
+    const shown = info.slice(0, SHOW_MAX)
+
+    /*
+     * 무엇을 왜 걸렀는지 갈래별로 센다. 「후보 18개」만 보여주면 그게 전부인 줄 알게 되고,
+     * 특히 **검색량이 큰 말을 우리가 일부러 뺐다**는 사실은 밝혀야 한다 — 안 그러면
+     * 「다이어트약이 월 2만 회인데 왜 안 나오지」가 된다.
+     */
+    const by = (kind: string) => candidates.filter((c) => c.intent === kind).length
     return NextResponse.json({
       seed: { id: seed.id, label: seed.label, queries: seed.queries },
-      candidates: info,
-      /*
-       * **무엇을 걸렀고 무엇을 못 쟀는지 밝힌다.** 「후보 18개」만 보여주면 그게 전부인 줄
-       * 알게 된다. 이 앱은 조용히 잘라내지 않는다.
-       */
+      candidates: shown,
       note: {
-        dropped: candidates.length - info.length,
-        measured: toMeasure.length,
-        unmeasured: Math.max(0, info.length - toMeasure.length),
+        found: candidates.length,
+        shown: shown.length,
+        overflow: Math.max(0, info.length - shown.length),
+        offlimit: by('offlimit'),
+        local: by('local') + by('buy'),
+        thin: by('thin'),
+        measured,
+        tried: toMeasure.length,
         adKeys: hasAdKeys(),
         autocomplete: { asked: suggest.asked, answered: suggest.answered },
       },

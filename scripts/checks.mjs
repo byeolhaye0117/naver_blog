@@ -8746,6 +8746,39 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
   ok(classifyIntent('단백질 섭취량') === 'info', '식단 관련도 정보성')
 
   /*
+   * **실제로 돌려보고 넣은 검사** (2026-08-24). 「다이어트」 씨앗으로 프로덕션에서 돌렸더니
+   * 검색광고가 이런 것들을 검색량 순으로 돌려줬다:
+   *
+   *   다이어트약 22,120 · 다이어트유산균 21,020 · 자이로토닉 20,540 · 축농증 18,940
+   *   후두염 17,100 · 스테비아 16,210 · 엉덩이 16,090 · 변비약 15,980 · 지방분해주사 14,750
+   *
+   * **검색량이 크다고 우리가 쓸 주제가 되지 않는다.** 약·주사·질병은 의료 영역이라
+   * 헬스장이 효과를 말하면 광고심의에 걸리고(banned.ts), 전문 분야가 흔들려 블로그
+   * 주제 일관성에도 손해다.
+   */
+  for (const bad of ['다이어트약', '변비약', '한약', '지방분해주사', '지방흡입', '보톡스', '다이어트 클리닉', '다이어트 보조제', '다이어트유산균', '다이어트도시락']) {
+    ok(classifyIntent(bad) === 'offlimit', `「${bad}」 는 우리 영역이 아니다`)
+  }
+  for (const disease of ['축농증', '후두염', '위염', '불면증', '갑상선암']) {
+    ok(classifyIntent(disease) === 'offlimit', `병 이름 「${disease}」 은 주제가 아니다`)
+  }
+  // 제외 목록에 없으면서 우리 영역도 아닌 말 — 이건 「쓸 수 있는 말」 쪽으로만 막을 수 있다
+  ok(classifyIntent('자이로토닉') === 'offlimit', '우리가 하지 않는 종목은 뺀다')
+  ok(classifyIntent('스테비아') === 'offlimit', '제품 이름도 뺀다')
+  // 한 낱말짜리 짧은 말로는 글을 못 쓴다
+  ok(classifyIntent('엉덩이') === 'thin', '「엉덩이」로는 주제가 안 된다')
+  ok(classifyIntent('뱃살') === 'thin', '두 글자짜리도 마찬가지')
+  ok(classifyIntent('뱃살빼는운동') === 'info', '한 낱말이어도 길고 구체적이면 주제가 된다')
+  ok(classifyIntent('기초대사량') === 'info', '다섯 글자면 통과')
+  /*
+   * **막다가 멀쩡한 것까지 막으면 안 된다.** 실제 응답에 있던 쓸 만한 후보들이 살아남는지
+   * 확인한다 — 필터가 세지면 이쪽이 조용히 죽는다.
+   */
+  for (const good of ['내장지방빼는법', '다이어트 정체기', '체지방 감량', '공복 유산소 시간', '단백질 하루 섭취량', '스쿼트 자세', '무릎 아플때 운동', '벌크업 식단']) {
+    ok(classifyIntent(good) === 'info', `「${good}」 은 살아남는다`)
+  }
+
+  /*
    * **말을 바꾸지 않는다.** 검색어를 다듬어 「예쁘게」 만들면 그건 다시 우리가 지어낸 주제다.
    * 공백만 정리한다.
    */
@@ -8809,6 +8842,13 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
   ok(again.length === 0, '이미 고른 주제는 띄어쓰기가 달라도 다시 권하지 않는다')
 
   /*
+   * **개수 상한이 있어야 한다.** 첫 실행에서 후보가 1,152개 나왔다 — 검색광고 연관검색어는
+   * 아낌없이 준다. 그걸 그대로 뿌리면 고를 수 있는 목록이 아니라 스크롤 지옥이다.
+   */
+  const { SHOW_MAX } = require(`${OUT}/writing/topic-explore.js`)
+  ok(SHOW_MAX > 0 && SHOW_MAX <= 40, `화면에 보여줄 개수 상한이 있다 — ${SHOW_MAX}개`)
+
+  /*
    * **화면·라우트가 실제로 이걸 쓴다.** 만들어만 두고 안 쓰면 아무것도 달라지지 않는다.
    */
   {
@@ -8821,9 +8861,19 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(/classifyIntent\([\s\S]{0,80}=== 'info'/.test(api), '잴 대상을 정보성으로 좁힌다')
     ok(api.includes('note'), '몇 개를 걸렀고 못 쟀는지 함께 돌려준다')
 
+    /*
+     * **연달아 두드리면 막힌다.** 첫 실행에서 발행량 12개를 쉬지 않고 물었더니 12개 전부
+     * 실패했고, 화면에는 「발행량은 못 쟀습니다」만 열두 줄 떴다. 블로그 섹션은 공식 API 가
+     * 아니라 간격이 필요하다.
+     */
+    ok(/GAP_MS/.test(api) && /setTimeout\(r, GAP_MS\)/.test(api), '발행량 조회 사이에 간격을 둔다')
+    ok(/measured\+\+/.test(api), '몇 개가 실제로 답했는지 센다 (물어본 횟수와 다르다)')
+
     const ui = rf(new URL('../app/posts/TopicExplorer.tsx', import.meta.url), 'utf8')
     ok(ui.includes('TOPIC_SEEDS'), '화면이 같은 갈래 목록을 쓴다 (두 곳에 적지 않는다)')
-    ok(ui.includes('note.dropped') && ui.includes('note.measured'), '무엇을 걸렀고 몇 개를 쟀는지 화면에 밝힌다')
+    ok(ui.includes('note.offlimit') && ui.includes('note.measured'), '무엇을 걸렀고 몇 개를 쟀는지 화면에 밝힌다')
+    ok(ui.includes('note.overflow'), '접어둔 개수도 밝힌다 (조용히 자르면 「이게 전부」로 읽힌다)')
+    ok(ui.includes('막은 것 같습니다'), '한 건도 못 쟀으면 왜 그런지 말해준다')
     ok(ui.includes('onPick'), '고른 주제를 설정으로 넘긴다')
 
     const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
