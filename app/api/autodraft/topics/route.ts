@@ -75,12 +75,16 @@ export async function POST(req: Request) {
     const info = candidates.filter((c) => c.intent === 'info')
     const pick = info.slice(0, SHOW_MAX)
 
-    const recent: Record<string, number | null> = {}
+    /*
+     * 잘린 값(note === 'atLeast')을 함께 넘긴다. 블로그 섹션은 1,000건에서 잘려서 그 위는
+     * 전부 같은 숫자(4,286)로 온다 — 잰 값처럼 보여주면 회원이 그 둘을 비교해 판단하게 된다.
+     */
+    const recent: Record<string, { count: number | null; capped: boolean }> = {}
     let measured = 0
     for (const c of pick.slice(0, MEASURE_TOP)) {
       const got = await recentBlogCount(c.topic).catch(() => null)
-      recent[c.topic] = got?.count ?? null
-      if (recent[c.topic] !== null) measured++
+      recent[c.topic] = { count: got?.count ?? null, capped: got?.note === 'atLeast' }
+      if (recent[c.topic].count !== null) measured++
       await new Promise((r) => setTimeout(r, GAP_MS))
     }
 
