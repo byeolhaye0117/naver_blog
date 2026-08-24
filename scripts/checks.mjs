@@ -8419,10 +8419,20 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
   ok(draftNote(79, PUBLISH_THRESHOLD).level === 'warn', '못 미치면 주의로 알린다')
   ok(draftNote(79, PUBLISH_THRESHOLD).text.includes('고쳐 쓰기'), '무엇을 하면 되는지 알려준다')
 
-  // 화면의 주제 칩과 자동 초안이 **같은 목록**을 본다 (두 곳에 적으면 한쪽만 늘어난다)
+  /*
+   * **글 작성 화면은 주제 목록을 들고 있지 않다** (2026-08-24 회원 요청으로 지웠다).
+   *
+   * 거기 있던 칩 여섯 개는 이 목록에서 잘라 쓴 것이었는데, 그 목록 자체가 우리가 지어낸
+   * 것이다. 탐색기를 붙여 놓고 지어낸 예시를 나란히 두면 그쪽을 고르게 된다 — 실제로
+   * 검색되는 것에서 고르라는 것이 탐색기를 만든 이유다.
+   *
+   * 기본 목록(INFO_TOPICS)은 **자동 초안이 아무것도 안 골랐을 때의 예비**로만 남는다.
+   */
   const { readFileSync: rf } = require('node:fs')
   const editor = rf(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
-  ok(editor.includes('INFO_TOPICS') && !/const INFO_TOPIC_IDEAS = \[/.test(editor), '화면이 목록을 따로 들고 있지 않다')
+  ok(!/const INFO_TOPIC_IDEAS/.test(editor), '주제 칩 목록을 들고 있지 않다')
+  ok(!editor.includes("from '@/lib/writing/autodraft'"), '주제 목록을 가져다 쓰지도 않는다')
+  ok(!editor.includes('다이어트 첫 달에 할 것'), '지어낸 주제를 예시로 남겨두지 않는다')
 }
 
 console.log('\n[95] 자동 초안이 조용히 실패하지 않는가 (2026-08-23)')
