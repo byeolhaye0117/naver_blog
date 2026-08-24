@@ -7,7 +7,12 @@ import { Badge, btnGhost } from '@/components/ui'
 interface Note {
   found: number
   shown: number
-  overflow: number
+  /** 정보글로 쓸 만한 후보 전체 수 · 지금 몇 번째를 보고 있나 */
+  total: number
+  from: number
+  to: number
+  pages: number
+  page: number
   /** 의료·제품처럼 우리가 손대면 안 되는 것 */
   offlimit: number
   /** 업체를 찾는 말 (지역·가격) */
@@ -58,9 +63,17 @@ export default function TopicExplorer({
   const [error, setError] = useState<string | null>(null)
   const [list, setList] = useState<TopicCandidate[] | null>(null)
   const [note, setNote] = useState<Note | null>(null)
+  /**
+   * 몇 번째 묶음을 보고 있나.
+   *
+   * 회원: "주제가 매번 같은게 나와 새로고침 버튼 만들어서 다른것들이 나오게 해줘."
+   * 검색광고는 같은 씨앗에 같은 순서로 답하므로, 다시 눌러도 상위 12개가 그대로였다.
+   */
+  const [page, setPage] = useState(0)
 
-  async function explore(id: string) {
+  async function explore(id: string, next = 0) {
     setSeedId(id)
+    setPage(next)
     setLoading(true)
     setError(null)
     setList(null)
@@ -68,7 +81,7 @@ export default function TopicExplorer({
       const res = await fetch('/api/autodraft/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seedId: id }),
+        body: JSON.stringify({ seedId: id, page: next }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? '주제를 찾지 못했습니다.')
@@ -103,7 +116,7 @@ export default function TopicExplorer({
             key={s.id}
             type="button"
             disabled={loading}
-            onClick={() => explore(s.id)}
+            onClick={() => explore(s.id, 0)}
             className={`rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition disabled:opacity-50 ${
               seedId === s.id ? 'bg-brand-600 border-brand-600 text-white' : 'bd hover:bg-slate-500/8'
             }`}
@@ -118,6 +131,29 @@ export default function TopicExplorer({
 
       {list && !loading && (
         <>
+          {/*
+            **다른 주제 보기** — 상위 12개만 보여주고 있었는데 남는 후보가 400개가 넘었다.
+            끝에서 처음으로 돌아온다 (「더 없습니다」로 막히면 그 자리에서 멈춘다).
+          */}
+          {note && note.total > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="muted text-[11.5px] font-semibold">
+                {note.total.toLocaleString()}개 중 {note.from}~{note.to}번째
+                {note.pages > 1 && ` (${note.page + 1}/${note.pages})`}
+              </span>
+              {note.pages > 1 && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => explore(seedId, note.page + 1)}
+                  className={`${btnGhost} !px-3 !py-1.5 !text-[11.5px]`}
+                >
+                  다른 주제 보기 ↻
+                </button>
+              )}
+            </div>
+          )}
+
           {list.length === 0 ? (
             <p className="muted text-[12px] leading-relaxed">
               정보글로 쓸 만한 후보를 찾지 못했습니다. 다른 갈래를 눌러 보세요.
@@ -168,7 +204,8 @@ export default function TopicExplorer({
               )}
               {note.local > 0 && ` 업체를 찾는 말 ${note.local.toLocaleString()}개도 뺐습니다 — 정보글 주제로 쓰면 홍보글이 됩니다.`}
               {note.thin > 0 && ` 「엉덩이」처럼 짧아서 글이 안 되는 말 ${note.thin.toLocaleString()}개도 뺐습니다.`}
-              {note.overflow > 0 && ` 남은 ${note.overflow.toLocaleString()}개는 순서가 뒤라 접었습니다.`}
+              {note.total > note.shown &&
+                ` 정보글로 쓸 만한 것은 ${note.total.toLocaleString()}개이고, 한 번에 ${note.shown}개씩 보여드립니다 — 「다른 주제 보기」로 넘기시면 됩니다.`}
               {` 발행량(경쟁)은 검색량 큰 ${note.tried}개만 쟀고 ${note.measured}개가 답했습니다`}
               {note.measured === 0 && ' — 네이버가 연달아 조회를 막은 것 같습니다. 잠시 뒤 다시 눌러보세요'}.
               {!note.adKeys && ' 검색광고 API 키가 없어 검색량은 샘플 값입니다.'}

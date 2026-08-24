@@ -418,6 +418,34 @@ export function buildCandidates(args: {
 export const SHOW_MAX = 12
 
 /**
+ * 한 번에 보여줄 만큼 잘라낸다 — **넘기면 다음 것이 나오고, 끝나면 처음으로 돌아온다.**
+ *
+ * ── 왜 필요했나 (2026-08-24) ────────────────────────────────
+ * 회원: "주제가 매번 같은게 나와 새로고침 버튼 만들어서 다른것들이 나오게 해줘."
+ *
+ * 맞는 지적이다. 검색량 상위 12개만 보여주고 있었는데, 「다이어트」 갈래에서 실제로 남는
+ * 후보는 **409개**였다 — 397개가 접힌 채로 한 번도 눈에 띄지 않았다. 게다가 검색광고
+ * 연관검색어는 같은 씨앗에 같은 순서로 오므로 **다시 눌러도 열두 줄이 그대로**였다.
+ *
+ * 끝에서 처음으로 돌아오게 한 이유: 「더 없습니다」로 막히면 회원이 그 자리에서 멈춘다.
+ * 한 바퀴 도는 편이 낫고, 몇 번째를 보고 있는지는 화면에 적는다.
+ */
+export function pageOf<T>(list: T[], page: number, size = SHOW_MAX): T[] {
+  if (!list.length || size <= 0) return []
+  const pages = Math.ceil(list.length / size)
+  const p = ((Math.trunc(page) % pages) + pages) % pages
+  return list.slice(p * size, p * size + size)
+}
+
+/** 지금 몇 번째를 보고 있나 — 「409개 중 13~24번째」 */
+export function pageRange(total: number, page: number, size = SHOW_MAX): { from: number; to: number; pages: number } {
+  if (!total || size <= 0) return { from: 0, to: 0, pages: 0 }
+  const pages = Math.ceil(total / size)
+  const p = ((Math.trunc(page) % pages) + pages) % pages
+  return { from: p * size + 1, to: Math.min(total, p * size + size), pages }
+}
+
+/**
  * 잰 발행량을 후보에 붙이고 다시 줄 세운다.
  *
  * ── 왜 따로 있나 (2026-08-24) ───────────────────────────────
