@@ -37,10 +37,23 @@ export default function AutoDraftPanel({
   const [msg, setMsg] = useState<string | null>(null)
   const status = autoDraftStatus(runs, today, hasTodayDraft)
 
-  // 설정은 화면에서 고치는 동안 임시로 들고 있다가 「저장」에서 한 번에 보낸다
+  /*
+   * **저장본과 편집본을 따로 든다** (2026-08-24).
+   *
+   * 회원 질문: "저장된 내용 수정하거나 삭제 확인하고 싶으면 어디서 봐야해?" 화면에 편집 중인
+   * 값만 있으면 **「이게 저장된 건가, 내가 방금 누른 건가」를 구별할 수 없다.** 칩을 눌러
+   * 뺐는데 저장을 안 하고 나가면 그대로 남아 있는데도 뺀 줄 안다.
+   *
+   * 그래서 저장본을 따로 들고, 둘이 다르면 화면이 「아직 저장 안 됨」이라고 말한다.
+   */
+  const [stored, setStored] = useState<AutoDraftPlan>(() => normalizePlan(savedPlan))
   const [plan, setPlan] = useState<AutoDraftPlan>(() => normalizePlan(savedPlan))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
+  const same = (a: AutoDraftPlan, b: AutoDraftPlan) =>
+    JSON.stringify([a.off === true, a.keywords ?? [], a.topics ?? []]) ===
+    JSON.stringify([b.off === true, b.keywords ?? [], b.topics ?? []])
+  const dirty = !same(plan, stored)
 
   /**
    * 주제 하나를 목록에 더한다 — **더하면서 곧바로 켠다.**
@@ -72,7 +85,9 @@ export default function AutoDraftPanel({
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error ?? '저장하지 못했습니다.')
-      setPlan(normalizePlan(data.plan))
+      const fresh = normalizePlan(data.plan)
+      setPlan(fresh)
+      setStored(fresh)
       setSaved('저장했습니다. 내일 새벽부터 이 설정으로 씁니다.')
       router.refresh()
     } catch (e) {
@@ -133,6 +148,59 @@ export default function AutoDraftPanel({
         </summary>
 
         <div className="mt-3.5 space-y-5">
+          {/*
+            **지금 저장된 것을 맨 위에 보여준다** (2026-08-24).
+
+            회원 질문: "저장된 내용 수정하거나 삭제 확인하고 싶으면 어디서 봐야해?" 여태
+            저장된 값은 편집 칩에 섞여만 있었고, 그 칩들은 탐색 결과 아래에 파묻혀 있었다.
+            **무엇이 저장돼 있는지 한 곳에서 보여야** 수정도 삭제도 할 수 있다.
+          */}
+          <section className="bd rounded-xl border px-3.5 py-3">
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              <h3 className="text-[12.5px] font-bold">지금 저장된 설정</h3>
+              {dirty ? (
+                <Badge tone="warn">아직 저장 안 됨</Badge>
+              ) : (
+                <Badge tone="good">저장됨</Badge>
+              )}
+              {dirty && (
+                <button
+                  type="button"
+                  onClick={() => setPlan(stored)}
+                  className="muted ml-auto rounded-lg px-2 py-1 text-[11px] font-semibold underline"
+                >
+                  되돌리기
+                </button>
+              )}
+            </div>
+            <dl className="space-y-1 text-[11.5px] leading-relaxed">
+              <div className="flex gap-2">
+                <dt className="muted w-11 shrink-0 font-semibold">상태</dt>
+                <dd>{stored.off ? '꺼둠 — 자동으로 쓰지 않습니다' : '매일 새벽 5시에 한 편'}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="muted w-11 shrink-0 font-semibold">키워드</dt>
+                <dd>
+                  {stored.keywords?.length
+                    ? `${stored.keywords.join(' · ')} (${stored.keywords.length}개)`
+                    : '고른 것 없음 — 순위 추적 키워드 전부를 씁니다'}
+                </dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="muted w-11 shrink-0 font-semibold">주제</dt>
+                <dd>
+                  {stored.topics?.length
+                    ? `${stored.topics.join(' · ')} (${stored.topics.length}개)`
+                    : `담은 것 없음 — 기본 주제 ${INFO_TOPICS.length}개를 씁니다`}
+                </dd>
+              </div>
+            </dl>
+            <p className="muted mt-2 text-[11px] leading-relaxed">
+              아래에서 고친 뒤 <b>「설정 저장」</b>을 눌러야 반영됩니다. 지우려면 칩을 다시 눌러 빼거나
+              <b> 「전부 지우고 자동으로」</b>를 누르세요.
+            </p>
+          </section>
+
           <label className="flex items-center gap-2.5 text-[12.5px] font-semibold">
             <input
               type="checkbox"
@@ -212,7 +280,17 @@ export default function AutoDraftPanel({
               </ul>
             )}
 
-            <TopicExplorer picked={plan.topics ?? []} onPick={addTopic} />
+            {/*
+              **탐색은 접어 둔다.** 결과 열두 줄이 펼쳐지면 위의 「저장된 설정」과 아래의
+              「설정 저장」 버튼이 화면 밖으로 밀려난다 — 회원이 "저장된 내용 어디서 봐야해"
+              라고 물은 것이 그 상태였다.
+            */}
+            <details className="bd rounded-xl border px-3.5 py-2.5">
+              <summary className="cursor-pointer text-[12px] font-bold select-none">
+                주제 탐색 — 실제로 검색되는 것에서 고르기
+              </summary>
+              <TopicExplorer picked={plan.topics ?? []} onPick={addTopic} />
+            </details>
           </section>
 
           <div className="bd flex flex-wrap items-center gap-2 border-t pt-3.5">
@@ -222,7 +300,7 @@ export default function AutoDraftPanel({
               onClick={() => save(plan)}
               className={`${btnPrimary} !px-4 !py-2.5 !text-[12.5px]`}
             >
-              {saving ? '저장 중…' : '설정 저장'}
+              {saving ? '저장 중…' : dirty ? '설정 저장 (바뀐 것 있음)' : '설정 저장'}
             </button>
             <button
               type="button"

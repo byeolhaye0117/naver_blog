@@ -69,9 +69,8 @@ export default function TopicExplorer({
   }
 
   return (
-    <div className="panel mt-2 rounded-xl px-3.5 py-3">
-      <p className="text-[12.5px] font-bold">주제 탐색 — 실제로 검색되는 것에서 고르기</p>
-      <p className="muted mt-0.5 mb-2 text-[11px] leading-relaxed">
+    <div className="mt-2.5">
+      <p className="muted mb-2 text-[11px] leading-relaxed">
         갈래를 하나 고르면 네이버 <b>검색창 자동완성</b>과 <b>검색광고 연관검색어</b>에서 실제 검색되는 문구를
         가져오고, 그 검색어로 최근 30일에 블로그 글이 몇 편 올라왔는지까지 재서 <b>발행량이 적은 순</b>으로
         보여줍니다. 갈래 이름만 저희가 넣고, 주제는 전부 네이버에서 온 것입니다.
