@@ -8531,8 +8531,23 @@ console.log('\n[95] 자동 초안이 조용히 실패하지 않는가 (2026-08-2
   ok(route.includes('res.text()'), 'JSON 이 아닌 응답(로그인 HTML)도 읽어서 남긴다')
   ok(route.includes('x-vercel-protection-bypass'), '배포 보호 우회 비밀값이 있으면 함께 보낸다')
 
+  /*
+   * **자동 작성은 자기 화면을 갖는다** (2026-08-24 회원 요청: "어디 있는지 모르겠으니까
+   * 자동작성 탭을 하나 만들어서 볼수 있게 해줘"). 매일 결과가 나오는 기능이 발행 관리
+   * 화면의 접이식 칸 안에 있었다.
+   */
+  const auto = rf2(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
+  ok(auto.includes('AutoDraftPanel') && auto.includes('autoDraftRuns'), '자동 작성 화면이 실행 기록을 넘긴다')
+  ok(auto.includes('isAutoDraft'), '자동으로 쓴 글 목록을 함께 보여준다')
+  const shell = rf2(new URL('../components/AppShell.tsx', import.meta.url), 'utf8')
+  ok(/TAB_HREFS = \[[^\]]*'\/autodraft'/.test(shell), '하단 탭에 자동작성이 있다 (손가락이 닿는 자리)')
+  ok(shell.includes("label: '자동 작성'"), '메뉴에도 있다')
+  // 두 곳에 두면 어디서 고쳐야 하는지 회원이 판단해야 한다 — 발행 관리에는 길만 남긴다
   const posts = rf2(new URL('../app/posts/page.tsx', import.meta.url), 'utf8')
-  ok(posts.includes('AutoDraftPanel') && posts.includes('autoDraftRuns'), '발행 관리 화면이 실행 기록을 넘긴다')
+  ok(!posts.includes('<AutoDraftPanel'), '발행 관리에는 설정을 두 벌 두지 않는다')
+  ok(posts.includes('href="/autodraft"'), '발행 관리에서 가는 길은 남긴다')
+  // 대시보드 안내도 새 화면을 가리켜야 한다 (없는 자리를 가리키면 회원이 헤맨다)
+  ok(nextAction.includes("href: '/autodraft'"), '대시보드 안내가 자동 작성 화면을 가리킨다')
 
   // 기록 목록이 DB 저장/복원 목록에 들어 있어야 내려받기·올리기에서 사라지지 않는다
   const { DB_LIST_KEYS: keys } = require(`${OUT}/store.js`)

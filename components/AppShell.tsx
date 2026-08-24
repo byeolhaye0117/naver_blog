@@ -12,6 +12,7 @@ import {
   IconPencil,
   IconPhone,
   IconSearch,
+  IconSpark,
   IconStore,
   IconTrend,
 } from './icons'
@@ -36,6 +37,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     title: '글쓰기',
     items: [
       { href: '/write', label: '글 작성', short: '글쓰기', icon: <IconPencil /> },
+      { href: '/autodraft', label: '자동 작성', short: '자동작성', icon: <IconSpark /> },
       { href: '/posts', label: '발행 관리', short: '발행', icon: <IconDoc /> },
     ],
   },
@@ -63,8 +65,12 @@ const NAV: Item[] = GROUPS.flatMap((g) => g.items)
  *
  * 「글쓰기」는 여기서 뺐다 — 상단 「새 글」 버튼이 어느 화면에서나 보이고, 순위·키워드
  * 화면의 「이 처방으로 쓰기」·「이 세트로 글쓰기」로 들어가는 길이 이미 여러 개다.
+ *
+ * 「자동작성」을 넣은 이유 (2026-08-24 회원 요청: "어디 있는지 모르겠으니까 자동작성 탭을
+ * 하나 만들어서 볼수 있게 해줘"): 매일 도는 기능인데 발행 관리 화면의 **접이식 칸 안**에
+ * 있었다. 매일 결과가 나오는 화면은 손가락이 닿는 자리에 있어야 한다.
  */
-const TAB_HREFS = ['/', '/keywords', '/serp', '/rank']
+const TAB_HREFS = ['/', '/autodraft', '/keywords', '/serp', '/rank']
 const TABS: Item[] = TAB_HREFS.map((h) => NAV.find((n) => n.href === h)!)
 /** 하단 탭에 없는 나머지 — 「더보기」 시트에서 보여준다 */
 const REST: Item[] = NAV.filter((n) => !TAB_HREFS.includes(n.href))

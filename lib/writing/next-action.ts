@@ -135,9 +135,9 @@ export function nextActions(input: ActionInput): NextAction[] {
     out.push({
       id: 'auto-draft-failed',
       title: alert.level === 'bad' ? '오늘 자동 초안이 만들어지지 않았습니다' : '자동 초안이 멈춘 것 같습니다',
-      why: `${alert.text} 글 목록에서 「지금 한 편 쓰기」로 직접 돌려보실 수 있습니다.`,
-      href: '/posts',
-      cta: '글 목록 열기',
+      why: `${alert.text} 「자동 작성」 화면에서 「지금 한 편 쓰기」로 직접 돌려보실 수 있습니다.`,
+      href: '/autodraft',
+      cta: '자동 작성 열기',
       tone: alert.level === 'bad' ? 'bad' : 'warn',
     })
   }
