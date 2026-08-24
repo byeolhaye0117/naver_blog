@@ -127,9 +127,33 @@ const OFF_LIMIT_WORDS = [
   '파우더',
   '크레아틴',
   '계산기',
+  /*
+   * 2026-08-24 네 번째 실행. 약과 병이 또 새어 나왔다 —
+   * 근육이완제 13,450회 · 근육강화제 · 섬유근육통 · 손목결절종.
+   * 「~제」로 끝나는 약 이름은 낱말이 끝없이 나오므로 꼴로 막는다 (아래 DRUG_TAIL).
+   */
+  '섬유근육통',
+  '결절종',
+  '종양',
+  '염좌',
+  '탈출증',
 ]
-/** 「다이어트약」·「변비약」 — 낱말이 「약」으로 끝나면 약이다 */
-const DRUG_TAIL = /약$/
+
+/**
+ * **물건과 기구** — 살 것을 찾는 검색이다.
+ *
+ * 「허리마사지기」·「홈트운동기구」·「복근운동기구」·「스트레칭밴드」가 후보로 올라왔다.
+ * 다만 **쓰는 법을 묻고 있으면 정보다** — 「헬스 기구 사용 순서」는 우리가 쓸 주제다.
+ * 그래서 업체 이름과 같은 규칙을 쓴다 (방법을 묻는 말이 함께 있으면 통과).
+ */
+const PRODUCT_WORDS = ['기구', '머신', '마사지기', '밴드', '용품', '매트', '보호대', '벨트']
+/**
+ * 약 이름의 꼴 — 「다이어트약」·「변비약」, 그리고 「근육이완제」·「근육강화제」.
+ *
+ * 약 이름을 낱개로 적으면 끝이 없다. 「~제」는 「문제」·「과제」와 겹치므로 **약에만 쓰이는
+ * 앞말과 함께** 볼 때만 막는다.
+ */
+const DRUG_TAIL = /(약|이완제|강화제|억제제|촉진제|치료제|주사제)$/
 /** 「축농증」·「후두염」 — 병 이름은 대개 이렇게 끝난다 */
 const DISEASE_TAIL = /(염|증|암)$/
 
@@ -231,7 +255,10 @@ export function classifyIntent(query: string, myLocalKeywords: string[] = []): T
   if (AREA_RE.test(q) && hasPlace) return 'local'
   // 값을 묻는 말이 먼저다 — 「헬스장 가격」은 업체보다 가격을 묻고 있다
   if (BUY_WORDS.some((w) => flat.includes(w))) return 'buy'
-  if (hasPlace && !METHOD_WORDS.some((w) => flat.includes(w))) return 'local'
+  const asksHow = METHOD_WORDS.some((w) => flat.includes(w))
+  if (hasPlace && !asksHow) return 'local'
+  // 기구·용품도 마찬가지 — 쓰는 법을 물으면 정보, 아니면 살 것을 찾는 말이다
+  if (PRODUCT_WORDS.some((w) => flat.includes(w)) && !asksHow) return 'buy'
 
   /*
    * **의료·제품은 검색량이 아무리 커도 뺀다.** 헬스장이 약·주사·질병의 효과를 말하면
