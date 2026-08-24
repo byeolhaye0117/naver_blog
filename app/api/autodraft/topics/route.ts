@@ -4,7 +4,7 @@ import { gatherSuggestions } from '@/lib/naver/autocomplete'
 import { keywordTool } from '@/lib/naver/searchad'
 import { recentBlogCount } from '@/lib/naver/blogsection'
 import { hasAdKeys } from '@/lib/naver/client'
-import { SHOW_MAX, TOPIC_SEEDS, attachRecent, buildCandidates } from '@/lib/writing/topic-explore'
+import { SHOW_MAX, TOPIC_SEEDS, attachRecent, buildCandidates, pageOf, pageRange } from '@/lib/writing/topic-explore'
 
 export const dynamic = 'force-dynamic'
 // 자동완성 3개 + 검색광고 1회 + 발행량 여러 번을 순서대로 부른다
@@ -40,7 +40,7 @@ const GAP_MS = 400
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { seedId?: string }
+    const body = (await req.json()) as { seedId?: string; page?: number }
     const seed = TOPIC_SEEDS.find((s) => s.id === body.seedId)
     if (!seed) {
       return NextResponse.json({ error: '어떤 갈래를 볼지 골라주세요.' }, { status: 400 })
@@ -72,8 +72,15 @@ export async function POST(req: Request) {
       myLocalKeywords,
       exclude,
     })
+    /*
+     * **넘겨 볼 수 있어야 한다** (2026-08-24 회원 요청: "주제가 매번 같은게 나와").
+     * 상위 12개만 보여주고 있었는데 남는 후보가 409개였다 — 397개가 한 번도 안 보였다.
+     * 검색광고는 같은 씨앗에 같은 순서로 오므로 다시 눌러도 열두 줄이 그대로다.
+     */
+    const page = Number.isFinite(body.page) ? Math.max(0, Math.trunc(body.page as number)) : 0
     const info = candidates.filter((c) => c.intent === 'info')
-    const pick = info.slice(0, SHOW_MAX)
+    const pick = pageOf(info, page)
+    const range = pageRange(info.length, page)
 
     /*
      * 잘린 값(note === 'atLeast')을 함께 넘긴다. 블로그 섹션은 1,000건에서 잘려서 그 위는
@@ -102,7 +109,12 @@ export async function POST(req: Request) {
       note: {
         found: candidates.length,
         shown: shown.length,
-        overflow: Math.max(0, info.length - shown.length),
+        /** 지금 몇 번째를 보고 있나 — 「409개 중 13~24번째」 */
+        total: info.length,
+        from: range.from,
+        to: range.to,
+        pages: range.pages,
+        page,
         offlimit: by('offlimit'),
         local: by('local') + by('buy'),
         thin: by('thin'),

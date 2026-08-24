@@ -8945,7 +8945,33 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
    * **개수 상한이 있어야 한다.** 첫 실행에서 후보가 1,152개 나왔다 — 검색광고 연관검색어는
    * 아낌없이 준다. 그걸 그대로 뿌리면 고를 수 있는 목록이 아니라 스크롤 지옥이다.
    */
-  const { SHOW_MAX, attachRecent } = require(`${OUT}/writing/topic-explore.js`)
+  const { SHOW_MAX, attachRecent, pageOf, pageRange } = require(`${OUT}/writing/topic-explore.js`)
+
+  /*
+   * **넘겨 볼 수 있어야 한다** (2026-08-24). 회원: "주제가 매번 같은게 나와 새로고침 버튼
+   * 만들어서 다른것들이 나오게 해줘."
+   *
+   * 상위 12개만 보여주고 있었는데 「다이어트」 갈래에서 남는 후보가 **409개**였다 —
+   * 397개가 한 번도 눈에 안 띄었다. 검색광고는 같은 씨앗에 같은 순서로 답하므로 다시
+   * 눌러도 열두 줄이 그대로였다.
+   */
+  {
+    const nums = Array.from({ length: 25 }, (_, i) => i + 1)
+    ok(JSON.stringify(pageOf(nums, 0, 10)) === JSON.stringify([1,2,3,4,5,6,7,8,9,10]), '첫 묶음')
+    ok(JSON.stringify(pageOf(nums, 1, 10)) === JSON.stringify([11,12,13,14,15,16,17,18,19,20]), '두 번째 묶음은 다른 것')
+    ok(JSON.stringify(pageOf(nums, 2, 10)) === JSON.stringify([21,22,23,24,25]), '마지막 묶음은 짧아도 된다')
+    // 끝에서 처음으로 돌아온다 — 「더 없습니다」로 막히면 회원이 그 자리에서 멈춘다
+    ok(JSON.stringify(pageOf(nums, 3, 10)) === JSON.stringify(pageOf(nums, 0, 10)), '끝나면 처음으로 돌아온다')
+    // 음수는 뒤에서부터 — 마지막 묶음(21~25)으로 돌아온다
+    ok(pageOf([], 5, 10).length === 0, '빈 목록에도 터지지 않는다')
+    ok(JSON.stringify(pageOf(nums, -1, 10)) === JSON.stringify([21,22,23,24,25]), '음수는 뒤에서부터 센다')
+
+    const r = pageRange(409, 1, 12)
+    ok(r.from === 13 && r.to === 24, `몇 번째를 보고 있는지 안다 — ${r.from}~${r.to}`)
+    ok(pageRange(409, 0, 12).pages === 35, '묶음이 몇 개인지 안다')
+    ok(pageRange(25, 2, 10).to === 25, '마지막 묶음은 전체 수에서 멈춘다')
+    ok(pageRange(0, 0, 12).pages === 0, '후보가 없으면 0')
+  }
   ok(SHOW_MAX > 0 && SHOW_MAX <= 40, `화면에 보여줄 개수 상한이 있다 — ${SHOW_MAX}개`)
 
   /*
@@ -8991,7 +9017,7 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(/GAP_MS/.test(api) && /setTimeout\(r, GAP_MS\)/.test(api), '발행량 조회 사이에 간격을 둔다')
     ok(/measured\+\+/.test(api), '몇 개가 실제로 답했는지 센다 (물어본 횟수와 다르다)')
     // 재는 대상은 **보여줄 것**이어야 한다 — 안 그러면 잰 결과가 화면에 한 줄도 안 뜬다
-    ok(/const pick = info\.slice\(0, SHOW_MAX\)/.test(api), '보여줄 것을 먼저 정한다')
+    ok(/const pick = pageOf\(info, page\)/.test(api), '보여줄 것을 먼저 정한다')
     ok(/for \(const c of pick/.test(api), '그 목록만 잰다')
     ok(/attachRecent\(pick, recent\)/.test(api), '잰 값을 붙여 다시 줄 세운다')
     ok(/note === 'atLeast'/.test(api), '잘린 값인지도 함께 넘긴다 (4,286편과 4,286편 이상은 다르다)')
@@ -8999,7 +9025,11 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     const ui = rf(new URL('../components/TopicExplorer.tsx', import.meta.url), 'utf8')
     ok(ui.includes('TOPIC_SEEDS'), '화면이 같은 갈래 목록을 쓴다 (두 곳에 적지 않는다)')
     ok(ui.includes('note.offlimit') && ui.includes('note.measured'), '무엇을 걸렀고 몇 개를 쟀는지 화면에 밝힌다')
-    ok(ui.includes('note.overflow'), '접어둔 개수도 밝힌다 (조용히 자르면 「이게 전부」로 읽힌다)')
+    ok(ui.includes('note.total') && ui.includes('note.from'), '몇 개 중 몇 번째를 보고 있는지 밝힌다')
+    ok(ui.includes('다른 주제 보기'), '다음 묶음으로 넘기는 버튼이 있다')
+    ok(/explore\(seedId, note\.page \+ 1\)/.test(ui), '누르면 다음 묶음을 가져온다')
+    ok(/explore\(s\.id, 0\)/.test(ui), '갈래를 바꾸면 첫 묶음부터 본다')
+    ok(api.includes('pageOf') && api.includes('body.page'), '라우트가 묶음 번호를 받아 자른다')
     ok(ui.includes('막은 것 같습니다'), '한 건도 못 쟀으면 왜 그런지 말해준다')
 
     /*
