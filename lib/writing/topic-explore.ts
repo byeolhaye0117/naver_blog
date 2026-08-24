@@ -91,6 +91,29 @@ const OFF_LIMIT_WORDS = [
   '부작용',
   '자격증',
   '보험',
+  /*
+   * 2026-08-24 두 번째 실행에서 새어 나온 것들. 첫 걸름망을 통과했지만 여전히 우리가 쓸
+   * 주제가 아니다 — 「지방간치료」·「비만치료제」는 의료, 「다이어트식품」·「디톡스다이어트」는
+   * 제품, 「숀리다이어트캠프」는 남의 브랜드다.
+   */
+  '치료',
+  '지방간',
+  '식품',
+  '디톡스',
+  '캠프',
+  '체험단',
+  // 병 이름이 낱말 가운데 있으면 끝자리 검사로는 안 걸린다 (「허리협착증운동」)
+  '협착증',
+  '증후군',
+  '디스크',
+  '당뇨',
+  '고혈압',
+  '갑상선',
+  '통풍',
+  '역류성',
+  '골다공',
+  '우울증',
+  '불면증',
 ]
 /** 「다이어트약」·「변비약」 — 낱말이 「약」으로 끝나면 약이다 */
 const DRUG_TAIL = /약$/
@@ -170,6 +193,15 @@ const PLACE_WORDS = ['헬스장', '피트니스', '짐', '센터', 'pt', '피티
 const NEARBY_WORDS = ['근처', '주변', '가까운']
 
 /**
+ * **업체 이름이 들어간 말은 방법을 묻고 있을 때만 정보다** (2026-08-24 두 번째 실행).
+ *
+ * 「여성전용헬스장」이 후보로 올라왔다. 지역명이 없어서 지역 검사를 통과했지만, 이건
+ * 업체를 찾는 말이지 정보를 찾는 말이 아니다. 반대로 「헬스장 처음 가는 순서」는 정보다.
+ * 가르는 것은 **방법을 묻는 말이 함께 있는가**다.
+ */
+const METHOD_WORDS = ['방법', '법', '자세', '루틴', '순서', '효과', '차이', '이유', '시간', '주기', '횟수', '준비물', '처음']
+
+/**
  * **정보글 주제로 쓸 만한 말인가.**
  *
  * 세 갈래로 나눈다 — 버리지 않고 갈래를 붙여 돌려준다. 버리면 회원이 「왜 이건 안 나오지」를
@@ -182,8 +214,11 @@ export function classifyIntent(query: string, myLocalKeywords: string[] = []): T
   // 우리 지역 키워드가 통째로 들어 있으면 업체를 찾는 말이다
   if (myLocalKeywords.some((k) => k.trim() && flat.includes(k.replace(/\s+/g, '')))) return 'local'
   if (NEARBY_WORDS.some((w) => flat.includes(w))) return 'local'
-  if (AREA_RE.test(q) && PLACE_WORDS.some((w) => low.includes(w))) return 'local'
+  const hasPlace = PLACE_WORDS.some((w) => low.includes(w))
+  if (AREA_RE.test(q) && hasPlace) return 'local'
+  // 값을 묻는 말이 먼저다 — 「헬스장 가격」은 업체보다 가격을 묻고 있다
   if (BUY_WORDS.some((w) => flat.includes(w))) return 'buy'
+  if (hasPlace && !METHOD_WORDS.some((w) => flat.includes(w))) return 'local'
 
   /*
    * **의료·제품은 검색량이 아무리 커도 뺀다.** 헬스장이 약·주사·질병의 효과를 말하면
@@ -330,4 +365,25 @@ export function buildCandidates(args: {
  * 뿌리면 고를 수 있는 목록이 아니라 스크롤 지옥이다. 회원이 실제로 읽고 고를 만한 수로 자르되,
  * **몇 개를 잘랐는지 화면에 밝힌다** — 조용히 자르면 「이게 전부」로 읽힌다.
  */
-export const SHOW_MAX = 24
+export const SHOW_MAX = 12
+
+/**
+ * 잰 발행량을 후보에 붙이고 다시 줄 세운다.
+ *
+ * ── 왜 따로 있나 (2026-08-24) ───────────────────────────────
+ * 처음엔 **검색량 상위 10개를 먼저 재고 그다음에 줄 세웠다.** 그랬더니 화면에 보이는
+ * 24개가 **전부 「발행량은 못 쟀습니다」**였다. 잰 것들은 경쟁이 세서(300편 이상) 맨 뒤로
+ * 밀렸고, 못 잰 것들이 그 앞을 채웠기 때문이다 — 조회를 열 번 하고 그 결과를 한 줄도
+ * 못 보여준 셈이다.
+ *
+ * 그래서 순서를 뒤집었다: **보여줄 것을 먼저 정하고, 그것만 잰다.** 그러면 화면에 뜨는
+ * 모든 줄에 수요와 경쟁이 함께 있다.
+ */
+export function attachRecent(list: TopicCandidate[], recent: Record<string, number | null>): TopicCandidate[] {
+  return rankCandidates(
+    list.map((c) => {
+      const recent30 = recent[c.topic] ?? null
+      return { ...c, recent30, why: candidateWhy(c.monthlySearch, recent30) }
+    })
+  )
+}

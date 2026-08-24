@@ -4,7 +4,7 @@ import { gatherSuggestions } from '@/lib/naver/autocomplete'
 import { keywordTool } from '@/lib/naver/searchad'
 import { recentBlogCount } from '@/lib/naver/blogsection'
 import { hasAdKeys } from '@/lib/naver/client'
-import { SHOW_MAX, TOPIC_SEEDS, buildCandidates, classifyIntent, toTopic } from '@/lib/writing/topic-explore'
+import { SHOW_MAX, TOPIC_SEEDS, attachRecent, buildCandidates } from '@/lib/writing/topic-explore'
 
 export const dynamic = 'force-dynamic'
 // 자동완성 3개 + 검색광고 1회 + 발행량 여러 번을 순서대로 부른다
@@ -28,7 +28,7 @@ export const maxDuration = 60
  * 검색어 하나당 조회 한 번이라, 후보 40개를 다 재면 화면이 40초를 기다린다. 검색량 큰
  * 순서로 잘라 재고, **몇 개를 쟀고 몇 개를 못 쟀는지 화면에 밝힌다** — 조용히 자르지 않는다.
  */
-const MEASURE_TOP = 10
+const MEASURE_TOP = SHOW_MAX
 /**
  * 발행량 조회 사이 간격.
  *
@@ -58,34 +58,33 @@ export async function POST(req: Request) {
     ])
 
     /*
-     * 검색량 순으로 줄 세운 뒤 **정보성인 것만** 발행량을 잰다. 업체 찾는 말(「쌍용동
-     * 헬스장」)은 어차피 정보글 주제로 못 쓰므로, 거기에 조회를 쓰면 회원 시간만 버린다.
+     * **보여줄 것을 먼저 정하고, 그것만 잰다** (2026-08-24에 순서를 뒤집었다).
+     *
+     * 처음엔 검색량 상위 10개를 먼저 재고 그다음에 줄 세웠는데, 화면에 뜬 24개가 전부
+     * 「발행량은 못 쟀습니다」였다 — 잰 것들은 경쟁이 세서 맨 뒤로 밀렸고 못 잰 것들이 그
+     * 앞을 채웠기 때문이다. 조회를 열 번 하고 결과를 한 줄도 못 보여준 셈이다.
      */
-    const ranked = [...adRows]
-      .filter((r) => classifyIntent(toTopic(r.keyword), myLocalKeywords) === 'info')
-      .sort((a, b) => b.monthlySearch - a.monthlySearch)
-    const toMeasure = ranked.slice(0, MEASURE_TOP).map((r) => toTopic(r.keyword))
-
-    const recent: Record<string, number | null> = {}
-    let measured = 0
-    for (const q of toMeasure) {
-      const got = await recentBlogCount(q).catch(() => null)
-      recent[q] = got?.count ?? null
-      if (recent[q] !== null) measured++
-      await new Promise((r) => setTimeout(r, GAP_MS))
-    }
-
     const candidates = buildCandidates({
       seedId: seed.id,
       suggestions: suggest.words,
       adRows: adRows.map((r) => ({ keyword: r.keyword, monthlySearch: r.monthlySearch })),
-      recent,
+      recent: {},
       myLocalKeywords,
       exclude,
     })
-
     const info = candidates.filter((c) => c.intent === 'info')
-    const shown = info.slice(0, SHOW_MAX)
+    const pick = info.slice(0, SHOW_MAX)
+
+    const recent: Record<string, number | null> = {}
+    let measured = 0
+    for (const c of pick.slice(0, MEASURE_TOP)) {
+      const got = await recentBlogCount(c.topic).catch(() => null)
+      recent[c.topic] = got?.count ?? null
+      if (recent[c.topic] !== null) measured++
+      await new Promise((r) => setTimeout(r, GAP_MS))
+    }
+
+    const shown = attachRecent(pick, recent)
 
     /*
      * 무엇을 왜 걸렀는지 갈래별로 센다. 「후보 18개」만 보여주면 그게 전부인 줄 알게 되고,
@@ -104,7 +103,7 @@ export async function POST(req: Request) {
         local: by('local') + by('buy'),
         thin: by('thin'),
         measured,
-        tried: toMeasure.length,
+        tried: Math.min(pick.length, MEASURE_TOP),
         adKeys: hasAdKeys(),
         autocomplete: { asked: suggest.asked, answered: suggest.answered },
       },
