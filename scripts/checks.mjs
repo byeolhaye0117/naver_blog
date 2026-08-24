@@ -8765,6 +8765,27 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
   // 제외 목록에 없으면서 우리 영역도 아닌 말 — 이건 「쓸 수 있는 말」 쪽으로만 막을 수 있다
   ok(classifyIntent('자이로토닉') === 'offlimit', '우리가 하지 않는 종목은 뺀다')
   ok(classifyIntent('스테비아') === 'offlimit', '제품 이름도 뺀다')
+
+  /*
+   * **두 번째 실행에서 새어 나온 것들** (2026-08-24). 첫 걸름망을 통과했지만 여전히 우리
+   * 주제가 아니다 — 걸러낸 뒤 실제 결과를 다시 보고 넣은 검사다.
+   */
+  ok(classifyIntent('지방간치료') === 'offlimit', '「치료」가 붙으면 의료다')
+  ok(classifyIntent('비만치료제') === 'offlimit', '치료제도 마찬가지')
+  ok(classifyIntent('다이어트식품') === 'offlimit', '파는 물건은 우리 주제가 아니다')
+  ok(classifyIntent('디톡스다이어트') === 'offlimit', '유사의료·제품도 뺀다')
+  ok(classifyIntent('숀리다이어트캠프') === 'offlimit', '남의 브랜드 프로그램도 뺀다')
+  // 병 이름이 낱말 **가운데** 있으면 끝자리 검사로는 안 걸린다
+  ok(classifyIntent('허리협착증운동') === 'offlimit', '가운데 낀 병 이름도 잡는다')
+  ok(classifyIntent('거북목증후군 스트레칭') === 'offlimit', '증후군도 의료 영역')
+
+  /*
+   * **업체 이름이 든 말은 방법을 묻고 있을 때만 정보다.** 「여성전용헬스장」이 후보로
+   * 올라왔었다 — 지역명이 없어서 지역 검사를 통과했지만 이건 업체를 찾는 말이다.
+   */
+  ok(classifyIntent('여성전용헬스장') === 'local', '업체를 가리키는 말은 업체 찾기로')
+  ok(classifyIntent('헬스장 처음 가는 순서') === 'info', '같은 「헬스장」이라도 방법을 물으면 정보다')
+  ok(classifyIntent('헬스 루틴 짜는 방법') === 'info', '운동 방법은 그대로 정보')
   // 한 낱말짜리 짧은 말로는 글을 못 쓴다
   ok(classifyIntent('엉덩이') === 'thin', '「엉덩이」로는 주제가 안 된다')
   ok(classifyIntent('뱃살') === 'thin', '두 글자짜리도 마찬가지')
@@ -8845,8 +8866,27 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
    * **개수 상한이 있어야 한다.** 첫 실행에서 후보가 1,152개 나왔다 — 검색광고 연관검색어는
    * 아낌없이 준다. 그걸 그대로 뿌리면 고를 수 있는 목록이 아니라 스크롤 지옥이다.
    */
-  const { SHOW_MAX } = require(`${OUT}/writing/topic-explore.js`)
+  const { SHOW_MAX, attachRecent } = require(`${OUT}/writing/topic-explore.js`)
   ok(SHOW_MAX > 0 && SHOW_MAX <= 40, `화면에 보여줄 개수 상한이 있다 — ${SHOW_MAX}개`)
+
+  /*
+   * **보여줄 것을 먼저 정하고 그것만 잰다** (2026-08-24에 순서를 뒤집었다).
+   *
+   * 처음엔 검색량 상위 10개를 먼저 재고 그다음 줄 세웠는데, 화면에 뜬 24개가 **전부**
+   * 「발행량은 못 쟀습니다」였다 — 잰 것들은 경쟁이 세서(300편 이상) 맨 뒤로 밀렸고, 못 잰
+   * 것들이 그 앞을 채웠다. 조회를 열 번 하고 결과를 한 줄도 못 보여준 셈이다.
+   */
+  {
+    const pick = [c('많이 검색되는 것', 9000, null), c('덜 검색되는 것', 1000, null)]
+    const done = attachRecent(pick, { '많이 검색되는 것': 800, '덜 검색되는 것': 20 })
+    ok(done.every((x) => x.recent30 !== null), '보여줄 것에 전부 발행량이 붙는다')
+    ok(done.every((x) => !x.why.includes('발행량은 못 쟀습니다')), '화면 문구도 함께 갱신된다')
+    // 경쟁이 적은 쪽이 앞으로 — 검색량이 작아도 (붙인 뒤 다시 줄 세운다)
+    ok(done[0].topic === '덜 검색되는 것', '붙이고 나서 다시 줄 세운다', done[0].topic)
+    // 못 잰 것이 섞여도 그 줄만 「못 쟀다」로 남는다
+    const partial = attachRecent(pick, { '많이 검색되는 것': 20 })
+    ok(partial.find((x) => x.topic === '덜 검색되는 것').why.includes('못 쟀습니다'), '못 잰 줄만 그렇게 남는다')
+  }
 
   /*
    * **화면·라우트가 실제로 이걸 쓴다.** 만들어만 두고 안 쓰면 아무것도 달라지지 않는다.
@@ -8857,8 +8897,8 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(api.includes('gatherSuggestions'), '자동완성에서 가져온다')
     ok(api.includes('keywordTool'), '검색광고 연관검색어에서 가져온다')
     ok(api.includes('recentBlogCount'), '경쟁(최근 30일 발행량)을 잰다')
-    // 정보성인 것만 발행량을 잰다 — 업체 찾는 말에 조회를 쓰면 회원 시간만 버린다
-    ok(/classifyIntent\([\s\S]{0,80}=== 'info'/.test(api), '잴 대상을 정보성으로 좁힌다')
+    // 정보성인 것만 남긴다 — 업체 찾는 말에 조회를 쓰면 회원 시간만 버린다
+    ok(/candidates\.filter\(\(c\) => c\.intent === 'info'\)/.test(api), '잴 대상을 정보성으로 좁힌다')
     ok(api.includes('note'), '몇 개를 걸렀고 못 쟀는지 함께 돌려준다')
 
     /*
@@ -8868,6 +8908,10 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
      */
     ok(/GAP_MS/.test(api) && /setTimeout\(r, GAP_MS\)/.test(api), '발행량 조회 사이에 간격을 둔다')
     ok(/measured\+\+/.test(api), '몇 개가 실제로 답했는지 센다 (물어본 횟수와 다르다)')
+    // 재는 대상은 **보여줄 것**이어야 한다 — 안 그러면 잰 결과가 화면에 한 줄도 안 뜬다
+    ok(/const pick = info\.slice\(0, SHOW_MAX\)/.test(api), '보여줄 것을 먼저 정한다')
+    ok(/for \(const c of pick/.test(api), '그 목록만 잰다')
+    ok(/attachRecent\(pick, recent\)/.test(api), '잰 값을 붙여 다시 줄 세운다')
 
     const ui = rf(new URL('../app/posts/TopicExplorer.tsx', import.meta.url), 'utf8')
     ok(ui.includes('TOPIC_SEEDS'), '화면이 같은 갈래 목록을 쓴다 (두 곳에 적지 않는다)')
