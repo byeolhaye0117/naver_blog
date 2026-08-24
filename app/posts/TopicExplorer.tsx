@@ -33,13 +33,19 @@ interface Note {
  * 고른 것은 위쪽 「③ 쓸 주제 고르기」에 그대로 들어간다 — 별도 저장 버튼을 또 만들지
  * 않는다. 저장 버튼이 두 개면 어느 것을 눌러야 하는지 회원이 판단해야 한다.
  */
-export default function TopicExplorer({ onPick }: { onPick: (topic: string) => void }) {
+export default function TopicExplorer({
+  picked,
+  onPick,
+}: {
+  /** 이미 담은 주제 — 「담음」으로 표시해 두 번 담지 않게 한다 */
+  picked: string[]
+  onPick: (topic: string) => void
+}) {
   const [seedId, setSeedId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [list, setList] = useState<TopicCandidate[] | null>(null)
   const [note, setNote] = useState<Note | null>(null)
-  const [picked, setPicked] = useState<string[]>([])
 
   async function explore(id: string) {
     setSeedId(id)
@@ -124,10 +130,7 @@ export default function TopicExplorer({ onPick }: { onPick: (topic: string) => v
                     <button
                       type="button"
                       disabled={on}
-                      onClick={() => {
-                        onPick(c.topic)
-                        setPicked((p) => [...p, c.topic])
-                      }}
+                      onClick={() => onPick(c.topic)}
                       className={`${btnGhost} shrink-0 !px-2.5 !py-1.5 !text-[11px]`}
                     >
                       {on ? '담음' : '주제로 담기'}
