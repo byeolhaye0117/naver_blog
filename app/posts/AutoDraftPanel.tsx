@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { AutoDraftPlan, AutoDraftRun } from '@/lib/types'
 import { INFO_TOPICS, autoDraftStatus, normalizePlan, planSummary } from '@/lib/writing/autodraft'
-import { Badge, btnGhost, btnPrimary, inputClass } from '@/components/ui'
+import { Badge, btnGhost, btnPrimary } from '@/components/ui'
 import TopicExplorer from './TopicExplorer'
 
 /**
@@ -41,12 +41,6 @@ export default function AutoDraftPanel({
   const [plan, setPlan] = useState<AutoDraftPlan>(() => normalizePlan(savedPlan))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
-  const [newTopic, setNewTopic] = useState('')
-  const [qKeyword, setQKeyword] = useState('')
-  const [qTopic, setQTopic] = useState('')
-
-  /** 고를 수 있는 주제 — 기본 목록 + 회원이 직접 적어 넣은 것 */
-  const topicPool = [...INFO_TOPICS, ...(plan.topics ?? []).filter((t) => !INFO_TOPICS.includes(t))]
 
   /**
    * 주제 하나를 목록에 더한다 — **더하면서 곧바로 켠다.**
@@ -124,96 +118,41 @@ export default function AutoDraftPanel({
       </p>
 
       {/*
-        **무엇으로 쓰는지를 접힌 채로도 한 줄 보여준다** (2026-08-23 회원 요청으로 설정이
-        생겼다). 설정을 열어 체크박스를 세어 보지 않아도 「지금 무엇으로 돌고 있나」를 알 수
-        있어야 한다 — 안 그러면 고른 것이 지켜지고 있는지 확인할 방법이 없다.
+        **무엇으로 쓰는지를 접힌 채로도 한 줄 보여준다.** 설정을 열어 칩을 세어 보지 않아도
+        「지금 무엇으로 돌고 있나」를 알 수 있어야 한다 — 안 그러면 고른 것이 지켜지는지
+        확인할 방법이 없다.
+
+        예약(「다음에 쓸 것 지정하기」) 칸은 회원 요청으로 뺐다 (2026-08-24). 매일 하나씩
+        지정하게 하면 결국 손으로 쓰는 것과 같아진다 — 한 번 정해두면 손대지 않아도 되는
+        것이 이 기능의 값이다.
       */}
       <details className="bd mt-3 border-t pt-3">
-        <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-[12px] font-bold select-none">
+        <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] font-bold select-none">
           무엇으로 쓸지 정하기
-          <span className="muted font-semibold">{planSummary(plan)}</span>
+          <span className="muted text-[11.5px] font-semibold">{planSummary(plan)}</span>
         </summary>
 
-        <div className="mt-3 space-y-4">
-          {/* ── 켜고 끄기 ── */}
-          <label className="flex items-center gap-2 text-[12.5px] font-semibold">
+        <div className="mt-3.5 space-y-5">
+          <label className="flex items-center gap-2.5 text-[12.5px] font-semibold">
             <input
               type="checkbox"
               checked={plan.off !== true}
               onChange={(e) => setPlan((p) => ({ ...p, off: !e.target.checked }))}
-              className="size-4"
+              className="size-4 shrink-0"
             />
             매일 새벽 5시에 정보글 초안 한 편 쓰기
           </label>
 
-          {/* ── ① 예약: 다음에 쓸 것을 직접 지정 ── */}
+          {/* ── ① 키워드 ── */}
           <section>
-            <h3 className="text-[12.5px] font-bold">① 다음에 쓸 것 지정하기</h3>
-            <p className="muted mt-0.5 mb-2 text-[11px] leading-relaxed">
-              여기 줄 세운 것부터 위에서 하나씩 씁니다. 한 편 성공하면 목록에서 빠집니다 — 실패한 날에는 그대로
-              남아 다음 날 다시 시도합니다. 비워두면 아래 ②·③ 범위 안에서 돌아가며 씁니다.
-            </p>
-            {(plan.queue ?? []).length > 0 && (
-              <ol className="mb-2 space-y-1.5">
-                {(plan.queue ?? []).map((q, i) => (
-                  <li key={`${q.keyword}|${q.topic}`} className="panel flex items-center gap-2 rounded-xl px-3 py-2">
-                    <span className="tnum muted text-[11px] font-bold">{i + 1}</span>
-                    <span className="min-w-0 flex-1 text-[12px] leading-snug">
-                      <b>{q.keyword}</b> · {q.topic}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPlan((p) => ({
-                          ...p,
-                          queue: (p.queue ?? []).filter((x) => !(x.keyword === q.keyword && x.topic === q.topic)),
-                        }))
-                      }
-                      className="muted rounded-lg px-2 py-1 text-[11px] font-semibold hover:text-rose-600"
-                    >
-                      빼기
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            )}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
-              <select value={qKeyword} onChange={(e) => setQKeyword(e.target.value)} className={inputClass}>
-                <option value="">키워드 고르기</option>
-                {keywordPool.map((k) => (
-                  <option key={k} value={k}>
-                    {k}
-                  </option>
-                ))}
-              </select>
-              <select value={qTopic} onChange={(e) => setQTopic(e.target.value)} className={inputClass}>
-                <option value="">주제 고르기</option>
-                {topicPool.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={!qKeyword || !qTopic}
-                onClick={() => {
-                  setPlan((p) => ({ ...p, queue: [...(p.queue ?? []), { keyword: qKeyword, topic: qTopic }] }))
-                  setQKeyword('')
-                  setQTopic('')
-                }}
-                className={`${btnGhost} !py-2.5 !text-[12px]`}
-              >
-                줄 세우기
-              </button>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <h3 className="text-[13px] font-bold">① 쓸 키워드</h3>
+              <Badge tone={plan.keywords?.length ? 'good' : 'default'}>
+                {plan.keywords?.length ? `${plan.keywords.length}개 고름` : '전부'}
+              </Badge>
             </div>
-          </section>
-
-          {/* ── ② 키워드 범위 ── */}
-          <section>
-            <h3 className="text-[12.5px] font-bold">② 쓸 키워드 고르기</h3>
-            <p className="muted mt-0.5 mb-2 text-[11px] leading-relaxed">
-              고른 것 안에서만 돌아가며 씁니다. 아무것도 안 고르면 순위 추적에 등록한 키워드 전부를 씁니다.
+            <p className="muted mb-2 text-[11px] leading-relaxed">
+              고른 것 안에서만 돌아가며 씁니다. 하나도 안 고르면 순위 추적에 등록한 키워드 전부를 씁니다.
             </p>
             <div className="flex flex-wrap gap-1.5">
               {keywordPool.map((k) => {
@@ -237,58 +176,46 @@ export default function AutoDraftPanel({
             </div>
           </section>
 
-          {/* ── ③ 주제 범위 ── */}
+          {/* ── ② 주제 — 탐색기에서 담은 것만 ── */}
           <section>
-            <h3 className="text-[12.5px] font-bold">③ 쓸 주제 고르기</h3>
-            <p className="muted mt-0.5 mb-2 text-[11px] leading-relaxed">
-              아무것도 안 고르면 기본 {INFO_TOPICS.length}개를 전부 씁니다. 원하시는 주제를 직접 적어 넣어도 됩니다.
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <h3 className="text-[13px] font-bold">② 쓸 주제</h3>
+              <Badge tone={plan.topics?.length ? 'good' : 'default'}>
+                {plan.topics?.length ? `${plan.topics.length}개 담음` : '기본 주제'}
+              </Badge>
+            </div>
+            <p className="muted mb-2 text-[11px] leading-relaxed">
+              아래 탐색에서 담은 주제만 씁니다. 하나도 안 담으면 기본 주제 {INFO_TOPICS.length}개를 씁니다.
             </p>
-            <div className="mb-2 flex flex-wrap gap-1.5">
-              {topicPool.map((t) => {
-                const on = (plan.topics ?? []).includes(t)
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => toggle('topics', t)}
-                    className={`rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition ${
-                      on ? 'bg-brand-600 border-brand-600 text-white' : 'bd hover:bg-slate-500/8'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <input
-                value={newTopic}
-                onChange={(e) => setNewTopic(e.target.value)}
-                placeholder="직접 적기 — 예: 어깨가 자주 뭉칠 때"
-                className={inputClass}
-              />
-              <button
-                type="button"
-                disabled={!newTopic.trim()}
-                onClick={() => {
-                  addTopic(newTopic)
-                  setNewTopic('')
-                }}
-                className={`${btnGhost} !py-2.5 !text-[12px]`}
-              >
-                주제 더하기
-              </button>
-            </div>
 
             {/*
-              **주제를 지어내지 않고 재서 고른다** (2026-08-23 회원 요청). 위 기본 목록 10개는
-              우리가 앉아서 만든 것이라, 사람들이 실제로 검색하는지 확인한 적이 없다.
-              탐색기에서 담은 주제는 곧바로 위 ③ 목록에 켜진 채로 들어간다.
+              담은 것을 위에 모아 보여준다 — 탐색 결과 안에 섞여 있으면 「내가 뭘 골랐더라」를
+              스크롤해서 찾아야 한다.
             */}
-            <TopicExplorer onPick={addTopic} />
+            {(plan.topics ?? []).length > 0 && (
+              <ul className="mb-2.5 flex flex-wrap gap-1.5">
+                {(plan.topics ?? []).map((t) => (
+                  <li key={t}>
+                    <button
+                      type="button"
+                      onClick={() => toggle('topics', t)}
+                      title="빼기"
+                      className="bg-brand-600 border-brand-600 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold text-white"
+                    >
+                      {t}
+                      <span aria-hidden className="opacity-70">
+                        ×
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <TopicExplorer picked={plan.topics ?? []} onPick={addTopic} />
           </section>
 
-          <div className="bd flex flex-wrap items-center gap-2 border-t pt-3">
+          <div className="bd flex flex-wrap items-center gap-2 border-t pt-3.5">
             <button
               type="button"
               disabled={saving}
@@ -300,7 +227,7 @@ export default function AutoDraftPanel({
             <button
               type="button"
               disabled={saving}
-              onClick={() => save({ off: false, keywords: [], topics: [], queue: [] })}
+              onClick={() => save({ off: false, keywords: [], topics: [] })}
               className={`${btnGhost} !px-3 !py-2.5 !text-[12px]`}
             >
               전부 지우고 자동으로

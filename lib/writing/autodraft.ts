@@ -297,16 +297,10 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
     }
     return out
   }
-  const queue = (Array.isArray(raw?.queue) ? raw.queue : [])
-    .map((q) => ({ keyword: (q?.keyword ?? '').trim(), topic: (q?.topic ?? '').trim() }))
-    .filter((q) => q.keyword && q.topic)
-    // 같은 조합을 두 번 줄 세워도 한 번만 남긴다 — 이틀 연속 같은 글이 나온다
-    .filter((q, i, all) => all.findIndex((o) => o.keyword === q.keyword && o.topic === q.topic) === i)
   return {
     off: raw?.off === true,
     keywords: list(raw?.keywords),
     topics: list(raw?.topics),
-    queue,
     updatedAt: raw?.updatedAt,
   }
 }
@@ -321,37 +315,9 @@ export function planAssignment(args: {
   const plan = normalizePlan(args.plan)
   if (plan.off) return null
 
-  /*
-   * **줄 세운 것이 먼저다.** 회원이 「다음엔 이걸로」라고 정해 둔 것을 로테이션이 덮으면
-   * 정해 둔 의미가 없다. 하나 꺼내 쓰고, 성공했을 때만 목록에서 뺀다 (crons 쪽 popQueue).
-   */
-  const queue = plan.queue ?? []
-  const head = queue[0]
-  if (head) {
-    return {
-      mainKeyword: head.keyword,
-      topic: head.topic,
-      why: `회원님이 지정하신 순서입니다 (남은 예약 ${queue.length}건).`,
-    }
-  }
-
   const keywords = plan.keywords?.length ? plan.keywords : args.fallbackKeywords
   const topics = plan.topics?.length ? plan.topics : INFO_TOPICS
   return pickAssignment({ posts: args.posts, keywords, topics })
-}
-
-/**
- * 쓴 것을 예약 목록에서 뺀다 — **성공했을 때만 부른다.**
- *
- * 실패한 날에도 빼면 회원이 정해 둔 글이 한 편도 안 나온 채 사라진다. 그건 「자동으로
- * 써준다」는 약속을 조용히 어기는 것이다.
- */
-export function popQueue(plan: AutoDraftPlan | undefined, used: { keyword: string; topic: string }): AutoDraftPlan {
-  const p = normalizePlan(plan)
-  return {
-    ...p,
-    queue: (p.queue ?? []).filter((q) => !(q.keyword === used.keyword && q.topic === used.topic)),
-  }
 }
 
 /**
@@ -363,7 +329,6 @@ export function planSummary(plan: AutoDraftPlan | undefined): string {
   const p = normalizePlan(plan)
   if (p.off) return '자동 초안을 꺼두셨습니다.'
   const parts: string[] = []
-  if (p.queue?.length) parts.push(`예약 ${p.queue.length}건 (「${p.queue[0].keyword}」 · ${p.queue[0].topic} 부터)`)
   parts.push(p.keywords?.length ? `키워드 ${p.keywords.length}개 지정` : '키워드는 순위 추적 목록 전부')
   parts.push(p.topics?.length ? `주제 ${p.topics.length}개 지정` : `주제는 기본 ${INFO_TOPICS.length}개 전부`)
   return parts.join(' · ')

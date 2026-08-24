@@ -8623,30 +8623,19 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
   const halfway = planAssignment({ plan: { keywords: ['천안 헬스장'] }, posts: [], fallbackKeywords: FALLBACK })
   ok(halfway?.mainKeyword === '천안 헬스장' && TOPICS.includes(halfway.topic), '키워드만 골라도 된다')
 
-  // ── ③ 줄 세운 것이 먼저다 (로테이션이 덮으면 정해 둔 의미가 없다)
-  const queued = planAssignment({
-    plan: { keywords: ['천안 헬스장'], queue: [{ keyword: '쌍용동 헬스장', topic: '체중 늘리기 첫 달' }] },
-    posts: [],
-    fallbackKeywords: FALLBACK,
-  })
-  ok(queued?.mainKeyword === '쌍용동 헬스장' && queued.topic === '체중 늘리기 첫 달', '예약이 범위 설정보다 앞선다')
-  ok(queued.why.includes('지정하신 순서'), '왜 이걸 쓰는지 밝힌다', queued.why)
-
   /*
-   * **예약은 성공했을 때만 뺀다.** 실패한 날에도 빼면 회원이 정해 둔 글이 한 편도 안 나온 채
-   * 사라진다 — 「자동으로 써준다」는 약속을 조용히 어기는 것이다.
+   * **예약(줄 세우기) 칸은 뺐다** (2026-08-24 회원 요청: "위에 칸은 삭제하고").
+   *
+   * 매일 하나씩 지정하게 하면 결국 손으로 쓰는 것과 같아진다 — 한 번 정해두면 그 뒤로
+   * 손대지 않아도 되는 것이 이 기능의 값이다. 남아 있던 자리에 계속 값을 넣게 두면
+   * 「고쳤는데 왜 그대로지」가 되므로 타입·저장·크론에서 함께 지웠다.
    */
-  const q2 = [
-    { keyword: 'A', topic: '가' },
-    { keyword: 'B', topic: '나' },
-  ]
-  const after = popQueue({ queue: q2 }, { keyword: 'A', topic: '가' })
-  ok(after.queue.length === 1 && after.queue[0].keyword === 'B', '쓴 것만 빠지고 나머지는 남는다')
-  ok(popQueue({ queue: q2 }, { keyword: 'A', topic: '나' }).queue.length === 2, '조합이 다르면 빼지 않는다')
-  ok(popQueue(undefined, { keyword: 'A', topic: '가' }).queue.length === 0, '예약이 없어도 터지지 않는다')
-  // 뺀 뒤에도 나머지 설정은 그대로 — 예약 하나 쓸 때마다 고른 키워드가 날아가면 안 된다
-  const kept = popQueue({ keywords: ['천안 헬스장'], topics: ['가'], queue: q2 }, { keyword: 'A', topic: '가' })
-  ok(kept.keywords[0] === '천안 헬스장' && kept.topics[0] === '가', '예약을 빼도 범위 설정은 남는다')
+  ok(!('queue' in normalizePlan({ queue: [{ keyword: 'A', topic: '가' }] })), '예약 칸을 저장하지 않는다')
+  ok(
+    planAssignment({ plan: { queue: [{ keyword: '엉뚱한 키워드', topic: '가' }], keywords: ['천안 헬스장'] }, posts: [], fallbackKeywords: FALLBACK })
+      ?.mainKeyword === '천안 헬스장',
+    '예전에 저장된 예약이 남아 있어도 무시한다'
+  )
 
   /*
    * **들어오는 자리에서 한 번만 정리한다.** 화면에서 온 값을 그대로 저장하면 빈 줄·중복이
@@ -8655,17 +8644,14 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
   const dirty = normalizePlan({
     keywords: ['  천안 헬스장  ', '천안 헬스장', '', '   '],
     topics: [null, '가', '가'],
-    queue: [{ keyword: ' A ', topic: ' 가 ' }, { keyword: 'A', topic: '가' }, { keyword: '', topic: '나' }, { keyword: 'B' }],
   })
   ok(dirty.keywords.length === 1 && dirty.keywords[0] === '천안 헬스장', '공백을 떼고 중복을 없앤다')
   ok(dirty.topics.length === 1, '주제도 마찬가지')
-  ok(dirty.queue.length === 1 && dirty.queue[0].keyword === 'A', '반쪽짜리·중복 예약을 버린다', JSON.stringify(dirty.queue))
   ok(normalizePlan(undefined).off === false, '설정이 없으면 꺼진 것이 아니다 (기본은 켜짐)')
 
   // ── 화면 한 줄 요약 — 설정을 열어 세어 보지 않아도 알 수 있어야 한다
   ok(planSummary(undefined).includes('순위 추적 목록 전부'), '아무것도 안 정하면 그렇게 말한다', planSummary(undefined))
   ok(planSummary({ keywords: ['a', 'b'] }).includes('키워드 2개 지정'), '고른 개수를 밝힌다')
-  ok(planSummary({ queue: [{ keyword: 'A', topic: '가' }] }).includes('예약 1건'), '예약이 있으면 먼저 말한다')
 
   /*
    * **덩어리 설정이 저장 후 살아 돌아와야 한다.** normalizeDB 는 목록만 옮기고 있었다 —
@@ -8673,7 +8659,7 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
    */
   const { DB_OBJECT_KEYS, normalizeDB: norm } = require(`${OUT}/store.js`)
   ok(DB_OBJECT_KEYS.includes('autoDraftPlan'), '덩어리 항목 목록에 이름이 있다')
-  const back = norm({ posts: [], autoDraftPlan: { keywords: ['천안 헬스장'], queue: [{ keyword: 'A', topic: '가' }] } })
+  const back = norm({ posts: [], autoDraftPlan: { keywords: ['천안 헬스장'], topics: ['가'] } })
   ok(back.autoDraftPlan?.keywords?.[0] === '천안 헬스장', '저장한 설정이 살아 돌아온다')
   ok(norm({ posts: [] }).autoDraftPlan === undefined, '설정한 적 없으면 빈 값을 만들지 않는다 (「없음」과 구별된다)')
   ok(norm({ autoDraftPlan: [] }).autoDraftPlan === undefined, '엉뚱한 모양이면 무시한다')
@@ -8699,11 +8685,19 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     const { readFileSync: rf } = require('node:fs')
     const cron = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
     ok(cron.includes('planAssignment'), '크론이 회원 설정을 보고 고른다')
-    ok(cron.includes('popQueue'), '크론이 쓴 예약을 뺀다')
-    ok(/d\.posts\.unshift\(post\)[\s\S]{0,600}popQueue/.test(cron), '예약은 글이 저장될 때 함께 빠진다 (성공했을 때만)')
+    ok(!cron.includes('popQueue'), '예약 칸을 지운 뒤 크론에도 흔적이 없다')
     const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
     ok(panel.includes('/api/autodraft/plan'), '화면이 설정을 저장한다')
     ok(panel.includes('planSummary'), '접힌 상태에서도 무엇으로 쓰는지 보여준다')
+    /*
+     * **회원 요청으로 뺀 것들** (2026-08-24): 예약 칸(줄 세우기), 그리고 기본 주제 칩과
+     * 직접 적기 칸. 주제는 **탐색기에서 담은 것만** 쓴다 — 실제로 검색되는 것에서 고르라는
+     * 것이 탐색기를 만든 이유인데, 지어낸 기본 목록을 나란히 두면 그쪽을 고르게 된다.
+     */
+    ok(!panel.includes('줄 세우기'), '예약 칸이 화면에서 사라졌다')
+    ok(!panel.includes('주제 더하기'), '직접 적기 칸도 없앴다')
+    ok(!/topicPool/.test(panel), '기본 주제 칩 목록을 나란히 두지 않는다')
+    ok(panel.includes('<TopicExplorer picked=') && panel.includes('onPick={addTopic}'), '주제는 탐색기에서만 담는다')
     const api = rf(new URL('../app/api/autodraft/plan/route.ts', import.meta.url), 'utf8')
     ok(api.includes('normalizePlan'), '저장 전에 정리한다')
   }
@@ -8973,7 +8967,7 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(ui.includes('onPick'), '고른 주제를 설정으로 넘긴다')
 
     const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
-    ok(panel.includes('<TopicExplorer onPick={addTopic} />'), '탐색기에서 담은 주제가 설정 목록으로 들어간다')
+    ok(/<TopicExplorer picked=\{plan\.topics \?\? \[\]\} onPick=\{addTopic\} \/>/.test(panel), '탐색기에서 담은 주제가 설정 목록으로 들어간다')
     /*
      * **담으면서 곧바로 켜야 한다.** 더하기만 하고 꺼진 채로 두면 회원은 담은 줄 알지만
      * 실제로는 안 쓰인다 — 고른 것이 없으면 기본 10개를 전부 쓰는 규칙이라 티도 안 난다.

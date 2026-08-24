@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { newId } from '@/lib/id'
-import { hasTodayAutoDraft, planAssignment, popQueue } from '@/lib/writing/autodraft'
+import { hasTodayAutoDraft, planAssignment } from '@/lib/writing/autodraft'
 import { AUTO_DRAFT_RUNS_KEEP, baseUrlFor } from '@/lib/writing/autodraft'
 import type { AutoDraftRun, Post } from '@/lib/types'
 
@@ -262,16 +262,6 @@ async function run(
   }
   await mutate((d) => {
     d.posts.unshift(post)
-    /*
-     * **예약은 성공했을 때만 뺀다.** 실패한 날에도 빼면 회원이 정해 둔 글이 한 편도 안
-     * 나온 채 사라진다 — 「자동으로 써준다」는 약속을 조용히 어기는 것이다.
-     */
-    if (d.autoDraftPlan?.queue?.length) {
-      d.autoDraftPlan = popQueue(d.autoDraftPlan, {
-        keyword: assignment.mainKeyword,
-        topic: assignment.topic,
-      })
-    }
   })
 
   await record({
