@@ -30,16 +30,28 @@ interface Note {
  * 씨앗(「다이어트」·「체중 증량」)만 우리가 넣고, 후보는 **네이버 자동완성 + 검색광고
  * 연관검색어**에서 온다. 경쟁은 그 검색어의 최근 30일 발행량으로 잰다.
  *
- * 고른 것은 위쪽 「③ 쓸 주제 고르기」에 그대로 들어간다 — 별도 저장 버튼을 또 만들지
- * 않는다. 저장 버튼이 두 개면 어느 것을 눌러야 하는지 회원이 판단해야 한다.
+ * 고른 것은 부르는 쪽이 받는다 — 별도 저장 버튼을 또 만들지 않는다. 저장 버튼이 두 개면
+ * 어느 것을 눌러야 하는지 회원이 판단해야 한다.
+ *
+ * ── 두 곳에서 쓴다 (2026-08-24 회원 요청) ────────────────────
+ * "정보글 작성할때도 주제 탐색기 사용할 수 있게 해줘."
+ *   · 자동 작성 설정 — **여러 개 담는다** (앞으로 돌려가며 쓸 목록)
+ *   · 글 작성 화면 — **하나 고른다** (이번 글에서 다룰 주제)
+ * 쓰임이 달라 버튼 글자만 바꿔 받는다. 재는 방법과 거르는 규칙은 한 벌이어야 한다 —
+ * 두 벌이 되면 한쪽만 고치는 날이 온다 (이 저장소에서 여러 번 겪었다).
  */
 export default function TopicExplorer({
   picked,
   onPick,
+  pickLabel = '주제로 담기',
+  pickedLabel = '담음',
 }: {
-  /** 이미 담은 주제 — 「담음」으로 표시해 두 번 담지 않게 한다 */
+  /** 이미 고른 주제 — 「담음」으로 표시해 두 번 누르지 않게 한다 */
   picked: string[]
   onPick: (topic: string) => void
+  /** 버튼 글자 — 자동 작성은 「주제로 담기」, 글 작성은 「이 주제로」 */
+  pickLabel?: string
+  pickedLabel?: string
 }) {
   const [seedId, setSeedId] = useState('')
   const [loading, setLoading] = useState(false)
@@ -108,7 +120,7 @@ export default function TopicExplorer({
         <>
           {list.length === 0 ? (
             <p className="muted text-[12px] leading-relaxed">
-              정보글로 쓸 만한 후보를 찾지 못했습니다. 다른 갈래를 눌러 보시거나, 위 칸에 직접 적어 넣으셔도 됩니다.
+              정보글로 쓸 만한 후보를 찾지 못했습니다. 다른 갈래를 눌러 보세요.
             </p>
           ) : (
             <ul className="space-y-1.5">
@@ -132,7 +144,7 @@ export default function TopicExplorer({
                       onClick={() => onPick(c.topic)}
                       className={`${btnGhost} shrink-0 !px-2.5 !py-1.5 !text-[11px]`}
                     >
-                      {on ? '담음' : '주제로 담기'}
+                      {on ? pickedLabel : pickLabel}
                     </button>
                   </li>
                 )

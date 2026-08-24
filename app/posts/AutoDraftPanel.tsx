@@ -5,7 +5,7 @@ import { useState } from 'react'
 import type { AutoDraftPlan, AutoDraftRun } from '@/lib/types'
 import { INFO_TOPICS, autoDraftStatus, normalizePlan, planSummary } from '@/lib/writing/autodraft'
 import { Badge, btnGhost, btnPrimary } from '@/components/ui'
-import TopicExplorer from './TopicExplorer'
+import TopicExplorer from '@/components/TopicExplorer'
 
 /**
  * **매일 정보글 초안 — 지금 어떤 상태인가, 그리고 직접 한 편 쓰기.**
@@ -23,6 +23,7 @@ export default function AutoDraftPanel({
   hasTodayDraft,
   plan: savedPlan,
   keywordPool,
+  settingsOpen = false,
 }: {
   runs?: AutoDraftRun[]
   today: string
@@ -31,6 +32,13 @@ export default function AutoDraftPanel({
   plan?: AutoDraftPlan
   /** 고를 수 있는 키워드 — 순위 추적 + 지점 지역 키워드 */
   keywordPool: string[]
+  /**
+   * 설정을 펼친 채로 열까.
+   *
+   * 자동 작성 화면(/autodraft)에서는 **펼쳐 둔다** — 그 화면 전체가 이 기능이라 접어 둘
+   * 이유가 없다. 회원이 접힌 줄만 보고 물었다 (2026-08-24): "저장한 목록이 안나오는데?"
+   */
+  settingsOpen?: boolean
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -141,7 +149,7 @@ export default function AutoDraftPanel({
         지정하게 하면 결국 손으로 쓰는 것과 같아진다 — 한 번 정해두면 손대지 않아도 되는
         것이 이 기능의 값이다.
       */}
-      <details className="bd mt-3 border-t pt-3">
+      <details open={settingsOpen} className="bd mt-3 border-t pt-3">
         <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] font-bold select-none">
           무엇으로 쓸지 정하기
           <span className="muted text-[11.5px] font-semibold">{planSummary(plan)}</span>
