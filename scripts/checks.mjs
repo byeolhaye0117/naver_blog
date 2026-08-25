@@ -9004,10 +9004,22 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(/a\.days \?\? \[\]/.test(panel), '날짜 지정도 저장 여부 비교에 넣는다')
     ok(panel.includes("save({ off: false, keywords: [], topics: [], days: [], skip: [] })"), '「전부 지우고 자동으로」가 날짜 지정·쉬는 날도 지운다')
     ok(dayUi.includes('자동으로 되돌리기'), '정한 것을 도로 풀 수 있다')
-    ok(dayUi.includes('이 날 안 쓰기') && dayUi.includes('skipDay'), '예정 줄을 뺄 수 있다')
+    /*
+     * **「삭제」라고 부른다** (2026-08-24 회원 지적: "이날 안쓰기 누르면 삭제는 되는데 잘
+     * 표시가 나지 않아. 그냥 삭제로 버튼 바꿔주고 삭제하겠습니까? 물어서 삭제될 수 있게").
+     *
+     * 「이 날 안 쓰기」는 무슨 일이 일어나는지 설명하는 말이라 버튼처럼 안 읽혔다.
+     * 실제로 하는 일은 그 줄을 지우는 것이므로 그대로 「삭제」라고 쓴다.
+     */
+    // 주석은 빼고 본다 — 「예전엔 이 날 안 쓰기였다」는 설명까지 걸리면 안 된다
+    const dayCode = dayUi.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    ok(!dayCode.includes('이 날 안 쓰기'), '설명하는 말 대신 「삭제」로 부른다')
+    ok(dayUi.includes('skipDay') && /삭제할까요\?/.test(dayUi), '누르기 전에 물어본다')
+    ok(/되돌릴 수 있습니다/.test(dayUi), '되돌릴 수 있다는 것도 함께 말한다')
     // 지운 것처럼 사라지면 「내가 뺐나 원래 없었나」를 구별할 수 없고 되돌릴 수도 없다
-    ok(dayUi.includes('이 날은 쓰지 않습니다') && dayUi.includes('다시 쓰기'), '뺀 날을 남겨 두고 되돌릴 수 있다')
-    ok(dayUi.includes('이 기록 지우기') && dayUi.includes("'/api/autodraft/runs'"), '지난 기록은 진짜로 지운다')
+    ok(dayUi.includes('삭제함 — 이 날은 쓰지 않습니다') && dayUi.includes('다시 쓰기'), '삭제한 날을 남겨 두고 되돌릴 수 있다')
+    ok(dayUi.includes("'/api/autodraft/runs'") && /기록을 삭제할까요/.test(dayUi), '지난 기록도 물어보고 지운다')
+    ok((dayUi.match(/>\s*삭제\s*</g) ?? []).length >= 2, '예정과 지난 기록 둘 다 같은 이름의 버튼을 쓴다')
     // 기록만 정리하려다 글이 날아가면 안 된다
     const runsApi = rf(new URL('../app/api/autodraft/runs/route.ts', import.meta.url), 'utf8')
     ok(!runsApi.includes('d.posts'), '기록을 지울 때 글은 건드리지 않는다')

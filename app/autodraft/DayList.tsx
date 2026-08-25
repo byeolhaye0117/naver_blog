@@ -74,8 +74,14 @@ export default function DayList({
    * 생긴다. 그래서 **그 날은 쓰지 않는다고 적어 둔다.** 자동 초안을 통째로 끄면 그 다음
    * 날도 안 쓰니, 날짜 하나만 빼는 자리가 따로 있어야 한다.
    */
-  const skipDay = (date: string) =>
-    save({ ...plan, skip: [...new Set([...(plan?.skip ?? []), date])] })
+  const skipDay = (date: string) => {
+    /*
+     * **물어보고 지운다** (2026-08-24 회원 요청: "삭제하겠습니까? 물어서 삭제될 수 있게").
+     * 한 번 누르면 바로 사라지는 자리라, 잘못 누르면 그 날 글이 안 나온다.
+     */
+    if (!confirm(`${date} 예정을 삭제할까요?\n\n그날은 자동으로 쓰지 않습니다. 목록 위쪽의 「다시 쓰기」로 되돌릴 수 있습니다.`)) return
+    return save({ ...plan, skip: [...new Set([...(plan?.skip ?? []), date])] })
+  }
 
   const unskipDay = (date: string) =>
     save({ ...plan, skip: (plan?.skip ?? []).filter((d) => d !== date) })
@@ -85,7 +91,7 @@ export default function DayList({
    * 글은 지우지 않는다 — 그건 발행 관리에서 한다.
    */
   async function removeRun(date: string) {
-    if (!confirm(`${date} 실행 기록을 지울까요? 그날 쓴 글은 지워지지 않습니다.`)) return
+    if (!confirm(`${date} 기록을 삭제할까요?\n\n그날 쓴 글은 지워지지 않습니다 — 기록 줄만 사라집니다.`)) return
     setSaving(true)
     setMsg(null)
     try {
@@ -119,9 +125,11 @@ export default function DayList({
           {[...skipped]
             .sort()
             .map((d) => (
-              <li key={d} className="bd flex items-center gap-2 rounded-xl border border-dashed px-3.5 py-2 opacity-70">
+              <li key={d} className="flex items-center gap-2 rounded-xl border border-dashed border-rose-500/30 bg-rose-500/5 px-3.5 py-2">
                 <span className="tnum text-[11.5px] font-bold">{d.slice(5).replace('-', '/')}</span>
-                <span className="muted flex-1 text-[11.5px]">이 날은 쓰지 않습니다</span>
+                <span className="flex-1 text-[11.5px] font-semibold text-rose-700 dark:text-rose-300">
+                  삭제함 — 이 날은 쓰지 않습니다
+                </span>
                 <button
                   type="button"
                   disabled={saving}
@@ -194,28 +202,40 @@ export default function DayList({
                       자동으로 되돌리기
                     </button>
                   )}
-                  {/* 앞날은 지우는 게 아니라 「이 날은 쓰지 않는다」고 적어 둔다 */}
+                  {/*
+                    **「삭제」로 부른다** (2026-08-24 회원 지적: "이날 안쓰기 누르면 삭제는
+                    되는데 잘 표시가 나지 않아. 그냥 삭제로 버튼 바꿔주고").
+
+                    「이 날 안 쓰기」는 무슨 일이 일어나는지 설명하는 말이라 버튼처럼 안
+                    읽혔다. 회색 밑줄 글씨라 더 그랬다. 실제로 하는 일은 그 줄을 지우는
+                    것이므로 그대로 「삭제」라고 쓰고, 지우는 버튼처럼 보이게 한다.
+
+                    속으로는 여전히 「쓰지 않는다」고 적어 두는 것이다 — 예정 줄은 계산해서
+                    만든 것이라 지울 실체가 없고, 그래야 되돌릴 수도 있다.
+                  */}
                   <button
                     type="button"
                     disabled={saving}
                     onClick={() => skipDay(d.date)}
-                    className="muted ml-auto rounded-lg px-2 py-1 text-[11px] font-semibold hover:text-rose-600 disabled:opacity-50"
+                    className="ml-auto rounded-xl border border-rose-500/40 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 transition hover:bg-rose-500/10 disabled:opacity-50 dark:text-rose-300"
                   >
-                    이 날 안 쓰기
+                    삭제
                   </button>
                 </div>
               )}
 
               {/* 지난 줄은 기록을 지운다 (글은 그대로 둔다) */}
               {d.when === 'past' && (
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => removeRun(d.date)}
-                  className="muted mt-2 block rounded-lg px-2 py-1 text-[11px] font-semibold hover:text-rose-600 disabled:opacity-50"
-                >
-                  이 기록 지우기
-                </button>
+                <div className="mt-2 flex">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => removeRun(d.date)}
+                    className="ml-auto rounded-xl border border-rose-500/40 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 transition hover:bg-rose-500/10 disabled:opacity-50 dark:text-rose-300"
+                  >
+                    삭제
+                  </button>
+                </div>
               )}
 
               {open && (
