@@ -204,6 +204,14 @@ export interface RankView {
   /** 순위 변동 (양수 = 순위 상승) */
   delta: number | null
   best: number | null
+  /**
+   * 연결된 글의 제목.
+   *
+   * **같은 키워드로 여러 편을 추적한다** (2026-08-24 회원 지적: "같은 키워드가 많으니까
+   * 제목을 붙여서 구분해주던가 하면 좋겠고"). 목록에 키워드만 적혀 있으면 어느 글의
+   * 순위인지 구별할 수 없다 — URL 만 보고 가려내야 했다.
+   */
+  postTitle?: string
   /** YYYY-MM-DD — 추적 항목에 직접 적었거나 연결된 글에서 가져온 값 */
   publishedAt?: string
   /** 발행 후 경과일 */
@@ -247,6 +255,7 @@ export function buildRankViews(
 
     return {
       target,
+      postTitle: linked?.title?.trim() || undefined,
       history,
       current,
       previous,
@@ -259,6 +268,42 @@ export function buildRankViews(
       revise,
     }
   })
+}
+
+/**
+ * 목록 한 줄에 **무엇으로 이 항목을 알아보나.**
+ *
+ * 같은 키워드가 여럿이면 키워드만으로는 구별이 안 된다. 순서대로 찾는다:
+ *   ① 연결된 글 제목 — 가장 알아보기 쉽다
+ *   ② 회원이 적어둔 이름표(label)
+ *   ③ 그것도 없으면 URL 의 마지막 조각 (블로그 글 번호)
+ */
+export function rankItemName(v: Pick<RankView, 'target' | 'postTitle'>): string {
+  const title = v.postTitle?.trim()
+  if (title) return title
+  const label = v.target.label?.trim()
+  if (label) return label
+  const tail = v.target.url.replace(/\/+$/, '').split('/').pop()
+  return tail ? `글 ${tail}` : '연결된 글 없음'
+}
+
+/**
+ * 목록 순서 — **같은 키워드끼리 붙여 놓는다.**
+ *
+ * 회원 지적 (2026-08-24): "같은 키워드가 많으니까…" 실제로 「쌍용동헬스장」·「쌍용동 헬스장」
+ * 처럼 비슷한 키워드로 여러 편을 추적하고 있는데, 등록한 순서대로 흩어져 있으면 같은
+ * 키워드의 글들을 비교하려고 위아래로 스크롤해야 한다.
+ *
+ * 같은 키워드 안에서는 **순위가 좋은 것부터** — 그 자리를 지금 누가 잡고 있는지가 먼저다.
+ * 순위 밖(null)은 뒤로 민다 (모르는 것을 0위로 치면 맨 앞에 온다).
+ */
+export function sortRankViews(views: RankView[]): RankView[] {
+  return [...views].sort(
+    (a, b) =>
+      a.target.keyword.localeCompare(b.target.keyword) ||
+      (a.current ?? Number.MAX_SAFE_INTEGER) - (b.current ?? Number.MAX_SAFE_INTEGER) ||
+      rankItemName(a).localeCompare(rankItemName(b))
+  )
 }
 
 export function rankLabel(rank: number | null): string {
