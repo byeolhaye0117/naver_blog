@@ -59,7 +59,11 @@ export default function AutoDraftPanel({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
   const [fillFrom, setFillFrom] = useState(today)
-  const [fillCount, setFillCount] = useState(7)
+  /*
+   * **기본은 하루** (2026-08-25 회원 지적: "최소가 3일치네. 난 선택한 날 하루면 돼").
+   * 고른 날 하나만 정하고 싶은 것이 가장 흔한 일이다 — 여러 날치는 원할 때만 늘린다.
+   */
+  const [fillCount, setFillCount] = useState(1)
   const [filling, setFilling] = useState(false)
   const [fillMsg, setFillMsg] = useState<string | null>(null)
   const same = (a: AutoDraftPlan, b: AutoDraftPlan) =>
@@ -135,7 +139,12 @@ export default function AutoDraftPanel({
         ),
       }))
       const kinds = new Set(filled.map((d) => d.topic)).size
-      setFillMsg(`${filled.length}일치를 채웠습니다 (서로 다른 주제 ${kinds}개). 아래 「설정 저장」을 눌러야 반영됩니다.`)
+      setFillMsg(
+        (filled.length === 1
+          ? `${filled[0].date} 은 「${filled[0].topic}」으로 채웠습니다.`
+          : `${filled.length}일치를 채웠습니다 (서로 다른 주제 ${kinds}개).`) +
+          ' 아래 「설정 저장」을 눌러야 반영됩니다.'
+      )
     } catch (e) {
       setFillMsg(e instanceof Error ? e.message : '주제를 정하지 못했습니다.')
     }
@@ -396,9 +405,9 @@ export default function AutoDraftPanel({
               </Badge>
             </div>
             <p className="muted mb-2 text-[11px] leading-relaxed">
-              <b>날짜만 고르시면 주제는 앱이 채웁니다</b> — 고르거나 적으실 것은 없습니다. 날마다 다른 주제가
-              들어가고, 마음에 안 드는 날은 「다른 주제로」를 누르면 앱이 다른 것으로 바꿉니다. 안 채운 날은
-              그날그날 앱이 골라 씁니다.
+              <b>날짜만 고르시면 주제는 앱이 채웁니다</b> — 고르거나 적으실 것은 없습니다. <b>하루만 정하셔도
+              되고</b>, 여러 날치를 한 번에 채우셔도 됩니다 (그때는 날마다 다른 주제가 들어갑니다). 마음에 안 드는
+              날은 「다른 주제로」를 누르면 앱이 다른 것으로 바꿉니다. 안 채운 날은 그날그날 앱이 골라 씁니다.
             </p>
 
             <div className="mb-2 flex flex-wrap items-end gap-2">
@@ -412,16 +421,16 @@ export default function AutoDraftPanel({
                   className={inputClass}
                 />
               </label>
-              <label className="block w-[6.5rem]">
+              <label className="block w-[8rem]">
                 <span className="muted mb-1 block text-[11px] font-semibold">며칠치</span>
                 <select
                   value={fillCount}
                   onChange={(e) => setFillCount(Number(e.target.value))}
                   className={inputClass}
                 >
-                  {[3, 5, 7, 14, 30].map((n) => (
+                  {[1, 2, 3, 5, 7, 14, 30].map((n) => (
                     <option key={n} value={n}>
-                      {n}일
+                      {n === 1 ? '그 날 하루' : `${n}일`}
                     </option>
                   ))}
                 </select>
@@ -432,7 +441,7 @@ export default function AutoDraftPanel({
                 onClick={fill}
                 className={`${btnGhost} !px-3 !py-2 !text-[12px]`}
               >
-                {filling ? '정하는 중…' : '이 날짜들 주제 채우기'}
+                {filling ? '정하는 중…' : fillCount === 1 ? '이 날 주제 채우기' : '이 날짜들 주제 채우기'}
               </button>
             </div>
             {fillMsg && <p className="mb-2 text-[11.5px] leading-relaxed font-semibold">{fillMsg}</p>}
@@ -465,7 +474,7 @@ export default function AutoDraftPanel({
               </ul>
             ) : (
               <p className="muted text-[11.5px] leading-relaxed">
-                아직 채운 날이 없습니다. 위에서 날짜를 고르고 「이 날짜들 주제 채우기」를 누르세요.
+                아직 채운 날이 없습니다. 위에서 날짜를 고르고 채우기 버튼을 누르세요 — 하루만 정하셔도 됩니다.
               </p>
             )}
           </section>

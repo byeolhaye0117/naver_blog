@@ -8940,6 +8940,13 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(filled[0].date === '2026-08-26', '고른 날짜부터 채운다', filled[0].date)
     ok(new Set(filled.map((d) => d.topic)).size === 4, '날마다 다른 주제를 채운다', filled.map((d) => d.topic).join())
     ok(filled.every((d) => d.topic && !('keyword' in d)), '주제만 채운다 — 키워드는 ①에서 돈다')
+    /*
+     * **하루만 채울 수 있어야 한다** (2026-08-25 회원 지적: "최소가 3일치네. 난 선택한 날
+     * 하루면 돼"). 처음에 고를 수 있는 값을 3·5·7·14·30 으로 둔 것이 잘못이다 — 가장 흔한
+     * 일(그 날 하루만 정하기)이 아예 안 됐다.
+     */
+    const oneDay = fillDays({ plan: MANY, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26', days: 1 })
+    ok(oneDay.length === 1 && oneDay[0].date === '2026-08-26', '고른 날 하루만 채울 수 있다', JSON.stringify(oneDay))
     // 이미 채워 둔 날이 있어도 새로 계산한다 — 옛 값을 베끼면 「다시 채우기」가 안 듣는다
     const refilled = fillDays({
       plan: { ...MANY, days: [{ date: '2026-08-26', topic: '엉뚱한옛주제' }] },
@@ -9043,7 +9050,11 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
 
     // ① 날짜를 고르는 자리가 있다 (회원이 「왜 또 날짜 선택하는게 없어」라고 한 자리)
     ok(/type="date"/.test(panelCode) && panelCode.includes('언제부터'), '언제부터 채울지 날짜를 고른다')
-    ok(panelCode.includes('며칠치') && panelCode.includes('이 날짜들 주제 채우기'), '며칠치인지 고르고 한 번에 채운다')
+    ok(panelCode.includes('며칠치') && panelCode.includes('주제 채우기'), '며칠치인지 고르고 한 번에 채운다')
+    // 회원이 「최소가 3일치네. 난 선택한 날 하루면 돼」라고 한 자리 — 하루가 목록에 있어야 한다
+    ok(/\[1, 2, 3, 5, 7, 14, 30\]/.test(panelCode), '하루치도 고를 수 있다')
+    ok(/useState\(1\)[\s\S]{0,80}fillCount|const \[fillCount, setFillCount\] = useState\(1\)/.test(panelCode),
+      '기본은 하루다 (가장 흔한 일이 기본이어야 한다)')
     ok(panelCode.includes('min={today}'), '지난 날짜는 고르지 못하게 한다')
     ok(panelCode.includes("fetch('/api/autodraft/fill'"), '주제는 서버 로테이션이 채운다 (화면이 지어내지 않는다)')
 
