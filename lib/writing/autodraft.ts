@@ -297,10 +297,24 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
     }
     return out
   }
+  /*
+   * 날짜별 지정 — 날짜 꼴이 아니거나 반쪽인 것은 버린다. 그대로 두면 크론이 그 날
+   * 「키워드가 없습니다」로 실패한다. 같은 날이 둘이면 **뒤엣것을 남긴다** (나중에 고친 것).
+   */
+  const byDate = new Map<string, { date: string; keyword: string; topic: string }>()
+  for (const d of Array.isArray(raw?.days) ? raw.days : []) {
+    const date = (d?.date ?? '').slice(0, 10)
+    const keyword = (d?.keyword ?? '').trim()
+    const topic = (d?.topic ?? '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !keyword || !topic) continue
+    byDate.set(date, { date, keyword, topic })
+  }
+
   return {
     off: raw?.off === true,
     keywords: list(raw?.keywords),
     topics: list(raw?.topics),
+    days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     updatedAt: raw?.updatedAt,
   }
 }
@@ -311,9 +325,25 @@ export function planAssignment(args: {
   posts: Post[] | undefined
   /** 계획에 키워드가 없을 때 쓸 것 (순위 추적 → 지점 지역 키워드) */
   fallbackKeywords: string[]
+  /** 어느 날 몫인가 — 그 날에 콕 집어 정해둔 것이 있으면 그게 먼저다 */
+  date?: string
 }): Assignment | null {
   const plan = normalizePlan(args.plan)
   if (plan.off) return null
+
+  /*
+   * **날짜별로 정해둔 것이 먼저다** (2026-08-24). 로테이션이 덮으면 정해둔 의미가 없다.
+   * 회원: "하나의 주제를 계속 쓰고 싶지 않아 날짜 설정해서 날짜별로 설정할 수 있게 해줘."
+   */
+  const wantDate = args.date?.slice(0, 10)
+  const fixed = wantDate ? plan.days?.find((d) => d.date === wantDate) : undefined
+  if (fixed) {
+    return {
+      mainKeyword: fixed.keyword,
+      topic: fixed.topic,
+      why: `${fixed.date} 에 쓰기로 정해두신 것입니다.`,
+    }
+  }
 
   const keywords = plan.keywords?.length ? plan.keywords : args.fallbackKeywords
   const topics = plan.topics?.length ? plan.topics : INFO_TOPICS
@@ -341,10 +371,12 @@ function few(list: string[] | undefined, whenEmpty: string, label: string): stri
 export function planSummary(plan: AutoDraftPlan | undefined): string {
   const p = normalizePlan(plan)
   if (p.off) return '자동 초안을 꺼두셨습니다.'
-  return [
+  const parts = [
     few(p.keywords, '키워드는 순위 추적 목록 전부', '키워드'),
     few(p.topics, `주제는 기본 ${INFO_TOPICS.length}개 전부`, '주제'),
-  ].join(' · ')
+  ]
+  if (p.days?.length) parts.unshift(`날짜별 지정 ${p.days.length}일`)
+  return parts.join(' · ')
 }
 
 /**
@@ -382,7 +414,7 @@ export function forecastAutoDrafts(args: {
 
   for (let i = 0; i < Math.max(0, Math.trunc(args.days)); i++) {
     const date = new Date(start + i * 86_400_000).toISOString().slice(0, 10)
-    const a = planAssignment({ plan, posts, fallbackKeywords: args.fallbackKeywords })
+    const a = planAssignment({ plan, posts, fallbackKeywords: args.fallbackKeywords, date })
     if (!a) break
     out.push({ date, keyword: a.mainKeyword, topic: a.topic })
     posts = [

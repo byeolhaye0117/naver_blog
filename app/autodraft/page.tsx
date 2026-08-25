@@ -1,9 +1,9 @@
-import Link from 'next/link'
 import { readDB } from '@/lib/store'
 import { PageHeader } from '@/components/AppShell'
-import { Badge, Card, Empty } from '@/components/ui'
+import { Card } from '@/components/ui'
 import { autoDraftDays, forecastAutoDrafts, hasTodayAutoDraft } from '@/lib/writing/autodraft'
 import AutoDraftPanel from '../posts/AutoDraftPanel'
+import DayList from './DayList'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,50 +79,18 @@ export default async function AutoDraftPage() {
       */}
       <Card
         title="날짜별 목록"
-        subtitle="앞으로 쓸 것과 지금까지 쓴 것입니다. 예정은 지금 설정 기준이라, 사이에 손으로 정보글을 쓰거나 설정을 바꾸면 달라집니다."
+        subtitle="앞으로 쓸 것과 지금까지 쓴 것입니다. 예정 줄의 「이 날 바꾸기」로 그 날 쓸 키워드·주제를 직접 정할 수 있습니다 — 안 정한 날은 알아서 돌아갑니다."
       >
-        {days.length === 0 ? (
-          <Empty>
-            {db.autoDraftPlan?.off
+        <DayList
+          days={days}
+          plan={db.autoDraftPlan}
+          keywordPool={keywordPool}
+          emptyNote={
+            db.autoDraftPlan?.off
               ? '자동 초안을 꺼두셨습니다. 위에서 다시 켜면 날짜별 예정이 나옵니다.'
-              : '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록하거나 위에서 골라주세요.'}
-          </Empty>
-        ) : (
-          <ul className="space-y-2">
-            {days.map((d) => (
-              <li
-                key={d.date}
-                className={`rounded-xl px-3.5 py-3 ${
-                  d.when === 'upcoming' ? 'bd border border-dashed' : 'panel'
-                }`}
-              >
-                <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                  <span className="tnum text-[12px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
-                  {d.when === 'today' && <Badge tone="info">오늘</Badge>}
-                  {d.when === 'upcoming' && <Badge tone="default">예정</Badge>}
-                  {d.ok === true && <Badge tone="good">성공</Badge>}
-                  {d.ok === false && <Badge tone="bad">실패</Badge>}
-                  {d.manual && <Badge tone="default">직접 실행</Badge>}
-                  {typeof d.score === 'number' && <Badge tone="info">{d.score}점</Badge>}
-                </div>
-                <p className="text-[13px] leading-snug font-semibold">
-                  {d.keyword} <span className="muted font-medium">· {d.topic}</span>
-                </p>
-                {d.ok === false && d.error && (
-                  <p className="mt-1 text-[11.5px] leading-relaxed text-rose-700 dark:text-rose-300">{d.error}</p>
-                )}
-                {d.postId && (
-                  <Link
-                    href={`/write?id=${d.postId}`}
-                    className="text-brand-600 dark:text-brand-100 mt-1 inline-block text-[11.5px] font-semibold underline"
-                  >
-                    그날 쓴 글 열기 →
-                  </Link>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+              : '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록하거나 위에서 골라주세요.'
+          }
+        />
       </Card>
 
     </>

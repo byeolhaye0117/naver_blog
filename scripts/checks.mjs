@@ -8696,7 +8696,7 @@ console.log('\n[95] 자동 초안이 조용히 실패하지 않는가 (2026-08-2
   ok(auto.includes('AutoDraftPanel') && auto.includes('autoDraftRuns'), '자동 작성 화면이 실행 기록을 넘긴다')
   // 「자동으로 쓴 글」·「실행 기록」 두 카드를 날짜별 한 목록으로 합쳤다 (2026-08-24)
   ok(auto.includes('autoDraftDays'), '날짜별 목록으로 실제 결과를 보여준다')
-  ok(auto.includes('그날 쓴 글 열기'), '그날 쓴 글로 바로 갈 수 있다')
+  ok(auto.includes('DayList'), '날짜별 목록 화면을 쓴다')
   // 이 화면 전체가 자동 작성이다 — 설정을 접어 두면 「저장한 목록이 안나오는데?」가 된다
   ok(auto.includes('settingsOpen'), '자동 작성 화면에서는 설정이 펼쳐진 채로 열린다')
   ok(panel.includes('<details open={settingsOpen}'), '펼침 여부를 화면이 정한다')
@@ -8908,12 +8908,55 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     })
     ok(twice.length === 1 && twice[0].ok === true, '한 날에 성공과 실패가 섞이면 성공을 보여준다')
 
+    /*
+     * **날짜별로 콕 집어 정할 수 있어야 한다** (2026-08-24 회원 요청: "하나의 주제를 계속
+     * 쓰고 싶지 않아 날짜 설정해서 날짜별로 설정할 수 있게 해줘").
+     *
+     * 고른 주제가 하나뿐이면 로테이션이 매일 같은 주제를 낸다 — 실제로 회원 설정이 주제
+     * 1개였다. 그렇다고 매일 하나씩 지정하게 만들면 손으로 쓰는 것과 같아지므로,
+     * **바꾸고 싶은 날만** 정하고 나머지는 알아서 돌게 한다.
+     */
+    const PLAN = { keywords: ['가키워드', '나키워드'], topics: ['한가지주제'] }
+    // 주제가 하나뿐이면 로테이션은 매일 그것을 낸다 (이게 회원이 겪은 상황이다)
+    const sameEveryDay = forecastAutoDrafts({ plan: PLAN, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3 })
+    ok(sameEveryDay.every((f) => f.topic === '한가지주제'), '주제가 하나면 매일 같은 주제가 나온다 (고칠 이유)')
+
+    const withDay = { ...PLAN, days: [{ date: '2026-08-26', keyword: '다른키워드', topic: '그날만다른주제' }] }
+    const fixedDay = planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' })
+    ok(fixedDay?.topic === '그날만다른주제' && fixedDay.mainKeyword === '다른키워드', '그 날은 정해둔 것을 쓴다')
+    ok(fixedDay.why.includes('정해두신'), '왜 이걸 쓰는지 밝힌다', fixedDay.why)
+    // 정하지 않은 날은 그대로 로테이션 — 매일 지정하게 만들지 않는 것이 이 기능의 값이다
+    ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-27' })?.topic === '한가지주제',
+      '정하지 않은 날은 알아서 돈다')
+    // 날짜를 안 넘기면 지정을 못 본다 — 크론이 date 를 넘기는지 아래에서 확인한다
+    ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK })?.topic === '한가지주제', '날짜가 없으면 로테이션')
+    // 예정 계산도 지정을 반영해야 한다 (화면과 실제가 다르면 못 믿는다)
+    const fc2 = forecastAutoDrafts({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3 })
+    ok(fc2.find((f) => f.date === '2026-08-26')?.topic === '그날만다른주제', '예정에도 정해둔 날이 그대로 뜬다')
+
+    // 엉뚱한 값은 저장하지 않는다 — 그대로 두면 그 날 「키워드가 없습니다」로 실패한다
+    const cleaned = normalizePlan({ days: [
+      { date: '2026-08-26', keyword: ' A ', topic: ' 가 ' },
+      { date: '엉뚱', keyword: 'B', topic: '나' },
+      { date: '2026-08-27', keyword: '', topic: '다' },
+      { date: '2026-08-26', keyword: 'C', topic: '라' },
+    ] })
+    ok(cleaned.days.length === 1, '날짜 꼴이 아니거나 반쪽인 것은 버린다', JSON.stringify(cleaned.days))
+    ok(cleaned.days[0].keyword === 'C', '같은 날이 둘이면 나중에 고친 것을 남긴다')
+
     // 화면이 실제로 이 목록을 그린다
     const { readFileSync: rf } = require('node:fs')
     const page = rf(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
     ok(page.includes('forecastAutoDrafts') && page.includes('autoDraftDays'), '자동 작성 화면이 날짜별 목록을 만든다')
     ok(page.includes('날짜별 목록'), '그 이름으로 보여준다')
-    ok(page.includes("d.when === 'upcoming'"), '예정과 지난 것을 구별해 그린다')
+    const dayUi = rf(new URL('../app/autodraft/DayList.tsx', import.meta.url), 'utf8')
+    ok(dayUi.includes('이 날 바꾸기') && dayUi.includes('이 날로 저장'), '예정 줄에서 그 날 것을 정할 수 있다')
+    ok(dayUi.includes('자동으로 되돌리기'), '정한 것을 도로 풀 수 있다')
+    ok(dayUi.includes('직접 정함'), '알아서 도는 날과 내가 정한 날을 구별한다')
+    // 이미 쓴 날을 고치는 칸을 두면 「고쳤는데 왜 글이 그대로지」가 된다
+    ok(/d\.when !== 'past' && !d\.postId/.test(dayUi), '이미 쓴 날은 바꾸지 못하게 한다')
+    const cron = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
+    ok(/planAssignment\(\{[^)]*date: today/.test(cron), '크론이 그 날 지정을 본다 (안 넘기면 지정이 무시된다)')
   }
 
   /*
