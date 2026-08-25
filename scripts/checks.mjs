@@ -8863,7 +8863,9 @@ console.log('\n[96] 크론이 /api/write 의 응답을 제대로 읽는가 (2026
    */
   ok(write.includes('needsRevise') && write.includes('charMin'), '/api/write 가 「더 고쳐야 한다」를 알려준다')
   ok(cron.includes('needsRevise') && cron.includes('charMin'), '크론이 그 신호를 본다')
-  ok(/issues: first\.data\.fixIssues/.test(cron), '고쳐 쓰기에 걸린 항목을 그대로 넘긴다')
+  // 회차마다 **그때까지 가장 좋은 초안**의 걸린 항목을 넘긴다 (2026-08-26: 한 번이 아니라 여러 번 돈다)
+  ok(/issues: best\.fixIssues/.test(cron), '고쳐 쓰기에 걸린 항목을 그대로 넘긴다')
+  ok(/draft: best\.draft/.test(cron), '직전 회차 결과를 들고 다시 부른다 (첫 초안으로 되돌아가지 않는다)')
   const editor = rf(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
   ok(editor.includes('fixIssues'), '화면도 같은 항목을 넘긴다 (둘이 같은 절차를 쓴다)')
 
@@ -9268,6 +9270,43 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     // 건너뛴 날을 실패로 기록하면 화면에 빨간 줄이 뜨고 알림까지 나간다
     ok(/skip\?\.includes\(today\)/.test(cronDraft) && /건너뛰기로 정해두셨습니다/.test(cronDraft),
       '크론이 건너뛴 날을 실패로 적지 않는다')
+    /*
+     * ── 검수까지 마치고 저장한다 (2026-08-26 회원 요청) ──────────
+     *
+     * "새벽에 자동 글 작성하는거 검수까지 마칠 수 있게 해줘."
+     *
+     * 여태 고쳐 쓰기를 딱 한 번만 돌려서, 한 번에 안 붙으면 79점짜리가 그대로 저장됐다.
+     * 이제 나아지는 동안은 계속 돌리되 **울타리 셋**을 친다 — 횟수·시간·나아짐.
+     */
+    const { shouldRevise, REVISE_MAX_ROUNDS } = require(`${OUT}/writing/autodraft.js`)
+    const R = (over = {}) => shouldRevise({ round: 0, needsRevise: true, short: false, elapsedMs: 60_000, lastCallMs: 40_000, improved: true, ...over })
+    ok(R(), '아직 발행선 아래면 고쳐 쓴다')
+    ok(!R({ needsRevise: false }), '발행선을 넘었으면 그만둔다')
+    ok(R({ needsRevise: false, short: true }), '분량이 모자라면 점수와 무관하게 고쳐 쓴다')
+    ok(R({ round: 1 }) && R({ round: REVISE_MAX_ROUNDS - 1 }), '한 번으로 끝내지 않는다 (예전에는 한 번뿐이었다)')
+    ok(!R({ round: REVISE_MAX_ROUNDS }), `${REVISE_MAX_ROUNDS}번까지만 — AI 호출은 값이 든다`)
+    // 제자리면 그만둔다 — 같은 것을 또 물어도 같은 답이 온다
+    ok(!R({ round: 1, improved: false }), '안 나아졌으면 그만둔다')
+    ok(R({ round: 0, improved: false }), '첫 판단은 「직전」이 없으므로 나아짐을 묻지 않는다')
+    /*
+     * **시간 초과가 가장 나쁘다.** 한도를 넘기면 함수가 통째로 죽어서 글이 하나도 안 남는다 —
+     * 79점짜리라도 저장하는 편이 낫다.
+     */
+    ok(!R({ elapsedMs: 200_000, lastCallMs: 60_000 }), '한 번 더 부르면 한도를 넘길 것 같으면 멈춘다')
+    ok(R({ elapsedMs: 100_000, lastCallMs: 40_000 }), '여유가 있으면 한 번 더 부른다')
+
+    // 크론이 실제로 그렇게 돌아야 한다 — 규칙만 만들고 라우트가 안 쓰면 아무것도 안 달라진다
+    const cronCode = cronDraft.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    ok(cronCode.includes('shouldRevise'), '크론이 이 규칙으로 고쳐 쓰기를 돌린다')
+    ok(/while \(\s*shouldRevise/.test(cronCode), '한 번이 아니라 될 때까지 돌린다')
+    ok(/rounds\+\+/.test(cronCode), '몇 번 돌렸는지 센다')
+    // 나아졌는지는 점수가 아니라 수정필요 개수로 본다 (점수는 79에 붙어 있어 제자리로 보인다)
+    ok(/check\?\.fail/.test(cronCode), '남은 수정필요 개수를 본다')
+    ok(/fails: best\.check\?\.fail/.test(cronCode) && /rounds,/.test(cronCode), '결과를 기록에 남긴다')
+    // 화면이 그 값을 실제로 보여준다 — 아침에 손댈 것이 있는지 알아야 한다
+    ok(dayUi.includes('검수 통과') && dayUi.includes('수정필요'), '목록이 검수까지 마쳤는지 보여준다')
+    ok(/d\.rounds/.test(dayUi), '몇 번 고쳐 썼는지도 보여준다')
+
     // 이미 쓴 날에 「그 날 쉬기」를 두면 「눌렀는데 왜 글이 그대로지」가 된다
     ok(/d\.when !== 'past' && !d\.postId/.test(dayUi), '이미 쓴 날은 손대지 못하게 한다')
     ok(/planAssignment\(\{[^)]*date: today/.test(cronDraft), '크론이 그 날을 넘긴다 (안 넘기면 쉬는 날이 무시된다)')

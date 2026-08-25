@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { newId } from '@/lib/id'
 import { hasTodayAutoDraft, planAssignment } from '@/lib/writing/autodraft'
-import { AUTO_DRAFT_RUNS_KEEP, baseUrlFor } from '@/lib/writing/autodraft'
+import { AUTO_DRAFT_RUNS_KEEP, baseUrlFor, shouldRevise } from '@/lib/writing/autodraft'
 import type { AutoDraftRun, Post } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -25,7 +25,8 @@ export const maxDuration = 300
  */
 interface WriteReply {
   draft?: { title?: string; body?: string; tags?: string[] }
-  check?: { score?: number }
+  /** `fail` 은 남은 수정필요 개수 — 점수만으로는 「79점」이 두 가지를 뜻해서 구별이 안 된다 */
+  check?: { score?: number; fail?: number }
   /** 무엇으로 썼는지 — 유사성 방지 3축. 저장해야 다음 글이 다른 조합을 고른다 */
   rotation?: { introType?: string; angle?: string; format?: string; topicGroup?: string }
   /** 85점 미만 — 부르는 쪽이 초안을 들고 한 번 더 불러야 한다 */
@@ -181,7 +182,9 @@ async function run(
    * 우회 비밀값이 있으면 함께 보내고, 없으면 아래에서 「무엇이 돌아왔는지」를 기록에 남긴다.
    */
   const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
+  const askedAt = Date.now()
   const ask = async (extra: Record<string, unknown> = {}) => {
+    const started = Date.now()
     const res = await fetch(`${base}/api/write`, {
       method: 'POST',
       headers: {
@@ -205,7 +208,7 @@ async function run(
         return null
       }
     })()
-    return { res, raw, data }
+    return { res, raw, data, ms: Date.now() - started }
   }
 
   const first = await ask()
@@ -234,12 +237,40 @@ async function run(
    * 두 번째가 실패하면 첫 번째 것을 그대로 쓴다 — 못 쓴 것보다 낫고, 화면에서 「고쳐 쓰기」를
    * 다시 누를 수 있다.
    */
-  const short = (first.data.charCount ?? 0) < (first.data.charMin ?? 0)
   let best = first.data
-  if (first.data.needsRevise || short) {
-    const second = await ask({ draft: first.data.draft, issues: first.data.fixIssues ?? [] })
-    if (second.res.ok && second.data?.draft?.body) best = { ...second.data, rotation: first.data.rotation }
-    else console.warn('[draft] 고쳐 쓰기 실패 — 첫 초안을 그대로 저장한다', second.raw.slice(0, 160))
+  let lastCallMs = first.ms
+  let improved = true
+  let rounds = 0
+  const failsOf = (r: WriteReply) => r.check?.fail ?? (r.needsRevise ? 1 : 0)
+  const shortOf = (r: WriteReply) => (r.charCount ?? 0) < (r.charMin ?? 0)
+
+  while (
+    shouldRevise({
+      round: rounds,
+      needsRevise: best.needsRevise === true,
+      short: shortOf(best),
+      elapsedMs: Date.now() - askedAt,
+      lastCallMs,
+      improved,
+    })
+  ) {
+    const next = await ask({ draft: best.draft, issues: best.fixIssues ?? [] })
+    rounds++
+    lastCallMs = next.ms
+    if (!next.res.ok || !next.data?.draft?.body) {
+      console.warn('[draft] 고쳐 쓰기 실패 — 지금 초안을 그대로 저장한다', next.raw.slice(0, 160))
+      break
+    }
+    /*
+     * **나아졌는지는 수정필요 개수로 본다.** 점수는 수정필요가 하나만 있어도 79점에 붙어
+     * 있어서, 2개 → 1개로 줄어도 점수만 보면 제자리로 보인다 (/api/write 의 같은 주석).
+     */
+    const before = failsOf(best)
+    const after = failsOf(next.data)
+    improved = after < before || (after === before && (next.data.check?.score ?? 0) > (best.check?.score ?? 0))
+    // 나빠졌으면 /api/write 가 이미 원래 것을 돌려준다 — 여기서는 받은 것을 그대로 든다
+    best = { ...next.data, rotation: first.data.rotation }
+    console.log('[draft] 고쳐 쓰기', rounds, `수정필요 ${before} → ${after}`, `${next.data.check?.score ?? '?'}점`)
   }
 
   const now = new Date().toISOString()
@@ -278,6 +309,9 @@ async function run(
     topic: assignment.topic,
     postId: post.id,
     score: best.check?.score ?? null,
+    // 아침에 손댈 것이 있는지를 화면이 그대로 말할 수 있게 남긴다 (2026-08-26)
+    fails: best.check?.fail,
+    rounds,
   })
 
   return NextResponse.json({
@@ -287,5 +321,7 @@ async function run(
     topic: assignment.topic,
     why: assignment.why,
     score: best.check?.score ?? null,
+    fails: best.check?.fail,
+    rounds,
   })
 }

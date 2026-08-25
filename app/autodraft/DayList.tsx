@@ -170,6 +170,17 @@ export default function DayList({
                 {d.ok === false && <Badge tone="bad">실패</Badge>}
                 {d.manual && <Badge tone="default">직접 실행</Badge>}
                 {typeof d.score === 'number' && <Badge tone="info">{d.score}점</Badge>}
+                {/*
+                  **검수까지 마쳤는지 한눈에** (2026-08-26 회원 요청: "새벽에 자동 글
+                  작성하는거 검수까지 마칠 수 있게 해줘").
+
+                  점수만 있으면 79점이 두 가지를 뜻한다 — 「수정필요가 남았다」와 「고칠 수
+                  없어 포기했다」. 아침에 손댈 것이 있는지를 여기서 바로 말해준다.
+                */}
+                {d.ok === true && d.fails === 0 && <Badge tone="good">검수 통과</Badge>}
+                {d.ok === true && typeof d.fails === 'number' && d.fails > 0 && (
+                  <Badge tone="warn">수정필요 {d.fails}개 남음</Badge>
+                )}
               </div>
 
               <p className="text-[13px] leading-snug font-semibold">
@@ -177,6 +188,15 @@ export default function DayList({
               </p>
               {d.ok === false && d.error && (
                 <p className="mt-1 text-[11.5px] leading-relaxed text-rose-700 dark:text-rose-300">{d.error}</p>
+              )}
+              {/* 고쳐 쓰기를 몇 번 돌렸는지 — 「검수까지 했나」를 회원이 확인할 수 있어야 한다 */}
+              {d.ok === true && typeof d.rounds === 'number' && (
+                <p className="muted mt-0.5 text-[11px] leading-relaxed">
+                  {d.rounds === 0
+                    ? '처음 쓴 그대로 검수를 통과했습니다.'
+                    : `검수해서 ${d.rounds}번 고쳐 썼습니다.`}
+                  {typeof d.fails === 'number' && d.fails > 0 && ' 남은 것은 글을 열어 「검수 항목 고쳐 쓰기」로 마저 고치실 수 있습니다.'}
+                </p>
               )}
               {d.postId && (
                 <Link

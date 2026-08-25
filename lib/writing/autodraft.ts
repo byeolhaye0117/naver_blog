@@ -65,6 +65,56 @@ export interface Assignment {
 export const AUTO_DRAFT_RUNS_KEEP = 30
 
 /**
+ * ── 검수까지 마치고 저장한다 (2026-08-26 회원 요청) ────────────
+ *
+ * "새벽에 자동 글 작성하는거 검수까지 마칠 수 있게 해줘."
+ *
+ * 여태 고쳐 쓰기를 **딱 한 번**만 돌렸다. 한 번에 다 안 고쳐지면 수정필요가 남은 채로
+ * 79점짜리 초안이 저장되고, 아침에 회원이 손으로 「고쳐 쓰기」를 눌러야 했다 — 자동으로
+ * 해두는 값이 절반만 나온 셈이다.
+ *
+ * 이제 **나아지는 동안은 계속 돌린다.** 다만 세 가지 울타리를 친다:
+ *   ① 횟수 — AI 호출은 값이 든다. 세 번이면 대개 붙는다 (한 번에 79 → 95 가 나온 실측).
+ *   ② 시간 — 함수 실행 한도(maxDuration 300초)를 넘기면 **아무것도 저장되지 않는다.**
+ *      79점짜리라도 저장하는 편이 낫다. 그래서 다음 호출이 한도를 넘길 것 같으면 멈춘다.
+ *   ③ 나아짐 — 안 나아지는데 또 부르면 값만 나간다. 한 번 제자리면 그만둔다.
+ */
+export const REVISE_MAX_ROUNDS = 3
+/** 이 시간을 넘겨서까지 한 번 더 부르지 않는다 (maxDuration 300초 — 저장할 여유를 남긴다) */
+export const REVISE_TIME_BUDGET_MS = 235_000
+
+/**
+ * 고쳐 쓰기를 **한 번 더 돌릴까**.
+ *
+ * 라우트 안에 두면 테스트가 못 읽는다. 「한 번 더 부를까」는 틀리면 매일 도는 자동화가
+ * 통째로 죽는(시간 초과) 종류의 판단이라 여기 둔다.
+ */
+export function shouldRevise(args: {
+  /** 이미 돈 고쳐 쓰기 횟수 (첫 판단 때는 0) */
+  round: number
+  /** 아직 발행선(85) 아래인가 */
+  needsRevise: boolean
+  /** 분량이 기준 미만인가 */
+  short: boolean
+  /** 이 실행이 시작한 뒤 흐른 시간 */
+  elapsedMs: number
+  /** 방금 부른 호출이 걸린 시간 — 다음 호출도 이만큼 걸린다고 본다 */
+  lastCallMs: number
+  /** 직전 고쳐 쓰기가 실제로 나아졌나 (첫 판단 때는 true) */
+  improved: boolean
+}): boolean {
+  if (!args.needsRevise && !args.short) return false
+  if (args.round >= REVISE_MAX_ROUNDS) return false
+  // 제자리면 그만둔다 — 같은 것을 또 물어도 같은 답이 온다
+  if (args.round > 0 && !args.improved) return false
+  /*
+   * 다음 호출도 방금만큼 걸린다고 보고, 넉넉히 잡아 한도를 넘길 것 같으면 멈춘다.
+   * 여기서 욕심내면 함수가 통째로 죽어서 **글이 하나도 안 남는다.**
+   */
+  return args.elapsedMs + args.lastCallMs * 1.2 < REVISE_TIME_BUDGET_MS
+}
+
+/**
  * 크론이 자기 앱을 부를 주소를 고른다.
  *
  * ── 왜 순서가 중요한가 (2026-08-23) ─────────────────────────
@@ -543,6 +593,10 @@ export interface AutoDraftDay {
   postId?: string
   /** 손으로 눌러 돌린 것인가 */
   manual?: boolean
+  /** 남은 수정필요 개수 — 0 이면 검수까지 마친 것이다 (2026-08-26) */
+  fails?: number
+  /** 고쳐 쓰기를 몇 번 돌렸나 */
+  rounds?: number
 }
 
 /**
@@ -563,7 +617,7 @@ export interface AutoDraftDay {
  * 그날그날 앱이 골라 쓴다.
  */
 export function autoDraftDays(args: {
-  runs: { date: string; ok: boolean; keyword?: string; topic?: string; error?: string; score?: number | null; postId?: string; manual?: boolean }[] | undefined
+  runs: { date: string; ok: boolean; keyword?: string; topic?: string; error?: string; score?: number | null; postId?: string; manual?: boolean; fails?: number; rounds?: number }[] | undefined
   /** 회원이 채워 둔 앞날 — 계산한 예정이 아니다. 키워드는 그 날 아침에 정해진다 */
   planned: { date: string; topic: string }[]
   today: string
@@ -594,6 +648,8 @@ export function autoDraftDays(args: {
       score: r.score ?? null,
       postId: r.postId,
       manual: r.manual,
+      fails: r.fails,
+      rounds: r.rounds,
     }))
 
   /*
