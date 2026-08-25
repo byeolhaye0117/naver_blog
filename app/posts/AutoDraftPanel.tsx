@@ -6,7 +6,6 @@ import type { AutoDraftPlan, AutoDraftRun } from '@/lib/types'
 import { INFO_TOPICS, autoDraftStatus, normalizePlan, planSummary } from '@/lib/writing/autodraft'
 import { Badge, btnGhost, btnPrimary } from '@/components/ui'
 import TopicExplorer from '@/components/TopicExplorer'
-import DayAssign from '@/components/DayAssign'
 
 /**
  * **매일 정보글 초안 — 지금 어떤 상태인가, 그리고 직접 한 편 쓰기.**
@@ -59,10 +58,9 @@ export default function AutoDraftPanel({
   const [plan, setPlan] = useState<AutoDraftPlan>(() => normalizePlan(savedPlan))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
-  const [dayOpen, setDayOpen] = useState(false)
   const same = (a: AutoDraftPlan, b: AutoDraftPlan) =>
-    JSON.stringify([a.off === true, a.keywords ?? [], a.topics ?? [], a.days ?? [], a.skip ?? []]) ===
-    JSON.stringify([b.off === true, b.keywords ?? [], b.topics ?? [], b.days ?? [], b.skip ?? []])
+    JSON.stringify([a.off === true, a.keywords ?? [], a.topics ?? [], a.skip ?? []]) ===
+    JSON.stringify([b.off === true, b.keywords ?? [], b.topics ?? [], b.skip ?? []])
   const dirty = !same(plan, stored)
 
   /**
@@ -196,14 +194,6 @@ export default function AutoDraftPanel({
                     : '고른 것 없음 — 순위 추적 키워드 전부를 씁니다'}
                 </dd>
               </div>
-              <div className="flex gap-2">
-                <dt className="muted w-11 shrink-0 font-semibold">날짜</dt>
-                <dd>
-                  {stored.days?.length
-                    ? stored.days.map((d) => `${d.date.slice(5)} ${d.topic}`).join(' · ')
-                    : '따로 정한 날 없음 — 범위 안에서 알아서 돕니다'}
-                </dd>
-              </div>
               {(stored.skip ?? []).length > 0 && (
                 <div className="flex gap-2">
                   <dt className="muted w-11 shrink-0 font-semibold">쉬는 날</dt>
@@ -278,7 +268,23 @@ export default function AutoDraftPanel({
             </div>
             <p className="muted mb-2 text-[11px] leading-relaxed">
               아래 탐색에서 담은 주제만 씁니다. 하나도 안 담으면 기본 주제 {INFO_TOPICS.length}개를 씁니다.
+              <b> 어느 날 어느 주제를 쓸지는 앱이 정합니다</b> — 담은 것 안에서 오래 안 쓴 순서로 돌아가므로
+              날마다 다른 글이 나옵니다.
             </p>
+
+            {/*
+              **하나만 담으면 매일 같은 주제가 나온다** (2026-08-25).
+
+              회원이 「키토다이어트」 하나만 담아두고 물었다: "주제가 매번 같은게 나와."
+              담긴 것 안에서 도는 규칙이라 하나뿐이면 돌 곳이 없다 — 화면이 그 자리에서
+              말해줘야 한다. 안 그러면 규칙을 아는 사람만 알 수 있다.
+            */}
+            {(plan.topics ?? []).length === 1 && (
+              <p className="mb-2 rounded-xl border border-amber-500/40 bg-amber-500/8 px-3 py-2 text-[11.5px] leading-relaxed font-semibold text-amber-800 dark:text-amber-200">
+                주제를 하나만 담으셨습니다 — 이러면 <b>매일 같은 주제</b>가 나옵니다. 날마다 다르게 하려면 몇 개 더
+                담으시거나, 담은 것을 모두 빼서 기본 주제 {INFO_TOPICS.length}개로 돌리세요.
+              </p>
+            )}
 
             {/*
               담은 것을 위에 모아 보여준다 — 탐색 결과 안에 섞여 있으면 「내가 뭘 골랐더라」를
@@ -317,62 +323,18 @@ export default function AutoDraftPanel({
             </details>
           </section>
 
-          {/* ── ③ 날짜별로 콕 집어 정하기 ── */}
-          <section>
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <h3 className="text-[13px] font-bold">③ 날짜별로 주제 정하기</h3>
-              <Badge tone={plan.days?.length ? 'good' : 'default'}>
-                {plan.days?.length ? `${plan.days.length}일 정함` : '없음'}
-              </Badge>
-            </div>
-            <p className="muted mb-2 text-[11px] leading-relaxed">
-              「이 날은 꼭 이 주제로」가 있을 때만 쓰세요. 키워드는 ①에서 고른 것 안에서 알아서 고르고, 안 정한 날은 ② 주제 안에서 돌아갑니다.
-            </p>
+          {/*
+            **날짜마다 주제를 확정하는 칸은 뺐다** (2026-08-25 회원 지적).
 
-            {(plan.days ?? []).length > 0 && (
-              <ul className="mb-2 space-y-1.5">
-                {(plan.days ?? []).map((d) => (
-                  <li key={d.date} className="panel flex items-center gap-2 rounded-xl px-3 py-2">
-                    <span className="tnum text-[11.5px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
-                    <span className="min-w-0 flex-1 text-[12px] leading-snug font-semibold">{d.topic}</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPlan((p) => ({ ...p, days: (p.days ?? []).filter((x) => x.date !== d.date) }))
-                      }
-                      className="muted rounded-lg px-2 py-1 text-[11px] font-semibold hover:text-rose-600"
-                    >
-                      빼기
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            "내가 주제 계속 확정하는거 아니라 했잖아. 근데 왜 또 주제 고르라고 나오는거야."
 
-            {dayOpen ? (
-              <div className="bd rounded-xl border px-3.5 py-3">
-                <DayAssign
-                  plan={plan}
-                  today={today}
-                  onPick={(day) => {
-                    setPlan((p) => ({
-                      ...p,
-                      days: [...(p.days ?? []).filter((x) => x.date !== day.date), day].sort((a, b) =>
-                        a.date.localeCompare(b.date)
-                      ),
-                    }))
-                    setDayOpen(false)
-                  }}
-                  onCancel={() => setDayOpen(false)}
-                />
-              </div>
-            ) : (
-              <button type="button" onClick={() => setDayOpen(true)} className={`${btnGhost} !px-3 !py-2 !text-[12px]`}>
-                날짜 골라서 주제 정하기
-              </button>
-            )}
-          </section>
+            회원의 「날짜별로 주제를 고르고 싶어」를 **날짜마다 회원이 확정한다**로 읽은 것이
+            잘못이었다. 원한 것은 **날마다 다른 주제가 나오는 것**이고, 그건 ②에 몇 개만
+            담아두면 로테이션이 알아서 한다. 날짜마다 고르게 하면 손으로 쓰는 것과 같아진다.
 
+            날짜를 두고 회원이 정하는 것은 「이 날은 쉰다」 하나뿐이고, 그건 자동 작성 화면의
+            날짜별 목록에 있다.
+          */}
           <div className="bd flex flex-wrap items-center gap-2 border-t pt-3.5">
             <button
               type="button"
@@ -385,7 +347,7 @@ export default function AutoDraftPanel({
             <button
               type="button"
               disabled={saving}
-              onClick={() => save({ off: false, keywords: [], topics: [], days: [], skip: [] })}
+              onClick={() => save({ off: false, keywords: [], topics: [], skip: [] })}
               className={`${btnGhost} !px-3 !py-2.5 !text-[12px]`}
             >
               전부 지우고 자동으로
