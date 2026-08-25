@@ -85,6 +85,7 @@ export default async function AutoDraftPage() {
           days={days}
           plan={db.autoDraftPlan}
           keywordPool={keywordPool}
+          today={today}
           emptyNote={
             db.autoDraftPlan?.off
               ? '자동 초안을 꺼두셨습니다. 위에서 다시 켜면 날짜별 예정이 나옵니다.'

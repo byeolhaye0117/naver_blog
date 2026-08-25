@@ -6,6 +6,7 @@ import type { AutoDraftPlan, AutoDraftRun } from '@/lib/types'
 import { INFO_TOPICS, autoDraftStatus, normalizePlan, planSummary } from '@/lib/writing/autodraft'
 import { Badge, btnGhost, btnPrimary } from '@/components/ui'
 import TopicExplorer from '@/components/TopicExplorer'
+import DayAssign from '@/components/DayAssign'
 
 /**
  * **매일 정보글 초안 — 지금 어떤 상태인가, 그리고 직접 한 편 쓰기.**
@@ -58,9 +59,10 @@ export default function AutoDraftPanel({
   const [plan, setPlan] = useState<AutoDraftPlan>(() => normalizePlan(savedPlan))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
+  const [dayOpen, setDayOpen] = useState(false)
   const same = (a: AutoDraftPlan, b: AutoDraftPlan) =>
-    JSON.stringify([a.off === true, a.keywords ?? [], a.topics ?? []]) ===
-    JSON.stringify([b.off === true, b.keywords ?? [], b.topics ?? []])
+    JSON.stringify([a.off === true, a.keywords ?? [], a.topics ?? [], a.days ?? []]) ===
+    JSON.stringify([b.off === true, b.keywords ?? [], b.topics ?? [], b.days ?? []])
   const dirty = !same(plan, stored)
 
   /**
@@ -195,6 +197,14 @@ export default function AutoDraftPanel({
                 </dd>
               </div>
               <div className="flex gap-2">
+                <dt className="muted w-11 shrink-0 font-semibold">날짜</dt>
+                <dd>
+                  {stored.days?.length
+                    ? stored.days.map((d) => `${d.date.slice(5)} ${d.topic}`).join(' · ')
+                    : '따로 정한 날 없음 — 범위 안에서 알아서 돕니다'}
+                </dd>
+              </div>
+              <div className="flex gap-2">
                 <dt className="muted w-11 shrink-0 font-semibold">주제</dt>
                 <dd>
                   {stored.topics?.length
@@ -301,6 +311,65 @@ export default function AutoDraftPanel({
             </details>
           </section>
 
+          {/* ── ③ 날짜별로 콕 집어 정하기 ── */}
+          <section>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <h3 className="text-[13px] font-bold">③ 날짜별로 정하기</h3>
+              <Badge tone={plan.days?.length ? 'good' : 'default'}>
+                {plan.days?.length ? `${plan.days.length}일 정함` : '없음'}
+              </Badge>
+            </div>
+            <p className="muted mb-2 text-[11px] leading-relaxed">
+              「이 날은 꼭 이걸」이 있을 때만 쓰세요. 안 정한 날은 위 ①·② 범위 안에서 알아서 돌아갑니다.
+            </p>
+
+            {(plan.days ?? []).length > 0 && (
+              <ul className="mb-2 space-y-1.5">
+                {(plan.days ?? []).map((d) => (
+                  <li key={d.date} className="panel flex items-center gap-2 rounded-xl px-3 py-2">
+                    <span className="tnum text-[11.5px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
+                    <span className="min-w-0 flex-1 text-[12px] leading-snug">
+                      <b>{d.keyword}</b> · {d.topic}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPlan((p) => ({ ...p, days: (p.days ?? []).filter((x) => x.date !== d.date) }))
+                      }
+                      className="muted rounded-lg px-2 py-1 text-[11px] font-semibold hover:text-rose-600"
+                    >
+                      빼기
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {dayOpen ? (
+              <div className="bd rounded-xl border px-3.5 py-3">
+                <DayAssign
+                  plan={plan}
+                  keywordPool={keywordPool}
+                  today={today}
+                  onPick={(day) => {
+                    setPlan((p) => ({
+                      ...p,
+                      days: [...(p.days ?? []).filter((x) => x.date !== day.date), day].sort((a, b) =>
+                        a.date.localeCompare(b.date)
+                      ),
+                    }))
+                    setDayOpen(false)
+                  }}
+                  onCancel={() => setDayOpen(false)}
+                />
+              </div>
+            ) : (
+              <button type="button" onClick={() => setDayOpen(true)} className={`${btnGhost} !px-3 !py-2 !text-[12px]`}>
+                날짜 골라서 정하기
+              </button>
+            )}
+          </section>
+
           <div className="bd flex flex-wrap items-center gap-2 border-t pt-3.5">
             <button
               type="button"
@@ -313,7 +382,7 @@ export default function AutoDraftPanel({
             <button
               type="button"
               disabled={saving}
-              onClick={() => save({ off: false, keywords: [], topics: [] })}
+              onClick={() => save({ off: false, keywords: [], topics: [], days: [] })}
               className={`${btnGhost} !px-3 !py-2.5 !text-[12px]`}
             >
               전부 지우고 자동으로
