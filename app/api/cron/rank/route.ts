@@ -55,6 +55,31 @@ export async function GET(req: Request) {
   ].slice(0, MAX_CHECK)
 
   /*
+   * **제목이 없는 항목은 네이버에서 한 번 읽어 채운다** (2026-08-24).
+   *
+   * 회원: "글 제목이 안보이는 것도 있는데 이거 수정해주고." 앱에서 쓴 글은 제목이 이어져
+   * 오지만, 다른 블로그 글이나 손으로 등록한 주소는 이어질 데가 없어 목록에 「글
+   * 224382220243」처럼 번호만 떴다.
+   *
+   * 한 번 채우면 다시 읽지 않는다 (제목은 잘 안 바뀐다). 한 번에 몇 개만 — 조회가 늘면
+   * 순위 재는 일이 밀린다.
+   */
+  const linkedIds = new Set(db.posts.map((p) => p.id))
+  const needTitle = db.rankTargets
+    .filter((t) => !t.title?.trim())
+    .filter((t) => !(t.postId && linkedIds.has(t.postId)))
+    .slice(0, 3)
+  for (const t of needTitle) {
+    const read = await fetchPublishedPost(t.url).catch(() => null)
+    const title = read?.title?.trim()
+    if (!title) continue
+    await mutate((d) => {
+      const found = d.rankTargets.find((x) => x.id === t.id)
+      if (found) found.title = title
+    })
+  }
+
+  /*
    * **실패를 조용히 넘기지 않는다** (2026-08-13).
    *
    * 회원 질문: "오전 09시에 추적하는데 왜 결과가 안 나와." 그날 두 항목 중 하나만
