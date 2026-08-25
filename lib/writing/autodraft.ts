@@ -301,13 +301,14 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
    * 날짜별 지정 — 날짜 꼴이 아니거나 반쪽인 것은 버린다. 그대로 두면 크론이 그 날
    * 「키워드가 없습니다」로 실패한다. 같은 날이 둘이면 **뒤엣것을 남긴다** (나중에 고친 것).
    */
-  const byDate = new Map<string, { date: string; keyword: string; topic: string }>()
+  const byDate = new Map<string, { date: string; topic: string; keyword?: string }>()
   for (const d of Array.isArray(raw?.days) ? raw.days : []) {
     const date = (d?.date ?? '').slice(0, 10)
-    const keyword = (d?.keyword ?? '').trim()
     const topic = (d?.topic ?? '').trim()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !keyword || !topic) continue
-    byDate.set(date, { date, keyword, topic })
+    // **키워드는 없어도 된다** — 없으면 로테이션이 고른다 (2026-08-25 회원 결정)
+    const keyword = (d?.keyword ?? '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !topic) continue
+    byDate.set(date, keyword ? { date, topic, keyword } : { date, topic })
   }
 
   const skip = [
@@ -349,17 +350,29 @@ export function planAssignment(args: {
   // 「이 날 정했다가 나중에 건너뛰기로 바꿨다」가 자연스러운 순서다
   if (wantDate && plan.skip?.includes(wantDate)) return null
   const fixed = wantDate ? plan.days?.find((d) => d.date === wantDate) : undefined
-  if (fixed) {
-    return {
-      mainKeyword: fixed.keyword,
-      topic: fixed.topic,
-      why: `${fixed.date} 에 쓰기로 정해두신 것입니다.`,
-    }
-  }
 
   const keywords = plan.keywords?.length ? plan.keywords : args.fallbackKeywords
   const topics = plan.topics?.length ? plan.topics : INFO_TOPICS
-  return pickAssignment({ posts: args.posts, keywords, topics })
+  const rotated = pickAssignment({ posts: args.posts, keywords, topics })
+
+  if (fixed) {
+    /*
+     * **주제만 갈아 끼운다.** 회원이 정한 것은 「그 날 무슨 이야기를 쓰나」이고, 키워드는
+     * ①에서 고른 범위 안에서 로테이션이 고르게 둔다 — 날짜마다 키워드를 또 고르게 하면
+     * 같은 것을 두 번 묻는 셈이다 (2026-08-25 회원 지적).
+     *
+     * 예전에 키워드까지 저장해 둔 날은 그 값을 그대로 쓴다.
+     */
+    const mainKeyword = fixed.keyword ?? rotated?.mainKeyword ?? keywords[0]?.trim()
+    if (!mainKeyword) return null
+    return {
+      mainKeyword,
+      topic: fixed.topic,
+      why: `${fixed.date} 에 「${fixed.topic}」을 쓰기로 정해두셨습니다.`,
+    }
+  }
+
+  return rotated
 }
 
 /**

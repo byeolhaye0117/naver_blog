@@ -23,13 +23,11 @@ import DayAssign from '@/components/DayAssign'
 export default function DayList({
   days,
   plan,
-  keywordPool,
   today,
   emptyNote,
 }: {
   days: AutoDraftDay[]
   plan?: AutoDraftPlan
-  keywordPool: string[]
   today: string
   emptyNote: string
 }) {
@@ -58,10 +56,11 @@ export default function DayList({
     setSaving(false)
   }
 
-  const setDay = (date: string, keyword: string, t: string) =>
+  // 그 날 쓸 **주제만** 정한다 — 키워드는 ①에서 고른 범위에서 로테이션이 고른다 (2026-08-25)
+  const setDay = (date: string, t: string) =>
     save({
       ...plan,
-      days: [...(plan?.days ?? []).filter((d) => d.date !== date), { date, keyword, topic: t }],
+      days: [...(plan?.days ?? []).filter((d) => d.date !== date), { date, topic: t }],
     })
 
   const clearDay = (date: string) =>
@@ -262,10 +261,9 @@ export default function DayList({
                 <div className="mt-2">
                   <DayAssign
                     plan={plan}
-                    keywordPool={keywordPool}
                     fixedDate={d.date}
                     today={today}
-                    onPick={(day) => setDay(day.date, day.keyword, day.topic)}
+                    onPick={(day) => setDay(day.date, day.topic)}
                     onCancel={() => setEditing(null)}
                   />
                   {saving && <p className="muted mt-1 text-[11px]">저장 중…</p>}
@@ -336,10 +334,9 @@ export default function DayList({
                     <div className="mt-2">
                       <DayAssign
                         plan={plan}
-                        keywordPool={keywordPool}
                         fixedDate={d.date}
                         today={today}
-                        onPick={(day) => setDay(day.date, day.keyword, day.topic)}
+                        onPick={(day) => setDay(day.date, day.topic)}
                         onCancel={() => setEditing(null)}
                       />
                     </div>
