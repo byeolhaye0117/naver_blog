@@ -8909,62 +8909,37 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(twice.length === 1 && twice[0].ok === true, '한 날에 성공과 실패가 섞이면 성공을 보여준다')
 
     /*
-     * **날짜별로 콕 집어 정할 수 있어야 한다** (2026-08-24 회원 요청: "하나의 주제를 계속
-     * 쓰고 싶지 않아 날짜 설정해서 날짜별로 설정할 수 있게 해줘").
+     * **날짜마다 주제를 확정하게 만들지 않는다** (2026-08-25 회원 지적).
      *
-     * 고른 주제가 하나뿐이면 로테이션이 매일 같은 주제를 낸다 — 실제로 회원 설정이 주제
-     * 1개였다. 그렇다고 매일 하나씩 지정하게 만들면 손으로 쓰는 것과 같아지므로,
-     * **바꾸고 싶은 날만** 정하고 나머지는 알아서 돌게 한다.
+     * "내가 주제 계속 확정하는거 아니라 했잖아. 근데 왜 또 주제 고르라고 나오는거야."
+     *
+     * 회원의 「날짜별로 주제를 고르고 싶어」를 **날짜마다 회원이 확정한다**로 읽은 것이
+     * 잘못이었다. 원한 것은 **날마다 다른 주제가 나오는 것**이고, 그건 로테이션이 이미
+     * 한다. 그래서 날짜별 지정(days)을 통째로 뺐다 — 저장해 둔 옛 값도 무시하고 지운다.
+     *
+     * 「매일 같은 주제가 나온다」의 진짜 원인은 담은 주제가 하나뿐이었던 것이다.
      */
     const PLAN = { keywords: ['가키워드', '나키워드'], topics: ['한가지주제'] }
     // 주제가 하나뿐이면 로테이션은 매일 그것을 낸다 (이게 회원이 겪은 상황이다)
     const sameEveryDay = forecastAutoDrafts({ plan: PLAN, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3 })
-    ok(sameEveryDay.every((f) => f.topic === '한가지주제'), '주제가 하나면 매일 같은 주제가 나온다 (고칠 이유)')
+    ok(sameEveryDay.every((f) => f.topic === '한가지주제'), '주제가 하나면 매일 같은 주제가 나온다 (그래서 화면이 경고한다)')
+
+    // 몇 개만 담으면 날마다 다른 주제가 나온다 — 회원이 원한 것이 이것이다
+    const varied = forecastAutoDrafts({
+      plan: { keywords: ['가키워드'], topics: ['가주제', '나주제', '다주제'] },
+      posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3,
+    })
+    ok(new Set(varied.map((f) => f.topic)).size === 3, '주제를 여럿 담으면 날마다 다른 주제가 나온다', varied.map((f) => f.topic).join())
 
     /*
-     * **날짜별로 정하는 것은 주제다** (2026-08-25 회원 결정).
-     *
-     * "날짜고르기 누르면 다시 또 키워드랑 주제 정할 수 있게 되어 있는데? 날짜만 고를 수
-     * 있게 해줘." / "나는 모든 날짜를 하나의 주제로 통일하고 싶은게 아니라 날짜별로 주제를
-     * 고르고 싶어."
-     *
-     * 키워드는 ①에서 이미 고른다 — 날짜마다 또 묻는 것은 같은 것을 두 번 묻는 셈이다.
+     * 예전에 저장해 둔 날짜별 지정은 **더 이상 로테이션을 덮지 않고, 저장에서도 사라진다.**
+     * 남겨 두면 회원이 화면에서 뺄 수 없는 값이 몰래 그 날을 정하게 된다.
      */
-    const withDay = { ...PLAN, days: [{ date: '2026-08-26', topic: '그날만다른주제' }] }
-    const fixedDay = planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' })
-    ok(fixedDay?.topic === '그날만다른주제', '그 날은 정해둔 주제를 쓴다')
-    ok(PLAN.keywords.includes(fixedDay.mainKeyword), '키워드는 ①에서 고른 것 중에서 알아서 고른다', fixedDay.mainKeyword)
-    ok(fixedDay.why.includes('그날만다른주제'), '무엇을 정해뒀는지 밝힌다', fixedDay.why)
-    // 예전에 키워드까지 저장해 둔 날은 그 값을 그대로 쓴다 (저장된 설정이 깨지면 안 된다)
-    const legacy = planAssignment({
-      plan: { ...PLAN, days: [{ date: '2026-08-26', keyword: '예전키워드', topic: '예전주제' }] },
-      posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26',
-    })
-    ok(legacy?.mainKeyword === '예전키워드' && legacy.topic === '예전주제', '예전에 저장한 키워드는 그대로 쓴다')
-    // 주제만 있으면 저장된다 — 키워드를 안 받으므로 그것까지 요구하면 아무것도 저장 못 한다
-    ok(normalizePlan({ days: [{ date: '2026-08-26', topic: '가' }] }).days.length === 1, '주제만 있어도 저장된다')
-    ok(normalizePlan({ days: [{ date: '2026-08-26', keyword: 'A' }] }).days.length === 0, '주제가 없으면 버린다')
-    // 정하지 않은 날은 그대로 로테이션 — 매일 지정하게 만들지 않는 것이 이 기능의 값이다
-    ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-27' })?.topic === '한가지주제',
-      '정하지 않은 날은 알아서 돈다')
-    // 날짜를 안 넘기면 지정을 못 본다 — 크론이 date 를 넘기는지 아래에서 확인한다
-    ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK })?.topic === '한가지주제', '날짜가 없으면 로테이션')
-    // 예정 계산도 지정을 반영해야 한다 (화면과 실제가 다르면 못 믿는다)
-    const fc2 = forecastAutoDrafts({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3 })
-    ok(fc2.find((f) => f.date === '2026-08-26')?.topic === '그날만다른주제', '예정에도 정해둔 날이 그대로 뜬다')
-
-    // 엉뚱한 값은 저장하지 않는다 — 그대로 두면 그 날 「키워드가 없습니다」로 실패한다
-    const cleaned = normalizePlan({ days: [
-      { date: '2026-08-26', keyword: ' A ', topic: ' 가 ' },
-      { date: '엉뚱', keyword: 'B', topic: '나' },
-      { date: '2026-08-27', keyword: '', topic: '다' },
-      { date: '2026-08-26', keyword: 'C', topic: '라' },
-    ] })
-    // 날짜 꼴이 아닌 것만 버린다 — 키워드는 없어도 되므로 (2026-08-25)
-    ok(cleaned.days.length === 2, '날짜 꼴이 아닌 것은 버린다', JSON.stringify(cleaned.days))
-    ok(!cleaned.days.some((d) => d.date === '엉뚱'), '엉뚱한 날짜는 없다')
-    ok(cleaned.days.find((d) => d.date === '2026-08-26')?.topic === '라', '같은 날이 둘이면 나중에 고친 것을 남긴다')
-    ok(cleaned.days.find((d) => d.date === '2026-08-27')?.topic === '다', '키워드가 비어 있어도 주제만 있으면 남는다')
+    const withDay = { ...PLAN, days: [{ date: '2026-08-26', topic: '그날만다른주제', keyword: '예전키워드' }] }
+    ok(normalizePlan(withDay).days === undefined, '옛 날짜별 지정은 저장에서 사라진다')
+    const afterDrop = planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' })
+    ok(afterDrop?.topic === '한가지주제', '옛 날짜별 지정은 더 이상 주제를 덮지 않는다', afterDrop?.topic)
+    ok(PLAN.keywords.includes(afterDrop.mainKeyword), '키워드도 ①에서 고른 것 안에서 돈다', afterDrop.mainKeyword)
 
     /*
      * **삭제** (2026-08-24 회원 요청: 날짜별 목록에 "이거 삭제기능 만들어줘").
@@ -8977,9 +8952,6 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     const skipPlan = { keywords: ['가키워드'], topics: ['가주제'], skip: ['2026-08-26'] }
     ok(!planAssignment({ plan: skipPlan, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' }), '건너뛴 날은 아무것도 쓰지 않는다')
     ok(planAssignment({ plan: skipPlan, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-27' }), '다른 날은 그대로 쓴다')
-    // 날짜별 지정이 있어도 건너뛰기가 이긴다 (정했다가 나중에 빼는 것이 자연스러운 순서다)
-    ok(!planAssignment({ plan: { ...skipPlan, days: [{ date: '2026-08-26', keyword: 'A', topic: '가' }] }, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' }),
-      '정해둔 날이어도 건너뛰기로 바꾸면 안 쓴다')
 
     /*
      * **건너뛴 날은 세지 않는다.** 이레를 보여달라고 했으면 「쓰는 날」 이레여야 한다 —
@@ -8999,36 +8971,33 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(page.includes('forecastAutoDrafts') && page.includes('autoDraftDays'), '자동 작성 화면이 날짜별 목록을 만든다')
     ok(page.includes('날짜별 목록'), '그 이름으로 보여준다')
     const dayUi = rf(new URL('../app/autodraft/DayList.tsx', import.meta.url), 'utf8')
-    ok(dayUi.includes('이 날 바꾸기') && dayUi.includes('<DayAssign'), '예정 줄에서 그 날 것을 정할 수 있다')
+    const cronDraft = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
 
     /*
-     * **고를 목록이 실제로 나와야 한다** (2026-08-24 회원 지적: "날짜별 목록에서 주제나
-     * 키워드 바꾸면 목록이 안나와. 목록 나와서 하게 해주고 주제는 주제탐색기도 하게 해줘").
+     * **어디에서도 주제를 확정하라고 묻지 않는다** (2026-08-25 회원 지적: "내가 주제 계속
+     * 확정하는거 아니라 했잖아. 근데 왜 또 주제 고르라고 나오는거야").
      *
-     * 고를 수 있는 주제를 **담은 것만**으로 뒀던 것이 원인이다. 회원이 담은 주제가
-     * 하나뿐이라 고르는 칸에 한 줄만 떴다 — 목록이 아니었다.
+     * 세 자리에 있었다 — 설정의 ③ 칸, 날짜별 목록의 「이 날 바꾸기」, 그리고 둘이 함께 쓰던
+     * components/DayAssign.tsx. 셋을 다 없앤다. 하나만 없애면 다른 자리에서 또 묻는다.
      */
-    const cronDraft = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
-    const assign = rf(new URL('../components/DayAssign.tsx', import.meta.url), 'utf8')
-    ok(/\[\.\.\.new Set\(\[\.\.\.\(plan\?\.topics \?\? \[\]\), \.\.\.INFO_TOPICS\]\)\]/.test(assign),
-      '담은 주제와 기본 주제를 함께 보여준다 (하나 담았어도 고를 게 있다)')
-    ok(assign.includes('<TopicExplorer'), '그 자리에서 주제 탐색도 쓸 수 있다')
-    ok(assign.includes("type=\"date\""), '날짜를 골라서 정할 수 있다')
-    // 키워드는 ①에서 이미 고른다 — 날짜마다 또 물으면 같은 것을 두 번 묻는 셈이다
-    ok(!assign.includes('keywordPool'), '날짜별 지정에서 키워드를 다시 묻지 않는다')
-    ok(assign.includes('그 날 쓸 주제'), '고르는 것이 주제라는 것을 밝힌다')
-    ok(assign.includes('min={today}'), '지난 날짜는 고르지 못하게 한다')
-    // 저장은 부르는 쪽이 한다 — 설정 화면에서 고치던 다른 값이 덮이면 안 된다
-    ok(assign.includes('onPick') && !assign.includes("fetch('/api/autodraft/plan'"), '여기서 저장하지 않고 넘겨준다')
+    const { existsSync } = require('node:fs')
+    ok(!existsSync(new URL('../components/DayAssign.tsx', import.meta.url)), '날짜별 주제 고르는 칸이 아예 없다')
+    const dayCodeAll = dayUi.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    ok(!dayCodeAll.includes('DayAssign') && !dayCodeAll.includes('이 날 바꾸기'), '날짜별 목록에서 주제를 고치라고 하지 않는다')
 
-    // 설정 화면에서도 날짜를 골라 정할 수 있다 (회원이 「애초에 여기서」라고 한 자리)
     const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
-    ok(panel.includes('③ 날짜별로 주제 정하기') && panel.includes('<DayAssign'), '설정 화면에서도 날짜별로 주제를 정한다')
-    ok(panel.includes('날짜 골라서 주제 정하기'), '날짜를 고르는 버튼이 있다')
-    // 날짜만 고쳤을 때도 「저장 안 됨」이 떠야 한다
-    ok(/a\.days \?\? \[\]/.test(panel), '날짜 지정도 저장 여부 비교에 넣는다')
-    ok(panel.includes("save({ off: false, keywords: [], topics: [], days: [], skip: [] })"), '「전부 지우고 자동으로」가 날짜 지정·쉬는 날도 지운다')
-    ok(dayUi.includes('자동으로 되돌리기'), '정한 것을 도로 풀 수 있다')
+    const panelCode = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    ok(!panelCode.includes('DayAssign') && !panelCode.includes('날짜 골라서 주제 정하기'), '설정 화면에도 날짜별 주제 칸이 없다')
+    ok(!panelCode.includes('plan.days') && !panelCode.includes('a.days'), '날짜별 지정을 저장하지 않는다')
+    ok(panel.includes("save({ off: false, keywords: [], topics: [], skip: [] })"), '「전부 지우고 자동으로」가 고른 것과 쉬는 날을 지운다')
+
+    /*
+     * **누가 정하는지 화면이 말해줘야 한다.** 안 그러면 「그래서 내일 주제는 누가 정하지」를
+     * 회원이 짐작해야 한다 — 짐작하게 두면 또 확정하려고 든다.
+     */
+    ok(panel.includes('어느 날 어느 주제를 쓸지는 앱이 정합니다'), '주제는 앱이 고른다고 밝힌다')
+    // 하나만 담으면 매일 같은 주제다 — 규칙을 아는 사람만 알 수 있게 두면 안 된다
+    ok(/topics \?\? \[\]\)\.length === 1/.test(panel) && panel.includes('매일 같은 주제'), '주제를 하나만 담으면 그 자리에서 말해준다')
     /*
      * **「삭제」라고 부른다** (2026-08-24 회원 지적: "이날 안쓰기 누르면 삭제는 되는데 잘
      * 표시가 나지 않아. 그냥 삭제로 버튼 바꿔주고 삭제하겠습니까? 물어서 삭제될 수 있게").
@@ -9068,10 +9037,9 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     // 건너뛴 날을 실패로 기록하면 화면에 빨간 줄이 뜨고 알림까지 나간다
     ok(/skip\?\.includes\(today\)/.test(cronDraft) && /건너뛰기로 정해두셨습니다/.test(cronDraft),
       '크론이 건너뛴 날을 실패로 적지 않는다')
-    ok(dayUi.includes('직접 정함'), '알아서 도는 날과 내가 정한 날을 구별한다')
-    // 이미 쓴 날을 고치는 칸을 두면 「고쳤는데 왜 글이 그대로지」가 된다
-    ok(/d\.when !== 'past' && !d\.postId/.test(dayUi), '이미 쓴 날은 바꾸지 못하게 한다')
-    ok(/planAssignment\(\{[^)]*date: today/.test(cronDraft), '크론이 그 날 지정을 본다 (안 넘기면 지정이 무시된다)')
+    // 이미 쓴 날에 「그 날 쉬기」를 두면 「눌렀는데 왜 글이 그대로지」가 된다
+    ok(/d\.when !== 'past' && !d\.postId/.test(dayUi), '이미 쓴 날은 손대지 못하게 한다')
+    ok(/planAssignment\(\{[^)]*date: today/.test(cronDraft), '크론이 그 날을 넘긴다 (안 넘기면 쉬는 날이 무시된다)')
   }
 
   /*

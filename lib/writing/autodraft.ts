@@ -297,20 +297,6 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
     }
     return out
   }
-  /*
-   * 날짜별 지정 — 날짜 꼴이 아니거나 반쪽인 것은 버린다. 그대로 두면 크론이 그 날
-   * 「키워드가 없습니다」로 실패한다. 같은 날이 둘이면 **뒤엣것을 남긴다** (나중에 고친 것).
-   */
-  const byDate = new Map<string, { date: string; topic: string; keyword?: string }>()
-  for (const d of Array.isArray(raw?.days) ? raw.days : []) {
-    const date = (d?.date ?? '').slice(0, 10)
-    const topic = (d?.topic ?? '').trim()
-    // **키워드는 없어도 된다** — 없으면 로테이션이 고른다 (2026-08-25 회원 결정)
-    const keyword = (d?.keyword ?? '').trim()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !topic) continue
-    byDate.set(date, keyword ? { date, topic, keyword } : { date, topic })
-  }
-
   const skip = [
     ...new Set(
       (Array.isArray(raw?.skip) ? raw.skip : [])
@@ -319,11 +305,15 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
     ),
   ].sort()
 
+  /*
+   * 예전에 저장해 둔 날짜별 지정(days)은 **여기서 조용히 사라진다** (2026-08-25).
+   * 새 객체를 만들어 돌려주므로 옛 키는 따라오지 않는다 — 회원이 설정을 한 번 저장하면
+   * 저장소에서도 없어진다. 없앤 이유는 lib/types.ts 의 AutoDraftPlan 주석에 적어 두었다.
+   */
   return {
     off: raw?.off === true,
     keywords: list(raw?.keywords),
     topics: list(raw?.topics),
-    days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     skip,
     updatedAt: raw?.updatedAt,
   }
@@ -335,44 +325,22 @@ export function planAssignment(args: {
   posts: Post[] | undefined
   /** 계획에 키워드가 없을 때 쓸 것 (순위 추적 → 지점 지역 키워드) */
   fallbackKeywords: string[]
-  /** 어느 날 몫인가 — 그 날에 콕 집어 정해둔 것이 있으면 그게 먼저다 */
+  /** 어느 날 몫인가 — 쉬기로 한 날이면 아무것도 쓰지 않는다 */
   date?: string
 }): Assignment | null {
   const plan = normalizePlan(args.plan)
   if (plan.off) return null
 
   /*
-   * **날짜별로 정해둔 것이 먼저다** (2026-08-24). 로테이션이 덮으면 정해둔 의미가 없다.
-   * 회원: "하나의 주제를 계속 쓰고 싶지 않아 날짜 설정해서 날짜별로 설정할 수 있게 해줘."
+   * **쉬기로 한 날은 아무것도 쓰지 않는다** (회원 요청: 날짜별 목록에 "삭제기능 만들어줘").
+   * 회원이 날짜를 두고 정하는 것은 이것 하나뿐이다 — 무엇을 쓸지는 앱이 정한다 (2026-08-25).
    */
   const wantDate = args.date?.slice(0, 10)
-  // **건너뛰기로 정해둔 날은 아무것도 쓰지 않는다.** 정해둔 것(days)보다도 먼저 본다 —
-  // 「이 날 정했다가 나중에 건너뛰기로 바꿨다」가 자연스러운 순서다
   if (wantDate && plan.skip?.includes(wantDate)) return null
-  const fixed = wantDate ? plan.days?.find((d) => d.date === wantDate) : undefined
 
   const keywords = plan.keywords?.length ? plan.keywords : args.fallbackKeywords
   const topics = plan.topics?.length ? plan.topics : INFO_TOPICS
-  const rotated = pickAssignment({ posts: args.posts, keywords, topics })
-
-  if (fixed) {
-    /*
-     * **주제만 갈아 끼운다.** 회원이 정한 것은 「그 날 무슨 이야기를 쓰나」이고, 키워드는
-     * ①에서 고른 범위 안에서 로테이션이 고르게 둔다 — 날짜마다 키워드를 또 고르게 하면
-     * 같은 것을 두 번 묻는 셈이다 (2026-08-25 회원 지적).
-     *
-     * 예전에 키워드까지 저장해 둔 날은 그 값을 그대로 쓴다.
-     */
-    const mainKeyword = fixed.keyword ?? rotated?.mainKeyword ?? keywords[0]?.trim()
-    if (!mainKeyword) return null
-    return {
-      mainKeyword,
-      topic: fixed.topic,
-      why: `${fixed.date} 에 「${fixed.topic}」을 쓰기로 정해두셨습니다.`,
-    }
-  }
-
-  return rotated
+  return pickAssignment({ posts: args.posts, keywords, topics })
 }
 
 /**
@@ -400,7 +368,6 @@ export function planSummary(plan: AutoDraftPlan | undefined): string {
     few(p.keywords, '키워드는 순위 추적 목록 전부', '키워드'),
     few(p.topics, `주제는 기본 ${INFO_TOPICS.length}개 전부`, '주제'),
   ]
-  if (p.days?.length) parts.unshift(`날짜별 지정 ${p.days.length}일`)
   if (p.skip?.length) parts.unshift(`건너뛰는 날 ${p.skip.length}일`)
   return parts.join(' · ')
 }

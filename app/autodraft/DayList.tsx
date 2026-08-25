@@ -5,20 +5,21 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { AutoDraftPlan } from '@/lib/types'
 import type { AutoDraftDay } from '@/lib/writing/autodraft'
-import { Badge, btnGhost } from '@/components/ui'
-import DayAssign from '@/components/DayAssign'
+import { Badge } from '@/components/ui'
 
 /**
- * **날짜별 목록 — 보고, 그 날 것을 직접 정한다** (2026-08-24 회원 요청).
+ * **날짜별 목록 — 무엇을 썼고 앞으로 무엇을 쓰나** (2026-08-24 회원 요청).
  *
- * "하나의 주제를 계속 쓰고 싶지 않아 날짜 설정해서 날짜별로 설정할 수 있게 해줘."
+ * "이거는 매일 달라질거야 그래서 날짜별로 목록이 보이게 만들어달란 소리였어."
  *
- * 범위만 정하면(키워드·주제) 앱이 알아서 돌리는데, 고른 주제가 하나뿐이면 매일 같은 주제가
- * 나온다. 그렇다고 **매일 하나씩 지정하게 만들면 손으로 쓰는 것과 같아진다** — 그래서
- * 예정 줄에서 **바꾸고 싶은 날만** 고치게 한다. 안 고친 날은 지금처럼 알아서 돌아간다.
+ * ── 여기서 주제를 고치지 않는다 (2026-08-25 회원 지적) ──────────
+ * "내가 주제 계속 확정하는거 아니라 했잖아. 근데 왜 또 주제 고르라고 나오는거야."
  *
- * 고친 값은 그 자리에서 저장한다. 「설정 저장」을 또 누르게 하면 어느 버튼이 무엇을
- * 저장하는지 회원이 판단해야 한다.
+ * 한동안 예정 줄마다 「이 날 바꾸기」를 달아 주제를 정하게 했다. 그게 회원이 싫다고 한
+ * 바로 그것이다 — 날짜마다 확정하게 만들면 손으로 쓰는 것과 같아진다. 무엇을 쓸지는
+ * 설정의 ①② 범위를 보고 앱이 정한다.
+ *
+ * 이 화면에서 날짜를 두고 할 수 있는 일은 **그 날 쉬기(삭제)와 되돌리기**뿐이다.
  */
 export default function DayList({
   days,
@@ -32,10 +33,8 @@ export default function DayList({
   emptyNote: string
 }) {
   const router = useRouter()
-  const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
-  const fixedDates = new Set((plan?.days ?? []).map((d) => d.date))
 
   async function save(next: AutoDraftPlan) {
     setSaving(true)
@@ -48,23 +47,12 @@ export default function DayList({
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error ?? '저장하지 못했습니다.')
-      setEditing(null)
       router.refresh()
     } catch (e) {
       setMsg(e instanceof Error ? e.message : '저장하지 못했습니다.')
     }
     setSaving(false)
   }
-
-  // 그 날 쓸 **주제만** 정한다 — 키워드는 ①에서 고른 범위에서 로테이션이 고른다 (2026-08-25)
-  const setDay = (date: string, t: string) =>
-    save({
-      ...plan,
-      days: [...(plan?.days ?? []).filter((d) => d.date !== date), { date, topic: t }],
-    })
-
-  const clearDay = (date: string) =>
-    save({ ...plan, days: (plan?.days ?? []).filter((d) => d.date !== date) })
 
   /*
    * **앞날은 「건너뛰기」로 뺀다** (2026-08-24 회원 요청: "이거 삭제기능 만들어줘").
@@ -164,8 +152,6 @@ export default function DayList({
 
       <ul className="space-y-2">
         {written.map((d) => {
-          const fixed = fixedDates.has(d.date)
-          const open = editing === d.date
           return (
             <li
               key={d.date}
@@ -175,8 +161,6 @@ export default function DayList({
                 <span className="tnum text-[12px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
                 {d.when === 'today' && <Badge tone="info">오늘</Badge>}
                 {d.when === 'upcoming' && <Badge tone="default">예정</Badge>}
-                {/* 알아서 도는 날과 내가 정한 날을 구별한다 */}
-                {fixed && d.when !== 'past' && <Badge tone="good">직접 정함</Badge>}
                 {d.ok === true && <Badge tone="good">성공</Badge>}
                 {d.ok === false && <Badge tone="bad">실패</Badge>}
                 {d.manual && <Badge tone="default">직접 실행</Badge>}
@@ -199,28 +183,11 @@ export default function DayList({
               )}
 
               {/*
-                이미 쓴 날은 못 바꾼다 — 지난 일을 고치는 칸을 두면 「고쳤는데 왜 글이
-                그대로지」가 된다. 오늘도 아직 안 썼으면 바꿀 수 있다.
+                아직 안 쓴 날은 「그 날 쉬기」만 할 수 있다. 이미 쓴 날은 손댈 것이 없다 —
+                지난 일을 고치는 칸을 두면 「고쳤는데 왜 글이 그대로지」가 된다.
               */}
-              {d.when !== 'past' && !d.postId && !open && (
+              {d.when !== 'past' && !d.postId && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setEditing(d.date)}
-                    className={`${btnGhost} !px-2.5 !py-1.5 !text-[11px]`}
-                  >
-                    이 날 바꾸기
-                  </button>
-                  {fixed && (
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => clearDay(d.date)}
-                      className="muted rounded-lg px-2 py-1 text-[11px] font-semibold underline disabled:opacity-50"
-                    >
-                      자동으로 되돌리기
-                    </button>
-                  )}
                   {/*
                     **「삭제」로 부른다** (2026-08-24 회원 지적: "이날 안쓰기 누르면 삭제는
                     되는데 잘 표시가 나지 않아. 그냥 삭제로 버튼 바꿔주고").
@@ -257,18 +224,6 @@ export default function DayList({
                 </div>
               )}
 
-              {open && (
-                <div className="mt-2">
-                  <DayAssign
-                    plan={plan}
-                    fixedDate={d.date}
-                    today={today}
-                    onPick={(day) => setDay(day.date, day.topic)}
-                    onCancel={() => setEditing(null)}
-                  />
-                  {saving && <p className="muted mt-1 text-[11px]">저장 중…</p>}
-                </div>
-              )}
             </li>
           )
         })}
@@ -288,62 +243,27 @@ export default function DayList({
             </span>
           </summary>
           <ul className="mt-2 space-y-2">
-            {upcoming.map((d) => {
-              const fixed = fixedDates.has(d.date)
-              const open = editing === d.date
-              return (
-                <li key={d.date} className="bd rounded-xl border border-dashed px-3.5 py-3">
-                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                    <span className="tnum text-[12px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
-                    {d.when === 'today' && <Badge tone="info">오늘</Badge>}
-                    {fixed && <Badge tone="good">직접 정함</Badge>}
-                  </div>
-                  <p className="text-[13px] leading-snug font-semibold">
-                    {d.keyword} <span className="muted font-medium">· {d.topic}</span>
-                  </p>
-                  {!open && (
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setEditing(d.date)}
-                        className={`${btnGhost} !px-2.5 !py-1.5 !text-[11px]`}
-                      >
-                        이 날 바꾸기
-                      </button>
-                      {fixed && (
-                        <button
-                          type="button"
-                          disabled={saving}
-                          onClick={() => clearDay(d.date)}
-                          className="muted rounded-lg px-2 py-1 text-[11px] font-semibold underline disabled:opacity-50"
-                        >
-                          자동으로 되돌리기
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() => skipDay(d.date)}
-                        className="ml-auto rounded-xl border border-rose-500/40 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 transition hover:bg-rose-500/10 disabled:opacity-50 dark:text-rose-300"
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  )}
-                  {open && (
-                    <div className="mt-2">
-                      <DayAssign
-                        plan={plan}
-                        fixedDate={d.date}
-                        today={today}
-                        onPick={(day) => setDay(day.date, day.topic)}
-                        onCancel={() => setEditing(null)}
-                      />
-                    </div>
-                  )}
-                </li>
-              )
-            })}
+            {upcoming.map((d) => (
+              <li key={d.date} className="bd rounded-xl border border-dashed px-3.5 py-3">
+                <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                  <span className="tnum text-[12px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
+                  {d.when === 'today' && <Badge tone="info">오늘</Badge>}
+                </div>
+                <p className="text-[13px] leading-snug font-semibold">
+                  {d.keyword} <span className="muted font-medium">· {d.topic}</span>
+                </p>
+                <div className="mt-2 flex">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => skipDay(d.date)}
+                    className="ml-auto rounded-xl border border-rose-500/40 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 transition hover:bg-rose-500/10 disabled:opacity-50 dark:text-rose-300"
+                  >
+                    삭제
+                  </button>
+                </div>
+              </li>
+            ))}
           </ul>
         </details>
       )}
