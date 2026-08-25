@@ -8868,27 +8868,40 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(forecastAutoDrafts({ plan: {}, posts: [], fallbackKeywords: [], from: '2026-08-25', days: 4 }).length === 0, '쓸 키워드가 없으면 예정도 없다')
     ok(forecastAutoDrafts({ plan: {}, posts: [], fallbackKeywords: FALLBACK, from: '엉뚱한날짜', days: 4 }).length === 0, '날짜가 이상하면 터지지 않는다')
 
-    // ── 지난 기록과 예정을 한 목록으로
+    /*
+     * ── 지난 기록과 **회원이 채워 둔 앞날**을 한 목록으로 ──────────
+     *
+     * 회원 지적 (2026-08-25): "나는 하루씩만 설정하고 싶다고. 근데 왜 자꾸 그 후의 일정까지
+     * 설정되게 하는거야!" — 그래서 앞날은 **채운 날만** 넣는다. 계산한 예정은 넣지 않는다.
+     */
+    const PLANNED = [{ date: '2026-08-26', topic: '채운주제' }]
     const rows = autoDraftDays({
       runs: [
         { date: '2026-08-24', ok: true, keyword: 'A', topic: '가', score: 98, postId: 'p1' },
         { date: '2026-08-23', ok: false, keyword: 'B', topic: '나', error: '글을 쓰지 못했습니다' },
       ],
-      forecast: fc,
+      planned: PLANNED,
       today: '2026-08-25',
     })
-    ok(rows[0].date === '2026-08-28' && rows[rows.length - 1].date === '2026-08-23', '최신이 위로 온다', rows.map((r) => r.date).join())
-    ok(rows.find((r) => r.date === '2026-08-25')?.when === 'today', '오늘은 오늘이라고 표시한다')
+    ok(rows[0].date === '2026-08-26' && rows[rows.length - 1].date === '2026-08-23', '최신이 위로 온다', rows.map((r) => r.date).join())
     ok(rows.find((r) => r.date === '2026-08-24')?.score === 98, '지난 것에는 점수가 붙는다')
     ok(rows.find((r) => r.date === '2026-08-23')?.error?.includes('쓰지 못했습니다'), '실패한 날은 이유가 붙는다')
-    ok(rows.find((r) => r.date === '2026-08-26')?.when === 'upcoming', '앞날은 예정')
+    ok(rows.find((r) => r.date === '2026-08-26')?.when === 'upcoming', '채워 둔 앞날은 예정')
+    // 회원이 정하지 않은 날은 목록에 없다 — 있으면 「그 후 일정까지 설정됐다」로 읽힌다
+    ok(!rows.some((r) => ['2026-08-27', '2026-08-28', '2026-08-29'].includes(r.date)),
+      '채우지 않은 앞날은 목록에 없다', rows.map((r) => r.date).join())
+    ok(rows.every((r) => r.when !== 'upcoming' || r.keyword === undefined),
+      '앞날에는 키워드를 미리 적지 않는다 (그 날 아침에 정해진다)')
+    // 지나간 날짜로 채워 둔 것이 남아 있어도 「앞으로 쓸 것」이라고 하지 않는다
+    ok(!autoDraftDays({ runs: [], planned: [{ date: '2026-08-01', topic: '옛날' }], today: '2026-08-25' }).length,
+      '지난 날짜로 채워 둔 것은 앞날에 넣지 않는다')
 
     /*
-     * **이미 기록이 있는 날은 예정에서 뺀다.** 같은 날이 두 줄이면 어느 쪽이 맞는지 알 수 없다.
+     * **이미 기록이 있는 날은 앞날에서 뺀다.** 같은 날이 두 줄이면 어느 쪽이 맞는지 알 수 없다.
      */
     const dup = autoDraftDays({
       runs: [{ date: '2026-08-25', ok: true, keyword: 'A', topic: '가' }],
-      forecast: fc,
+      planned: [{ date: '2026-08-25', topic: '채운주제' }],
       today: '2026-08-25',
     })
     ok(dup.filter((r) => r.date === '2026-08-25').length === 1, '같은 날이 두 줄이 되지 않는다')
@@ -8903,7 +8916,7 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
         { date: '2026-08-24', ok: false, keyword: 'A', topic: '가', error: '실패' },
         { date: '2026-08-24', ok: true, keyword: 'A', topic: '가', score: 98 },
       ],
-      forecast: [],
+      planned: [],
       today: '2026-08-25',
     })
     ok(twice.length === 1 && twice[0].ok === true, '한 날에 성공과 실패가 섞이면 성공을 보여준다')
@@ -8996,6 +9009,12 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(rolledTopic !== '나주제', '옆날에 쓴 주제는 피한다', rolledTopic)
     ok(rolled.days.find((d) => d.date === '2026-08-27').topic === '나주제', '다른 날은 건드리지 않는다')
     ok(rerollTopic({ topics: [] }, '2026-08-26').days.length === 1, '담은 주제가 없으면 기본 주제에서 준다')
+    /*
+     * **담은 주제가 하나뿐이면 바꿀 것이 없다** — 눌러도 그대로다. 화면이 그렇다고 말해야
+     * 한다 (조용히 아무 일도 안 하면 버튼이 고장 난 줄 안다). 실제로 회원 설정이 그랬다.
+     */
+    const stuck = rerollTopic({ topics: ['하나뿐'], days: [{ date: '2026-08-26', topic: '하나뿐' }] }, '2026-08-26')
+    ok(stuck.days.find((d) => d.date === '2026-08-26').topic === '하나뿐', '주제가 하나뿐이면 바꿀 것이 없다')
 
     /*
      * **삭제** (2026-08-24 회원 요청: 날짜별 목록에 "이거 삭제기능 만들어줘").
@@ -9024,7 +9043,14 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     // 화면이 실제로 이 목록을 그린다
     const { readFileSync: rf } = require('node:fs')
     const page = rf(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
-    ok(page.includes('forecastAutoDrafts') && page.includes('autoDraftDays'), '자동 작성 화면이 날짜별 목록을 만든다')
+    ok(page.includes('autoDraftDays'), '자동 작성 화면이 날짜별 목록을 만든다')
+    /*
+     * **화면이 앞날을 계산해 그리지 않는다** (2026-08-25 회원 지적: "나는 하루씩만 설정하고
+     * 싶다고. 근데 왜 자꾸 그 후의 일정까지 설정되게 하는거야!").
+     */
+    const pageCode = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    ok(!pageCode.includes('forecastAutoDrafts'), '정하지 않은 앞날을 계산해 그리지 않는다')
+    ok(/planned/.test(pageCode), '앞날은 회원이 채워 둔 날에서만 온다')
     ok(page.includes('날짜별 목록'), '그 이름으로 보여준다')
     const dayUi = rf(new URL('../app/autodraft/DayList.tsx', import.meta.url), 'utf8')
     const cronDraft = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
@@ -9050,17 +9076,22 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
 
     // ① 날짜를 고르는 자리가 있다 (회원이 「왜 또 날짜 선택하는게 없어」라고 한 자리)
     ok(/type="date"/.test(panelCode) && panelCode.includes('언제부터'), '언제부터 채울지 날짜를 고른다')
-    ok(panelCode.includes('며칠치') && panelCode.includes('주제 채우기'), '며칠치인지 고르고 한 번에 채운다')
-    // 회원이 「최소가 3일치네. 난 선택한 날 하루면 돼」라고 한 자리 — 하루가 목록에 있어야 한다
-    ok(/\[1, 2, 3, 5, 7, 14, 30\]/.test(panelCode), '하루치도 고를 수 있다')
-    ok(/useState\(1\)[\s\S]{0,80}fillCount|const \[fillCount, setFillCount\] = useState\(1\)/.test(panelCode),
-      '기본은 하루다 (가장 흔한 일이 기본이어야 한다)')
+    ok(panelCode.includes('이 날 주제 채우기'), '고른 날 하나를 채운다')
+    /*
+     * **한 번에 하루만** (2026-08-25 회원 지적: "나는 하루씩만 설정하고 싶다고. 근데 왜 자꾸
+     * 그 후의 일정까지 설정되게 하는거야!"). 며칠치를 고르는 칸이 있으면 또 여러 날이 잡힌다.
+     */
+    ok(!panelCode.includes('며칠치') && !/fillCount/.test(panelCode), '며칠치를 고르는 칸이 없다')
+    ok(/count: 1/.test(panelCode), '채우기는 고른 날 하루만 보낸다')
     ok(panelCode.includes('min={today}'), '지난 날짜는 고르지 못하게 한다')
     ok(panelCode.includes("fetch('/api/autodraft/fill'"), '주제는 서버 로테이션이 채운다 (화면이 지어내지 않는다)')
 
     // ② 그런데 주제를 적거나 고르라고는 하지 않는다
-    ok(panel.includes('날짜만 고르시면 주제는 앱이 채웁니다'), '누가 주제를 정하는지 밝힌다')
+    ok(panel.includes('한 번에 고른 날 하루만 채웁니다') && panel.includes('주제는 앱이 넣으니'),
+      '한 번에 하루만 채운다는 것과, 주제는 앱이 넣는다는 것을 밝힌다')
+    ok(panel.includes('채우지 않은 날은 잡히지 않습니다'), '안 채운 날은 잡히지 않는다고 밝힌다')
     ok(panelCode.includes('rerollTopic') && panelCode.includes('다른 주제로'), '마음에 안 들면 앱이 다른 것으로 바꿔준다')
+    ok(panel.includes('바꿀 것이 없습니다'), '바꿀 주제가 없으면 그렇다고 말한다 (조용히 안 바뀌면 고장으로 읽힌다)')
     /*
      * ③ 칸 안에 주제를 고르는 입력이 섞이면 도로 「주제 고르라고 나온다」가 된다. ② 칸의
      * 탐색기와 섞이지 않게 ③ 구간만 잘라서 본다.
@@ -9102,20 +9133,24 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(dayUi.includes('삭제함 — 이 날은 쓰지 않습니다') && dayUi.includes('다시 쓰기'), '삭제한 날을 남겨 두고 되돌릴 수 있다')
 
     /*
-     * **예정은 접어 둔다** (2026-08-25). 회원: "엥? 25일부터 다시 생겼는데? 지금 작성된
-     * 목록 외에는 모두 삭제해줘."
+     * **앞날은 회원이 채운 것만, 그리고 접어 둔다** (2026-08-25).
      *
-     * 예정 줄은 저장된 것이 아니라 계산해서 그리는 것이라 **지워도 화면을 열면 다시 생긴다.**
-     * 회원은 그걸 세 번 지웠다 — 지울 수 없는 것을 계속 지우게 만든 것이 잘못이다.
-     * 이 화면에서 보려던 것은 **실제로 쓴 것**이므로 그쪽을 앞에 두고 예정은 접는다.
+     * 회원이 세 번 지우려 했고("엥? 25일부터 다시 생겼는데?"), 끝내 화를 냈다 — "나는
+     * 하루씩만 설정하고 싶다고. 근데 왜 자꾸 그 후의 일정까지 설정되게 하는거야!"
+     *
+     * 계산한 예정 줄을 「참고용」이라고 적어 둬도 **줄로 서 있으면 정해진 일정으로 읽힌다.**
+     * 이제 여기 있는 앞날 줄은 전부 회원이 채운 것이고, 그마저 접어 둔다.
      */
     ok(/const written = days\.filter/.test(dayUi) && /const upcoming = days\.filter/.test(dayUi),
       '쓴 것과 앞으로 쓸 것을 가른다')
-    ok(/<details[\s\S]{0,400}앞으로 쓸 예정/.test(dayUi), '예정은 접어 둔다')
-    ok(dayUi.includes('아직 안 쓴 것입니다'), '예정이 기록이 아니라는 것을 밝힌다')
+    ok(/<details[\s\S]{0,400}채워 두신 앞날/.test(dayUi), '채워 둔 앞날은 접어 둔다')
+    ok(!dayCode.includes('앞으로 쓸 예정'), '정하지 않은 날을 「예정」이라고 부르지 않는다')
+    ok(dayUi.includes('아직 안 쓴 것입니다'), '앞날이 기록이 아니라는 것을 밝힌다')
     ok(dayUi.includes('아직 쓴 글이 없습니다'), '쓴 것이 없으면 그렇게 말한다 (빈 화면을 남기지 않는다)')
+    // 앞날 줄에 키워드를 적으면 그 날 아침에 달라져서 거짓말이 된다
+    ok(dayUi.includes('키워드는 그 날 아침에'), '앞날에는 키워드를 미리 적지 않는다고 밝힌다')
     const autoPage = rf(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
-    ok(autoPage.includes('앞으로 쓸 예정은 아래에 접어 뒀습니다'), '카드 설명도 같은 말을 한다')
+    ok(autoPage.includes('채우지 않은 날은 여기 나오지 않습니다'), '카드 설명도 같은 말을 한다')
     ok(dayUi.includes("'/api/autodraft/runs'") && /기록을 삭제할까요/.test(dayUi), '지난 기록도 물어보고 지운다')
     ok((dayUi.match(/>\s*삭제\s*</g) ?? []).length >= 2, '예정과 지난 기록 둘 다 같은 이름의 버튼을 쓴다')
     // 기록만 정리하려다 글이 날아가면 안 된다
