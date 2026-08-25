@@ -348,6 +348,129 @@ export function planSummary(plan: AutoDraftPlan | undefined): string {
 }
 
 /**
+ * **날짜별로 무엇을 쓰나** — 지난 것과 앞으로 쓸 것을 한 목록에.
+ *
+ * ── 회원 요청 (2026-08-24) ───────────────────────────────────
+ * "이거는 매일 달라질거야 그래서 날짜별로 목록이 보이게 만들어달란 소리였어."
+ *
+ * 「지금 저장된 설정」은 **범위**만 말해준다 (키워드 3개 · 주제 5개). 그런데 실제로 쓰이는
+ * 조합은 매일 달라진다 — 회원이 알고 싶은 것은 「그래서 내일은 뭘 쓰지」다.
+ *
+ * ── 앞날을 어떻게 아나 ──────────────────────────────────────
+ * 고르는 규칙이 **정해져 있어서** 미리 계산할 수 있다 (같은 입력이면 같은 답이 나온다 —
+ * pickAssignment 의 마지막 정렬 기준이 그것 때문에 있다). 하루치를 고른 뒤 그 글이 쓰인
+ * 셈 치고 다음 날을 다시 고르면 된다.
+ *
+ * **예정은 예정일 뿐이다.** 그 사이에 손으로 정보글을 쓰거나 설정을 바꾸면 달라진다 —
+ * 화면에 그렇게 적는다.
+ */
+export function forecastAutoDrafts(args: {
+  plan: AutoDraftPlan | undefined
+  posts: Post[] | undefined
+  fallbackKeywords: string[]
+  /** 이 날짜부터 (YYYY-MM-DD) */
+  from: string
+  days: number
+}): { date: string; keyword: string; topic: string }[] {
+  const plan = normalizePlan(args.plan)
+  if (plan.off) return []
+  const out: { date: string; keyword: string; topic: string }[] = []
+  // 예정을 계산하는 동안만 쓰는 가짜 글 — 실제 저장소에는 넣지 않는다
+  let posts = [...(args.posts ?? [])]
+  const start = Date.parse(`${args.from.slice(0, 10)}T00:00:00.000Z`)
+  if (!Number.isFinite(start)) return []
+
+  for (let i = 0; i < Math.max(0, Math.trunc(args.days)); i++) {
+    const date = new Date(start + i * 86_400_000).toISOString().slice(0, 10)
+    const a = planAssignment({ plan, posts, fallbackKeywords: args.fallbackKeywords })
+    if (!a) break
+    out.push({ date, keyword: a.mainKeyword, topic: a.topic })
+    posts = [
+      {
+        id: `forecast-${i}`,
+        type: 'info',
+        status: 'draft',
+        storeId: '',
+        title: '',
+        body: '',
+        mainKeyword: a.mainKeyword,
+        subKeywords: [],
+        tags: [],
+        auto: true,
+        autoTopic: a.topic,
+        createdAt: `${date}T05:00:00.000Z`,
+        updatedAt: `${date}T05:00:00.000Z`,
+      },
+      ...posts,
+    ]
+  }
+  return out
+}
+
+export interface AutoDraftDay {
+  date: string
+  keyword: string
+  topic: string
+  /** 지난 날 · 오늘 · 앞으로 */
+  when: 'past' | 'today' | 'upcoming'
+  ok?: boolean
+  error?: string
+  score?: number | null
+  postId?: string
+  /** 손으로 눌러 돌린 것인가 */
+  manual?: boolean
+}
+
+/**
+ * 실행 기록 + 예정을 **한 목록으로** 합친다.
+ *
+ * 두 목록을 따로 두면 회원이 「어제 건 어디 있지」를 두 번 찾는다. 최신이 위로 오게
+ * (앞으로 쓸 것 → 오늘 → 지난 것) 두고, 지난 것에는 성공·실패와 점수를 붙인다.
+ */
+export function autoDraftDays(args: {
+  runs: { date: string; ok: boolean; keyword?: string; topic?: string; error?: string; score?: number | null; postId?: string; manual?: boolean }[] | undefined
+  forecast: { date: string; keyword: string; topic: string }[]
+  today: string
+  /** 지난 기록은 이만큼만 */
+  pastKeep?: number
+}): AutoDraftDay[] {
+  const runs = [...(args.runs ?? [])]
+  /*
+   * 하루에 여러 번 돌 수 있다 (실패하고 손으로 다시 누르는 등). 그 날을 대표하는 것은
+   * **성공한 실행**이다 — 실패만 있으면 그중 마지막 것을 쓴다.
+   */
+  const byDate = new Map<string, (typeof runs)[number]>()
+  for (const r of runs) {
+    const prev = byDate.get(r.date)
+    if (!prev || (!prev.ok && r.ok)) byDate.set(r.date, r)
+  }
+
+  const past: AutoDraftDay[] = [...byDate.values()]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, args.pastKeep ?? 14)
+    .map((r): AutoDraftDay => ({
+      date: r.date,
+      keyword: r.keyword ?? '—',
+      topic: r.topic ?? '—',
+      when: r.date === args.today ? 'today' : 'past',
+      ok: r.ok,
+      error: r.error,
+      score: r.score ?? null,
+      postId: r.postId,
+      manual: r.manual,
+    }))
+
+  // 이미 기록이 있는 날은 예정에서 뺀다 — 같은 날이 두 줄이면 어느 쪽이 맞는지 알 수 없다
+  const done = new Set(past.map((p) => p.date))
+  const upcoming: AutoDraftDay[] = args.forecast
+    .filter((f) => !done.has(f.date))
+    .map((f): AutoDraftDay => ({ ...f, when: f.date === args.today ? 'today' : 'upcoming' }))
+    .sort((a, b) => b.date.localeCompare(a.date))
+
+  return [...upcoming, ...past]
+}
+
+/**
  * 초안이 쓸 만한가 — **점수로 거르지 않는다.**
  *
  * 발행선(85)에 못 미쳐도 지우지 않고 남긴다. 이유는 둘이다:

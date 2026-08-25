@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { readDB } from '@/lib/store'
 import { PageHeader } from '@/components/AppShell'
 import { Badge, Card, Empty } from '@/components/ui'
-import { hasTodayAutoDraft, isAutoDraft } from '@/lib/writing/autodraft'
+import { autoDraftDays, forecastAutoDrafts, hasTodayAutoDraft } from '@/lib/writing/autodraft'
 import AutoDraftPanel from '../posts/AutoDraftPanel'
 
 export const dynamic = 'force-dynamic'
@@ -24,10 +24,25 @@ export const dynamic = 'force-dynamic'
 export default async function AutoDraftPage() {
   const db = await readDB()
   const today = new Date().toISOString().slice(0, 10)
-  const autoPosts = db.posts
-    .filter(isAutoDraft)
-    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
-  const runs = db.autoDraftRuns ?? []
+  const keywordPool = [
+    ...new Set(
+      [...db.rankTargets.map((t) => t.keyword), ...db.stores.flatMap((s) => s.localKeywords ?? [])]
+        .map((k) => k.trim())
+        .filter(Boolean)
+    ),
+  ]
+  /*
+   * 앞으로 이레치를 미리 계산한다. 고르는 규칙이 정해져 있어서 가능하다 (같은 입력이면
+   * 같은 답이 나온다). 오늘 것이 이미 있으면 내일부터 — 이미 쓴 날을 「예정」이라고 하면 안 된다.
+   */
+  const forecast = forecastAutoDrafts({
+    plan: db.autoDraftPlan,
+    posts: db.posts,
+    fallbackKeywords: keywordPool,
+    from: today,
+    days: 7,
+  })
+  const days = autoDraftDays({ runs: db.autoDraftRuns, forecast, today })
 
   return (
     <>
@@ -48,85 +63,68 @@ export default async function AutoDraftPage() {
          * 싶다」고 적어둔 목록이라 자동 글이 그 밖으로 나가지 않는다). 지점의 지역 키워드도
          * 함께 보여준다 — 아직 순위 추적을 안 걸었어도 고를 수 있어야 한다.
          */
-        keywordPool={[
-          ...new Set(
-            [...db.rankTargets.map((t) => t.keyword), ...db.stores.flatMap((s) => s.localKeywords ?? [])]
-              .map((k) => k.trim())
-              .filter(Boolean)
-          ),
-        ]}
+        keywordPool={keywordPool}
       />
 
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card
-          title="자동으로 쓴 글"
-          subtitle="여기 있는 글은 아직 초안입니다. 열어서 사진을 넣고 회원님이 발행하시면 됩니다."
-        >
-          {autoPosts.length === 0 ? (
-            <Empty>아직 자동으로 쓴 글이 없습니다. 위에서 「지금 한 편 쓰기」를 눌러 바로 만들어 볼 수 있습니다.</Empty>
-          ) : (
-            <ul className="space-y-2">
-              {autoPosts.slice(0, 12).map((p) => (
-                <li key={p.id} className="panel rounded-xl px-3.5 py-3">
-                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                    <Badge
-                      tone={p.status === 'published' ? 'good' : p.status === 'reviewed' ? 'info' : 'default'}
-                    >
-                      {p.status === 'published' ? '발행완료' : p.status === 'reviewed' ? '검수완료' : '초안'}
-                    </Badge>
-                    <span className="muted text-[11px] font-semibold">{(p.createdAt ?? '').slice(0, 10)}</span>
-                  </div>
-                  <Link href={`/write?id=${p.id}`} className="block text-[13.5px] font-semibold hover:underline">
-                    {p.title || '(제목 없음)'}
-                  </Link>
-                  <p className="muted mt-0.5 text-[11px]">
-                    {p.mainKeyword || '키워드 미지정'} · {p.autoTopic ?? '주제 미상'}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+      {/*
+        **날짜별 한 목록** (2026-08-24 회원 요청).
 
-        <Card
-          title="실행 기록"
-          subtitle="성공이든 실패든 남깁니다. 조용히 실패하는 자동화는 없는 것보다 나쁩니다 — 준비된 줄 알고 기다리게 되니까요."
-        >
-          {runs.length === 0 ? (
-            <Empty>아직 실행 기록이 없습니다.</Empty>
-          ) : (
-            <ul className="space-y-2">
-              {runs.slice(0, 12).map((r) => (
-                <li key={r.at} className="panel rounded-xl px-3.5 py-2.5">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge tone={r.ok ? 'good' : 'bad'}>{r.ok ? '성공' : '실패'}</Badge>
-                    <span className="muted tnum text-[11px] font-semibold">{r.date}</span>
-                    {r.manual && <Badge tone="default">직접 실행</Badge>}
-                    {typeof r.score === 'number' && <Badge tone="info">{r.score}점</Badge>}
-                  </div>
-                  <p className="mt-1 text-[12px] leading-relaxed">
-                    {r.ok ? (
-                      <>
-                        「{r.keyword}」 · {r.topic}
-                        {r.postId && (
-                          <>
-                            {' '}
-                            <Link href={`/write?id=${r.postId}`} className="text-brand-600 dark:text-brand-100 font-semibold underline">
-                              글 열기
-                            </Link>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-rose-700 dark:text-rose-300">{r.error ?? '이유가 기록되지 않았습니다'}</span>
-                    )}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
+        "이거는 매일 달라질거야 그래서 날짜별로 목록이 보이게 만들어달란 소리였어."
+
+        「지금 저장된 설정」은 범위만 말해준다 (키워드 3개 · 주제 5개). 실제로 쓰이는 조합은
+        매일 달라지고, 회원이 알고 싶은 것은 **「그래서 내일은 뭘 쓰지」**다.
+
+        지난 기록과 앞으로 쓸 것을 한 목록에 둔다 — 따로 두면 「어제 건 어디 있지」를 두 번
+        찾는다.
+      */}
+      <Card
+        title="날짜별 목록"
+        subtitle="앞으로 쓸 것과 지금까지 쓴 것입니다. 예정은 지금 설정 기준이라, 사이에 손으로 정보글을 쓰거나 설정을 바꾸면 달라집니다."
+      >
+        {days.length === 0 ? (
+          <Empty>
+            {db.autoDraftPlan?.off
+              ? '자동 초안을 꺼두셨습니다. 위에서 다시 켜면 날짜별 예정이 나옵니다.'
+              : '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록하거나 위에서 골라주세요.'}
+          </Empty>
+        ) : (
+          <ul className="space-y-2">
+            {days.map((d) => (
+              <li
+                key={d.date}
+                className={`rounded-xl px-3.5 py-3 ${
+                  d.when === 'upcoming' ? 'bd border border-dashed' : 'panel'
+                }`}
+              >
+                <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                  <span className="tnum text-[12px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
+                  {d.when === 'today' && <Badge tone="info">오늘</Badge>}
+                  {d.when === 'upcoming' && <Badge tone="default">예정</Badge>}
+                  {d.ok === true && <Badge tone="good">성공</Badge>}
+                  {d.ok === false && <Badge tone="bad">실패</Badge>}
+                  {d.manual && <Badge tone="default">직접 실행</Badge>}
+                  {typeof d.score === 'number' && <Badge tone="info">{d.score}점</Badge>}
+                </div>
+                <p className="text-[13px] leading-snug font-semibold">
+                  {d.keyword} <span className="muted font-medium">· {d.topic}</span>
+                </p>
+                {d.ok === false && d.error && (
+                  <p className="mt-1 text-[11.5px] leading-relaxed text-rose-700 dark:text-rose-300">{d.error}</p>
+                )}
+                {d.postId && (
+                  <Link
+                    href={`/write?id=${d.postId}`}
+                    className="text-brand-600 dark:text-brand-100 mt-1 inline-block text-[11.5px] font-semibold underline"
+                  >
+                    그날 쓴 글 열기 →
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
     </>
   )
 }

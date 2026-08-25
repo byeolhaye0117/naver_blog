@@ -245,8 +245,16 @@ export function buildRankViews(
     const current = last?.rank ?? null
     const previous = prev?.rank ?? null
 
-    // 발행일은 추적 항목에 적힌 값 우선, 없으면 연결된 글에서 가져온다
-    const linked = target.postId ? posts.find((p) => p.id === target.postId) : undefined
+    /*
+     * 연결된 글 찾기 — **id 로 못 찾으면 주소로 찾는다** (2026-08-24).
+     *
+     * 회원 화면에 「글 224382220243」처럼 번호만 뜨는 줄이 있었다. 손으로 등록했거나 예전
+     * 방식으로 들어온 항목은 postId 가 비어 있는데, 같은 주소의 글이 앱에 있으면 그걸
+     * 쓰면 된다. 주소는 m.blog·PostView 등 형태가 여러 가지라 normalizeBlogUrl 로 맞춘다.
+     */
+    const linked =
+      (target.postId ? posts.find((p) => p.id === target.postId) : undefined) ??
+      posts.find((p) => p.publishedUrl && normalizeBlogUrl(p.publishedUrl) === normalizeBlogUrl(target.url))
     const publishedAt = target.publishedAt || linked?.publishedAt
     const ageDays = publishedAt ? daysSince(publishedAt) : null
     // 고쳐서 다시 올린 실험 — 그 앞뒤 순위를 비교한다
@@ -255,7 +263,8 @@ export function buildRankViews(
 
     return {
       target,
-      postTitle: linked?.title?.trim() || undefined,
+      // 앱에 글이 없으면 추적 항목에 적어둔 제목(네이버에서 읽어온 것)을 쓴다
+      postTitle: linked?.title?.trim() || target.title?.trim() || undefined,
       history,
       current,
       previous,

@@ -1998,6 +1998,35 @@ console.log('\n[37-2] 순위 목록 — 같은 키워드를 어떻게 구분하�
   ok(rankItemName(v({ postTitle: '   ' , label: '이름표' })) === '이름표', '빈 제목은 없는 것으로 친다')
 
   /*
+   * **제목이 안 보이던 줄을 고친다** (2026-08-24 회원 지적: "글 제목이 안보이는 것도 있는데").
+   *
+   * 프로덕션에서 「신방동 헬스장」 항목이 postId 없이 다른 블로그 주소로 등록돼 있었다.
+   * 이어질 글이 없으니 번호만 떴다. 두 가지로 채운다:
+   *   ① 같은 주소의 글이 앱에 있으면 그걸로 잇는다 (m.blog·PostView 형태가 달라도)
+   *   ② 앱에 없으면 순위 크론이 네이버에서 제목을 한 번 읽어 항목에 적어 둔다
+   */
+  {
+    const post = (patch) => ({ id: 'p1', type: 'info', status: 'published', storeId: 's', title: '제목입니다', body: 'x', mainKeyword: 'k', subKeywords: [], tags: [], createdAt: '2026-08-01', updatedAt: '2026-08-01', ...patch })
+    const target = (patch) => ({ id: 't1', keyword: '신방동 헬스장', url: 'https://blog.naver.com/j2h2896/224382220243', createdAt: '2026-08-01', ...patch })
+
+    // ① postId 가 없어도 주소가 같으면 잇는다 (m. 이 붙어 있어도)
+    const byUrl = buildRankViews([target()], [], [post({ publishedUrl: 'https://m.blog.naver.com/j2h2896/224382220243' })])
+    ok(byUrl[0].postTitle === '제목입니다', '주소가 같으면 앱의 글과 잇는다', String(byUrl[0].postTitle))
+    // 다른 글을 끌어오지 않는다
+    const other = buildRankViews([target()], [], [post({ publishedUrl: 'https://blog.naver.com/j2h2896/999' })])
+    ok(other[0].postTitle === undefined, '주소가 다르면 잇지 않는다')
+    // ② 앱에 글이 없으면 항목에 적어둔 제목을 쓴다
+    const stored = buildRankViews([target({ title: '네이버에서 읽어온 제목' })], [], [])
+    ok(stored[0].postTitle === '네이버에서 읽어온 제목', '읽어온 제목을 쓴다')
+    ok(rankItemName(stored[0]) === '네이버에서 읽어온 제목', '목록에도 그 제목이 뜬다')
+
+    const rankCron = require('node:fs').readFileSync(new URL('../app/api/cron/rank/route.ts', import.meta.url), 'utf8')
+    ok(/needTitle/.test(rankCron) && rankCron.includes('found.title = title'), '순위 크론이 빠진 제목을 채운다')
+    // 한 번 채우면 다시 읽지 않는다 — 매일 조회를 늘리면 순위 재는 일이 밀린다
+    ok(/!t\.title\?\.trim\(\)/.test(rankCron), '이미 제목이 있으면 다시 읽지 않는다')
+  }
+
+  /*
    * **같은 키워드끼리 붙여 놓는다.** 등록 순서대로 흩어져 있으면 같은 키워드의 글들을
    * 비교하려고 위아래로 스크롤해야 한다.
    */
@@ -8602,7 +8631,9 @@ console.log('\n[95] 자동 초안이 조용히 실패하지 않는가 (2026-08-2
    */
   const auto = rf2(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
   ok(auto.includes('AutoDraftPanel') && auto.includes('autoDraftRuns'), '자동 작성 화면이 실행 기록을 넘긴다')
-  ok(auto.includes('isAutoDraft'), '자동으로 쓴 글 목록을 함께 보여준다')
+  // 「자동으로 쓴 글」·「실행 기록」 두 카드를 날짜별 한 목록으로 합쳤다 (2026-08-24)
+  ok(auto.includes('autoDraftDays'), '날짜별 목록으로 실제 결과를 보여준다')
+  ok(auto.includes('그날 쓴 글 열기'), '그날 쓴 글로 바로 갈 수 있다')
   // 이 화면 전체가 자동 작성이다 — 설정을 접어 두면 「저장한 목록이 안나오는데?」가 된다
   ok(auto.includes('settingsOpen'), '자동 작성 화면에서는 설정이 펼쳐진 채로 열린다')
   ok(panel.includes('<details open={settingsOpen}'), '펼침 여부를 화면이 정한다')
@@ -8743,6 +8774,84 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
   // 많으면 한 줄에 다 못 넣는다 — 앞의 둘만 적고 나머지는 개수로
   const many = planSummary({ keywords: ['가', '나', '다', '라'] })
   ok(many.includes('가 · 나') && many.includes('외 2개'), '많으면 앞의 둘과 나머지 개수로 줄인다', many)
+
+  /*
+   * **날짜별로 무엇을 쓰나** (2026-08-24 회원 요청).
+   *
+   * "이거는 매일 달라질거야 그래서 날짜별로 목록이 보이게 만들어달란 소리였어."
+   *
+   * 「지금 저장된 설정」은 범위만 말해준다 (키워드 3개 · 주제 5개). 실제로 쓰이는 조합은
+   * 매일 달라지고, 회원이 알고 싶은 것은 「그래서 내일은 뭘 쓰지」다.
+   */
+  {
+    const { forecastAutoDrafts, autoDraftDays } = require(`${OUT}/writing/autodraft.js`)
+    const fc = forecastAutoDrafts({
+      plan: { keywords: ['가키워드', '나키워드'], topics: ['가주제', '나주제'] },
+      posts: [],
+      fallbackKeywords: FALLBACK,
+      from: '2026-08-25',
+      days: 4,
+    })
+    ok(fc.length === 4, `이레치를 미리 계산한다 — ${fc.length}일`)
+    ok(fc[0].date === '2026-08-25' && fc[3].date === '2026-08-28', '날짜가 하루씩 늘어난다', fc.map((f) => f.date).join())
+    // **매일 달라져야 한다** — 예정이 같은 조합만 늘어놓으면 볼 이유가 없다
+    ok(new Set(fc.map((f) => `${f.keyword}|${f.topic}`)).size === 4, '조합이 날마다 다르다', fc.map((f) => f.topic).join())
+    // 같은 입력이면 같은 답 — 화면을 새로고침할 때마다 예정이 바뀌면 못 믿는다
+    ok(
+      JSON.stringify(forecastAutoDrafts({ plan: { keywords: ['가키워드', '나키워드'], topics: ['가주제', '나주제'] }, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 4 })) === JSON.stringify(fc),
+      '새로고침해도 같은 예정이 나온다'
+    )
+    ok(forecastAutoDrafts({ plan: { off: true }, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 4 }).length === 0, '꺼두면 예정도 없다')
+    ok(forecastAutoDrafts({ plan: {}, posts: [], fallbackKeywords: [], from: '2026-08-25', days: 4 }).length === 0, '쓸 키워드가 없으면 예정도 없다')
+    ok(forecastAutoDrafts({ plan: {}, posts: [], fallbackKeywords: FALLBACK, from: '엉뚱한날짜', days: 4 }).length === 0, '날짜가 이상하면 터지지 않는다')
+
+    // ── 지난 기록과 예정을 한 목록으로
+    const rows = autoDraftDays({
+      runs: [
+        { date: '2026-08-24', ok: true, keyword: 'A', topic: '가', score: 98, postId: 'p1' },
+        { date: '2026-08-23', ok: false, keyword: 'B', topic: '나', error: '글을 쓰지 못했습니다' },
+      ],
+      forecast: fc,
+      today: '2026-08-25',
+    })
+    ok(rows[0].date === '2026-08-28' && rows[rows.length - 1].date === '2026-08-23', '최신이 위로 온다', rows.map((r) => r.date).join())
+    ok(rows.find((r) => r.date === '2026-08-25')?.when === 'today', '오늘은 오늘이라고 표시한다')
+    ok(rows.find((r) => r.date === '2026-08-24')?.score === 98, '지난 것에는 점수가 붙는다')
+    ok(rows.find((r) => r.date === '2026-08-23')?.error?.includes('쓰지 못했습니다'), '실패한 날은 이유가 붙는다')
+    ok(rows.find((r) => r.date === '2026-08-26')?.when === 'upcoming', '앞날은 예정')
+
+    /*
+     * **이미 기록이 있는 날은 예정에서 뺀다.** 같은 날이 두 줄이면 어느 쪽이 맞는지 알 수 없다.
+     */
+    const dup = autoDraftDays({
+      runs: [{ date: '2026-08-25', ok: true, keyword: 'A', topic: '가' }],
+      forecast: fc,
+      today: '2026-08-25',
+    })
+    ok(dup.filter((r) => r.date === '2026-08-25').length === 1, '같은 날이 두 줄이 되지 않는다')
+    ok(dup.find((r) => r.date === '2026-08-25')?.ok === true, '기록이 있으면 기록 쪽을 쓴다')
+
+    /*
+     * **하루에 여러 번 돌 수 있다** (실패하고 손으로 다시 누르는 등). 그 날을 대표하는 것은
+     * 성공한 실행이다 — 실패 줄만 보이면 실제로는 글이 있는데 없는 줄 안다.
+     */
+    const twice = autoDraftDays({
+      runs: [
+        { date: '2026-08-24', ok: false, keyword: 'A', topic: '가', error: '실패' },
+        { date: '2026-08-24', ok: true, keyword: 'A', topic: '가', score: 98 },
+      ],
+      forecast: [],
+      today: '2026-08-25',
+    })
+    ok(twice.length === 1 && twice[0].ok === true, '한 날에 성공과 실패가 섞이면 성공을 보여준다')
+
+    // 화면이 실제로 이 목록을 그린다
+    const { readFileSync: rf } = require('node:fs')
+    const page = rf(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
+    ok(page.includes('forecastAutoDrafts') && page.includes('autoDraftDays'), '자동 작성 화면이 날짜별 목록을 만든다')
+    ok(page.includes('날짜별 목록'), '그 이름으로 보여준다')
+    ok(page.includes("d.when === 'upcoming'"), '예정과 지난 것을 구별해 그린다')
+  }
 
   /*
    * **덩어리 설정이 저장 후 살아 돌아와야 한다.** normalizeDB 는 목록만 옮기고 있었다 —
