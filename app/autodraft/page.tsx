@@ -79,7 +79,7 @@ export default async function AutoDraftPage() {
       */}
       <Card
         title="날짜별 목록"
-        subtitle="앞으로 쓸 것과 지금까지 쓴 것입니다. 예정 줄의 「이 날 바꾸기」로 그 날 쓸 키워드·주제를 직접 정할 수 있습니다 — 안 정한 날은 알아서 돌아갑니다."
+        subtitle="지금까지 쓴 것입니다. 앞으로 쓸 예정은 아래에 접어 뒀습니다 — 저장된 것이 아니라 지금 설정으로 계산한 것이라, 설정을 바꾸면 달라집니다."
       >
         <DayList
           days={days}
