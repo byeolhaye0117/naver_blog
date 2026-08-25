@@ -155,7 +155,8 @@ async function run(
   if (db.autoDraftPlan?.off) {
     return NextResponse.json({ skipped: '자동 초안을 꺼두셨습니다.', date: today })
   }
-  const assignment = planAssignment({ plan: db.autoDraftPlan, posts: db.posts, fallbackKeywords: pool })
+  // 그 날에 콕 집어 정해둔 것이 있으면 그것부터 (2026-08-24)
+  const assignment = planAssignment({ plan: db.autoDraftPlan, posts: db.posts, fallbackKeywords: pool, date: today })
   if (!assignment) {
     await record({ ok: false, error: '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록하거나 자동 초안 설정에서 키워드를 골라주세요.' })
     return NextResponse.json({ skipped: '쓸 키워드가 없습니다.' })
