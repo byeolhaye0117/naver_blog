@@ -84,7 +84,6 @@ export default async function AutoDraftPage() {
         <DayList
           days={days}
           plan={db.autoDraftPlan}
-          keywordPool={keywordPool}
           today={today}
           emptyNote={
             db.autoDraftPlan?.off

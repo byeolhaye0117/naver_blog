@@ -7,10 +7,18 @@ import { btnGhost, inputClass } from '@/components/ui'
 import TopicExplorer from '@/components/TopicExplorer'
 
 /**
- * **날짜 하나를 골라 그 날 쓸 것을 정한다** (2026-08-24 회원 요청).
+ * **날짜 하나를 골라 그 날 쓸 주제를 정한다** (2026-08-24 회원 요청).
  *
  * "내말은 애초에 여기를 날짜 선택해서 주제를 선택하고 싶단 거야. 그리고 날짜별 목록에서
  * 주제나 키워드 바꾸면 목록이 안나와. 목록 나와서 하게 해주고 주제는 주제탐색기도 하게 해줘."
+ *
+ * ── 키워드는 묻지 않는다 (2026-08-25) ──────────────────────
+ * 회원: "날짜고르기 누르면 다시 또 키워드랑 주제 정할 수 있게 되어 있는데? 날짜만 고를 수
+ * 있게 해줘." 그리고 "나는 모든 날짜를 하나의 주제로 통일하고 싶은게 아니라 날짜별로
+ * 주제를 고르고 싶어."
+ *
+ * 키워드는 ①에서 이미 고른다 — 날짜마다 또 묻는 것은 같은 것을 두 번 묻는 셈이다.
+ * 회원이 정하고 싶은 것은 **그 날 무슨 이야기를 쓰나**이므로 날짜와 주제만 받는다.
  *
  * ── 「목록이 안 나온다」의 원인 ─────────────────────────────
  * 고를 수 있는 주제를 **담은 것만**으로 뒀다. 회원이 담은 주제가 하나뿐이라(키토다이어트)
@@ -24,7 +32,6 @@ import TopicExplorer from '@/components/TopicExplorer'
  */
 export default function DayAssign({
   plan,
-  keywordPool,
   /** 날짜가 정해져 있으면 (날짜별 목록의 그 줄) 날짜 칸을 만들지 않는다 */
   fixedDate,
   today,
@@ -32,15 +39,13 @@ export default function DayAssign({
   onCancel,
 }: {
   plan?: AutoDraftPlan
-  keywordPool: string[]
   fixedDate?: string
   today: string
-  onPick: (day: { date: string; keyword: string; topic: string }) => void
+  onPick: (day: { date: string; topic: string }) => void
   onCancel?: () => void
 }) {
   const existing = fixedDate ? plan?.days?.find((d) => d.date === fixedDate) : undefined
   const [date, setDate] = useState(fixedDate ?? today)
-  const [keyword, setKeyword] = useState(existing?.keyword ?? keywordPool[0] ?? '')
   const [topic, setTopic] = useState(existing?.topic ?? '')
 
   /*
@@ -65,19 +70,7 @@ export default function DayAssign({
       )}
 
       <label className="block">
-        <span className="muted mb-1 block text-[11px] font-semibold">키워드</span>
-        <select value={keyword} onChange={(e) => setKeyword(e.target.value)} className={inputClass}>
-          <option value="">고르기</option>
-          {keywordPool.map((k) => (
-            <option key={k} value={k}>
-              {k}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="block">
-        <span className="muted mb-1 block text-[11px] font-semibold">주제</span>
+        <span className="muted mb-1 block text-[11px] font-semibold">그 날 쓸 주제</span>
         <select
           value={topicPool.includes(topic) ? topic : ''}
           onChange={(e) => e.target.value && setTopic(e.target.value)}
@@ -118,11 +111,11 @@ export default function DayAssign({
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
-          disabled={!date || !keyword.trim() || !topic.trim()}
-          onClick={() => onPick({ date, keyword: keyword.trim(), topic: topic.trim() })}
+          disabled={!date || !topic.trim()}
+          onClick={() => onPick({ date, topic: topic.trim() })}
           className="bg-brand-600 rounded-xl px-3 py-2 text-[11.5px] font-bold text-white disabled:opacity-50"
         >
-          이 날로 정하기
+          이 날 주제로 정하기
         </button>
         {onCancel && (
           <button type="button" onClick={onCancel} className={`${btnGhost} !px-2.5 !py-1.5 !text-[11px]`}>

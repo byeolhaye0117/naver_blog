@@ -8921,10 +8921,29 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     const sameEveryDay = forecastAutoDrafts({ plan: PLAN, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3 })
     ok(sameEveryDay.every((f) => f.topic === '한가지주제'), '주제가 하나면 매일 같은 주제가 나온다 (고칠 이유)')
 
-    const withDay = { ...PLAN, days: [{ date: '2026-08-26', keyword: '다른키워드', topic: '그날만다른주제' }] }
+    /*
+     * **날짜별로 정하는 것은 주제다** (2026-08-25 회원 결정).
+     *
+     * "날짜고르기 누르면 다시 또 키워드랑 주제 정할 수 있게 되어 있는데? 날짜만 고를 수
+     * 있게 해줘." / "나는 모든 날짜를 하나의 주제로 통일하고 싶은게 아니라 날짜별로 주제를
+     * 고르고 싶어."
+     *
+     * 키워드는 ①에서 이미 고른다 — 날짜마다 또 묻는 것은 같은 것을 두 번 묻는 셈이다.
+     */
+    const withDay = { ...PLAN, days: [{ date: '2026-08-26', topic: '그날만다른주제' }] }
     const fixedDay = planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' })
-    ok(fixedDay?.topic === '그날만다른주제' && fixedDay.mainKeyword === '다른키워드', '그 날은 정해둔 것을 쓴다')
-    ok(fixedDay.why.includes('정해두신'), '왜 이걸 쓰는지 밝힌다', fixedDay.why)
+    ok(fixedDay?.topic === '그날만다른주제', '그 날은 정해둔 주제를 쓴다')
+    ok(PLAN.keywords.includes(fixedDay.mainKeyword), '키워드는 ①에서 고른 것 중에서 알아서 고른다', fixedDay.mainKeyword)
+    ok(fixedDay.why.includes('그날만다른주제'), '무엇을 정해뒀는지 밝힌다', fixedDay.why)
+    // 예전에 키워드까지 저장해 둔 날은 그 값을 그대로 쓴다 (저장된 설정이 깨지면 안 된다)
+    const legacy = planAssignment({
+      plan: { ...PLAN, days: [{ date: '2026-08-26', keyword: '예전키워드', topic: '예전주제' }] },
+      posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26',
+    })
+    ok(legacy?.mainKeyword === '예전키워드' && legacy.topic === '예전주제', '예전에 저장한 키워드는 그대로 쓴다')
+    // 주제만 있으면 저장된다 — 키워드를 안 받으므로 그것까지 요구하면 아무것도 저장 못 한다
+    ok(normalizePlan({ days: [{ date: '2026-08-26', topic: '가' }] }).days.length === 1, '주제만 있어도 저장된다')
+    ok(normalizePlan({ days: [{ date: '2026-08-26', keyword: 'A' }] }).days.length === 0, '주제가 없으면 버린다')
     // 정하지 않은 날은 그대로 로테이션 — 매일 지정하게 만들지 않는 것이 이 기능의 값이다
     ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-27' })?.topic === '한가지주제',
       '정하지 않은 날은 알아서 돈다')
@@ -8941,8 +8960,11 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
       { date: '2026-08-27', keyword: '', topic: '다' },
       { date: '2026-08-26', keyword: 'C', topic: '라' },
     ] })
-    ok(cleaned.days.length === 1, '날짜 꼴이 아니거나 반쪽인 것은 버린다', JSON.stringify(cleaned.days))
-    ok(cleaned.days[0].keyword === 'C', '같은 날이 둘이면 나중에 고친 것을 남긴다')
+    // 날짜 꼴이 아닌 것만 버린다 — 키워드는 없어도 되므로 (2026-08-25)
+    ok(cleaned.days.length === 2, '날짜 꼴이 아닌 것은 버린다', JSON.stringify(cleaned.days))
+    ok(!cleaned.days.some((d) => d.date === '엉뚱'), '엉뚱한 날짜는 없다')
+    ok(cleaned.days.find((d) => d.date === '2026-08-26')?.topic === '라', '같은 날이 둘이면 나중에 고친 것을 남긴다')
+    ok(cleaned.days.find((d) => d.date === '2026-08-27')?.topic === '다', '키워드가 비어 있어도 주제만 있으면 남는다')
 
     /*
      * **삭제** (2026-08-24 회원 요청: 날짜별 목록에 "이거 삭제기능 만들어줘").
@@ -8992,14 +9014,17 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
       '담은 주제와 기본 주제를 함께 보여준다 (하나 담았어도 고를 게 있다)')
     ok(assign.includes('<TopicExplorer'), '그 자리에서 주제 탐색도 쓸 수 있다')
     ok(assign.includes("type=\"date\""), '날짜를 골라서 정할 수 있다')
+    // 키워드는 ①에서 이미 고른다 — 날짜마다 또 물으면 같은 것을 두 번 묻는 셈이다
+    ok(!assign.includes('keywordPool'), '날짜별 지정에서 키워드를 다시 묻지 않는다')
+    ok(assign.includes('그 날 쓸 주제'), '고르는 것이 주제라는 것을 밝힌다')
     ok(assign.includes('min={today}'), '지난 날짜는 고르지 못하게 한다')
     // 저장은 부르는 쪽이 한다 — 설정 화면에서 고치던 다른 값이 덮이면 안 된다
     ok(assign.includes('onPick') && !assign.includes("fetch('/api/autodraft/plan'"), '여기서 저장하지 않고 넘겨준다')
 
     // 설정 화면에서도 날짜를 골라 정할 수 있다 (회원이 「애초에 여기서」라고 한 자리)
     const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
-    ok(panel.includes('③ 날짜별로 정하기') && panel.includes('<DayAssign'), '설정 화면에서도 날짜별로 정한다')
-    ok(panel.includes('날짜 골라서 정하기'), '날짜를 고르는 버튼이 있다')
+    ok(panel.includes('③ 날짜별로 주제 정하기') && panel.includes('<DayAssign'), '설정 화면에서도 날짜별로 주제를 정한다')
+    ok(panel.includes('날짜 골라서 주제 정하기'), '날짜를 고르는 버튼이 있다')
     // 날짜만 고쳤을 때도 「저장 안 됨」이 떠야 한다
     ok(/a\.days \?\? \[\]/.test(panel), '날짜 지정도 저장 여부 비교에 넣는다')
     ok(panel.includes("save({ off: false, keywords: [], topics: [], days: [], skip: [] })"), '「전부 지우고 자동으로」가 날짜 지정·쉬는 날도 지운다')
