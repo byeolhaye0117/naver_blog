@@ -777,10 +777,16 @@ export default function Editor({
    * 화자 검사(checker 의 voice 항목)가 걸렸는지. 본문이 있을 때만 본다 —
    * 빈 화면에 경고를 띄우면 소음이 된다.
    */
+  /*
+   * **어디가 걸렸는지까지 들고 온다** (2026-08-26 회원 지적: "이거 자꾸 화자가 어긋났대").
+   *
+   * 걸린 것이 제목 한 줄인데도 배너가 「본문 비우고 새로 쓰기」를 큰 버튼으로 내밀고 있었다.
+   * 고칠 곳이 제목 한 줄이면 본문은 손댈 이유가 없다 — 멀쩡한 글을 버리게 만드는 안내였다.
+   */
   const voiceMismatch = useMemo(() => {
     if (!body.trim()) return null
     const v = result.items.find((i) => i.id === 'voice')
-    return v && v.level !== 'pass' ? (v.hint ?? v.value) : null
+    return v && v.level !== 'pass' ? { text: v.hint ?? v.value, scope: v.scope } : null
   }, [body, result])
 
   const tone = result.score >= 85 ? 'good' : result.score >= 65 ? 'warn' : 'bad'
@@ -1344,25 +1350,32 @@ export default function Editor({
                     <p className="font-bold text-red-700 dark:text-red-200">
                       화자가 어긋났습니다 — 지금 유형은 「{POST_TYPE_LABEL[type]}」(화자: {SPEAKER_LABEL[type]})입니다
                     </p>
-                    <p className="muted mt-1">{voiceMismatch}</p>
+                    <p className="muted mt-1">{voiceMismatch.text}</p>
                     <p className="muted mt-1.5">
                       {type === 'review'
                         ? '센터가 1인칭으로 쓰는 글을 원하셨다면 위에서 글 유형을 「홍보글」로 바꾸세요.'
-                        : '유형이 맞다면 본문이 다른 유형으로 쓰인 것입니다 — 아래 버튼으로 이 유형에 맞게 새로 쓰거나, 「검수 항목 고쳐 쓰기」로 걸린 표현만 되돌릴 수 있습니다.'}
+                        : voiceMismatch.scope === 'title'
+                          ? '본문은 이 유형에 맞게 쓰였습니다 — 위의 제목 칸만 고치시면 됩니다.'
+                          : '유형이 맞다면 본문이 다른 유형으로 쓰인 것입니다 — 아래 버튼으로 이 유형에 맞게 새로 쓰거나, 「검수 항목 고쳐 쓰기」로 걸린 표현만 되돌릴 수 있습니다.'}
                     </p>
                     {/*
                       **한 번에 새로 쓰게 한다.** 유형을 바꿨는데 본문이 예전 유형인 상태가
                       이 배너가 뜨는 가장 흔한 경우다. 그때 회원이 할 일은 본문을 손으로 비우고
                       다시 쓰는 것이었는데, 그걸 버튼 하나로 만든다.
+
+                      **제목만 걸렸으면 이 버튼을 내밀지 않는다** (2026-08-26). 고칠 곳이
+                      제목 한 줄인데 본문을 다시 쓰면 멀쩡한 글을 버린다.
                     */}
-                    <button
-                      type="button"
-                      onClick={rewriteForType}
-                      disabled={aiBusy}
-                      className="bg-brand-600 mt-2 rounded-full px-3 py-1.5 text-[11.5px] font-bold text-white disabled:opacity-50"
-                    >
-                      {aiBusy ? '쓰는 중…' : `본문 비우고 ${POST_TYPE_LABEL[type]}로 새로 쓰기`}
-                    </button>
+                    {voiceMismatch.scope !== 'title' && (
+                      <button
+                        type="button"
+                        onClick={rewriteForType}
+                        disabled={aiBusy}
+                        className="bg-brand-600 mt-2 rounded-full px-3 py-1.5 text-[11.5px] font-bold text-white disabled:opacity-50"
+                      >
+                        {aiBusy ? '쓰는 중…' : `본문 비우고 ${POST_TYPE_LABEL[type]}로 새로 쓰기`}
+                      </button>
+                    )}
                   </div>
                 )}
 

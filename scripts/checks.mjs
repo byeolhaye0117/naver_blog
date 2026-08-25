@@ -1253,6 +1253,48 @@ const sysReview = buildSystemPrompt('review')
     '지시문이 시킨 말투를 검수가 막지 않는다'
   )
 
+  /*
+   * **「체험」은 센터가 파는 것이다** (2026-08-26).
+   *
+   * 제목 목록이 `/후기|내돈내산|체험단?/` 이라 **「체험」만 있어도** 걸렸다. 그런데 우리
+   * 지시문은 이벤트 정보가 없는 홍보글에 제목에 「체험」을 넣으라고 시키고 예시까지 준다 —
+   * 「쌍용동 헬스장 체험 먼저 해보고 정하세요」. 시켜서 쓴 제목을 즉시수정으로 막고 있었다.
+   */
+  const trial = checkPost({ ...base, type: 'promo', title: '쌍용동 헬스장 체험 먼저 해보고 정하세요', body: paras })
+  ok(trial.items.find((i) => i.id === 'voice').level === 'pass', '제목의 「체험」은 걸리지 않는다', trial.items.find((i) => i.id === 'voice').value)
+  ok(
+    buildSystemPrompt('promo').includes('체험'),
+    '지시문은 홍보글 제목에 「체험」을 쓰라고 한다 (검수가 막으면 안 된다)'
+  )
+  const crew = checkPost({ ...base, type: 'promo', title: '쌍용동 헬스장 체험단 모집 후기', body: paras })
+  ok(crew.items.find((i) => i.id === 'voice').level === 'fail', '「체험단」은 그대로 걸린다', crew.items.find((i) => i.id === 'voice').value)
+
+  /*
+   * **제목만 걸렸으면 고칠 곳은 제목 한 줄이다** (2026-08-26 회원 지적: "이거 자꾸 화자가
+   * 어긋났대. 수정 좀 해줘"). 여태 화면이 「본문 비우고 새로 쓰기」를 큰 버튼으로 내밀어
+   * 멀쩡한 본문을 버리게 만들었다.
+   */
+  const titleOnly = checkPost({ ...infoBase, title: '다이어트 정체기 후기, 3주 기록', body: long })
+  const tv = titleOnly.items.find((i) => i.id === 'voice')
+  ok(tv.level === 'fail' && tv.scope === 'title', '제목만 걸리면 scope 가 title 이다', String(tv.scope))
+  ok(tv.hint.includes('제목 한 줄만 고치면 됩니다'), '제목 한 줄만 고치면 된다고 말해준다')
+  const bodyOnly = checkPost({ ...infoBase, body: `${long}\n\n어제 다녀왔어요.` })
+  ok(bodyOnly.items.find((i) => i.id === 'voice').scope === 'body', '본문만 걸리면 body 다')
+  const bothHit = checkPost({ ...infoBase, title: '다이어트 정체기 후기', body: `${long}\n\n어제 다녀왔어요.` })
+  ok(bothHit.items.find((i) => i.id === 'voice').scope === 'both', '둘 다면 both 다')
+  // 화면이 그 값을 실제로 쓴다 — 안 쓰면 배너가 예전처럼 본문을 새로 쓰라고 한다
+  {
+    const { readFileSync: rf } = require('node:fs')
+    const ed = rf(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+    ok(/voiceMismatch\.scope === 'title'/.test(ed), '배너가 제목만 걸린 경우를 가른다')
+    ok(/voiceMismatch\.scope !== 'title' && \(/.test(ed), '제목만 걸리면 본문 새로 쓰기 버튼을 내밀지 않는다')
+  }
+  // 정보글 지시문도 같은 것을 시킨다 — 한쪽만 있으면 모델이 계속 「후기」 제목을 낸다
+  ok(
+    buildSystemPrompt('info').includes('제목에 「후기」·「내돈내산」·「체험단」을 쓰지 않는다'),
+    '정보글 지시문도 제목의 「후기」를 막는다'
+  )
+
   // 홍보글인데 본문이 방문자 말투
   const t2 = checkPost({ ...base, type: 'promo', title: '쌍용동 헬스장 어디가 좋을까요', body: `${paras}\n\n직접 가봤더니 시설이 괜찮더라고요.` })
   ok(t2.items.find((i) => i.id === 'voice').level === 'fail', '홍보글 본문의 방문자 말투도 걸린다', t2.items.find((i) => i.id === 'voice').value)
@@ -2150,6 +2192,29 @@ console.log('\n[37-3] 점수가 진짜인가 — 망가뜨리면 반응하는가
   ok(checkPost(golden.input).items.find((i) => i.id === 'vague-amount')?.level === 'pass', '멀쩡한 글은 통과')
   // 지시문이 실제로 그렇게 시키고 있는지 — 검수만 있고 지시문에 없으면 고칠 방법을 안 알려주는 셈이다
   ok(buildSystemPrompt('info').includes('수량은 숫자로 적는다'), '지시문도 같은 것을 시킨다')
+  /*
+   * **숫자가 답이 아닌 자리를 함께 알려줘야 한다** (2026-08-26 회원 지적: "새벽에 자동으로
+   * 올리는거 왜 갑자기 검수를 안하고 작성까지만 됐어?").
+   *
+   * 검수도 고쳐 쓰기도 돌았는데 고쳐 쓰기가 **한 글자도 못 고치고** 돌아왔다. 힌트가
+   * 「숫자로 바꿔라」만 시켜 놓고 바로 뒤에 「지어내지 마라」고 해서, 숫자를 붙일 수 없는
+   * 자리(「필요 이상으로 많이 드시게 되고」)에서 모델이 갇힌 것이다.
+   *
+   * 같은 초안·같은 모델로 재봤다 — 이 힌트로는 79점(고친 것 0개), 「말을 바꾸거나 빼라」를
+   * 함께 준 힌트로는 95점(수정필요 0개)이 나왔다.
+   */
+  {
+    const vague = checkPost({
+      ...golden.input,
+      body: `${golden.input.body}\n\n많이 드시고 많이 쉬고 많이 걸으세요. 자주 오시고 대부분 그렇습니다.`,
+    }).items.find((i) => i.id === 'vague-amount')
+    ok(vague.hint?.includes('숫자로'), '숫자로 바꾸라고 한다')
+    ok(vague.hint?.includes('말을 바꾸거나 뺍니다'), '숫자를 못 붙이는 자리는 말을 바꾸라고 함께 알려준다')
+  }
+  ok(
+    buildSystemPrompt('info').includes('숫자를 붙일 수 없는 자리는 말을 바꾸거나 뺀다'),
+    '지시문도 같은 두 갈래를 말한다 (한쪽만 고치면 또 갇힌다)'
+  )
 
   /*
    * **숫자를 지워도 점수가 안 떨어지는 것은 의도한 것이다.** 이 앱 실측(2026-08-06, 상위 글
