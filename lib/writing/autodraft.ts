@@ -306,14 +306,22 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
   ].sort()
 
   /*
-   * 예전에 저장해 둔 날짜별 지정(days)은 **여기서 조용히 사라진다** (2026-08-25).
-   * 새 객체를 만들어 돌려주므로 옛 키는 따라오지 않는다 — 회원이 설정을 한 번 저장하면
-   * 저장소에서도 없어진다. 없앤 이유는 lib/types.ts 의 AutoDraftPlan 주석에 적어 두었다.
+   * 날짜별 주제 — 날짜 꼴이 아니거나 주제가 빈 줄은 버린다. 같은 날이 둘이면 뒤엣것을
+   * 남긴다 (나중에 채운 것). **키워드는 받지 않는다** — 그건 ①에서 고른 범위에서 돈다.
    */
+  const byDate = new Map<string, { date: string; topic: string }>()
+  for (const d of Array.isArray(raw?.days) ? raw.days : []) {
+    const date = (d?.date ?? '').slice(0, 10)
+    const topic = (d?.topic ?? '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !topic) continue
+    byDate.set(date, { date, topic })
+  }
+
   return {
     off: raw?.off === true,
     keywords: list(raw?.keywords),
     topics: list(raw?.topics),
+    days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     skip,
     updatedAt: raw?.updatedAt,
   }
@@ -325,7 +333,7 @@ export function planAssignment(args: {
   posts: Post[] | undefined
   /** 계획에 키워드가 없을 때 쓸 것 (순위 추적 → 지점 지역 키워드) */
   fallbackKeywords: string[]
-  /** 어느 날 몫인가 — 쉬기로 한 날이면 아무것도 쓰지 않는다 */
+  /** 어느 날 몫인가 — 쉬는 날인지, 그 날 주제가 정해져 있는지를 이걸로 본다 */
   date?: string
 }): Assignment | null {
   const plan = normalizePlan(args.plan)
@@ -333,14 +341,89 @@ export function planAssignment(args: {
 
   /*
    * **쉬기로 한 날은 아무것도 쓰지 않는다** (회원 요청: 날짜별 목록에 "삭제기능 만들어줘").
-   * 회원이 날짜를 두고 정하는 것은 이것 하나뿐이다 — 무엇을 쓸지는 앱이 정한다 (2026-08-25).
+   * 정해둔 주제보다 먼저 본다 — 「정했다가 나중에 뺐다」가 자연스러운 순서다.
    */
   const wantDate = args.date?.slice(0, 10)
   if (wantDate && plan.skip?.includes(wantDate)) return null
 
   const keywords = plan.keywords?.length ? plan.keywords : args.fallbackKeywords
   const topics = plan.topics?.length ? plan.topics : INFO_TOPICS
-  return pickAssignment({ posts: args.posts, keywords, topics })
+  const rotated = pickAssignment({ posts: args.posts, keywords, topics })
+
+  /*
+   * **그 날 몫으로 채워 둔 주제가 있으면 그것을 쓴다** (2026-08-25 회원 요청).
+   *
+   * 회원: "지금 저장된 설정에서 날짜가 있어서 같은 주제로 매일 돌지 않게 해줘야해."
+   *
+   * 다만 그 주제를 **회원이 고른 것이 아니다** — 날짜만 고르면 `fillDays` 가 로테이션을
+   * 돌려 날마다 다른 주제를 채워 넣는다. 키워드는 여기서도 로테이션이 고른다.
+   */
+  const fixed = wantDate ? plan.days?.find((d) => d.date === wantDate) : undefined
+  if (fixed) {
+    const mainKeyword = rotated?.mainKeyword ?? keywords[0]?.trim()
+    if (!mainKeyword) return null
+    return {
+      mainKeyword,
+      topic: fixed.topic,
+      why: `${fixed.date} 몫으로 「${fixed.topic}」을 미리 채워 두었습니다.`,
+    }
+  }
+
+  return rotated
+}
+
+/**
+ * **날짜만 고르면 주제는 앱이 채운다** (2026-08-25 회원 요청).
+ *
+ * 회원이 두 번 말했다: "내가 주제 계속 확정하는거 아니라 했잖아" 그리고 "날짜 선택하는게
+ * 있어야해." 둘을 같이 지키는 길은 하나다 — **날짜는 회원이, 주제는 앱이.**
+ *
+ * 로테이션을 앞으로 돌려 날마다 다른 주제를 뽑아 날짜에 붙인다. 이미 채워 둔 날은 **무시하고
+ * 새로 계산한다** — 「다시 정하기」가 옛 값을 그대로 베끼면 눌러도 안 바뀐 것처럼 보인다.
+ */
+export function fillDays(args: {
+  plan: AutoDraftPlan | undefined
+  posts: Post[] | undefined
+  fallbackKeywords: string[]
+  /** 이 날짜부터 (YYYY-MM-DD) */
+  from: string
+  /** 며칠치 — 쉬는 날은 세지 않는다 */
+  days: number
+}): { date: string; topic: string }[] {
+  const plan = { ...normalizePlan(args.plan), days: [] }
+  return forecastAutoDrafts({ ...args, plan }).map((f) => ({ date: f.date, topic: f.topic }))
+}
+
+/**
+ * 그 날 주제를 **다른 것으로 돌린다** — 회원이 고르는 것이 아니라 앱이 다음 것을 준다.
+ *
+ * 마음에 안 드는 날이 하나 있을 때 주제 목록을 열어 고르게 하면 결국 「주제 고르라고 나온다」로
+ * 돌아간다. 그래서 버튼 하나로 **앱이 다음 주제**를 준다. 다른 날에 이미 쓰인 주제는 건너뛴다
+ * — 안 그러면 돌릴 때마다 옆날과 겹친다.
+ */
+export function rerollTopic(plan: AutoDraftPlan | undefined, date: string): AutoDraftPlan {
+  const p = normalizePlan(plan)
+  const pool = p.topics?.length ? p.topics : INFO_TOPICS
+  if (!pool.length || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return p
+  const days = p.days ?? []
+  const cur = days.find((d) => d.date === date)?.topic
+  const used = new Set(days.filter((d) => d.date !== date).map((d) => d.topic))
+  const start = cur ? pool.indexOf(cur) : -1
+  // 목록을 한 바퀴 돌며 「지금 것도 아니고 다른 날에도 안 쓴」 첫 주제를 고른다
+  let next = pool[(start + 1 + pool.length) % pool.length]
+  for (let i = 1; i <= pool.length; i++) {
+    const cand = pool[(start + i + pool.length) % pool.length]
+    if (cand !== cur && !used.has(cand)) {
+      next = cand
+      break
+    }
+  }
+  return {
+    ...p,
+    days: [...days.filter((d) => d.date !== date), { date, topic: next }].sort((a, b) =>
+      a.date.localeCompare(b.date)
+    ),
+  }
 }
 
 /**
@@ -368,6 +451,7 @@ export function planSummary(plan: AutoDraftPlan | undefined): string {
     few(p.keywords, '키워드는 순위 추적 목록 전부', '키워드'),
     few(p.topics, `주제는 기본 ${INFO_TOPICS.length}개 전부`, '주제'),
   ]
+  if (p.days?.length) parts.unshift(`날짜별 ${p.days.length}일 채워둠`)
   if (p.skip?.length) parts.unshift(`건너뛰는 날 ${p.skip.length}일`)
   return parts.join(' · ')
 }

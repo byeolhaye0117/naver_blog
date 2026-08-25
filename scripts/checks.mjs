@@ -8847,7 +8847,7 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
    * 매일 달라지고, 회원이 알고 싶은 것은 「그래서 내일은 뭘 쓰지」다.
    */
   {
-    const { forecastAutoDrafts, autoDraftDays } = require(`${OUT}/writing/autodraft.js`)
+    const { forecastAutoDrafts, autoDraftDays, fillDays, rerollTopic } = require(`${OUT}/writing/autodraft.js`)
     const fc = forecastAutoDrafts({
       plan: { keywords: ['가키워드', '나키워드'], topics: ['가주제', '나주제'] },
       posts: [],
@@ -8909,15 +8909,14 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(twice.length === 1 && twice[0].ok === true, '한 날에 성공과 실패가 섞이면 성공을 보여준다')
 
     /*
-     * **날짜마다 주제를 확정하게 만들지 않는다** (2026-08-25 회원 지적).
+     * **날짜는 회원이, 주제는 앱이** (2026-08-25 회원 요청 두 가지를 같이 지킨다).
      *
-     * "내가 주제 계속 확정하는거 아니라 했잖아. 근데 왜 또 주제 고르라고 나오는거야."
+     *   · "내가 주제 계속 확정하는거 아니라 했잖아. 근데 왜 또 주제 고르라고 나오는거야."
+     *   · "지금 저장된 설정에서 날짜가 있어서 같은 주제로 매일 돌지 않게 해줘야해.
+     *      그럴려면 날짜 선택하는게 있어야해."
      *
-     * 회원의 「날짜별로 주제를 고르고 싶어」를 **날짜마다 회원이 확정한다**로 읽은 것이
-     * 잘못이었다. 원한 것은 **날마다 다른 주제가 나오는 것**이고, 그건 로테이션이 이미
-     * 한다. 그래서 날짜별 지정(days)을 통째로 뺐다 — 저장해 둔 옛 값도 무시하고 지운다.
-     *
-     * 「매일 같은 주제가 나온다」의 진짜 원인은 담은 주제가 하나뿐이었던 것이다.
+     * 서로 어긋난 요구로 보였지만 아니다 — **누가 주제를 정하느냐**만 다르다. 회원은
+     * 날짜를 고르고, 주제는 로테이션이 채운다.
      */
     const PLAN = { keywords: ['가키워드', '나키워드'], topics: ['한가지주제'] }
     // 주제가 하나뿐이면 로테이션은 매일 그것을 낸다 (이게 회원이 겪은 상황이다)
@@ -8932,14 +8931,64 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(new Set(varied.map((f) => f.topic)).size === 3, '주제를 여럿 담으면 날마다 다른 주제가 나온다', varied.map((f) => f.topic).join())
 
     /*
-     * 예전에 저장해 둔 날짜별 지정은 **더 이상 로테이션을 덮지 않고, 저장에서도 사라진다.**
-     * 남겨 두면 회원이 화면에서 뺄 수 없는 값이 몰래 그 날을 정하게 된다.
+     * **날짜만 고르면 앱이 채운다** (fillDays). 회원이 적거나 고르는 것이 아니므로 「주제
+     * 고르라고 나온다」로 돌아가지 않는다.
      */
-    const withDay = { ...PLAN, days: [{ date: '2026-08-26', topic: '그날만다른주제', keyword: '예전키워드' }] }
-    ok(normalizePlan(withDay).days === undefined, '옛 날짜별 지정은 저장에서 사라진다')
-    const afterDrop = planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' })
-    ok(afterDrop?.topic === '한가지주제', '옛 날짜별 지정은 더 이상 주제를 덮지 않는다', afterDrop?.topic)
-    ok(PLAN.keywords.includes(afterDrop.mainKeyword), '키워드도 ①에서 고른 것 안에서 돈다', afterDrop.mainKeyword)
+    const MANY = { keywords: ['가키워드'], topics: ['가주제', '나주제', '다주제', '라주제'] }
+    const filled = fillDays({ plan: MANY, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26', days: 4 })
+    ok(filled.length === 4, '고른 날 수만큼 채운다', String(filled.length))
+    ok(filled[0].date === '2026-08-26', '고른 날짜부터 채운다', filled[0].date)
+    ok(new Set(filled.map((d) => d.topic)).size === 4, '날마다 다른 주제를 채운다', filled.map((d) => d.topic).join())
+    ok(filled.every((d) => d.topic && !('keyword' in d)), '주제만 채운다 — 키워드는 ①에서 돈다')
+    // 이미 채워 둔 날이 있어도 새로 계산한다 — 옛 값을 베끼면 「다시 채우기」가 안 듣는다
+    const refilled = fillDays({
+      plan: { ...MANY, days: [{ date: '2026-08-26', topic: '엉뚱한옛주제' }] },
+      posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26', days: 2,
+    })
+    ok(!refilled.some((d) => d.topic === '엉뚱한옛주제'), '다시 채우면 옛 값을 베끼지 않는다', JSON.stringify(refilled))
+    // 쉬는 날은 채우지 않는다 (그 날은 애초에 안 쓴다)
+    ok(!fillDays({ plan: { ...MANY, skip: ['2026-08-27'] }, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26', days: 3 })
+      .some((d) => d.date === '2026-08-27'), '쉬는 날은 채우지 않는다')
+
+    /*
+     * **채워 둔 날은 로테이션보다 우선한다** — 안 그러면 채운 의미가 없다. 다만 키워드는
+     * 여기서도 로테이션이 고른다 (회원에게 두 번 묻지 않는다).
+     */
+    const withDay = { ...PLAN, days: [{ date: '2026-08-26', topic: '그날만다른주제' }] }
+    const fixedDay = planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' })
+    ok(fixedDay?.topic === '그날만다른주제', '채워 둔 날은 그 주제를 쓴다', fixedDay?.topic)
+    ok(PLAN.keywords.includes(fixedDay.mainKeyword), '키워드는 ①에서 고른 것 안에서 돈다', fixedDay.mainKeyword)
+    ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-27' })?.topic === '한가지주제',
+      '안 채운 날은 그날그날 앱이 고른다')
+    ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK })?.topic === '한가지주제', '날짜가 없으면 로테이션')
+    // 예정 계산도 채워 둔 것을 반영해야 한다 (화면과 실제가 다르면 못 믿는다)
+    ok(forecastAutoDrafts({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3 })
+      .find((f) => f.date === '2026-08-26')?.topic === '그날만다른주제', '예정에도 채워 둔 날이 그대로 뜬다')
+
+    // 엉뚱한 값·키워드는 저장하지 않는다 (키워드까지 저장하면 ①과 두 곳에서 정해진다)
+    const cleaned = normalizePlan({ days: [
+      { date: '2026-08-26', topic: ' 가 ', keyword: 'A' },
+      { date: '엉뚱', topic: '나' },
+      { date: '2026-08-27' },
+      { date: '2026-08-26', topic: '라' },
+    ] })
+    ok(cleaned.days.length === 1, '날짜 꼴이 아니거나 주제가 없는 줄은 버린다', JSON.stringify(cleaned.days))
+    ok(!cleaned.days.some((d) => d.date === '엉뚱' || d.date === '2026-08-27'), '엉뚱한 날짜도 주제 없는 날도 남지 않는다')
+    ok(cleaned.days.every((d) => !('keyword' in d)), '키워드는 저장하지 않는다')
+    ok(cleaned.days.find((d) => d.date === '2026-08-26')?.topic === '라', '같은 날이 둘이면 나중 것을 남긴다')
+
+    /*
+     * **「다른 주제로」는 앱이 다음 것을 준다** — 목록을 열어 고르게 하면 결국 회원이 확정하는
+     * 것으로 돌아간다. 다른 날에 이미 쓴 주제는 건너뛴다 (안 그러면 옆날과 겹친다).
+     */
+    const before = { keywords: ['가키워드'], topics: ['가주제', '나주제', '다주제'],
+      days: [{ date: '2026-08-26', topic: '가주제' }, { date: '2026-08-27', topic: '나주제' }] }
+    const rolled = rerollTopic(before, '2026-08-26')
+    const rolledTopic = rolled.days.find((d) => d.date === '2026-08-26').topic
+    ok(rolledTopic !== '가주제', '누르면 그 날 주제가 바뀐다', rolledTopic)
+    ok(rolledTopic !== '나주제', '옆날에 쓴 주제는 피한다', rolledTopic)
+    ok(rolled.days.find((d) => d.date === '2026-08-27').topic === '나주제', '다른 날은 건드리지 않는다')
+    ok(rerollTopic({ topics: [] }, '2026-08-26').days.length === 1, '담은 주제가 없으면 기본 주제에서 준다')
 
     /*
      * **삭제** (2026-08-24 회원 요청: 날짜별 목록에 "이거 삭제기능 만들어줘").
@@ -8974,22 +9023,46 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     const cronDraft = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
 
     /*
-     * **어디에서도 주제를 확정하라고 묻지 않는다** (2026-08-25 회원 지적: "내가 주제 계속
-     * 확정하는거 아니라 했잖아. 근데 왜 또 주제 고르라고 나오는거야").
+     * **날짜를 고르는 칸은 있고, 주제를 고르는 칸은 없다** (2026-08-25 회원 요청 두 가지).
      *
-     * 세 자리에 있었다 — 설정의 ③ 칸, 날짜별 목록의 「이 날 바꾸기」, 그리고 둘이 함께 쓰던
-     * components/DayAssign.tsx. 셋을 다 없앤다. 하나만 없애면 다른 자리에서 또 묻는다.
+     *   · "내가 주제 계속 확정하는거 아니라 했잖아. 근데 왜 또 주제 고르라고 나오는거야."
+     *   · "날짜 선택하는게 있어야해."
+     *
+     * 이 두 줄이 같은 화면에서 동시에 지켜지는지 여기서 확인한다. 한쪽만 지키면 회원이 또
+     * 되돌리라고 한다 — 실제로 네 번 그랬다.
      */
     const { existsSync } = require('node:fs')
-    ok(!existsSync(new URL('../components/DayAssign.tsx', import.meta.url)), '날짜별 주제 고르는 칸이 아예 없다')
+    ok(!existsSync(new URL('../components/DayAssign.tsx', import.meta.url)), '주제를 고르라고 묻던 칸은 없앤 채로 둔다')
     const dayCodeAll = dayUi.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
     ok(!dayCodeAll.includes('DayAssign') && !dayCodeAll.includes('이 날 바꾸기'), '날짜별 목록에서 주제를 고치라고 하지 않는다')
+    ok(dayUi.includes('미리 채워둠'), '미리 채운 날은 그렇게 표시한다 (설정을 바꿔도 그대로 나간다)')
 
     const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
     const panelCode = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
-    ok(!panelCode.includes('DayAssign') && !panelCode.includes('날짜 골라서 주제 정하기'), '설정 화면에도 날짜별 주제 칸이 없다')
-    ok(!panelCode.includes('plan.days') && !panelCode.includes('a.days'), '날짜별 지정을 저장하지 않는다')
-    ok(panel.includes("save({ off: false, keywords: [], topics: [], skip: [] })"), '「전부 지우고 자동으로」가 고른 것과 쉬는 날을 지운다')
+    ok(!panelCode.includes('DayAssign'), '설정 화면도 주제 고르는 칸을 다시 들이지 않는다')
+
+    // ① 날짜를 고르는 자리가 있다 (회원이 「왜 또 날짜 선택하는게 없어」라고 한 자리)
+    ok(/type="date"/.test(panelCode) && panelCode.includes('언제부터'), '언제부터 채울지 날짜를 고른다')
+    ok(panelCode.includes('며칠치') && panelCode.includes('이 날짜들 주제 채우기'), '며칠치인지 고르고 한 번에 채운다')
+    ok(panelCode.includes('min={today}'), '지난 날짜는 고르지 못하게 한다')
+    ok(panelCode.includes("fetch('/api/autodraft/fill'"), '주제는 서버 로테이션이 채운다 (화면이 지어내지 않는다)')
+
+    // ② 그런데 주제를 적거나 고르라고는 하지 않는다
+    ok(panel.includes('날짜만 고르시면 주제는 앱이 채웁니다'), '누가 주제를 정하는지 밝힌다')
+    ok(panelCode.includes('rerollTopic') && panelCode.includes('다른 주제로'), '마음에 안 들면 앱이 다른 것으로 바꿔준다')
+    /*
+     * ③ 칸 안에 주제를 고르는 입력이 섞이면 도로 「주제 고르라고 나온다」가 된다. ② 칸의
+     * 탐색기와 섞이지 않게 ③ 구간만 잘라서 본다.
+     */
+    const thirdAt = panelCode.indexOf('③ 날짜별 주제')
+    const third = thirdAt < 0 ? '' : panelCode.slice(thirdAt, panelCode.indexOf('</section>', thirdAt))
+    ok(third.length > 200, '③ 칸을 찾았다', String(third.length))
+    ok(!third.includes('TopicExplorer') && !/setTopic|placeholder=/.test(third), '③ 칸에는 주제를 적거나 고르는 자리가 없다')
+
+    ok(panel.includes("save({ off: false, keywords: [], topics: [], days: [], skip: [] })"), '「전부 지우고 자동으로」가 채운 날짜까지 지운다')
+    ok(/a\.days \?\? \[\]/.test(panel), '채운 날짜도 저장 여부 비교에 넣는다')
+    // 회원이 「지금 저장된 설정에서 날짜가 있어서」라고 한 그 줄
+    ok(/<dt[^>]*>날짜<\/dt>/.test(panel), '저장된 설정에 날짜 줄이 있다')
 
     /*
      * **누가 정하는지 화면이 말해줘야 한다.** 안 그러면 「그래서 내일 주제는 누가 정하지」를
@@ -8998,6 +9071,10 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(panel.includes('어느 날 어느 주제를 쓸지는 앱이 정합니다'), '주제는 앱이 고른다고 밝힌다')
     // 하나만 담으면 매일 같은 주제다 — 규칙을 아는 사람만 알 수 있게 두면 안 된다
     ok(/topics \?\? \[\]\)\.length === 1/.test(panel) && panel.includes('매일 같은 주제'), '주제를 하나만 담으면 그 자리에서 말해준다')
+
+    // 채우기 라우트는 계산만 한다 — 여기서 저장하면 고치던 다른 값이 덮인다
+    const fillApi = rf(new URL('../app/api/autodraft/fill/route.ts', import.meta.url), 'utf8')
+    ok(fillApi.includes('fillDays') && !fillApi.includes('mutate('), '채우기는 계산만 하고 저장은 「설정 저장」이 한다')
     /*
      * **「삭제」라고 부른다** (2026-08-24 회원 지적: "이날 안쓰기 누르면 삭제는 되는데 잘
      * 표시가 나지 않아. 그냥 삭제로 버튼 바꿔주고 삭제하겠습니까? 물어서 삭제될 수 있게").

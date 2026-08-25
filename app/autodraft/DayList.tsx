@@ -35,6 +35,11 @@ export default function DayList({
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  /*
+   * 앱이 그날그날 고른 날과, 설정에서 **미리 채워 둔** 날을 구별한다. 미리 채운 날은 설정을
+   * 바꿔도 그대로 나가므로 그 표시가 없으면 「왜 안 바뀌지」가 된다 (2026-08-25).
+   */
+  const filledDates = new Set((plan?.days ?? []).map((d) => d.date))
 
   async function save(next: AutoDraftPlan) {
     setSaving(true)
@@ -248,6 +253,7 @@ export default function DayList({
                 <div className="mb-1 flex flex-wrap items-center gap-1.5">
                   <span className="tnum text-[12px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
                   {d.when === 'today' && <Badge tone="info">오늘</Badge>}
+                  {filledDates.has(d.date) && <Badge tone="good">미리 채워둠</Badge>}
                 </div>
                 <p className="text-[13px] leading-snug font-semibold">
                   {d.keyword} <span className="muted font-medium">· {d.topic}</span>
