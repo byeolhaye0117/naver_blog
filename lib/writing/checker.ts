@@ -95,6 +95,20 @@ export interface CheckInput {
 /** 이 점수 이상이면 "발행해도 좋은 상태" */
 export const PUBLISH_THRESHOLD = 85
 
+/**
+ * **제목에 있으면 방문자가 쓴 글로 읽히는 말** — 홍보·정보글에서 화자 검사가 잡는다.
+ *
+ * ── 「체험」을 뺐다 (2026-08-26) ───────────────────────────────
+ * 예전 목록은 `/후기|내돈내산|체험단?/` 였다. `체험단?` 은 **「체험」만 있어도 걸린다.**
+ * 그런데 우리 지시문(lib/ai/prompt.ts)은 이벤트 정보가 없는 홍보글에 **제목에 「체험」을
+ * 넣으라**고 시키고, 예시까지 준다 — 「쌍용동 헬스장 체험 먼저 해보고 정하세요」.
+ * 시켜서 쓴 제목을 즉시수정으로 막고 있었던 셈이다 (「좋더라고요」와 같은 사고).
+ *
+ * 방문자 티가 나는 것은 **「체험단」·「체험기」**다 — 체험단은 대가를 받고 쓰는 사람이고,
+ * 체험기는 겪은 사람이 쓰는 글이다. 「무료 체험」은 센터가 파는 것이라 센터 말이 맞다.
+ */
+export const VISITOR_TITLE_WORDS = /후기|내돈내산|체험단|체험기/
+
 /** 글 유형별 수치 기준 — 세 스킬의 SEO·키워드 규칙표를 그대로 옮긴 값 */
 interface Spec {
   mainMin: number
@@ -2411,9 +2425,22 @@ export function checkPost(input: CheckInput): CheckResult {
     level: level(vagueCount <= 2, vagueCount <= 4),
     value: vagueHits.length ? vagueHits.join(' · ') : '없음',
     target: '2번 이하 (지시문이 이미 「수량은 숫자로」라고 시킵니다)',
+    /*
+     * **고칠 길을 두 갈래로 준다** (2026-08-26).
+     *
+     * 회원 지적: "새벽에 자동으로 올리는거 왜 갑자기 검수를 안하고 작성까지만 됐어?"
+     * 검수도 고쳐 쓰기도 돌았는데 **고쳐 쓰기가 아무것도 못 고치고 돌아왔다.**
+     *
+     * 원인은 이 힌트였다. 「숫자로 바꾸세요」만 시켜 놓고 바로 뒤에 「지어낸 숫자를 쓰지
+     * 말라」고 하니, 숫자를 붙일 수 없는 자리(「필요 이상으로 **많이** 드시게 되고」)에서
+     * 모델이 갇힌다. 실제로 재봤다 — 같은 초안·같은 모델에 이 힌트로 물으면 그대로
+     * 79점(고친 것 0개)이고, 아래처럼 **말을 바꾸는 길**을 함께 주면 95점이 됐다.
+     *
+     * 숫자가 답이 아닌 자리가 있다. 그 자리는 부사를 빼거나 말을 바꾸는 것이 답이다.
+     */
     hint:
       vagueCount > 2
-        ? '「많이」·「자주」·「대부분」을 숫자로 바꾸세요 — 몇 분·몇 세트·며칠에 한 번인지. 정확히 모르면 범위로 쓰면 됩니다 (「사흘에 한 번 정도」). 지어낸 숫자를 쓰라는 뜻이 아닙니다.'
+        ? '「많이」·「자주」·「대부분」·「꽤」가 여러 번 나옵니다. 두 갈래로 고치세요 — ① **수를 아는 자리는 숫자로** (몇 분·몇 세트·며칠에 한 번). 모르면 범위로 쓰면 됩니다 (「사흘에 한 번 정도」). ② **숫자를 붙일 수 없는 자리는 말을 바꾸거나 뺍니다** — 「많이 드시게 됩니다」→「과식하게 됩니다」, 「자주 물어보십니다」→「거의 매번 물어보십니다」, 빼도 뜻이 그대로면 그냥 빼세요. 지어낸 숫자를 쓰라는 뜻이 아닙니다.'
         : undefined,
     weight: 2,
   })
@@ -2565,6 +2592,7 @@ export function checkPost(input: CheckInput): CheckResult {
     { p: /등록했어요|등록하게 됐|상담받아보니/, label: '방문자 등록 서술' },
   ]
   const OWNER_TONE = [
+    // (아래 VISITOR_TITLE_WORDS 와 함께 화자 검사가 쓰는 목록이다)
     { p: /저희 (센터|지점|짐|헬스장)|우리 센터|우리 지점/, label: '소속 1인칭(「저희 센터」)' },
     { p: /오시면|방문해 주시|등록하시면|안내드립니다/, label: '센터가 손님을 부르는 말투' },
   ]
@@ -2604,12 +2632,18 @@ export function checkPost(input: CheckInput): CheckResult {
       weight: 5,
     })
   } else {
-    const titleAt = matchOf(/후기|내돈내산|체험단?/, title)
+    const titleAt = matchOf(VISITOR_TITLE_WORDS, title)
     const bodyFound = VISITOR_TONE.map((t) => ({ label: t.label, at: toneAt(t, prose) })).filter((x) => x.at)
     const found = [
       ...(titleAt ? [{ label: '제목', at: titleAt }] : []),
       ...bodyFound,
     ]
+    /*
+     * **제목만 걸렸으면 고칠 곳은 제목 한 줄이다** (2026-08-26 회원 지적: "이거 자꾸 화자가
+     * 어긋났대. 수정 좀 해줘"). 여태 어디가 걸렸든 「방문객 시점으로 쓰려면 유형을
+     * 후기글로 바꾸세요」로 끝내서, 멀쩡한 본문을 통째로 다시 쓰게 만들었다.
+     */
+    const scope = titleAt && bodyFound.length ? 'both' : titleAt ? 'title' : 'body'
     add({
       id: 'voice',
       group: '저품질 위험',
@@ -2617,10 +2651,15 @@ export function checkPost(input: CheckInput): CheckResult {
       level: found.length ? 'fail' : 'pass',
       value: found.length ? found.map((f) => `「${f.at}」`).join(' · ') : '센터 1인칭 유지',
       target: '방문자 말투·「후기」 표기를 쓰지 않습니다',
+      scope: found.length ? scope : undefined,
       hint: found.length
         ? `${titleAt ? `제목의 「${titleAt}」` : ''}${titleAt && bodyFound.length ? ' · ' : ''}${bodyFound
             .map((f) => `본문의 「${f.at}」`)
-            .join(' · ')} 때문입니다. 이 글은 센터가 쓰는 글이라 겪지 않은 일을 겪은 것처럼 말하는 셈이 됩니다. 방문객 시점으로 쓰려면 유형을 「후기글」로 바꾸세요.`
+            .join(' · ')} 때문입니다. 이 글은 센터가 쓰는 글이라 겪지 않은 일을 겪은 것처럼 말하는 셈이 됩니다. ${
+            scope === 'title'
+              ? `**제목 한 줄만 고치면 됩니다 — 본문은 그대로 두세요.** 「${titleAt}」를 빼거나 센터가 하는 말로 바꾸세요: 「… 후기」 → 「… 정리했습니다」·「… 알려드립니다」.`
+              : '방문객 시점으로 쓰려면 유형을 「후기글」로 바꾸세요.'
+          }`
         : undefined,
       weight: 5,
     })
