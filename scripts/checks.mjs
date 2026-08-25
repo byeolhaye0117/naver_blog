@@ -8944,6 +8944,33 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(cleaned.days.length === 1, '날짜 꼴이 아니거나 반쪽인 것은 버린다', JSON.stringify(cleaned.days))
     ok(cleaned.days[0].keyword === 'C', '같은 날이 둘이면 나중에 고친 것을 남긴다')
 
+    /*
+     * **삭제** (2026-08-24 회원 요청: 날짜별 목록에 "이거 삭제기능 만들어줘").
+     *
+     * 앞날과 지난 날은 지우는 뜻이 다르다:
+     *   · 예정 줄은 **계산해서 만든 것**이라 지울 실체가 없다 — 지워도 다음에 다시 생긴다.
+     *     그래서 「이 날은 쓰지 않는다」고 적어 둔다 (skip)
+     *   · 지난 줄은 실행 기록이라 진짜로 지운다 (글은 그대로 둔다)
+     */
+    const skipPlan = { keywords: ['가키워드'], topics: ['가주제'], skip: ['2026-08-26'] }
+    ok(!planAssignment({ plan: skipPlan, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' }), '건너뛴 날은 아무것도 쓰지 않는다')
+    ok(planAssignment({ plan: skipPlan, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-27' }), '다른 날은 그대로 쓴다')
+    // 날짜별 지정이 있어도 건너뛰기가 이긴다 (정했다가 나중에 빼는 것이 자연스러운 순서다)
+    ok(!planAssignment({ plan: { ...skipPlan, days: [{ date: '2026-08-26', keyword: 'A', topic: '가' }] }, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' }),
+      '정해둔 날이어도 건너뛰기로 바꾸면 안 쓴다')
+
+    /*
+     * **건너뛴 날은 세지 않는다.** 이레를 보여달라고 했으면 「쓰는 날」 이레여야 한다 —
+     * 건너뛴 날을 채워 넣으면 볼 수 있는 앞날이 그만큼 줄어든다.
+     */
+    const fcSkip = forecastAutoDrafts({ plan: skipPlan, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3 })
+    ok(fcSkip.length === 3, `건너뛰어도 이레는 이레 — ${fcSkip.length}일`)
+    ok(!fcSkip.some((f) => f.date === '2026-08-26'), '건너뛴 날은 예정에 없다', fcSkip.map((f) => f.date).join())
+    ok(fcSkip.map((f) => f.date).join() === '2026-08-25,2026-08-27,2026-08-28', '그만큼 뒤를 더 본다', fcSkip.map((f) => f.date).join())
+
+    ok(normalizePlan({ skip: ['2026-08-26', '2026-08-26', '엉뚱', ''] }).skip.length === 1, '엉뚱한 날짜·중복은 버린다')
+    ok(planSummary({ skip: ['2026-08-26'] }).includes('건너뛰는 날 1일'), '요약에도 쉬는 날을 밝힌다')
+
     // 화면이 실제로 이 목록을 그린다
     const { readFileSync: rf } = require('node:fs')
     const page = rf(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
@@ -8959,6 +8986,7 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
      * 고를 수 있는 주제를 **담은 것만**으로 뒀던 것이 원인이다. 회원이 담은 주제가
      * 하나뿐이라 고르는 칸에 한 줄만 떴다 — 목록이 아니었다.
      */
+    const cronDraft = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
     const assign = rf(new URL('../components/DayAssign.tsx', import.meta.url), 'utf8')
     ok(/\[\.\.\.new Set\(\[\.\.\.\(plan\?\.topics \?\? \[\]\), \.\.\.INFO_TOPICS\]\)\]/.test(assign),
       '담은 주제와 기본 주제를 함께 보여준다 (하나 담았어도 고를 게 있다)')
@@ -8974,13 +9002,23 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(panel.includes('날짜 골라서 정하기'), '날짜를 고르는 버튼이 있다')
     // 날짜만 고쳤을 때도 「저장 안 됨」이 떠야 한다
     ok(/a\.days \?\? \[\]/.test(panel), '날짜 지정도 저장 여부 비교에 넣는다')
-    ok(panel.includes("save({ off: false, keywords: [], topics: [], days: [] })"), '「전부 지우고 자동으로」가 날짜 지정도 지운다')
+    ok(panel.includes("save({ off: false, keywords: [], topics: [], days: [], skip: [] })"), '「전부 지우고 자동으로」가 날짜 지정·쉬는 날도 지운다')
     ok(dayUi.includes('자동으로 되돌리기'), '정한 것을 도로 풀 수 있다')
+    ok(dayUi.includes('이 날 안 쓰기') && dayUi.includes('skipDay'), '예정 줄을 뺄 수 있다')
+    // 지운 것처럼 사라지면 「내가 뺐나 원래 없었나」를 구별할 수 없고 되돌릴 수도 없다
+    ok(dayUi.includes('이 날은 쓰지 않습니다') && dayUi.includes('다시 쓰기'), '뺀 날을 남겨 두고 되돌릴 수 있다')
+    ok(dayUi.includes('이 기록 지우기') && dayUi.includes("'/api/autodraft/runs'"), '지난 기록은 진짜로 지운다')
+    // 기록만 정리하려다 글이 날아가면 안 된다
+    const runsApi = rf(new URL('../app/api/autodraft/runs/route.ts', import.meta.url), 'utf8')
+    ok(!runsApi.includes('d.posts'), '기록을 지울 때 글은 건드리지 않는다')
+    ok(dayUi.includes('그날 쓴 글은 지워지지 않습니다'), '무엇이 지워지는지 미리 말해준다')
+    // 건너뛴 날을 실패로 기록하면 화면에 빨간 줄이 뜨고 알림까지 나간다
+    ok(/skip\?\.includes\(today\)/.test(cronDraft) && /건너뛰기로 정해두셨습니다/.test(cronDraft),
+      '크론이 건너뛴 날을 실패로 적지 않는다')
     ok(dayUi.includes('직접 정함'), '알아서 도는 날과 내가 정한 날을 구별한다')
     // 이미 쓴 날을 고치는 칸을 두면 「고쳤는데 왜 글이 그대로지」가 된다
     ok(/d\.when !== 'past' && !d\.postId/.test(dayUi), '이미 쓴 날은 바꾸지 못하게 한다')
-    const cron = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
-    ok(/planAssignment\(\{[^)]*date: today/.test(cron), '크론이 그 날 지정을 본다 (안 넘기면 지정이 무시된다)')
+    ok(/planAssignment\(\{[^)]*date: today/.test(cronDraft), '크론이 그 날 지정을 본다 (안 넘기면 지정이 무시된다)')
   }
 
   /*

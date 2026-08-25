@@ -310,11 +310,20 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
     byDate.set(date, { date, keyword, topic })
   }
 
+  const skip = [
+    ...new Set(
+      (Array.isArray(raw?.skip) ? raw.skip : [])
+        .map((d) => (typeof d === 'string' ? d.slice(0, 10) : ''))
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    ),
+  ].sort()
+
   return {
     off: raw?.off === true,
     keywords: list(raw?.keywords),
     topics: list(raw?.topics),
     days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    skip,
     updatedAt: raw?.updatedAt,
   }
 }
@@ -336,6 +345,9 @@ export function planAssignment(args: {
    * 회원: "하나의 주제를 계속 쓰고 싶지 않아 날짜 설정해서 날짜별로 설정할 수 있게 해줘."
    */
   const wantDate = args.date?.slice(0, 10)
+  // **건너뛰기로 정해둔 날은 아무것도 쓰지 않는다.** 정해둔 것(days)보다도 먼저 본다 —
+  // 「이 날 정했다가 나중에 건너뛰기로 바꿨다」가 자연스러운 순서다
+  if (wantDate && plan.skip?.includes(wantDate)) return null
   const fixed = wantDate ? plan.days?.find((d) => d.date === wantDate) : undefined
   if (fixed) {
     return {
@@ -376,6 +388,7 @@ export function planSummary(plan: AutoDraftPlan | undefined): string {
     few(p.topics, `주제는 기본 ${INFO_TOPICS.length}개 전부`, '주제'),
   ]
   if (p.days?.length) parts.unshift(`날짜별 지정 ${p.days.length}일`)
+  if (p.skip?.length) parts.unshift(`건너뛰는 날 ${p.skip.length}일`)
   return parts.join(' · ')
 }
 
@@ -412,8 +425,16 @@ export function forecastAutoDrafts(args: {
   const start = Date.parse(`${args.from.slice(0, 10)}T00:00:00.000Z`)
   if (!Number.isFinite(start)) return []
 
-  for (let i = 0; i < Math.max(0, Math.trunc(args.days)); i++) {
+  /*
+   * **건너뛴 날은 세지 않는다.** 이레를 보여달라고 했으면 「쓰는 날」 이레여야 한다 —
+   * 건너뛴 날을 채워 넣으면 볼 수 있는 앞날이 그만큼 줄어든다. 대신 무한히 돌지 않게
+   * 넉넉한 상한을 둔다.
+   */
+  const want = Math.max(0, Math.trunc(args.days))
+  const MAX_LOOK = want + 60
+  for (let i = 0; i < MAX_LOOK && out.length < want; i++) {
     const date = new Date(start + i * 86_400_000).toISOString().slice(0, 10)
+    if (plan.skip?.includes(date)) continue
     const a = planAssignment({ plan, posts, fallbackKeywords: args.fallbackKeywords, date })
     if (!a) break
     out.push({ date, keyword: a.mainKeyword, topic: a.topic })

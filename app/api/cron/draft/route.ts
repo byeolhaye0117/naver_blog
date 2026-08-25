@@ -155,6 +155,13 @@ async function run(
   if (db.autoDraftPlan?.off) {
     return NextResponse.json({ skipped: '자동 초안을 꺼두셨습니다.', date: today })
   }
+  /*
+   * **건너뛰기로 정해둔 날은 실패가 아니다** (2026-08-24). 회원이 일부러 뺀 날이므로
+   * 실패로 기록하면 화면에 빨간 줄이 뜨고, 「자동 초안이 실패했습니다」 알림까지 나간다.
+   */
+  if (db.autoDraftPlan?.skip?.includes(today)) {
+    return NextResponse.json({ skipped: '이 날은 건너뛰기로 정해두셨습니다.', date: today })
+  }
   // 그 날에 콕 집어 정해둔 것이 있으면 그것부터 (2026-08-24)
   const assignment = planAssignment({ plan: db.autoDraftPlan, posts: db.posts, fallbackKeywords: pool, date: today })
   if (!assignment) {
