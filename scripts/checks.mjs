@@ -9018,6 +9018,22 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(/되돌릴 수 있습니다/.test(dayUi), '되돌릴 수 있다는 것도 함께 말한다')
     // 지운 것처럼 사라지면 「내가 뺐나 원래 없었나」를 구별할 수 없고 되돌릴 수도 없다
     ok(dayUi.includes('삭제함 — 이 날은 쓰지 않습니다') && dayUi.includes('다시 쓰기'), '삭제한 날을 남겨 두고 되돌릴 수 있다')
+
+    /*
+     * **예정은 접어 둔다** (2026-08-25). 회원: "엥? 25일부터 다시 생겼는데? 지금 작성된
+     * 목록 외에는 모두 삭제해줘."
+     *
+     * 예정 줄은 저장된 것이 아니라 계산해서 그리는 것이라 **지워도 화면을 열면 다시 생긴다.**
+     * 회원은 그걸 세 번 지웠다 — 지울 수 없는 것을 계속 지우게 만든 것이 잘못이다.
+     * 이 화면에서 보려던 것은 **실제로 쓴 것**이므로 그쪽을 앞에 두고 예정은 접는다.
+     */
+    ok(/const written = days\.filter/.test(dayUi) && /const upcoming = days\.filter/.test(dayUi),
+      '쓴 것과 앞으로 쓸 것을 가른다')
+    ok(/<details[\s\S]{0,400}앞으로 쓸 예정/.test(dayUi), '예정은 접어 둔다')
+    ok(dayUi.includes('아직 안 쓴 것입니다'), '예정이 기록이 아니라는 것을 밝힌다')
+    ok(dayUi.includes('아직 쓴 글이 없습니다'), '쓴 것이 없으면 그렇게 말한다 (빈 화면을 남기지 않는다)')
+    const autoPage = rf(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
+    ok(autoPage.includes('앞으로 쓸 예정은 아래에 접어 뒀습니다'), '카드 설명도 같은 말을 한다')
     ok(dayUi.includes("'/api/autodraft/runs'") && /기록을 삭제할까요/.test(dayUi), '지난 기록도 물어보고 지운다')
     ok((dayUi.match(/>\s*삭제\s*</g) ?? []).length >= 2, '예정과 지난 기록 둘 다 같은 이름의 버튼을 쓴다')
     // 기록만 정리하려다 글이 날아가면 안 된다

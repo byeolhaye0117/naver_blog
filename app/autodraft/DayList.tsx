@@ -110,6 +110,20 @@ export default function DayList({
   }
 
   const skipped = (plan?.skip ?? []).filter((d) => d >= today)
+  /*
+   * **지난 것과 앞으로 것을 가른다** (2026-08-25).
+   *
+   * 회원: "엥? 25일부터 다시 생겼는데? 지금 작성된 목록 외에는 모두 삭제해줘."
+   *
+   * 예정 줄은 **저장된 것이 아니라 계산해서 그리는 것**이라 지워도 화면을 열 때 다시
+   * 생긴다. 회원은 그걸 세 번 지웠다 — 지울 수 없는 것을 계속 지우게 만든 것이 잘못이다.
+   *
+   * 회원이 이 화면에서 보려던 것은 **실제로 쓴 것**이다. 예정은 「그래서 내일은 뭘 쓰지」를
+   * 확인할 때만 필요하므로 접어 둔다.
+   */
+  const written = days.filter((d) => d.when === 'past' || d.ok !== undefined)
+  const upcoming = days.filter((d) => !(d.when === 'past' || d.ok !== undefined))
+
   if (days.length === 0 && skipped.length === 0)
     return <p className="muted py-10 text-center text-[13px] leading-relaxed">{emptyNote}</p>
 
@@ -143,8 +157,14 @@ export default function DayList({
         </ul>
       )}
 
+      {written.length === 0 && (
+        <p className="muted mb-2 text-[12.5px] leading-relaxed">
+          아직 쓴 글이 없습니다. 매일 새벽 5시에 한 편씩 쓰고, 쓴 날은 여기에 쌓입니다.
+        </p>
+      )}
+
       <ul className="space-y-2">
-        {days.map((d) => {
+        {written.map((d) => {
           const fixed = fixedDates.has(d.date)
           const open = editing === d.date
           return (
@@ -255,6 +275,81 @@ export default function DayList({
           )
         })}
       </ul>
+
+      {/*
+        **예정은 접어 둔다.** 저장된 것이 아니라 계산해서 그리는 줄이라 지울 수 없는데,
+        펼쳐 두면 회원이 계속 지우려 하게 된다 (실제로 세 번 그랬다). 「내일은 뭘 쓰지」를
+        확인할 때만 펼치면 된다.
+      */}
+      {upcoming.length > 0 && (
+        <details className="bd mt-3 rounded-xl border border-dashed px-3.5 py-2.5">
+          <summary className="cursor-pointer text-[12px] font-bold select-none">
+            앞으로 쓸 예정 {upcoming.length}일 보기
+            <span className="muted ml-2 font-semibold">
+              — 아직 안 쓴 것입니다. 설정을 바꾸면 달라집니다
+            </span>
+          </summary>
+          <ul className="mt-2 space-y-2">
+            {upcoming.map((d) => {
+              const fixed = fixedDates.has(d.date)
+              const open = editing === d.date
+              return (
+                <li key={d.date} className="bd rounded-xl border border-dashed px-3.5 py-3">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <span className="tnum text-[12px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
+                    {d.when === 'today' && <Badge tone="info">오늘</Badge>}
+                    {fixed && <Badge tone="good">직접 정함</Badge>}
+                  </div>
+                  <p className="text-[13px] leading-snug font-semibold">
+                    {d.keyword} <span className="muted font-medium">· {d.topic}</span>
+                  </p>
+                  {!open && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setEditing(d.date)}
+                        className={`${btnGhost} !px-2.5 !py-1.5 !text-[11px]`}
+                      >
+                        이 날 바꾸기
+                      </button>
+                      {fixed && (
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() => clearDay(d.date)}
+                          className="muted rounded-lg px-2 py-1 text-[11px] font-semibold underline disabled:opacity-50"
+                        >
+                          자동으로 되돌리기
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => skipDay(d.date)}
+                        className="ml-auto rounded-xl border border-rose-500/40 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 transition hover:bg-rose-500/10 disabled:opacity-50 dark:text-rose-300"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  )}
+                  {open && (
+                    <div className="mt-2">
+                      <DayAssign
+                        plan={plan}
+                        keywordPool={keywordPool}
+                        fixedDate={d.date}
+                        today={today}
+                        onPick={(day) => setDay(day.date, day.keyword, day.topic)}
+                        onCancel={() => setEditing(null)}
+                      />
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </details>
+      )}
     </>
   )
 }
