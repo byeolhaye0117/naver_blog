@@ -1975,6 +1975,60 @@ const EXIST = [{ id: 'rt1', keyword: '쌍용동헬스장', url: 'https://m.blog.
 ok(autoRankTargets(PUBLISHED, EXIST).length === 0, '띄어쓰기·모바일 주소만 달라도 중복으로 안 넣는다')
 
 // ─────────────────────────────────────────────────────────────
+console.log('\n[37-2] 순위 목록 — 같은 키워드를 어떻게 구분하나 (2026-08-24)')
+/*
+ * 회원: "같은 키워드가 많으니까 제목을 붙여서 구분해주던가 하면 좋겠고 순위추적하는게 계속
+ * 아래로 쌓이면 보기 불편하니까 제목을 클릭하면 그것만 보이던게 하던가 해서 디자인을
+ * 수정해주면 좋겠어."
+ */
+{
+  const { rankItemName, sortRankViews } = require(`${OUT}/analysis/rank.js`)
+  const v = (patch) => ({
+    target: { id: patch.id ?? 't', keyword: patch.keyword ?? '쌍용동 헬스장', url: patch.url ?? 'https://blog.naver.com/x/1', label: patch.label },
+    postTitle: patch.postTitle,
+    current: patch.current ?? null,
+  })
+
+  // ── 무엇으로 이 항목을 알아보나
+  ok(rankItemName(v({ postTitle: '쌍용동 헬스장 다이어트 정체기' })) === '쌍용동 헬스장 다이어트 정체기',
+    '연결된 글 제목이 가장 먼저')
+  ok(rankItemName(v({ label: '8월 홍보글' })) === '8월 홍보글', '제목이 없으면 적어둔 이름표')
+  ok(rankItemName(v({ url: 'https://blog.naver.com/sulliha8277/224374111837' })) === '글 224374111837',
+    '둘 다 없으면 글 번호라도 — 「연결된 글 없음」 열두 줄보다 낫다')
+  ok(rankItemName(v({ postTitle: '   ' , label: '이름표' })) === '이름표', '빈 제목은 없는 것으로 친다')
+
+  /*
+   * **같은 키워드끼리 붙여 놓는다.** 등록 순서대로 흩어져 있으면 같은 키워드의 글들을
+   * 비교하려고 위아래로 스크롤해야 한다.
+   */
+  const sorted = sortRankViews([
+    v({ id: 'b', keyword: '천안 헬스장', current: 3 }),
+    v({ id: 'a2', keyword: '쌍용동 헬스장', current: 74, postTitle: '나' }),
+    v({ id: 'a1', keyword: '쌍용동 헬스장', current: 12, postTitle: '가' }),
+  ])
+  ok(sorted.map((x) => x.target.id).join() === 'a1,a2,b', `같은 키워드가 붙어 있고 순위 좋은 것부터 — ${sorted.map((x) => x.target.id).join()}`)
+  // 순위 밖(null)을 0 위로 치면 맨 앞에 온다 — 모르는 것을 유리하게 쓰지 않는다
+  const withNull = sortRankViews([v({ id: 'none', current: null }), v({ id: 'has', current: 90 })])
+  ok(withNull[0].target.id === 'has', '순위 밖은 뒤로', withNull.map((x) => x.target.id).join())
+  ok(sortRankViews([]).length === 0, '빈 목록에도 터지지 않는다')
+
+  /*
+   * **화면이 실제로 그렇게 그려야 한다.** 규칙만 만들고 화면이 안 쓰면 아무것도 달라지지 않는다 —
+   * 이 저장소에서 「한쪽만 고친 것」이 반복된 자리다.
+   */
+  const { readFileSync: rf } = require('node:fs')
+  const ui = rf(new URL('../app/rank/RankTracker.tsx', import.meta.url), 'utf8')
+  ok(ui.includes('rankItemName(v)'), '목록에 제목을 적는다')
+  ok(ui.includes('sortRankViews(initialViews)'), '같은 키워드끼리 모아서 그린다')
+  // 조회 뒤에도 같은 순서여야 한다 — 안 그러면 한 번 누를 때마다 목록이 뒤집힌다
+  ok(!/setViews\(json\.views\)/.test(ui), '서버에서 받은 목록도 같은 규칙으로 정렬한다')
+  // 한 번에 하나만 펼친다
+  ok(ui.includes('const [openId, setOpenId]'), '펼친 항목을 하나만 기억한다')
+  ok(/setOpenId\(open \? null : v\.target\.id\)/.test(ui), '누르면 그것만 펼쳐지고 다시 누르면 접힌다')
+  ok(ui.includes('aria-expanded={open}'), '펼침 상태를 화면 낭독기에도 알린다')
+  ok(/initialViews\[0\]\?\.target\.id \?\? null/.test(ui), '처음 열 때 첫 항목은 펼쳐 둔다 (전부 접히면 「아무것도 없나」로 읽힌다)')
+}
+
 console.log('\n[38] 상위 제목 단어 가르기')
 const { classifyToken, splitTokens } = require(`${OUT}/analysis/tokens.js`)
 

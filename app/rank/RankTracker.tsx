@@ -10,7 +10,9 @@ import {
   isFirstPage,
   naverBlogTabUrl,
   naverSearchUrl,
+  rankItemName,
   rankLabel,
+  sortRankViews,
   type RankView,
 } from '@/lib/analysis/rank'
 import {
@@ -24,6 +26,7 @@ import {
 import { SECTION_CAP } from '@/lib/naver/blogsection'
 import { Badge, Card, Empty, Field, MockNotice, inputClass } from '@/components/ui'
 import LineChart from '@/components/LineChart'
+import { IconChevron } from '@/components/icons'
 
 interface DiagnoseResult {
   diagnosis: Diagnosis
@@ -52,7 +55,17 @@ export default function RankTracker({
   keys: { search: boolean; searchAd: boolean }
 }) {
   const router = useRouter()
-  const [views, setViews] = useState(initialViews)
+  // 같은 키워드끼리 붙여 놓는다 — 흩어져 있으면 비교하려고 위아래로 스크롤해야 한다
+  const [views, setViews] = useState(() => sortRankViews(initialViews))
+  /**
+   * 지금 펼쳐 둔 항목 — **하나만 펼친다** (2026-08-24 회원 요청).
+   *
+   * "순위추적하는게 계속 아래로 쌓이면 보기 불편하니까 제목을 클릭하면 그것만 보이던게
+   * 하던가 해서 디자인을 수정해주면 좋겠어."
+   *
+   * 처음 열 때 **첫 항목은 펼쳐 둔다** — 전부 접혀 있으면 「아무것도 없나」로 읽힌다.
+   */
+  const [openId, setOpenId] = useState<string | null>(initialViews[0]?.target.id ?? null)
   const [keyword, setKeyword] = useState(prefill.keyword)
   const [url, setUrl] = useState(prefill.url)
   const [postId, setPostId] = useState(prefill.postId ?? '')
@@ -115,7 +128,7 @@ export default function RankTracker({
     try {
       const res = await fetch('/api/rank', { cache: 'no-store' })
       const json = await res.json()
-      if (res.ok && Array.isArray(json.views)) setViews(json.views)
+      if (res.ok && Array.isArray(json.views)) setViews(sortRankViews(json.views))
     } catch {
       /* 목록 갱신 실패는 조용히 넘긴다 — 화면을 새로고침하면 복구된다 */
     }
@@ -155,7 +168,7 @@ export default function RankTracker({
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      setViews(json.views)
+      setViews(sortRankViews(json.views))
       router.refresh()
     } catch (e) {
       const msg = e instanceof Error ? e.message : '순위 조회에 실패했습니다.'
@@ -207,7 +220,7 @@ export default function RankTracker({
             body: JSON.stringify({ targetId: v.target.id }),
           })
           const json = await res.json()
-          if (res.ok && Array.isArray(json.views)) setViews(json.views)
+          if (res.ok && Array.isArray(json.views)) setViews(sortRankViews(json.views))
         } catch {
           /* 조용히 넘긴다 — 실패해도 「API 로 조회」 버튼과 직접 입력이 그대로 남아 있다 */
         }
@@ -246,7 +259,7 @@ export default function RankTracker({
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      setViews(json.views)
+      setViews(sortRankViews(json.views))
       setManual((m) => ({ ...m, [targetId]: { rank: '', date: today(), note: '' } }))
       setManualMsg({
         id: targetId,
@@ -407,13 +420,40 @@ export default function RankTracker({
         views.map((v) => {
           const points = v.history.map((h) => ({ label: h.date.slice(5), value: h.rank }))
           const worst = Math.max(RANK_DEPTH, ...v.history.map((h) => h.rank ?? 0))
+          const open = openId === v.target.id
           return (
-            <Card
-              key={v.target.id}
-              title={v.target.keyword}
-              subtitle={v.target.url}
-              right={
-                <div className="flex items-center gap-1.5">
+            /*
+              **한 번에 하나만 펼친다** (2026-08-24 회원 요청).
+              "순위추적하는게 계속 아래로 쌓이면 보기 불편하니까 제목을 클릭하면 그것만
+              보이던게 하던가 해서 디자인을 수정해주면 좋겠어."
+
+              항목마다 그래프·구간 안내·진단·직접 기록 칸이 붙어 화면 두세 배씩 길어진다.
+              다섯 개만 돼도 아래쪽 항목은 스크롤로만 닿는다. 접어 두면 **목록이 한눈에
+              들어오고**, 볼 것 하나만 펼치면 된다.
+            */
+            <section key={v.target.id} className="card min-w-0 scroll-mt-28 rounded-[22px]">
+              <button
+                type="button"
+                onClick={() => setOpenId(open ? null : v.target.id)}
+                aria-expanded={open}
+                className="flex w-full items-start gap-2.5 px-4 py-3.5 text-left sm:px-5"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="text-[14.5px] leading-snug font-bold tracking-[-0.02em]">
+                      {v.target.keyword}
+                    </span>
+                    {v.ageDays !== null && (
+                      <span className="muted text-[11px] font-semibold">발행 {v.ageDays}일차</span>
+                    )}
+                  </div>
+                  {/*
+                    **제목으로 구분한다.** 같은 키워드로 여러 편을 추적하면 키워드만으로는
+                    어느 글인지 알 수 없어서 URL 을 눈으로 대조해야 했다.
+                  */}
+                  <p className="muted mt-0.5 truncate text-[11.5px] font-medium">{rankItemName(v)}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
                   {v.delta !== null && v.delta !== 0 && (
                     <span
                       className={`tnum text-[11px] font-bold ${
@@ -427,9 +467,15 @@ export default function RankTracker({
                   <Badge tone={isFirstPage(v.current) ? 'good' : v.current === null ? 'default' : 'warn'}>
                     블로그탭 {rankLabel(v.current)}
                   </Badge>
+                  <span className={`muted shrink-0 transition ${open ? 'rotate-180' : ''}`}>
+                    <IconChevron />
+                  </span>
                 </div>
-              }
-            >
+              </button>
+
+              {open && (
+                <div className="px-4 pb-4 sm:px-5">
+                  <p className="muted mb-3 truncate text-[11px]">{v.target.url}</p>
               {/* 발행 후 며칠인지에 따라 같은 순위도 뜻이 달라진다 */}
               {v.phase ? (
                 <div
@@ -904,7 +950,9 @@ export default function RankTracker({
                   삭제
                 </button>
               </div>
-            </Card>
+                </div>
+              )}
+            </section>
           )
         })
       )}
