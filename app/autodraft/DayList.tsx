@@ -4,8 +4,9 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { AutoDraftPlan } from '@/lib/types'
-import { INFO_TOPICS, type AutoDraftDay } from '@/lib/writing/autodraft'
-import { Badge, btnGhost, inputClass } from '@/components/ui'
+import type { AutoDraftDay } from '@/lib/writing/autodraft'
+import { Badge, btnGhost } from '@/components/ui'
+import DayAssign from '@/components/DayAssign'
 
 /**
  * **날짜별 목록 — 보고, 그 날 것을 직접 정한다** (2026-08-24 회원 요청).
@@ -23,22 +24,19 @@ export default function DayList({
   days,
   plan,
   keywordPool,
+  today,
   emptyNote,
 }: {
   days: AutoDraftDay[]
   plan?: AutoDraftPlan
   keywordPool: string[]
+  today: string
   emptyNote: string
 }) {
   const router = useRouter()
   const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
-  const [kw, setKw] = useState('')
-  const [topic, setTopic] = useState('')
-
-  /** 고를 수 있는 주제 — 담은 것이 있으면 그것, 없으면 기본 목록 */
-  const topicPool = plan?.topics?.length ? plan.topics : INFO_TOPICS
   const fixedDates = new Set((plan?.days ?? []).map((d) => d.date))
 
   async function save(next: AutoDraftPlan) {
@@ -119,11 +117,7 @@ export default function DayList({
                   {!open && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setEditing(d.date)
-                        setKw(d.keyword)
-                        setTopic(d.topic)
-                      }}
+                      onClick={() => setEditing(d.date)}
                       className={`${btnGhost} !px-2.5 !py-1.5 !text-[11px]`}
                     >
                       이 날 바꾸기
@@ -143,46 +137,16 @@ export default function DayList({
               )}
 
               {open && (
-                <div className="mt-2 space-y-2">
-                  <select value={kw} onChange={(e) => setKw(e.target.value)} className={inputClass}>
-                    {keywordPool.map((k) => (
-                      <option key={k} value={k}>
-                        {k}
-                      </option>
-                    ))}
-                  </select>
-                  <select value={topicPool.includes(topic) ? topic : ''} onChange={(e) => setTopic(e.target.value)} className={inputClass}>
-                    <option value="">직접 적기</option>
-                    {topicPool.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                  {/* 담은 주제에 없는 것도 쓸 수 있어야 한다 — 그 날만 다른 이야기를 하고 싶을 때 */}
-                  <input
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    placeholder="이 날 쓸 주제"
-                    className={inputClass}
+                <div className="mt-2">
+                  <DayAssign
+                    plan={plan}
+                    keywordPool={keywordPool}
+                    fixedDate={d.date}
+                    today={today}
+                    onPick={(day) => setDay(day.date, day.keyword, day.topic)}
+                    onCancel={() => setEditing(null)}
                   />
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      disabled={saving || !kw.trim() || !topic.trim()}
-                      onClick={() => setDay(d.date, kw.trim(), topic.trim())}
-                      className="bg-brand-600 rounded-xl px-3 py-2 text-[11.5px] font-bold text-white disabled:opacity-50"
-                    >
-                      {saving ? '저장 중…' : '이 날로 저장'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditing(null)}
-                      className="muted rounded-lg px-2 py-1 text-[11px] font-semibold underline"
-                    >
-                      취소
-                    </button>
-                  </div>
+                  {saving && <p className="muted mt-1 text-[11px]">저장 중…</p>}
                 </div>
               )}
             </li>

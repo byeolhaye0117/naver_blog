@@ -8950,7 +8950,31 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(page.includes('forecastAutoDrafts') && page.includes('autoDraftDays'), '자동 작성 화면이 날짜별 목록을 만든다')
     ok(page.includes('날짜별 목록'), '그 이름으로 보여준다')
     const dayUi = rf(new URL('../app/autodraft/DayList.tsx', import.meta.url), 'utf8')
-    ok(dayUi.includes('이 날 바꾸기') && dayUi.includes('이 날로 저장'), '예정 줄에서 그 날 것을 정할 수 있다')
+    ok(dayUi.includes('이 날 바꾸기') && dayUi.includes('<DayAssign'), '예정 줄에서 그 날 것을 정할 수 있다')
+
+    /*
+     * **고를 목록이 실제로 나와야 한다** (2026-08-24 회원 지적: "날짜별 목록에서 주제나
+     * 키워드 바꾸면 목록이 안나와. 목록 나와서 하게 해주고 주제는 주제탐색기도 하게 해줘").
+     *
+     * 고를 수 있는 주제를 **담은 것만**으로 뒀던 것이 원인이다. 회원이 담은 주제가
+     * 하나뿐이라 고르는 칸에 한 줄만 떴다 — 목록이 아니었다.
+     */
+    const assign = rf(new URL('../components/DayAssign.tsx', import.meta.url), 'utf8')
+    ok(/\[\.\.\.new Set\(\[\.\.\.\(plan\?\.topics \?\? \[\]\), \.\.\.INFO_TOPICS\]\)\]/.test(assign),
+      '담은 주제와 기본 주제를 함께 보여준다 (하나 담았어도 고를 게 있다)')
+    ok(assign.includes('<TopicExplorer'), '그 자리에서 주제 탐색도 쓸 수 있다')
+    ok(assign.includes("type=\"date\""), '날짜를 골라서 정할 수 있다')
+    ok(assign.includes('min={today}'), '지난 날짜는 고르지 못하게 한다')
+    // 저장은 부르는 쪽이 한다 — 설정 화면에서 고치던 다른 값이 덮이면 안 된다
+    ok(assign.includes('onPick') && !assign.includes("fetch('/api/autodraft/plan'"), '여기서 저장하지 않고 넘겨준다')
+
+    // 설정 화면에서도 날짜를 골라 정할 수 있다 (회원이 「애초에 여기서」라고 한 자리)
+    const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
+    ok(panel.includes('③ 날짜별로 정하기') && panel.includes('<DayAssign'), '설정 화면에서도 날짜별로 정한다')
+    ok(panel.includes('날짜 골라서 정하기'), '날짜를 고르는 버튼이 있다')
+    // 날짜만 고쳤을 때도 「저장 안 됨」이 떠야 한다
+    ok(/a\.days \?\? \[\]/.test(panel), '날짜 지정도 저장 여부 비교에 넣는다')
+    ok(panel.includes("save({ off: false, keywords: [], topics: [], days: [] })"), '「전부 지우고 자동으로」가 날짜 지정도 지운다')
     ok(dayUi.includes('자동으로 되돌리기'), '정한 것을 도로 풀 수 있다')
     ok(dayUi.includes('직접 정함'), '알아서 도는 날과 내가 정한 날을 구별한다')
     // 이미 쓴 날을 고치는 칸을 두면 「고쳤는데 왜 글이 그대로지」가 된다
