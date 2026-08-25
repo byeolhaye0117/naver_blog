@@ -1210,6 +1210,49 @@ const sysReview = buildSystemPrompt('review')
     past.items.find((i) => i.id === 'voice').value
   )
 
+  /*
+   * **「좋더라고요」는 어미일 뿐이다** (2026-08-25 회원 지적: "화자가 정보글이 맞는데 자꾸
+   * 어긋났다고 떠. 왜 그런 거야?").
+   *
+   * 지시문(lib/ai/prompt.ts)이 정보글에 「"~하시더라고요", "~되더라고요"를 쓴다」고 시키는데
+   * 검수는 「좋더라고요」를 즉시수정으로 막고 있었다 — **우리가 시켜서 쓴 말을 우리가 막은
+   * 것**이다. 막아야 하는 것은 어미가 아니라 「센터가 체험자인 척하는 것」이다.
+   */
+  const tone = checkPost({
+    ...infoBase,
+    body: `${long}\n\n무릎이 아프신 분들은 자전거부터 하시는 게 좋더라고요. 회원님들 반응도 좋더라고요.`,
+  })
+  ok(
+    tone.items.find((i) => i.id === 'voice').level === 'pass',
+    '센터가 겪어 알게 된 「좋더라고요」는 걸리지 않는다',
+    tone.items.find((i) => i.id === 'voice').value
+  )
+  // 「저희 센터」가 앞에 붙으면 자기 얘기다 — 방문자 말투가 아니다
+  const ours = checkPost({ ...infoBase, body: `${long}\n\n저희 센터 회원님들 반응이 좋더라고요.` })
+  ok(
+    ours.items.find((i) => i.id === 'voice').level === 'pass',
+    '「저희 센터 …좋더라고요」는 걸리지 않는다',
+    ours.items.find((i) => i.id === 'voice').value
+  )
+  // 그 장소를 평가하는 꼴이면 그대로 걸린다 — 이게 막으려던 것이다
+  const rated = checkPost({ ...infoBase, body: `${long}\n\n여기 시설이 깔끔하고 좋더라고요.` })
+  ok(
+    rated.items.find((i) => i.id === 'voice').level === 'fail',
+    '장소를 평가하는 「좋더라고요」는 걸린다',
+    rated.items.find((i) => i.id === 'voice').value
+  )
+  /*
+   * **지시문과 검수가 같은 말을 하는지** 한 자리에서 본다. 여태 이 검사에서 난 오탐 다섯
+   * 건이 전부 「한쪽만 고친 것」이었다.
+   */
+  const infoTone = buildSystemPrompt('info')
+  ok(infoTone.includes('되더라고요'), '지시문은 정보글에 「되더라고요」를 쓰라고 한다')
+  ok(
+    checkPost({ ...infoBase, body: `${long}\n\n집에서 멀면 결국 발길이 뜸해지더라고요.` })
+      .items.find((i) => i.id === 'voice').level === 'pass',
+    '지시문이 시킨 말투를 검수가 막지 않는다'
+  )
+
   // 홍보글인데 본문이 방문자 말투
   const t2 = checkPost({ ...base, type: 'promo', title: '쌍용동 헬스장 어디가 좋을까요', body: `${paras}\n\n직접 가봤더니 시설이 괜찮더라고요.` })
   ok(t2.items.find((i) => i.id === 'voice').level === 'fail', '홍보글 본문의 방문자 말투도 걸린다', t2.items.find((i) => i.id === 'voice').value)

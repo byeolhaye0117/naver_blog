@@ -2530,7 +2530,33 @@ export function checkPost(input: CheckInput): CheckResult {
      * 그래서 대상을 요구하도록 좁혔다. 이 검사에서 벌써 세 번째 오탐이라
      * (「남들 다 자는 새벽에 갔는데」 · 「저한테 물으시는」 · 이번), 낱말만 보면 안 된다.
      */
-    { p: /괜찮더라고요|좋더라고요|만족했어요/, label: '방문자 감상 말투' },
+    /*
+     * **「좋더라고요」를 낱말만 보고 잡지 않는다** (2026-08-25).
+     *
+     * 회원 지적: "화자가 정보글이 맞는데 자꾸 어긋났다고 떠. 왜 그런 거야?" 정보글이 본문의
+     * 「좋더라고요」 하나로 즉시수정을 맞았다 — 점수가 79로 묶여 발행선을 넘을 수 없다.
+     *
+     * **우리 지시문과 정반대였다.** lib/ai/prompt.ts 의 정보글 톤은 「"~하시더라고요",
+     * "~되더라고요"를 쓴다 (센터가 회원들을 보면서 알게 된 것)」라고 시키고 있다. 홍보글
+     * 쪽에는 실측까지 적어 뒀다 — 1위 운영자 글이 「발길이 뜸해지더라고요」를 쓴다. 우리가
+     * 시켜서 쓴 말을 우리가 즉시수정으로 막고 있었던 셈이다.
+     *
+     * 같은 자리에 답도 적혀 있다: **막아야 하는 것은 어미가 아니라 「센터가 체험자인 척하는
+     * 것」**이다 (「가봤더니 좋더라고요」). 그래서 **그 장소를 평가하는 꼴**일 때만 잡는다.
+     *
+     * 「저희 센터」·「우리 지점」은 뺀다 — 센터가 자기 얘기를 하는 것이라 방문자 말투가
+     * 아니다 (「저희 센터 회원님들 반응이 좋더라고요」). 앞에 붙은 것까지 함께 잡아 두고
+     * `unless` 로 걸러낸다.
+     *
+     * 이 검사에서 다섯 번째 오탐이다 (「남들 다 자는 새벽에 갔는데」 · 「저한테 물으시는」 ·
+     * 「추천드려요」 · 「다녀온」 · 이번). 다섯 번 다 같은 원인이었다 — 낱말만 봤다.
+     */
+    {
+      p: /(저희\s*|우리\s*)?(헬스장|센터|지점|여기|이곳|이 곳|시설|기구|샤워실|탈의실|주차)[^.!?\n]{0,12}(괜찮더라고요|좋더라고요)/,
+      unless: /^(저희|우리)/,
+      label: '장소를 평가하는 방문자 감상',
+    },
+    { p: /만족했어요/, label: '방문자 만족 서술' },
     {
       p: /(헬스장|센터|지점|여기|이곳|이 곳)[^.!?\n]{0,12}추천드려요/,
       label: '장소를 평가하며 권하는 말투',
@@ -2551,8 +2577,20 @@ export function checkPost(input: CheckInput): CheckResult {
    * 이제 실제로 걸린 구절을 뽑아서 보여준다.
    */
   const matchOf = (re: RegExp, text: string) => text.match(re)?.[0]?.trim().slice(0, 24)
+  /**
+   * 한 패턴이 걸렸는지 — `unless` 가 있으면 걸린 구절을 한 번 더 본다.
+   *
+   * 「저희 센터 …좋더라고요」처럼 **앞에 붙은 말이 뜻을 뒤집는** 경우가 있다. 패턴에 그
+   * 앞말까지 넣어 두고 여기서 걸러낸다 (뒤돌아보기 정규식은 옛 브라우저에서 안 도는 곳이
+   * 있어 쓰지 않는다).
+   */
+  const toneAt = (t: { p: RegExp; unless?: RegExp }, text: string) => {
+    const hit = text.match(t.p)?.[0]
+    if (!hit || (t.unless && t.unless.test(hit.trim()))) return undefined
+    return hit.trim().slice(0, 24)
+  }
   if (input.type === 'review') {
-    const found = OWNER_TONE.map((t) => ({ label: t.label, at: matchOf(t.p, prose) })).filter((x) => x.at)
+    const found = OWNER_TONE.map((t) => ({ label: t.label, at: toneAt(t, prose) })).filter((x) => x.at)
     add({
       id: 'voice',
       group: '저품질 위험',
@@ -2567,7 +2605,7 @@ export function checkPost(input: CheckInput): CheckResult {
     })
   } else {
     const titleAt = matchOf(/후기|내돈내산|체험단?/, title)
-    const bodyFound = VISITOR_TONE.map((t) => ({ label: t.label, at: matchOf(t.p, prose) })).filter((x) => x.at)
+    const bodyFound = VISITOR_TONE.map((t) => ({ label: t.label, at: toneAt(t, prose) })).filter((x) => x.at)
     const found = [
       ...(titleAt ? [{ label: '제목', at: titleAt }] : []),
       ...bodyFound,
