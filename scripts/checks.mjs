@@ -193,7 +193,16 @@ console.log(`  점수 ${c2.score} · 위험표현 ${c2.risks.length}건 (즉시�
  * 화자 검사(가중치 5)가 새로 생겨서 이 글이 통과하는 항목이 하나 늘었다 —
  * 홍보글이고 방문자 말투는 없으니 화자는 맞다. 그래서 하한을 발행 기준 기준으로 표현한다.
  */
-ok(c2.score < PUBLISH_THRESHOLD - 40, '위험한 글은 발행 기준보다 40점 이상 낮다', `${c2.score}`)
+/*
+ * **검사를 더하면 이 숫자가 조금 올라간다** (2026-08-24). 새 검사가 이 짧은 글에서는
+ * 통과하기 때문이다 (같은 문장 되풀이·얼버무리는 수량 — 둘 다 이 글에는 없다). 45 →
+ * 46 이 되어 이 줄이 깨졌다.
+ *
+ * 점수가 「몇 점인가」가 아니라 **발행 기준에서 한참 멀다**는 것이 이 검사의 뜻이므로 폭을
+ * 30 으로 둔다. 다만 이 현상 자체는 기억해 둘 만하다 — 늘 통과하는 항목을 늘리면 나쁜
+ * 글의 점수도 같이 올라간다 (scripts/audit-checker.mjs 의 ③번이 그걸 센다).
+ */
+ok(c2.score < PUBLISH_THRESHOLD - 30, '위험한 글은 발행 기준에서 한참 멀다', `${c2.score}점 / 기준 ${PUBLISH_THRESHOLD}점`)
 ok(c2.risks.length >= 6, '위험표현 다수 탐지', `${c2.risks.length}건`)
 
 // ─────────────────────────────────────────────────────────────
@@ -2056,6 +2065,60 @@ console.log('\n[37-2] 순위 목록 — 같은 키워드를 어떻게 구분하�
   ok(/setOpenId\(open \? null : v\.target\.id\)/.test(ui), '누르면 그것만 펼쳐지고 다시 누르면 접힌다')
   ok(ui.includes('aria-expanded={open}'), '펼침 상태를 화면 낭독기에도 알린다')
   ok(/initialViews\[0\]\?\.target\.id \?\? null/.test(ui), '처음 열 때 첫 항목은 펼쳐 둔다 (전부 접히면 「아무것도 없나」로 읽힌다)')
+}
+
+console.log('\n[37-3] 점수가 진짜인가 — 망가뜨리면 반응하는가 (2026-08-24)')
+/*
+ * 회원 질문: "패키지 보면 점수는 높은데 실제도 잘 점검되서 그렇게 나오는건지도 확인해줘."
+ *
+ * 점수가 높은 데는 두 가지 이유가 있을 수 있다 — 글이 실제로 좋거나, **검수가 무르거나.**
+ * 가려내는 방법은 일부러 망가뜨려 보는 것이다 (scripts/audit-checker.mjs 가 열다섯 가지를
+ * 돌린다). 그때 찾은 두 구멍을 여기서 고정해 둔다.
+ */
+{
+  const golden = GOLDEN_POSTS.find((g) => g.input.type === 'info')
+  const baseScore = checkPost(golden.input).score
+  ok(baseScore === 100, `골든 정보글은 100점 — ${baseScore}`)
+
+  /*
+   * **구멍 ①: 같은 문장 되풀이.** 「꾸준히 하시면 좋습니다.」를 스무 번 붙여도 100점이었다.
+   * 분량·문단·리듬 검사를 전부 통과하기 때문이다. 유사문서로 묶이는 가장 단순한 경로이고,
+   * AI 가 분량을 채우려 할 때 가장 먼저 하는 일이다.
+   */
+  const padded = checkPost({ ...golden.input, body: `${golden.input.body}\n\n${'꾸준히 하시면 좋습니다. '.repeat(20)}` })
+  ok(padded.score < baseScore, `되풀이로 채운 글은 점수가 떨어진다 — ${padded.score}점`)
+  ok(padded.items.find((i) => i.id === 'repetition')?.level === 'fail', '같은 문장 되풀이를 잡는다')
+  // 한 번 되풀이는 주의까지 (사람이 쓴 글에도 있을 수 있다)
+  const once = checkPost({ ...golden.input, body: `${golden.input.body}\n\n꾸준히 하시면 정말로 좋습니다. 꾸준히 하시면 정말로 좋습니다.` })
+  ok(once.items.find((i) => i.id === 'repetition')?.level === 'warn', '한 종류만 되풀이되면 주의')
+  ok(checkPost(golden.input).items.find((i) => i.id === 'repetition')?.level === 'pass', '멀쩡한 글은 통과')
+
+  /*
+   * **구멍 ②: 얼버무리는 수량.** 지시문은 「수량은 숫자로 적는다 — 「많이」·「자주」·
+   * 「대부분」·「꽤」로 넘어가지 않는다」고 시키는데 검수는 한 번도 보지 않았다.
+   * 지시문·골격·검수 세 판이 어긋나 있던 자리다.
+   */
+  const vague = checkPost({
+    ...golden.input,
+    body: `${golden.input.body}\n\n많이 하시는 분들은 자주 오십니다. 대부분 꽤 만족하시고 종종 여러 번 오세요.`,
+  })
+  ok(vague.items.find((i) => i.id === 'vague-amount')?.level === 'fail', '얼버무리는 수량을 잡는다')
+  ok(vague.score < baseScore, `얼버무리면 점수가 떨어진다 — ${vague.score}점`)
+  ok(checkPost(golden.input).items.find((i) => i.id === 'vague-amount')?.level === 'pass', '멀쩡한 글은 통과')
+  // 지시문이 실제로 그렇게 시키고 있는지 — 검수만 있고 지시문에 없으면 고칠 방법을 안 알려주는 셈이다
+  ok(buildSystemPrompt('info').includes('수량은 숫자로 적는다'), '지시문도 같은 것을 시킨다')
+
+  /*
+   * **숫자를 지워도 점수가 안 떨어지는 것은 의도한 것이다.** 이 앱 실측(2026-08-06, 상위 글
+   * 161편)에서 숫자 밀도는 1천자당 10개 이하 4.91위 · 35개 이상 7.11위였다 — 숫자가 많을수록
+   * 순위가 나빴다. 「숫자를 넣어라」를 점수로 강제하면 실측과 반대로 가는 규칙이 된다.
+   */
+  const noNumbers = checkPost({ ...golden.input, body: golden.input.body.replace(/\d+/g, '몇') })
+  ok(noNumbers.score === baseScore, '숫자를 지운 것만으로는 깎지 않는다 (실측이 그 반대였다)', `${noNumbers.score}점`)
+
+  // 망가뜨림 검사 자체가 저장소에 남아 있어야 한다 — 다음에 또 물어볼 때 바로 돌린다
+  const { existsSync } = require('node:fs')
+  ok(existsSync(new URL('../scripts/audit-checker.mjs', import.meta.url)), '점수 신뢰도 검사가 저장소에 있다')
 }
 
 console.log('\n[38] 상위 제목 단어 가르기')

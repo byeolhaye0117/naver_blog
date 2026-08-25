@@ -2347,6 +2347,77 @@ export function checkPost(input: CheckInput): CheckResult {
   const meanLen = lengths.reduce((a, b) => a + b, 0) / total
   const sdLen = Math.sqrt(lengths.reduce((s, l) => s + (l - meanLen) ** 2, 0) / total)
   const variance = meanLen > 0 ? Math.round((sdLen / meanLen) * 100) : 0
+  /*
+   * ─── 같은 문장 되풀이 (2026-08-24, 검수 신뢰도 검사에서 찾았다) ──────────
+   *
+   * 회원 질문: "패키지 보면 점수는 높은데 실제도 잘 점검되서 그렇게 나오는건지도 확인해줘."
+   *
+   * 좋은 질문이었다. 잘 나온 글을 하나씩 망가뜨려 보니(scripts/audit-checker.mjs) 열네
+   * 가지 중 열두 가지는 점수가 떨어졌는데, **「같은 문장을 스무 번 붙여넣기」는 100점 그대로**
+   * 였다. 분량·문단·리듬 검사를 전부 통과하기 때문이다 — 길이는 늘고 문단은 쪼개져 있고
+   * 문장 길이 편차도 그대로다.
+   *
+   * 같은 문장 되풀이는 **유사문서로 묶이는 가장 단순한 경로**이고, AI 가 분량을 채우려 할 때
+   * 가장 먼저 하는 일이다. 자동으로 매일 쓰는 글이라면 더더욱 잡아야 한다.
+   *
+   * 순위 실측 근거가 있는 규칙은 아니다 — 그래서 가중치는 리듬(2)과 같은 수준으로 둔다.
+   */
+  const seenSentence = new Map<string, number>()
+  for (const raw of sentences) {
+    const key = raw.replace(/[\s.,!?~·…"'()\[\]]/g, '')
+    if (key.length < 10) continue
+    seenSentence.set(key, (seenSentence.get(key) ?? 0) + 1)
+  }
+  const repeats = [...seenSentence.entries()].filter(([, n]) => n >= 2)
+  const worstRepeat = repeats.reduce((m, [, n]) => Math.max(m, n), 0)
+  add({
+    id: 'repetition',
+    group: 'AI 티 제거',
+    label: '같은 문장 되풀이',
+    // 세 번 이상이거나 되풀이되는 문장이 둘 이상이면 채워 넣은 글이다
+    level: worstRepeat >= 3 || repeats.length >= 2 ? 'fail' : repeats.length === 1 ? 'warn' : 'pass',
+    value: repeats.length ? `${repeats.length}종류 (최다 ${worstRepeat}번)` : '없음',
+    target: '없음',
+    hint: repeats.length
+      ? `똑같은 문장이 ${worstRepeat}번 나옵니다. 분량을 채우려고 되풀이하면 유사문서로 묶입니다 — 지우거나, 그 자리에 다른 내용을 쓰세요.`
+      : undefined,
+    weight: 2,
+  })
+
+  /*
+   * ─── 얼버무리는 수량 (2026-08-24) ──────────────────────────
+   *
+   * **지시문은 시키는데 검수는 안 보던 것.** 지시문에 이렇게 적혀 있다 (lib/ai/prompt.ts):
+   *
+   *   "수량은 숫자로 적는다. 「많이」·「자주」·「대부분」·「꽤」로 넘어가지 않는다 —
+   *    몇 분·몇 세트·며칠에 한 번인지 적는다. 모르면 범위로 쓴다."
+   *
+   * 그런데 검수는 그걸 한 번도 보지 않았다. 실제로 골든 글의 **숫자를 전부 「몇」으로 바꿔도
+   * 100점**이었다 (audit-checker). 지시문·골격·검수 세 판이 어긋나 있던 자리다.
+   *
+   * 지어낸 규칙이 아니라 **이미 시키고 있던 것을 확인하는 검사**다. 순위 근거가 따로 있는
+   * 것은 아니므로 가중치는 낮게 둔다.
+   */
+  const VAGUE_AMOUNT = ['많이', '자주', '대부분', '꽤', '엄청', '굉장히', '여러 번', '종종']
+  const vagueHits = VAGUE_AMOUNT.flatMap((w) => {
+    const n = prose.split(w).length - 1
+    return n > 0 ? [`${w} ${n}번`] : []
+  })
+  const vagueCount = VAGUE_AMOUNT.reduce((sum, w) => sum + (prose.split(w).length - 1), 0)
+  add({
+    id: 'vague-amount',
+    group: 'AI 티 제거',
+    label: '얼버무리는 수량',
+    level: level(vagueCount <= 2, vagueCount <= 4),
+    value: vagueHits.length ? vagueHits.join(' · ') : '없음',
+    target: '2번 이하 (지시문이 이미 「수량은 숫자로」라고 시킵니다)',
+    hint:
+      vagueCount > 2
+        ? '「많이」·「자주」·「대부분」을 숫자로 바꾸세요 — 몇 분·몇 세트·며칠에 한 번인지. 정확히 모르면 범위로 쓰면 됩니다 (「사흘에 한 번 정도」). 지어낸 숫자를 쓰라는 뜻이 아닙니다.'
+        : undefined,
+    weight: 2,
+  })
+
   add({
     id: 'rhythm',
     group: 'AI 티 제거',

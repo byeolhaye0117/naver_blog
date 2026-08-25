@@ -10,6 +10,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/test.mjs",
+    "audit:checker": "node scripts/audit-checker.mjs",
     "study:collect": "node scripts/study.mjs collect",
     "study:analyze": "node scripts/study.mjs analyze",
     "study:pull": "node scripts/study.mjs pull",
