@@ -173,7 +173,7 @@ export default function DayList({
               </div>
 
               <p className="text-[13px] leading-snug font-semibold">
-                {d.keyword} <span className="muted font-medium">· {d.topic}</span>
+                {d.keyword ?? '—'} <span className="muted font-medium">· {d.topic}</span>
               </p>
               {d.ok === false && d.error && (
                 <p className="mt-1 text-[11.5px] leading-relaxed text-rose-700 dark:text-rose-300">{d.error}</p>
@@ -235,17 +235,18 @@ export default function DayList({
       </ul>
 
       {/*
-        **예정은 접어 둔다.** 저장된 것이 아니라 계산해서 그리는 줄이라 지울 수 없는데,
-        펼쳐 두면 회원이 계속 지우려 하게 된다 (실제로 세 번 그랬다). 「내일은 뭘 쓰지」를
-        확인할 때만 펼치면 된다.
+        **회원이 채워 둔 앞날만** (2026-08-25 회원 지적: "나는 하루씩만 설정하고 싶다고.
+        근데 왜 자꾸 그 후의 일정까지 설정되게 하는거야!").
+
+        예전에는 로테이션을 앞으로 돌려 이레치를 그려 넣었다. 「참고용 예정」이라고 적어
+        뒀지만 **줄로 서 있는 것은 정해진 일정으로 읽힌다** — 하루만 채웠는데 닷새가 더
+        잡혀 있으니 그렇게 읽히는 게 맞다. 이제 여기 있는 줄은 전부 회원이 채운 것이다.
       */}
       {upcoming.length > 0 && (
         <details className="bd mt-3 rounded-xl border border-dashed px-3.5 py-2.5">
           <summary className="cursor-pointer text-[12px] font-bold select-none">
-            앞으로 쓸 예정 {upcoming.length}일 보기
-            <span className="muted ml-2 font-semibold">
-              — 아직 안 쓴 것입니다. 설정을 바꾸면 달라집니다
-            </span>
+            채워 두신 앞날 {upcoming.length}일 보기
+            <span className="muted ml-2 font-semibold">— 아직 안 쓴 것입니다</span>
           </summary>
           <ul className="mt-2 space-y-2">
             {upcoming.map((d) => (
@@ -255,8 +256,10 @@ export default function DayList({
                   {d.when === 'today' && <Badge tone="info">오늘</Badge>}
                   {filledDates.has(d.date) && <Badge tone="good">미리 채워둠</Badge>}
                 </div>
-                <p className="text-[13px] leading-snug font-semibold">
-                  {d.keyword} <span className="muted font-medium">· {d.topic}</span>
+                <p className="text-[13px] leading-snug font-semibold">{d.topic}</p>
+                {/* 키워드는 그 날 아침 로테이션이 고른다 — 미리 적으면 거짓말이 된다 */}
+                <p className="muted mt-0.5 text-[11px] leading-relaxed">
+                  키워드는 그 날 아침에 ①에서 고르신 것 중에서 앱이 정합니다.
                 </p>
                 <div className="mt-2 flex">
                   <button

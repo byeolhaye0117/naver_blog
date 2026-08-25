@@ -1,7 +1,7 @@
 import { readDB } from '@/lib/store'
 import { PageHeader } from '@/components/AppShell'
 import { Card } from '@/components/ui'
-import { autoDraftDays, forecastAutoDrafts, hasTodayAutoDraft } from '@/lib/writing/autodraft'
+import { autoDraftDays, hasTodayAutoDraft, normalizePlan } from '@/lib/writing/autodraft'
 import AutoDraftPanel from '../posts/AutoDraftPanel'
 import DayList from './DayList'
 
@@ -32,17 +32,14 @@ export default async function AutoDraftPage() {
     ),
   ]
   /*
-   * 앞으로 이레치를 미리 계산한다. 고르는 규칙이 정해져 있어서 가능하다 (같은 입력이면
-   * 같은 답이 나온다). 오늘 것이 이미 있으면 내일부터 — 이미 쓴 날을 「예정」이라고 하면 안 된다.
+   * **앞날은 회원이 채워 둔 날만** (2026-08-25 회원 지적: "나는 하루씩만 설정하고 싶다고.
+   * 근데 왜 자꾸 그 후의 일정까지 설정되게 하는거야!").
+   *
+   * 예전에는 로테이션을 앞으로 돌려 이레치를 그렸다. 참고용이라고 적어 뒀지만 **줄로 서
+   * 있는 것은 정해진 일정으로 읽힌다** — 하루만 채웠는데 닷새가 더 잡혀 있으니 당연하다.
    */
-  const forecast = forecastAutoDrafts({
-    plan: db.autoDraftPlan,
-    posts: db.posts,
-    fallbackKeywords: keywordPool,
-    from: today,
-    days: 7,
-  })
-  const days = autoDraftDays({ runs: db.autoDraftRuns, forecast, today })
+  const planned = normalizePlan(db.autoDraftPlan).days ?? []
+  const days = autoDraftDays({ runs: db.autoDraftRuns, planned, today })
 
   return (
     <>
@@ -71,15 +68,12 @@ export default async function AutoDraftPage() {
 
         "이거는 매일 달라질거야 그래서 날짜별로 목록이 보이게 만들어달란 소리였어."
 
-        「지금 저장된 설정」은 범위만 말해준다 (키워드 3개 · 주제 5개). 실제로 쓰이는 조합은
-        매일 달라지고, 회원이 알고 싶은 것은 **「그래서 내일은 뭘 쓰지」**다.
-
-        지난 기록과 앞으로 쓸 것을 한 목록에 둔다 — 따로 두면 「어제 건 어디 있지」를 두 번
-        찾는다.
+        지난 기록과 **회원이 채워 둔 앞날**을 한 목록에 둔다 — 따로 두면 「어제 건 어디
+        있지」를 두 번 찾는다. 채우지 않은 날은 여기 없다 (2026-08-25).
       */}
       <Card
         title="날짜별 목록"
-        subtitle="지금까지 쓴 것입니다. 앞으로 쓸 예정은 아래에 접어 뒀습니다 — 저장된 것이 아니라 지금 설정으로 계산한 것이라, 설정을 바꾸면 달라집니다."
+        subtitle="지금까지 쓴 것과, 위에서 채워 두신 날입니다. 채우지 않은 날은 여기 나오지 않습니다 — 그 날이 되면 앱이 그날그날 골라 씁니다."
       >
         <DayList
           days={days}
@@ -87,8 +81,8 @@ export default async function AutoDraftPage() {
           today={today}
           emptyNote={
             db.autoDraftPlan?.off
-              ? '자동 초안을 꺼두셨습니다. 위에서 다시 켜면 날짜별 예정이 나옵니다.'
-              : '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록하거나 위에서 골라주세요.'
+              ? '자동 초안을 꺼두셨습니다. 위에서 다시 켜면 매일 새벽에 한 편씩 씁니다.'
+              : '아직 쓴 글도, 채워 두신 날도 없습니다. 매일 새벽 5시에 한 편씩 쓰고, 쓴 날은 여기에 쌓입니다.'
           }
         />
       </Card>

@@ -526,7 +526,14 @@ export function forecastAutoDrafts(args: {
 
 export interface AutoDraftDay {
   date: string
-  keyword: string
+  /**
+   * 그 날 쓴(쓸) 키워드.
+   *
+   * 앞날에는 **없다** — 키워드는 그 날 아침 로테이션이 고르므로 미리 말할 수 없다.
+   * 예전에는 미리 계산해서 보여줬는데, 그러면 회원이 정하지도 않은 앞날 일정이 화면에
+   * 잡혀 「왜 그 후 일정까지 설정되냐」가 됐다 (2026-08-25).
+   */
+  keyword?: string
   topic: string
   /** 지난 날 · 오늘 · 앞으로 */
   when: 'past' | 'today' | 'upcoming'
@@ -539,14 +546,26 @@ export interface AutoDraftDay {
 }
 
 /**
- * 실행 기록 + 예정을 **한 목록으로** 합친다.
+ * 실행 기록 + **회원이 채워 둔 앞날**을 한 목록으로 합친다.
  *
  * 두 목록을 따로 두면 회원이 「어제 건 어디 있지」를 두 번 찾는다. 최신이 위로 오게
  * (앞으로 쓸 것 → 오늘 → 지난 것) 두고, 지난 것에는 성공·실패와 점수를 붙인다.
+ *
+ * ── 앞날을 미리 계산하지 않는다 (2026-08-25) ────────────────
+ * 회원: "내가 말했잖아 나는 하루씩만 설정하고 싶다고. 근데 왜 자꾸 그 후의 일정까지
+ * 설정되게 하는거야!"
+ *
+ * 예전에는 로테이션을 앞으로 돌려 이레치를 그려 줬다. 「참고용 예정」이라고 적어 뒀지만
+ * **화면에 줄로 서 있는 것은 정해진 일정으로 읽힌다.** 회원이 정한 적 없는 날이 다섯 줄
+ * 잡혀 있으니 「하루만 정했는데 왜 다 정해졌냐」가 된 것이다.
+ *
+ * 그래서 앞날은 **회원이 채워 둔 날만** 보여준다. 안 채운 날은 화면에 없고, 그 날이 되면
+ * 그날그날 앱이 골라 쓴다.
  */
 export function autoDraftDays(args: {
   runs: { date: string; ok: boolean; keyword?: string; topic?: string; error?: string; score?: number | null; postId?: string; manual?: boolean }[] | undefined
-  forecast: { date: string; keyword: string; topic: string }[]
+  /** 회원이 채워 둔 앞날 — 계산한 예정이 아니다. 키워드는 그 날 아침에 정해진다 */
+  planned: { date: string; topic: string }[]
   today: string
   /** 지난 기록은 이만큼만 */
   pastKeep?: number
@@ -577,11 +596,18 @@ export function autoDraftDays(args: {
       manual: r.manual,
     }))
 
-  // 이미 기록이 있는 날은 예정에서 뺀다 — 같은 날이 두 줄이면 어느 쪽이 맞는지 알 수 없다
+  /*
+   * 이미 기록이 있는 날은 뺀다 (같은 날이 두 줄이면 어느 쪽이 맞는지 알 수 없다).
+   * 지난 날짜로 채워 둔 것도 뺀다 — 이미 지나간 날을 「앞으로 쓸 것」이라고 할 수 없다.
+   */
   const done = new Set(past.map((p) => p.date))
-  const upcoming: AutoDraftDay[] = args.forecast
-    .filter((f) => !done.has(f.date))
-    .map((f): AutoDraftDay => ({ ...f, when: f.date === args.today ? 'today' : 'upcoming' }))
+  const upcoming: AutoDraftDay[] = args.planned
+    .filter((f) => !done.has(f.date) && f.date >= args.today)
+    .map((f): AutoDraftDay => ({
+      date: f.date,
+      topic: f.topic,
+      when: f.date === args.today ? 'today' : 'upcoming',
+    }))
     .sort((a, b) => b.date.localeCompare(a.date))
 
   return [...upcoming, ...past]

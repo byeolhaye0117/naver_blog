@@ -59,11 +59,6 @@ export default function AutoDraftPanel({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
   const [fillFrom, setFillFrom] = useState(today)
-  /*
-   * **기본은 하루** (2026-08-25 회원 지적: "최소가 3일치네. 난 선택한 날 하루면 돼").
-   * 고른 날 하나만 정하고 싶은 것이 가장 흔한 일이다 — 여러 날치는 원할 때만 늘린다.
-   */
-  const [fillCount, setFillCount] = useState(1)
   const [filling, setFilling] = useState(false)
   const [fillMsg, setFillMsg] = useState<string | null>(null)
   const same = (a: AutoDraftPlan, b: AutoDraftPlan) =>
@@ -125,7 +120,8 @@ export default function AutoDraftPanel({
       const res = await fetch('/api/autodraft/fill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan, from: fillFrom, count: fillCount }),
+        // **고른 날 하루만** — 회원이 정하지 않은 날까지 잡아두지 않는다 (2026-08-25)
+        body: JSON.stringify({ plan, from: fillFrom, count: 1 }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error ?? '주제를 정하지 못했습니다.')
@@ -138,12 +134,8 @@ export default function AutoDraftPanel({
           (a, b) => a.date.localeCompare(b.date)
         ),
       }))
-      const kinds = new Set(filled.map((d) => d.topic)).size
       setFillMsg(
-        (filled.length === 1
-          ? `${filled[0].date} 은 「${filled[0].topic}」으로 채웠습니다.`
-          : `${filled.length}일치를 채웠습니다 (서로 다른 주제 ${kinds}개).`) +
-          ' 아래 「설정 저장」을 눌러야 반영됩니다.'
+        `${filled[0].date} 은 「${filled[0].topic}」으로 채웠습니다. 아래 「설정 저장」을 눌러야 반영됩니다.`
       )
     } catch (e) {
       setFillMsg(e instanceof Error ? e.message : '주제를 정하지 못했습니다.')
@@ -405,9 +397,9 @@ export default function AutoDraftPanel({
               </Badge>
             </div>
             <p className="muted mb-2 text-[11px] leading-relaxed">
-              <b>날짜만 고르시면 주제는 앱이 채웁니다</b> — 고르거나 적으실 것은 없습니다. <b>하루만 정하셔도
-              되고</b>, 여러 날치를 한 번에 채우셔도 됩니다 (그때는 날마다 다른 주제가 들어갑니다). 마음에 안 드는
-              날은 「다른 주제로」를 누르면 앱이 다른 것으로 바꿉니다. 안 채운 날은 그날그날 앱이 골라 씁니다.
+              <b>한 번에 고른 날 하루만 채웁니다.</b> 주제는 앱이 넣으니 고르거나 적으실 것은 없습니다. 마음에 안
+              들면 「다른 주제로」를 누르면 앱이 다른 것으로 바꿉니다. 여러 날을 정하고 싶으시면 날짜를 바꿔 다시
+              누르시면 됩니다. <b>채우지 않은 날은 잡히지 않습니다</b> — 그 날이 되면 앱이 그날그날 골라 씁니다.
             </p>
 
             <div className="mb-2 flex flex-wrap items-end gap-2">
@@ -421,27 +413,18 @@ export default function AutoDraftPanel({
                   className={inputClass}
                 />
               </label>
-              <label className="block w-[8rem]">
-                <span className="muted mb-1 block text-[11px] font-semibold">며칠치</span>
-                <select
-                  value={fillCount}
-                  onChange={(e) => setFillCount(Number(e.target.value))}
-                  className={inputClass}
-                >
-                  {[1, 2, 3, 5, 7, 14, 30].map((n) => (
-                    <option key={n} value={n}>
-                      {n === 1 ? '그 날 하루' : `${n}일`}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {/*
+                **「며칠치」 칸은 뺐다** (2026-08-25 회원 지적: "나는 하루씩만 설정하고 싶다고.
+                근데 왜 자꾸 그 후의 일정까지 설정되게 하는거야!"). 한 번에 하루만 채운다 —
+                여러 날을 정하고 싶으면 날짜를 바꿔 다시 누르면 된다.
+              */}
               <button
                 type="button"
                 disabled={filling || !fillFrom}
                 onClick={fill}
                 className={`${btnGhost} !px-3 !py-2 !text-[12px]`}
               >
-                {filling ? '정하는 중…' : fillCount === 1 ? '이 날 주제 채우기' : '이 날짜들 주제 채우기'}
+                {filling ? '정하는 중…' : '이 날 주제 채우기'}
               </button>
             </div>
             {fillMsg && <p className="mb-2 text-[11.5px] leading-relaxed font-semibold">{fillMsg}</p>}
@@ -452,10 +435,26 @@ export default function AutoDraftPanel({
                   <li key={d.date} className="panel flex flex-wrap items-center gap-2 rounded-xl px-3 py-2">
                     <span className="tnum text-[11.5px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
                     <span className="min-w-0 flex-1 text-[12px] leading-snug font-semibold">{d.topic}</span>
-                    {/* 목록을 열어 고르게 하면 결국 「주제 고르라고 나온다」로 돌아간다 */}
+                    {/*
+                      목록을 열어 고르게 하면 결국 「주제 고르라고 나온다」로 돌아간다.
+
+                      **바꿀 것이 없으면 그렇다고 말한다** — 담은 주제가 하나뿐이면 눌러도
+                      그대로다. 조용히 아무 일도 안 하면 회원은 버튼이 고장 난 줄 안다.
+                    */}
                     <button
                       type="button"
-                      onClick={() => setPlan((p) => rerollTopic(p, d.date))}
+                      onClick={() => {
+                        setPlan((p) => {
+                          const next = rerollTopic(p, d.date)
+                          const after = next.days?.find((x) => x.date === d.date)?.topic
+                          setFillMsg(
+                            after === d.topic
+                              ? '담아 두신 주제가 하나뿐이라 바꿀 것이 없습니다 — ②에서 몇 개 더 담아주세요.'
+                              : `${d.date} 을 「${after}」으로 바꿨습니다. 아래 「설정 저장」을 눌러야 반영됩니다.`
+                          )
+                          return next
+                        })
+                      }}
                       className="bd rounded-lg border px-2 py-1 text-[11px] font-semibold hover:bg-slate-500/8"
                     >
                       다른 주제로 ↻
