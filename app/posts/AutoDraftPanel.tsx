@@ -61,8 +61,8 @@ export default function AutoDraftPanel({
   const [saved, setSaved] = useState<string | null>(null)
   const [dayOpen, setDayOpen] = useState(false)
   const same = (a: AutoDraftPlan, b: AutoDraftPlan) =>
-    JSON.stringify([a.off === true, a.keywords ?? [], a.topics ?? [], a.days ?? []]) ===
-    JSON.stringify([b.off === true, b.keywords ?? [], b.topics ?? [], b.days ?? []])
+    JSON.stringify([a.off === true, a.keywords ?? [], a.topics ?? [], a.days ?? [], a.skip ?? []]) ===
+    JSON.stringify([b.off === true, b.keywords ?? [], b.topics ?? [], b.days ?? [], b.skip ?? []])
   const dirty = !same(plan, stored)
 
   /**
@@ -204,6 +204,12 @@ export default function AutoDraftPanel({
                     : '따로 정한 날 없음 — 범위 안에서 알아서 돕니다'}
                 </dd>
               </div>
+              {(stored.skip ?? []).length > 0 && (
+                <div className="flex gap-2">
+                  <dt className="muted w-11 shrink-0 font-semibold">쉬는 날</dt>
+                  <dd>{(stored.skip ?? []).map((d) => d.slice(5)).join(' · ')}</dd>
+                </div>
+              )}
               <div className="flex gap-2">
                 <dt className="muted w-11 shrink-0 font-semibold">주제</dt>
                 <dd>
@@ -382,7 +388,7 @@ export default function AutoDraftPanel({
             <button
               type="button"
               disabled={saving}
-              onClick={() => save({ off: false, keywords: [], topics: [], days: [] })}
+              onClick={() => save({ off: false, keywords: [], topics: [], days: [], skip: [] })}
               className={`${btnGhost} !px-3 !py-2.5 !text-[12px]`}
             >
               전부 지우고 자동으로

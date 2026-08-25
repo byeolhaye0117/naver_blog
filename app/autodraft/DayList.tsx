@@ -67,11 +67,74 @@ export default function DayList({
   const clearDay = (date: string) =>
     save({ ...plan, days: (plan?.days ?? []).filter((d) => d.date !== date) })
 
-  if (days.length === 0) return <p className="muted py-10 text-center text-[13px] leading-relaxed">{emptyNote}</p>
+  /*
+   * **앞날은 「건너뛰기」로 뺀다** (2026-08-24 회원 요청: "이거 삭제기능 만들어줘").
+   *
+   * 예정 줄은 계산해서 만든 것이라 지울 실체가 없다 — 지우면 다음에 화면을 열 때 다시
+   * 생긴다. 그래서 **그 날은 쓰지 않는다고 적어 둔다.** 자동 초안을 통째로 끄면 그 다음
+   * 날도 안 쓰니, 날짜 하나만 빼는 자리가 따로 있어야 한다.
+   */
+  const skipDay = (date: string) =>
+    save({ ...plan, skip: [...new Set([...(plan?.skip ?? []), date])] })
+
+  const unskipDay = (date: string) =>
+    save({ ...plan, skip: (plan?.skip ?? []).filter((d) => d !== date) })
+
+  /*
+   * **지난 줄은 기록을 지운다.** 실패로 어지러운 날이 며칠 쌓이면 목록이 안 읽힌다.
+   * 글은 지우지 않는다 — 그건 발행 관리에서 한다.
+   */
+  async function removeRun(date: string) {
+    if (!confirm(`${date} 실행 기록을 지울까요? 그날 쓴 글은 지워지지 않습니다.`)) return
+    setSaving(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/autodraft/runs', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error ?? '지우지 못했습니다.')
+      router.refresh()
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : '지우지 못했습니다.')
+    }
+    setSaving(false)
+  }
+
+  const skipped = (plan?.skip ?? []).filter((d) => d >= today)
+  if (days.length === 0 && skipped.length === 0)
+    return <p className="muted py-10 text-center text-[13px] leading-relaxed">{emptyNote}</p>
 
   return (
     <>
       {msg && <p className="mb-2 text-[12px] font-semibold text-rose-600">{msg}</p>}
+      {/*
+        **건너뛴 날을 안 보여주면 되돌릴 수 없다.** 지운 것처럼 사라지면 「내가 뺐나 원래
+        없었나」도 구별이 안 된다. 흐리게 남겨 두고 되돌리는 버튼을 붙인다.
+      */}
+      {skipped.length > 0 && (
+        <ul className="mb-2 space-y-1.5">
+          {[...skipped]
+            .sort()
+            .map((d) => (
+              <li key={d} className="bd flex items-center gap-2 rounded-xl border border-dashed px-3.5 py-2 opacity-70">
+                <span className="tnum text-[11.5px] font-bold">{d.slice(5).replace('-', '/')}</span>
+                <span className="muted flex-1 text-[11.5px]">이 날은 쓰지 않습니다</span>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => unskipDay(d)}
+                  className="rounded-lg px-2 py-1 text-[11px] font-semibold underline disabled:opacity-50"
+                >
+                  다시 쓰기
+                </button>
+              </li>
+            ))}
+        </ul>
+      )}
+
       <ul className="space-y-2">
         {days.map((d) => {
           const fixed = fixedDates.has(d.date)
@@ -112,18 +175,16 @@ export default function DayList({
                 이미 쓴 날은 못 바꾼다 — 지난 일을 고치는 칸을 두면 「고쳤는데 왜 글이
                 그대로지」가 된다. 오늘도 아직 안 썼으면 바꿀 수 있다.
               */}
-              {d.when !== 'past' && !d.postId && (
+              {d.when !== 'past' && !d.postId && !open && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {!open && (
-                    <button
-                      type="button"
-                      onClick={() => setEditing(d.date)}
-                      className={`${btnGhost} !px-2.5 !py-1.5 !text-[11px]`}
-                    >
-                      이 날 바꾸기
-                    </button>
-                  )}
-                  {fixed && !open && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(d.date)}
+                    className={`${btnGhost} !px-2.5 !py-1.5 !text-[11px]`}
+                  >
+                    이 날 바꾸기
+                  </button>
+                  {fixed && (
                     <button
                       type="button"
                       disabled={saving}
@@ -133,7 +194,28 @@ export default function DayList({
                       자동으로 되돌리기
                     </button>
                   )}
+                  {/* 앞날은 지우는 게 아니라 「이 날은 쓰지 않는다」고 적어 둔다 */}
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => skipDay(d.date)}
+                    className="muted ml-auto rounded-lg px-2 py-1 text-[11px] font-semibold hover:text-rose-600 disabled:opacity-50"
+                  >
+                    이 날 안 쓰기
+                  </button>
                 </div>
+              )}
+
+              {/* 지난 줄은 기록을 지운다 (글은 그대로 둔다) */}
+              {d.when === 'past' && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => removeRun(d.date)}
+                  className="muted mt-2 block rounded-lg px-2 py-1 text-[11px] font-semibold hover:text-rose-600 disabled:opacity-50"
+                >
+                  이 기록 지우기
+                </button>
               )}
 
               {open && (
