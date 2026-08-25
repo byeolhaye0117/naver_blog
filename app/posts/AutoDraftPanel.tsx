@@ -3,8 +3,8 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { AutoDraftPlan, AutoDraftRun } from '@/lib/types'
-import { INFO_TOPICS, autoDraftStatus, normalizePlan, planSummary } from '@/lib/writing/autodraft'
-import { Badge, btnGhost, btnPrimary } from '@/components/ui'
+import { INFO_TOPICS, autoDraftStatus, normalizePlan, planSummary, rerollTopic } from '@/lib/writing/autodraft'
+import { Badge, btnGhost, btnPrimary, inputClass } from '@/components/ui'
 import TopicExplorer from '@/components/TopicExplorer'
 
 /**
@@ -58,9 +58,13 @@ export default function AutoDraftPanel({
   const [plan, setPlan] = useState<AutoDraftPlan>(() => normalizePlan(savedPlan))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
+  const [fillFrom, setFillFrom] = useState(today)
+  const [fillCount, setFillCount] = useState(7)
+  const [filling, setFilling] = useState(false)
+  const [fillMsg, setFillMsg] = useState<string | null>(null)
   const same = (a: AutoDraftPlan, b: AutoDraftPlan) =>
-    JSON.stringify([a.off === true, a.keywords ?? [], a.topics ?? [], a.skip ?? []]) ===
-    JSON.stringify([b.off === true, b.keywords ?? [], b.topics ?? [], b.skip ?? []])
+    JSON.stringify([a.off === true, a.keywords ?? [], a.topics ?? [], a.days ?? [], a.skip ?? []]) ===
+    JSON.stringify([b.off === true, b.keywords ?? [], b.topics ?? [], b.days ?? [], b.skip ?? []])
   const dirty = !same(plan, stored)
 
   /**
@@ -102,6 +106,40 @@ export default function AutoDraftPanel({
       setSaved(e instanceof Error ? e.message : '저장하지 못했습니다.')
     }
     setSaving(false)
+  }
+
+  /**
+   * **날짜만 받아 그 날들 주제를 채운다** — 회원은 주제를 고르지 않는다 (2026-08-25).
+   *
+   * 로테이션은 지금까지 쓴 글을 봐야 하므로 서버에서 계산한다. 받아온 것은 편집본에만 넣고
+   * 저장은 아래 「설정 저장」에서 한다 — 여기서 바로 저장하면 고치던 다른 값이 덮인다.
+   */
+  async function fill() {
+    setFilling(true)
+    setFillMsg(null)
+    try {
+      const res = await fetch('/api/autodraft/fill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan, from: fillFrom, count: fillCount }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error ?? '주제를 정하지 못했습니다.')
+      const filled: { date: string; topic: string }[] = data?.days ?? []
+      if (!filled.length)
+        throw new Error('쓸 키워드가 없어 정하지 못했습니다 — ①에서 키워드를 고르거나 순위 추적에 등록해 주세요.')
+      setPlan((p) => ({
+        ...p,
+        days: [...(p.days ?? []).filter((x) => !filled.some((n) => n.date === x.date)), ...filled].sort(
+          (a, b) => a.date.localeCompare(b.date)
+        ),
+      }))
+      const kinds = new Set(filled.map((d) => d.topic)).size
+      setFillMsg(`${filled.length}일치를 채웠습니다 (서로 다른 주제 ${kinds}개). 아래 「설정 저장」을 눌러야 반영됩니다.`)
+    } catch (e) {
+      setFillMsg(e instanceof Error ? e.message : '주제를 정하지 못했습니다.')
+    }
+    setFilling(false)
   }
 
   async function runNow() {
@@ -192,6 +230,24 @@ export default function AutoDraftPanel({
                   {stored.keywords?.length
                     ? `${stored.keywords.join(' · ')} (${stored.keywords.length}개)`
                     : '고른 것 없음 — 순위 추적 키워드 전부를 씁니다'}
+                </dd>
+              </div>
+              {/*
+                **날짜 줄을 되살린다** (2026-08-25 회원 지적: "지금 저장된 설정에서 날짜가
+                있어서 같은 주제로 매일 돌지 않게 해줘야해").
+
+                여기 날짜가 안 보이면 회원은 「그래서 내일도 어제와 같은 걸 쓰나」를 알 수 없다.
+                서른 줄을 늘어놓으면 그것대로 못 읽으니 앞의 셋만 적고 나머지는 개수로 줄인다.
+              */}
+              <div className="flex gap-2">
+                <dt className="muted w-11 shrink-0 font-semibold">날짜</dt>
+                <dd>
+                  {stored.days?.length
+                    ? `${stored.days
+                        .slice(0, 3)
+                        .map((d) => `${d.date.slice(5)} ${d.topic}`)
+                        .join(' · ')}${stored.days.length > 3 ? ` 외 ${stored.days.length - 3}일` : ''}`
+                    : '채워둔 날 없음 — 그날그날 앱이 골라 씁니다'}
                 </dd>
               </div>
               {(stored.skip ?? []).length > 0 && (
@@ -324,17 +380,96 @@ export default function AutoDraftPanel({
           </section>
 
           {/*
-            **날짜마다 주제를 확정하는 칸은 뺐다** (2026-08-25 회원 지적).
+            ── ③ 날짜별 주제 — 날짜는 회원이, 주제는 앱이 (2026-08-25) ──────────
 
-            "내가 주제 계속 확정하는거 아니라 했잖아. 근데 왜 또 주제 고르라고 나오는거야."
+            회원이 두 번 말했다. "내가 주제 계속 확정하는거 아니라 했잖아"와 "날짜 선택하는게
+            있어야해." 서로 어긋난 요구가 아니다 — **누가 주제를 정하느냐**만 다르다.
 
-            회원의 「날짜별로 주제를 고르고 싶어」를 **날짜마다 회원이 확정한다**로 읽은 것이
-            잘못이었다. 원한 것은 **날마다 다른 주제가 나오는 것**이고, 그건 ②에 몇 개만
-            담아두면 로테이션이 알아서 한다. 날짜마다 고르게 하면 손으로 쓰는 것과 같아진다.
-
-            날짜를 두고 회원이 정하는 것은 「이 날은 쉰다」 하나뿐이고, 그건 자동 작성 화면의
-            날짜별 목록에 있다.
+            그래서 이 칸에는 주제를 적는 자리도, 고르는 목록도, 탐색기도 없다. 날짜와 며칠치만
+            고르면 로테이션이 날마다 다른 주제를 채운다.
           */}
+          <section>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <h3 className="text-[13px] font-bold">③ 날짜별 주제</h3>
+              <Badge tone={plan.days?.length ? 'good' : 'default'}>
+                {plan.days?.length ? `${plan.days.length}일 채워둠` : '없음'}
+              </Badge>
+            </div>
+            <p className="muted mb-2 text-[11px] leading-relaxed">
+              <b>날짜만 고르시면 주제는 앱이 채웁니다</b> — 고르거나 적으실 것은 없습니다. 날마다 다른 주제가
+              들어가고, 마음에 안 드는 날은 「다른 주제로」를 누르면 앱이 다른 것으로 바꿉니다. 안 채운 날은
+              그날그날 앱이 골라 씁니다.
+            </p>
+
+            <div className="mb-2 flex flex-wrap items-end gap-2">
+              <label className="block w-[9.5rem]">
+                <span className="muted mb-1 block text-[11px] font-semibold">언제부터</span>
+                <input
+                  type="date"
+                  value={fillFrom}
+                  min={today}
+                  onChange={(e) => setFillFrom(e.target.value)}
+                  className={inputClass}
+                />
+              </label>
+              <label className="block w-[6.5rem]">
+                <span className="muted mb-1 block text-[11px] font-semibold">며칠치</span>
+                <select
+                  value={fillCount}
+                  onChange={(e) => setFillCount(Number(e.target.value))}
+                  className={inputClass}
+                >
+                  {[3, 5, 7, 14, 30].map((n) => (
+                    <option key={n} value={n}>
+                      {n}일
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                disabled={filling || !fillFrom}
+                onClick={fill}
+                className={`${btnGhost} !px-3 !py-2 !text-[12px]`}
+              >
+                {filling ? '정하는 중…' : '이 날짜들 주제 채우기'}
+              </button>
+            </div>
+            {fillMsg && <p className="mb-2 text-[11.5px] leading-relaxed font-semibold">{fillMsg}</p>}
+
+            {(plan.days ?? []).length > 0 ? (
+              <ul className="space-y-1.5">
+                {(plan.days ?? []).map((d) => (
+                  <li key={d.date} className="panel flex flex-wrap items-center gap-2 rounded-xl px-3 py-2">
+                    <span className="tnum text-[11.5px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
+                    <span className="min-w-0 flex-1 text-[12px] leading-snug font-semibold">{d.topic}</span>
+                    {/* 목록을 열어 고르게 하면 결국 「주제 고르라고 나온다」로 돌아간다 */}
+                    <button
+                      type="button"
+                      onClick={() => setPlan((p) => rerollTopic(p, d.date))}
+                      className="bd rounded-lg border px-2 py-1 text-[11px] font-semibold hover:bg-slate-500/8"
+                    >
+                      다른 주제로 ↻
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPlan((p) => ({ ...p, days: (p.days ?? []).filter((x) => x.date !== d.date) }))
+                      }
+                      className="muted rounded-lg px-2 py-1 text-[11px] font-semibold hover:text-rose-600"
+                    >
+                      빼기
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted text-[11.5px] leading-relaxed">
+                아직 채운 날이 없습니다. 위에서 날짜를 고르고 「이 날짜들 주제 채우기」를 누르세요.
+              </p>
+            )}
+          </section>
+
           <div className="bd flex flex-wrap items-center gap-2 border-t pt-3.5">
             <button
               type="button"
@@ -347,7 +482,7 @@ export default function AutoDraftPanel({
             <button
               type="button"
               disabled={saving}
-              onClick={() => save({ off: false, keywords: [], topics: [], skip: [] })}
+              onClick={() => save({ off: false, keywords: [], topics: [], days: [], skip: [] })}
               className={`${btnGhost} !px-3 !py-2.5 !text-[12px]`}
             >
               전부 지우고 자동으로
