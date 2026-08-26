@@ -233,7 +233,7 @@ ok(pkg.imagePlan[1].slot.includes('상담 때'), '2번째는 첫 소제목 위',
  * 태그 — 회원이 「#태그 #태그」 한 줄을 네이버 태그 칸에 붙이고 「태그가 안 먹힌다」고 했다.
  * 안 먹히는 게 맞다. 태그 칸은 한 칸에 하나씩이고, 공백이 든 태그는 거기서 끊긴다.
  */
-ok(pkg.tags.startsWith('#'), '보여주기용에는 # 붙음')
+ok(pkg.tags.startsWith('#'), '본문에 붙일 한 줄에는 # 이 붙는다')
 ok(!pkg.tagsPlain.includes('#'), '붙여넣기용에는 # 없음')
 ok(pkg.tagsPlain.includes(','), '붙여넣기용은 쉼표로 구분')
 ok(pkg.tagList.every((t) => !/\s/.test(t)), '태그에 공백이 없다 (공백은 태그를 끊는 자리다)')
@@ -248,7 +248,35 @@ const longTag = 'ㄱ'.repeat(TAG_MAX_LEN + 5)
 ok(normalizeTag(longTag).length === TAG_MAX_LEN + 5, '긴 태그를 조용히 자르지 않는다')
 const dupTags = buildCopyPackage({ ...goodPromo, id:'x', status:'draft', storeId:'s', createdAt:'', updatedAt:'', tags:['쌍용동 헬스장','쌍용동헬스장','#쌍용동 헬스장'] })
 ok(dupTags.tagList.length === 1, `같은 태그 세 형태가 하나로 합쳐진다 — ${dupTags.tagList.join(',')}`)
-ok(pkg.checklist.some((c) => c.label.includes('한 칸에 하나씩')), '체크리스트가 넣는 방법을 알려준다')
+/*
+ * **한 번에 전부 붙이는 길이 먼저다** (2026-08-26 회원 요청: "지금 태그 붙일려면 하나씩
+ * 클릭해서 해야 하는데, 전체 복사해서 붙여넣으면 해시태그로 인식되게 해줘").
+ *
+ * 태그 **칸**이 한 칸에 하나씩인 것은 그대로다. 대신 **본문 맨 아래**는 `#낱말`이
+ * 해시태그로 잡히는 자리라, 거기 한 줄을 붙이면 열한 번 누를 일이 없다. 안 잡히는
+ * 에디터가 있을 수 있으니 하나씩 넣는 길도 남겨 두고, 화면이 둘을 순서대로 알려준다.
+ */
+ok(pkg.tags.split(' ').length === pkg.tagList.length, '한 줄에 태그가 전부 들어간다', pkg.tags)
+ok(pkg.tags.split(' ').every((t) => t.startsWith('#')), '낱말마다 # 이 붙는다 (하나만 붙으면 태그 하나로 잡힌다)')
+ok(pkg.checklist.some((c) => c.label.includes('본문 맨 아래에 한 줄로')), '체크리스트가 한 줄로 붙이라고 먼저 알려준다')
+ok(
+  pkg.checklist.some((c) => c.detail?.includes('파란 글씨로 바뀌었는지')),
+  '되는지 확인하는 방법을 함께 알려준다 (에디터에 따라 글자로만 남을 수 있다)'
+)
+ok(
+  pkg.checklist.some((c) => c.detail?.includes('한 칸에 하나씩')),
+  '안 될 때 하나씩 넣는 길도 남겨 둔다'
+)
+{
+  // 화면도 같은 순서로 말해야 한다 — 한쪽만 고치면 체크리스트와 카드가 서로 다른 말을 한다
+  const { readFileSync: rf } = require('node:fs')
+  const ed = rf(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+  ok(ed.includes('label="#태그 한 줄 복사"'), '태그 카드에 한 줄 복사 버튼이 있다')
+  ok(ed.includes('text={pkg.tags}'), '그 버튼이 # 붙은 한 줄을 복사한다')
+  ok(ed.includes('본문 맨 마지막 줄에 붙이기'), '어디에 붙이는지 화면이 말해준다')
+  ok(ed.includes('파란 글씨로 바뀌었는지'), '되는지 확인하는 방법을 화면에도 적는다')
+  ok(ed.includes('태그 칸에 붙이고 Enter'), '안 될 때 하나씩 넣는 길도 화면에 남긴다')
+}
 console.log(`  파일명 예: ${pkg.imagePlan[0].fileName} / alt: ${pkg.imagePlan[0].altText}`)
 
 /*
