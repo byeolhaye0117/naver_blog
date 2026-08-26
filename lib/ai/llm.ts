@@ -299,6 +299,48 @@ function errorText(raw: string): string {
   return raw.slice(0, 300)
 }
 
+/** 회사별로 잔액을 채우는 자리 — 「어디로 가야 하나」까지 적어야 알림이 된다 */
+const BILLING_AT: Record<Provider, string> = {
+  anthropic: 'console.anthropic.com → Plans & Billing',
+  openai: 'platform.openai.com → Billing',
+  gemini: 'Google AI Studio·Cloud 콘솔의 결제',
+  clova: '네이버 클라우드 플랫폼 콘솔의 결제',
+}
+
+/** 키를 다시 넣는 자리 — 이 앱에서는 배포 환경변수다 */
+const KEY_AT = '「휴대폰에서 쓰기 · 배포」 화면의 환경변수 (Vercel → Settings → Environment Variables)'
+
+/**
+ * **AI 회사가 보낸 오류를 「그래서 무엇을 하면 되나」로 바꾼다** (2026-08-26).
+ *
+ * 회원이 이 줄을 보고 물었다 — "이거 왜 이래?":
+ *   글 생성 실패 (400, Anthropic (Claude) · claude-sonnet-5). Your credit balance is too
+ *   low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.
+ *
+ * 앱이 고장난 것이 아니라 **키의 잔액이 0**이 된 것이다. 그런데 화면에는 영어 원문만 있고
+ * 어디서 충전하는지는 아무 데도 없었다. 매일 새벽 크론도 같은 줄을 실패 기록에 남기므로,
+ * 회원이 아침마다 못 읽는 영어를 보게 된다.
+ *
+ * **원문은 지우지 않고 뒤에 남긴다.** 우리가 못 알아본 오류를 삼키면 원인을 영영 못 찾는다
+ * (이 저장소에서 조용한 실패로 이미 며칠을 잃었다).
+ */
+export function explainProviderError(provider: Provider, status: number, message: string): string {
+  const m = message.toLowerCase()
+  if (/credit balance is too low|insufficient_quota|exceeded your current quota|billing hard limit|quota exceeded/.test(m)) {
+    return `**AI 키의 잔액이 없습니다.** ${BILLING_AT[provider]} 에서 충전하면 바로 다시 씁니다. 충전 전까지는 글쓰기와 새벽 자동 초안이 멈춥니다 (앱 문제가 아닙니다).`
+  }
+  if (/invalid x-api-key|incorrect api key|api key not valid|invalid api key|unauthorized|authentication_error|permission_denied/.test(m)) {
+    return `**AI 키가 잘못됐거나 지워졌습니다.** ${KEY_AT} 에서 키를 다시 넣고 재배포해 주세요.`
+  }
+  if (status === 429 || /rate.?limit/.test(m)) {
+    return '**짧은 사이에 너무 많이 불렀습니다.** 1~2분 뒤에 다시 눌러 주세요 — 키나 글에는 문제가 없습니다.'
+  }
+  if (status === 529 || /overloaded/.test(m)) {
+    return '**AI 서버가 몰려 있습니다.** 잠시 뒤 다시 시도하면 됩니다 — 키나 글에는 문제가 없습니다.'
+  }
+  return ''
+}
+
 /**
  * 한 번 호출하고 텍스트만 돌려준다.
  * 회사별로 요청 모양이 달라서 여기서만 갈라진다.
@@ -442,8 +484,16 @@ async function askOnce(
 
   const raw = await res.text()
   if (!res.ok) {
+    /*
+     * **무엇을 하면 되는지를 앞에 세운다** (2026-08-26). 회사가 보낸 영어 원문만 있으면
+     * 회원이 「이거 왜 이래?」로 돌아온다 — 원문은 괄호에 넣어 뒤에 남긴다.
+     */
+    const said = errorText(raw)
+    const todo = explainProviderError(c.provider, res.status, said)
     throw new AiError(
-      `글 생성 실패 (${res.status}, ${PROVIDER_LABEL[c.provider]} · ${model}). ${errorText(raw)}`,
+      todo
+        ? `${todo} (${PROVIDER_LABEL[c.provider]} · ${model} · ${res.status} — ${said})`
+        : `글 생성 실패 (${res.status}, ${PROVIDER_LABEL[c.provider]} · ${model}). ${said}`,
       res.status
     )
   }
