@@ -29,7 +29,7 @@ import type { HeadingStyle } from '@/lib/writing/export'
 import { isPrescriptionStale, prescriptionAgeDays, prescriptionKey } from '@/lib/analysis/prescription'
 import type { PooledFactor } from '@/lib/analysis/factors'
 import type { IntentSuggestion } from '@/lib/analysis/intent'
-import { Badge, Card, Field, inputClass } from '@/components/ui'
+import { Badge, Card, Field, btnGhost, inputClass } from '@/components/ui'
 import { IconSpark } from '@/components/icons'
 import CheckPanel from '@/components/CheckPanel'
 import SimilarityCard from '@/components/SimilarityCard'
@@ -1787,24 +1787,31 @@ function CopyPane({
 /**
  * 해시태그.
  *
- * 회원이 「#태그 #태그」 한 줄을 그대로 네이버 태그 칸에 붙이고 말했다 — "태그가 안 먹혀."
- * 안 먹히는 게 맞다. 태그 칸은 **한 칸에 하나씩** 넣는 곳이고, 한 줄을 통째로 넣으면
- * 태그 하나(또는 아무것도)로 들어간다. 게다가 목록에 「MTO피트니스 쌍용점」처럼 **공백이 든
- * 태그**가 있었는데, 공백은 태그를 끊는 자리라서 그 태그는 어차피 깨진다.
+ * ── 재봤다: 하나씩 넣는 것밖에 안 된다 (2026-08-26) ────────────
+ * 회원이 확인해 줬다 — "하나씩 붙이고 엔터를 해야 태그로 인식이 되고 있어."
  *
- * 그래서 「한 줄 복사」를 주는 대신 **하나씩 복사**를 기본으로 놓고, 공백을 붙인 것을 보여준다.
+ * 그래서 **쉼표·줄바꿈 한 줄 복사 버튼을 뺐다.** 안 되는 버튼을 남겨 두면 회원이 또 그걸
+ * 먼저 눌러 보고 「#쌍용동헬스장,쌍용동헬스장PT…」 태그 하나를 만든다 (실제로 그랬다).
+ *
+ * 대신 **한 번 누를 때마다 다음 태그를 복사한다.** 열 번을 눌러야 하는 것은 같지만,
+ * 어느 칩이 다음인지 눈으로 찾지 않아도 되고 어디까지 했는지도 화면이 센다.
  */
 function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
   const [copied, setCopied] = useState<number | null>(null)
+  /** 다음에 복사할 태그 번호 — 누를 때마다 하나 앞으로 간다 */
+  const [next, setNext] = useState(0)
   const over = pkg.tagList.filter((t) => t.length > TAG_MAX_LEN)
+  const done = next >= pkg.tagList.length
 
   async function copyOne(tag: string, i: number) {
     try {
       await navigator.clipboard.writeText(tag)
     } catch {
-      /* 클립보드가 막힌 환경 — 아래 쉼표 목록을 쓰면 된다 */
+      /* 클립보드가 막힌 환경 — 태그를 눈으로 보고 직접 적어 넣으면 된다 */
     }
     setCopied(i)
+    // 어느 칩을 눌렀든 그 다음부터 이어 간다 — 회원이 순서를 건너뛸 수도 있다
+    setNext(i + 1)
     setTimeout(() => setCopied((c) => (c === i ? null : c)), 1400)
   }
 
@@ -1818,27 +1825,59 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
       */
       subtitle={`${pkg.tagList.length}개 · 글 아래 「태그 편집」 칸에 붙여넣으세요`}
       /*
-        **태그 칸에 붙일 것을 앞에 둔다** (2026-08-26 회원 결정).
-
-        "태그는 본문 복사에 넣을 게 아니라 태그 칸에 넣을 키워드들을 추려줘야 하고,
-         복사버튼 누르면 태그칸에 자동으로 하나씩 인식되어 들어갈 수 있게 해줘야 해."
-
-        태그 칸이 무엇으로 태그를 나누는지는 화면마다 다르다 — 쉼표로 나누는 곳, 줄바꿈
-        (Enter)으로 나누는 곳이 있다. **우리가 지어내지 않는다.** 둘 다 주고, 한 번 붙여
-        보시고 되는 쪽을 쓰시게 한다. 둘 다 안 나뉘면 아래에서 하나씩 넣으면 된다.
+        **한 줄 복사 버튼을 뺐다** (2026-08-26). 회원이 재보고 알려줬다 — 쉼표도 줄바꿈도
+        안 나뉘고 하나씩 붙이고 Enter 를 해야 태그가 된다. 안 되는 버튼을 남겨 두면 그걸
+        먼저 눌러 보게 되고, 그게 오늘 태그 하나로 뭉친 원인이었다.
       */
       right={
-        <div className="flex items-center gap-1.5">
-          <CopyButton text={pkg.tagsPlain} label="태그 칸에 붙이기 (쉼표)" />
-          <CopyButton text={pkg.tagsLines} label="줄바꿈으로" className="bg-slate-500/15 !text-inherit" />
-        </div>
+        done ? (
+          <button
+            type="button"
+            onClick={() => setNext(0)}
+            className={`${btnGhost} !px-3 !py-1.5 !text-[11.5px]`}
+          >
+            처음부터 다시
+          </button>
+        ) : (
+          <span className="muted tnum text-[11.5px] font-semibold">
+            {next} / {pkg.tagList.length}
+          </span>
+        )
       }
     >
       {pkg.tagList.length === 0 ? (
         <p className="muted text-sm">태그가 없습니다. 위에서 태그를 먼저 넣어주세요.</p>
       ) : (
         <>
-          <div className="flex flex-wrap gap-1.5">
+          {/*
+            **누를 때마다 다음 것을 복사한다** (2026-08-26). 열 번 누르는 것은 같지만,
+            어느 칩이 다음인지 눈으로 찾지 않아도 되고 어디까지 했는지 화면이 센다.
+          */}
+          {done ? (
+            <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-3 text-[12.5px] font-semibold text-emerald-900 dark:text-emerald-200">
+              {pkg.tagList.length}개를 다 복사했습니다. 태그 칸을 보고 {pkg.tagList.length}개가 다 들어갔는지
+              확인해 주세요.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => copyOne(pkg.tagList[next], next)}
+              className="bg-brand-600 flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left text-white transition hover:opacity-90"
+            >
+              <span className="min-w-0">
+                <span className="block text-[11px] font-semibold opacity-80">
+                  {next === 0 ? '눌러서 복사 → 태그 칸에 붙이고 Enter' : `복사됨 · 붙이고 Enter → 다음 (${next + 1}번째)`}
+                </span>
+                <span className="block truncate text-[15px] font-bold">{pkg.tagList[next]}</span>
+              </span>
+              <span className="tnum shrink-0 rounded-lg bg-white/20 px-2 py-1 text-[11.5px] font-bold">
+                {next + 1} / {pkg.tagList.length}
+              </span>
+            </button>
+          )}
+
+          {/* 순서를 건너뛰거나 다시 넣고 싶을 때 — 아무 칩이나 눌러도 거기서부터 이어 간다 */}
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
             {pkg.tagList.map((t, i) => (
               <button
                 key={t}
@@ -1846,10 +1885,16 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
                 onClick={() => copyOne(t, i)}
                 title="눌러서 이 태그만 복사"
                 className={`bd rounded-xl border px-2.5 py-1 text-[12px] font-semibold transition ${
-                  copied === i ? 'border-emerald-500 bg-emerald-500/15' : 'hover:bg-slate-500/8'
+                  copied === i
+                    ? 'border-emerald-500 bg-emerald-500/15'
+                    : i < next
+                      ? 'muted opacity-55'
+                      : i === next
+                        ? 'border-brand-500 bg-brand-600/10'
+                        : 'hover:bg-slate-500/8'
                 }`}
               >
-                {copied === i ? '복사됨' : t}
+                {copied === i ? '복사됨' : i < next ? `✓ ${t}` : t}
               </button>
             ))}
           </div>
@@ -1865,17 +1910,11 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
             `#` 을 붙이지 않는다 — 태그 칸은 태그만 받는 곳이라 `#` 이 글자로 들어가면
             「#쌍용동헬스장」이라는 태그가 된다.
           */}
-          <div className="mt-2.5 space-y-1.5 text-[11px] leading-relaxed">
-            <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2 text-emerald-900 dark:text-emerald-200">
-              <b>글 아래 「태그 편집」 칸을 누르고 붙여넣으세요.</b> 「태그 칸에 붙이기 (쉼표)」를 먼저
-              써 보시고, 하나로 뭉쳐 들어가면 <b>「줄바꿈으로」</b>를 써 보세요 — 태그 칸이 무엇으로
-              나누는지는 화면(PC·모바일 앱)마다 다릅니다. 붙여넣고 <b>Enter</b>를 한 번 누르시면 됩니다.
-            </p>
-            <p className="muted">
-              <b>둘 다 뭉쳐서 들어간다면</b> 아래 태그를 눌러 복사한 뒤 <b>태그 칸에 붙이고 Enter</b>를
-              반복하세요. 그게 확실한 방법입니다.
-            </p>
-          </div>
+          <p className="muted mt-2.5 text-[11px] leading-relaxed">
+            글 아래 <b>「태그 편집」 칸을 한 번 누른 뒤</b>, 위 버튼 → <b>붙여넣기(Ctrl+V) → Enter</b>를
+            반복하세요. 누를 때마다 다음 태그가 복사됩니다. 한 줄로 전부 붙이는 방법은 넣지 않았습니다 —
+            쉼표로도 줄바꿈으로도 나뉘지 않고 <b>태그 하나로 뭉쳐 들어가는 것을 확인했습니다</b>.
+          </p>
 
           {/*
             **추리면서 뺀 것을 보여준다** (2026-08-26 회원 요청: "태그 칸에 넣을 키워드들을
