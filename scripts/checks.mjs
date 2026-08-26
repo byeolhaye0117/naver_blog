@@ -274,10 +274,19 @@ ok(pkg.tags.split(' ').every((t) => t.startsWith('#')), '낱말마다 # 이 붙�
  * 실제로 그게 「#쌍용동헬스장,쌍용동헬스장PT…」 태그 하나로 뭉친 원인이었다.
  */
 ok(!pkg.tagsPlain.includes('#'), '태그 칸용에는 # 이 없다 (# 이 글자로 들어가면 그것도 태그가 된다)')
-ok(pkg.checklist.some((c) => c.label.includes('하나씩 붙이고 Enter')), '체크리스트가 하나씩이라고 말한다')
+/*
+ * **한 번에 붙이는 형태는 `#` 도 공백도 없어야 한다** (2026-08-26 회원 요청: "블로그
+ * 해시태그 칸에 붙여넣을 복사 붙여넣기를 원하는거고 제대로 해시태그로 인식되길 원해").
+ *
+ * 여태 실패한 것들에는 전부 `#` 나 공백이 섞여 있었다 — 태그 칸은 그 둘을 글자로 받으므로
+ * 애초에 한 덩어리다. 쉼표만 남긴 형태가 한 번에 될 후보다.
+ */
+ok(!/[#\s]/.test(pkg.tagsPlain), '한 번에 붙이는 형태에는 # 도 공백도 없다', pkg.tagsPlain)
+ok(pkg.tagsPlain.split(',').length === pkg.tagList.length, '쉼표로만 나뉜다', pkg.tagsPlain)
+ok(pkg.checklist.some((c) => c.label.includes('글 아래 「태그 편집」 칸에')), '체크리스트가 붙일 자리를 말한다')
 ok(
-  pkg.checklist.some((c) => c.detail?.includes('한 줄로 전부 붙이는 방법은 없습니다')),
-  '안 되는 방법을 없다고 못 박는다 (재본 결과다)'
+  pkg.checklist.some((c) => c.detail?.includes('한 번에 붙이기')),
+  '체크리스트가 한 번에 붙이는 것을 먼저 말한다'
 )
 /*
  * **추려서 낸다.** 회원 화면에 「쌍용동」과 「쌍용동헬스장」이 함께 올라와 있었다 — 짧은
@@ -302,13 +311,17 @@ ok(
   // 본문에는 태그를 넣지 않는다 (2026-08-26 회원 결정) — 태그는 태그 칸의 것이다
   const edCode = ed.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
   ok(!edCode.includes('withTags') && !edCode.includes('tagLine'), '본문 복사에 태그 줄을 붙이지 않는다')
-  // 안 되는 버튼은 없앤다 — 남겨 두면 그걸 먼저 눌러 본다 (2026-08-26 재본 결과)
-  ok(!edCode.includes('tagsPlain'), '한 줄 복사 버튼을 두지 않는다')
+  /*
+   * **한 번에 붙이는 것이 먼저, 하나씩은 안 될 때의 길이다** (2026-08-26). 회원이 원하는
+   * 것은 한 번에 넣는 것이고, 하나씩은 불편하다고 두 번 말했다.
+   */
+  ok(ed.includes('label="태그 칸에 한 번에 붙이기"'), '한 번에 붙이는 버튼이 있다')
+  ok(ed.includes('text={pkg.tagsPlain}'), '# 도 공백도 없는 쉼표 목록을 복사한다')
+  ok(ed.includes("label=\"줄바꿈으로\""), '안 나뉘면 줄바꿈도 시험해 볼 수 있다')
+  ok(ed.includes('한 번에 안 되면 — 하나씩'), '하나씩은 안 될 때의 길이라고 밝힌다')
   ok(/const \[next, setNext\] = useState\(0\)/.test(edCode), '어디까지 넣었는지 센다')
   ok(/setNext\(i \+ 1\)/.test(edCode), '누를 때마다 다음 태그로 넘어간다')
   ok(ed.includes('{next + 1} / {pkg.tagList.length}'), '몇 개 중 몇 번째인지 보여준다')
-  ok(ed.includes('붙여넣기(Ctrl+V) → Enter'), '무엇을 반복하면 되는지 화면이 말해준다')
-  ok(ed.includes('태그 하나로 뭉쳐 들어가는 것을 확인했습니다'), '한 줄로 붙이는 방법이 왜 없는지 밝힌다')
   ok(ed.includes('처음부터 다시'), '다 넣은 뒤 되돌릴 수 있다')
   /*
    * **화면 어디서도 여러 태그가 한 줄로 복사되지 않게 한다** (2026-08-26 회원 지적: "태그

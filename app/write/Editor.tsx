@@ -1834,24 +1834,26 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
       */
       subtitle={`${pkg.tagList.length}개 · 글 아래 「태그 편집」 칸에 붙여넣으세요`}
       /*
-        **한 줄 복사 버튼을 뺐다** (2026-08-26). 회원이 재보고 알려줬다 — 쉼표도 줄바꿈도
-        안 나뉘고 하나씩 붙이고 Enter 를 해야 태그가 된다. 안 되는 버튼을 남겨 두면 그걸
-        먼저 눌러 보게 되고, 그게 오늘 태그 하나로 뭉친 원인이었다.
+        **한 번에 붙이는 버튼을 다시 앞에 둔다** (2026-08-26 회원 요청).
+
+        "그니까 그게 불편하단거야 하나씩 해야하잖아." / "나는 본문에 붙일 해시태그 복사를
+         말하는게 아니라 블로그 해시태그 칸에 붙여넣을 복사 붙여넣기를 원하는거고 제대로
+         해시태그로 인식되길 원해."
+
+        여태 실패한 것들을 다시 보면 **전부 `#` 나 공백이 섞여 있었다** —
+        「#쌍용동헬스장 #MTO피트니스쌍용점」(카드의 옛 버튼)과 「#쌍용동헬스장, #MTO피트니스
+        쌍용점」(글쓰기 화면 태그 칸). 태그 칸은 `#` 도 공백도 글자로 받으므로 그건 애초에
+        한 덩어리다. **`#` 도 공백도 없는 쉼표 목록은 아직 시험되지 않았다.**
+
+        그래서 그 형태를 앞에 놓는다. 되는지는 회원이 한 번 붙여 보면 정해진다 — 우리
+        페이지에서 네이버 입력칸을 대신 조작할 수는 없다 (그건 자동화 대행이고, 이 앱이
+        하지 않기로 한 그 영역이다).
       */
       right={
-        done ? (
-          <button
-            type="button"
-            onClick={() => setNext(0)}
-            className={`${btnGhost} !px-3 !py-1.5 !text-[11.5px]`}
-          >
-            처음부터 다시
-          </button>
-        ) : (
-          <span className="muted tnum text-[11.5px] font-semibold">
-            {next} / {pkg.tagList.length}
-          </span>
-        )
+        <div className="flex items-center gap-1.5">
+          <CopyButton text={pkg.tagsPlain} label="태그 칸에 한 번에 붙이기" />
+          <CopyButton text={pkg.tagList.join('\n')} label="줄바꿈으로" className="bg-slate-500/15 !text-inherit" />
+        </div>
       }
     >
       {pkg.tagList.length === 0 ? (
@@ -1859,13 +1861,18 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
       ) : (
         <>
           {/*
-            **누를 때마다 다음 것을 복사한다** (2026-08-26). 열 번 누르는 것은 같지만,
-            어느 칩이 다음인지 눈으로 찾지 않아도 되고 어디까지 했는지 화면이 센다.
+            **하나씩 넣는 길** — 위 ①② 가 안 될 때 쓴다. 누를 때마다 다음 것을 복사하므로
+            어느 칩이 다음인지 눈으로 찾지 않아도 되고, 어디까지 했는지 화면이 센다.
           */}
+          <p className="muted mt-3 mb-1.5 text-[11px] font-semibold">
+            한 번에 안 되면 — 하나씩 (누를 때마다 다음 태그가 복사됩니다)
+          </p>
           {done ? (
-            <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-3 text-[12.5px] font-semibold text-emerald-900 dark:text-emerald-200">
-              {pkg.tagList.length}개를 다 복사했습니다. 태그 칸을 보고 {pkg.tagList.length}개가 다 들어갔는지
-              확인해 주세요.
+            <p className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-3 text-[12.5px] font-semibold text-emerald-900 dark:text-emerald-200">
+              {pkg.tagList.length}개를 다 복사했습니다. 태그 칸에 {pkg.tagList.length}개가 다 들어갔는지 보세요.
+              <button type="button" onClick={() => setNext(0)} className={`${btnGhost} ml-auto !px-2.5 !py-1.5 !text-[11px]`}>
+                처음부터 다시
+              </button>
             </p>
           ) : (
             <button
@@ -1919,11 +1926,22 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
             `#` 을 붙이지 않는다 — 태그 칸은 태그만 받는 곳이라 `#` 이 글자로 들어가면
             「#쌍용동헬스장」이라는 태그가 된다.
           */}
-          <p className="muted mt-2.5 text-[11px] leading-relaxed">
-            글 아래 <b>「태그 편집」 칸을 한 번 누른 뒤</b>, 위 버튼 → <b>붙여넣기(Ctrl+V) → Enter</b>를
-            반복하세요. 누를 때마다 다음 태그가 복사됩니다. 한 줄로 전부 붙이는 방법은 넣지 않았습니다 —
-            쉼표로도 줄바꿈으로도 나뉘지 않고 <b>태그 하나로 뭉쳐 들어가는 것을 확인했습니다</b>.
-          </p>
+          {/*
+            **순서를 「한 번에」 → 「하나씩」으로 둔다.** 회원이 원하는 것은 한 번에 넣는
+            것이고, 하나씩은 그게 안 될 때의 길이다 (2026-08-26).
+          */}
+          <div className="mt-2.5 space-y-1.5 text-[11px] leading-relaxed">
+            <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2 text-emerald-900 dark:text-emerald-200">
+              <b>① 「태그 칸에 한 번에 붙이기」</b> → 글 아래 <b>「태그 편집」 칸</b>에 붙여넣고{' '}
+              <b>Enter</b>. 태그가 {pkg.tagList.length}개로 나뉘면 끝입니다. 안 나뉘면{' '}
+              <b>② 「줄바꿈으로」</b>를 같은 방법으로 해 보세요.
+            </p>
+            <p className="muted">
+              <b>③ 둘 다 한 덩어리로 들어간다면</b> 네이버 태그 칸이 한 번에 안 받는 것입니다. 그때는 아래
+              버튼으로 <b>하나씩</b> 넣으시면 됩니다 — 누를 때마다 다음 태그가 복사됩니다. 어느 쪽이
+              되는지 알려주시면 되는 것만 남기고 나머지는 지우겠습니다.
+            </p>
+          </div>
 
           {/*
             **추리면서 뺀 것을 보여준다** (2026-08-26 회원 요청: "태그 칸에 넣을 키워드들을
