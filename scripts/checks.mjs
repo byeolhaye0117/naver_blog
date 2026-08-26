@@ -266,12 +266,18 @@ ok(pkg.tags.split(' ').every((t) => t.startsWith('#')), '낱말마다 # 이 붙�
  * 태그 칸이 무엇으로 태그를 나누는지는 화면마다 다르다 — 쉼표로 나누는 곳, 줄바꿈으로
  * 나누는 곳이 있다. **우리가 지어내지 않는다.** 둘 다 주고 되는 쪽을 쓰게 한다.
  */
-ok(pkg.tagsLines.split('\n').length === pkg.tagList.length, '줄바꿈으로도 낸다 (Enter 로 나누는 화면용)')
-ok(!pkg.tagsLines.includes('#'), '태그 칸용에는 # 이 없다 (# 이 글자로 들어가면 그것도 태그가 된다)')
-ok(pkg.checklist.some((c) => c.label.includes('글 아래 「태그 편집」 칸에 붙여넣기')), '체크리스트가 붙일 자리를 말한다')
+/*
+ * **재보니 하나씩밖에 안 된다** (2026-08-26 회원 확인: "하나씩 붙이고 엔터를 해야 태그로
+ * 인식이 되고 있어"). 쉼표도 줄바꿈도 안 나뉜다.
+ *
+ * 그래서 한 줄 복사 버튼을 뺐다 — **안 되는 버튼을 남겨 두면 그걸 먼저 눌러 본다.**
+ * 실제로 그게 「#쌍용동헬스장,쌍용동헬스장PT…」 태그 하나로 뭉친 원인이었다.
+ */
+ok(!pkg.tagsPlain.includes('#'), '태그 칸용에는 # 이 없다 (# 이 글자로 들어가면 그것도 태그가 된다)')
+ok(pkg.checklist.some((c) => c.label.includes('하나씩 붙이고 Enter')), '체크리스트가 하나씩이라고 말한다')
 ok(
-  pkg.checklist.some((c) => c.detail?.includes('하나로 뭉쳐 들어가면 「줄바꿈으로」')),
-  '한쪽이 안 되면 다른 쪽을 쓰라고 알려준다'
+  pkg.checklist.some((c) => c.detail?.includes('한 줄로 전부 붙이는 방법은 없습니다')),
+  '안 되는 방법을 없다고 못 박는다 (재본 결과다)'
 )
 /*
  * **추려서 낸다.** 회원 화면에 「쌍용동」과 「쌍용동헬스장」이 함께 올라와 있었다 — 짧은
@@ -296,10 +302,14 @@ ok(
   // 본문에는 태그를 넣지 않는다 (2026-08-26 회원 결정) — 태그는 태그 칸의 것이다
   const edCode = ed.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
   ok(!edCode.includes('withTags') && !edCode.includes('tagLine'), '본문 복사에 태그 줄을 붙이지 않는다')
-  ok(ed.includes('label="태그 칸에 붙이기 (쉼표)"'), '태그 칸용 복사가 먼저 온다')
-  ok(ed.includes('text={pkg.tagsPlain}') && ed.includes('text={pkg.tagsLines}'), '쉼표·줄바꿈 두 가지를 준다')
-  ok(ed.includes('글 아래 「태그 편집」 칸을 누르고 붙여넣으세요'), '어디에 붙이는지 화면이 말해준다')
-  ok(ed.includes('태그 칸에 붙이고 Enter'), '둘 다 뭉치면 하나씩 넣는 길을 남긴다')
+  // 안 되는 버튼은 없앤다 — 남겨 두면 그걸 먼저 눌러 본다 (2026-08-26 재본 결과)
+  ok(!edCode.includes('tagsPlain'), '한 줄 복사 버튼을 두지 않는다')
+  ok(/const \[next, setNext\] = useState\(0\)/.test(edCode), '어디까지 넣었는지 센다')
+  ok(/setNext\(i \+ 1\)/.test(edCode), '누를 때마다 다음 태그로 넘어간다')
+  ok(ed.includes('{next + 1} / {pkg.tagList.length}'), '몇 개 중 몇 번째인지 보여준다')
+  ok(ed.includes('붙여넣기(Ctrl+V) → Enter'), '무엇을 반복하면 되는지 화면이 말해준다')
+  ok(ed.includes('태그 하나로 뭉쳐 들어가는 것을 확인했습니다'), '한 줄로 붙이는 방법이 왜 없는지 밝힌다')
+  ok(ed.includes('처음부터 다시'), '다 넣은 뒤 되돌릴 수 있다')
   ok(ed.includes('pkg.tagDrops'), '추리면서 뺀 태그를 화면이 보여준다')
 }
 console.log(`  파일명 예: ${pkg.imagePlan[0].fileName} / alt: ${pkg.imagePlan[0].altText}`)
@@ -9558,6 +9568,39 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
    */
   for (const fine of ['기초운동', '전신운동', '맨몸운동', '고강도운동', '실내운동', '유산소운동', '근력운동', '무릎 아플때 운동', '3대운동']) {
     ok(classifyIntent(fine) !== 'local', `「${fine}」 를 지역으로 잘못 걸지 않는다`, classifyIntent(fine))
+  }
+
+  /*
+   * **아직도 새고 있었다** (2026-08-26 회원 재지적: "아직도 주제가 이상하게 나와").
+   * 화면에 올라온 것들 — 세 가지 꼴이 남아 있었다.
+   */
+  // ① 관공서·시설 — 「금천구청 근처에서 운동할 곳」을 찾는 말이다
+  for (const gov of ['금천구청운동', '시청운동', '주민센터운동', '체육관운동']) {
+    ok(classifyIntent(gov) === 'local', `「${gov}」 는 장소를 찾는 말이다`, classifyIntent(gov))
+  }
+  // ② 모일 곳 — 정보를 찾는 말이 아니다
+  for (const club of ['헬스커뮤니티', '헬스동호회', '운동모임', '다이어트카페']) {
+    ok(classifyIntent(club) === 'local', `「${club}」 는 모일 곳을 찾는 말이다`, classifyIntent(club))
+  }
+  /*
+   * ③ **「운동」이 몸 쓰는 일이 아닐 때.** 자동완성에 「운동 순서」를 물으면 역사 사건까지
+   * 끌고 온다 — 「동학농민운동 순서」가 그대로 주제로 올라왔다.
+   */
+  for (const hist of ['동학농민운동 순서', '독립운동', '민주화운동', '새마을운동']) {
+    ok(classifyIntent(hist) === 'offlimit', `「${hist}」 는 우리 주제가 아니다`, classifyIntent(hist))
+  }
+  // 숫자로 시작하는 동네도 잡는다 (「2동탄운동」)
+  ok(classifyIntent('2동탄운동') === 'local', '숫자로 시작하는 동네도 잡는다', classifyIntent('2동탄운동'))
+  /*
+   * **숫자 뒤가 세는 말이면 동네가 아니다.** 이 울타리가 없으면 「60대 근력운동 순서」가
+   * 「60 + 대근력 + 운동」으로 걸린다 — 실제로 걸렸다.
+   */
+  for (const num of ['60대 근력운동 순서', '3개월운동', '1시간운동', '3대운동', '10분운동', '30일운동']) {
+    ok(classifyIntent(num) !== 'local', `「${num}」 를 동네로 잘못 걸지 않는다`, classifyIntent(num))
+  }
+  // 우리 말이 앞에 붙은 것은 그대로 둔다
+  for (const keep of ['남자 가슴운동 순서', '등운동 순서', '여성 근력운동', '공원 운동기구 사용법']) {
+    ok(classifyIntent(keep) === 'info', `「${keep}」 는 주제로 남는다`, classifyIntent(keep))
   }
 
   /*
