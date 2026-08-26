@@ -37,7 +37,20 @@ interface Draft {
 function asDraft(v: unknown): Draft | null {
   const o = v as { title?: unknown; body?: unknown; tags?: unknown }
   if (!o || typeof o.title !== 'string' || typeof o.body !== 'string') return null
-  const tags = Array.isArray(o.tags) ? o.tags.filter((t): t is string => typeof t === 'string') : []
+  /*
+   * **`#` 를 떼서 받는다** (2026-08-26 회원 지적: "태그 아직도 이렇게 나와 — 하나씩 인식이
+   * 안된단말이야", 화면 캡처는 `#쌍용동헬스장,MTO피트니…`).
+   *
+   * 모델이 태그를 `#쌍용동헬스장` 꼴로 돌려줄 때가 있다. 그러면 글쓰기 화면의 태그 칸에
+   * `#쌍용동헬스장, #MTO피트니스 쌍용점, …` 이 그대로 뜨고, 회원이 **그 줄을 통째로 복사해**
+   * 네이버 태그 칸에 붙이면 태그 하나로 뭉친다. 들어오는 자리에서 한 번만 뗀다.
+   */
+  const tags = Array.isArray(o.tags)
+    ? o.tags
+        .filter((t): t is string => typeof t === 'string')
+        .map((t) => t.replace(/^#+/, '').trim())
+        .filter(Boolean)
+    : []
   return { title: o.title.trim(), body: o.body.trim(), tags }
 }
 
