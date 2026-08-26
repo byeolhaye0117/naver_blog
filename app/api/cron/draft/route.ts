@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { newId } from '@/lib/id'
 import { hasTodayAutoDraft, planAssignment } from '@/lib/writing/autodraft'
-import { AUTO_DRAFT_RUNS_KEEP, baseUrlFor, shouldRevise } from '@/lib/writing/autodraft'
+import { AUTO_DRAFT_RUNS_KEEP, baseUrlFor, seoulToday, shouldRevise } from '@/lib/writing/autodraft'
 import type { AutoDraftRun, Post } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -63,7 +63,11 @@ export async function GET(req: Request) {
   }
 
   const t0 = Date.now()
-  const today = new Date().toISOString().slice(0, 10)
+  /*
+   * **한국 날짜로 적는다** (2026-08-26). 이 크론은 20:00 UTC 에 도는데 한국에서는 다음 날
+   * 새벽 5시다 — UTC 로 적으면 회원 화면의 날짜가 매일 하루씩 밀린다.
+   */
+  const today = seoulToday()
 
   /*
    * **성공이든 실패든 남긴다** (2026-08-23). 회원: "안뜨는데? 제대로 하고 있는거 맞아?"
@@ -100,7 +104,11 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   const t0 = Date.now()
-  const today = new Date().toISOString().slice(0, 10)
+  /*
+   * **한국 날짜로 적는다** (2026-08-26). 이 크론은 20:00 UTC 에 도는데 한국에서는 다음 날
+   * 새벽 5시다 — UTC 로 적으면 회원 화면의 날짜가 매일 하루씩 밀린다.
+   */
+  const today = seoulToday()
   const record = async (r: Omit<AutoDraftRun, 'date' | 'at' | 'ms'>) => {
     const entry: AutoDraftRun = { ...r, date: today, at: new Date().toISOString(), ms: Date.now() - t0, manual: true }
     await mutate((d) => {

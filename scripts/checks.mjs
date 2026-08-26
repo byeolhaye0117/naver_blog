@@ -8639,9 +8639,14 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
     ok(real.format.startsWith('②') && real.topicGroup.startsWith('B.'), '자동 초안도 3축을 제 값으로 들고 있다')
     ok(isAutoDraft(real) && real.autoTopic === INFO_TOPICS[0], '주제는 따로 남는다')
   }
-  ok(hasTodayAutoDraft([auto], '2026-08-21'), '오늘 것이 있으면 다시 쓰지 않는다')
-  ok(!hasTodayAutoDraft([auto], '2026-08-22'), '날이 바뀌면 다시 쓴다')
-  ok(!hasTodayAutoDraft([post({ createdAt: '2026-08-21T20:00:00.000Z' })], '2026-08-21'), '손으로 쓴 글은 오늘 몫으로 세지 않는다')
+  /*
+   * **한국 날짜로 센다** (2026-08-26 회원 지적: "8/26일이면 이미 쓰여진게 정상인거 아니야?").
+   * 20:00 UTC 는 한국에서 **다음 날 새벽 5시**다 — 그 글은 8월 22일 몫이다.
+   */
+  ok(hasTodayAutoDraft([auto], '2026-08-22'), '새벽 5시에 쓴 글은 그 날(한국 날짜) 몫이다')
+  ok(!hasTodayAutoDraft([auto], '2026-08-21'), 'UTC 날짜로 세지 않는다 (그러면 하루씩 밀린다)')
+  ok(!hasTodayAutoDraft([auto], '2026-08-23'), '날이 바뀌면 다시 쓴다')
+  ok(!hasTodayAutoDraft([post({ createdAt: '2026-08-21T20:00:00.000Z' })], '2026-08-22'), '손으로 쓴 글은 오늘 몫으로 세지 않는다')
   ok(!hasTodayAutoDraft([], '2026-08-21') && !hasTodayAutoDraft(undefined, '2026-08-21'), '글이 없어도 터지지 않는다')
 
   // ── 무엇을 쓸 차례인가
@@ -9189,9 +9194,21 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     const pageCode = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
     ok(!pageCode.includes('forecastAutoDrafts'), '정하지 않은 앞날을 계산해 그리지 않는다')
     ok(/planned/.test(pageCode), '앞날은 회원이 채워 둔 날에서만 온다')
+    // 화면·크론이 UTC 로 오늘을 세면 하루씩 밀린다 (2026-08-26)
+    ok(pageCode.includes('seoulToday()') && !pageCode.includes('toISOString().slice(0, 10)'), '화면이 한국 날짜로 오늘을 센다')
+    /*
+     * **쉬는 날과 채운 날이 겹치면 안 보여준다** (2026-08-26). 화면에 08/26 이 「삭제함 — 이
+     * 날은 쓰지 않습니다」와 「미리 채워둠」으로 동시에 떴다. 크론은 쉬는 날을 먼저 보므로
+     * 그 날은 실제로 안 쓴다 — 「채워뒀다」고 적어두면 거짓말이다.
+     */
+    ok(/skip\?\.includes\(d\.date\)/.test(pageCode), '쉬기로 한 날은 앞날 목록에 넣지 않는다')
     ok(page.includes('날짜별 목록'), '그 이름으로 보여준다')
     const dayUi = rf(new URL('../app/autodraft/DayList.tsx', import.meta.url), 'utf8')
     const cronDraft = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
+    // 크론이 UTC 로 오늘을 세면 회원 화면의 날짜가 매일 하루씩 밀린다 (2026-08-26)
+    const cronNoComment = cronDraft.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    ok(cronNoComment.includes('seoulToday()') && !/const today = new Date\(\)\.toISOString/.test(cronNoComment),
+      '크론도 한국 날짜로 적는다')
 
     /*
      * **날짜를 고르는 칸은 있고, 주제를 고르는 칸은 없다** (2026-08-25 회원 요청 두 가지).
@@ -9211,6 +9228,8 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     const panel = rf(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
     const panelCode = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
     ok(!panelCode.includes('DayAssign'), '설정 화면도 주제 고르는 칸을 다시 들이지 않는다')
+    // 다시 채운 날은 쉬는 날에서 뺀다 — 두 곳에 남으면 화면이 서로 반대말을 한다 (2026-08-26)
+    ok(/skip: \(p\.skip \?\? \[\]\)\.filter/.test(panelCode), '다시 채운 날은 쉬는 날에서 뺀다 (나중에 한 일이 이긴다)')
 
     // ① 날짜를 고르는 자리가 있다 (회원이 「왜 또 날짜 선택하는게 없어」라고 한 자리)
     ok(/type="date"/.test(panelCode) && panelCode.includes('언제부터'), '언제부터 채울지 날짜를 고른다')
@@ -9306,6 +9325,38 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
      * 여태 고쳐 쓰기를 딱 한 번만 돌려서, 한 번에 안 붙으면 79점짜리가 그대로 저장됐다.
      * 이제 나아지는 동안은 계속 돌리되 **울타리 셋**을 친다 — 횟수·시간·나아짐.
      */
+    /*
+     * ── 날짜는 한국 시간으로 센다 (2026-08-26 회원 지적) ───────────
+     *
+     * "8/26일이면 채워두신 앞날이 아니라 이미 쓰여진게 정상인거 아니야?"
+     *
+     * 맞다. 크론은 20:00 UTC 에 도는데 한국에서는 **다음 날 새벽 5시**다. 날짜를 UTC 로
+     * 세니 「8월 26일 새벽에 쓴 글」이 08/25 로 적히고, 08/26 은 「앞날」에 남았다.
+     */
+    const { seoulDay, seoulToday } = require(`${OUT}/writing/autodraft.js`)
+    ok(seoulDay('2026-08-25T20:16:18.229Z') === '2026-08-26', '20:16 UTC 는 한국에서 다음 날이다', seoulDay('2026-08-25T20:16:18.229Z'))
+    ok(seoulDay('2026-08-26T14:59:00.000Z') === '2026-08-26', '14:59 UTC 는 아직 같은 날 (23:59 KST)', seoulDay('2026-08-26T14:59:00.000Z'))
+    ok(seoulDay('2026-08-26T15:00:00.000Z') === '2026-08-27', '15:00 UTC 부터 다음 날 (00:00 KST)', seoulDay('2026-08-26T15:00:00.000Z'))
+    ok(seoulDay('엉뚱') === '' && seoulDay(undefined) === '', '읽을 수 없으면 빈 값 (조용히 오늘로 만들지 않는다)')
+    ok(/^\d{4}-\d{2}-\d{2}$/.test(seoulToday()), '오늘도 같은 꼴로 낸다', seoulToday())
+
+    /*
+     * **저장된 옛 기록도 제자리로 온다.** `date` 는 UTC 로 적혀 있지만 `at` 에 정확한 시각이
+     * 있으므로 거기서 한국 날짜를 다시 뽑는다 — 데이터를 손대지 않고 지난 목록까지 고쳐진다.
+     * 회원 화면에 실제로 있던 값으로 잰다.
+     */
+    const shifted = autoDraftDays({
+      runs: [{ date: '2026-08-25', at: '2026-08-25T20:16:18.229Z', ok: true, keyword: '쌍용동헬스장', topic: '다이어트간식', score: 79 }],
+      planned: [{ date: '2026-08-26', topic: '다이어트간식' }],
+      today: '2026-08-26',
+    })
+    ok(shifted[0].date === '2026-08-26', '새벽에 쓴 글은 그 날(한국 날짜)로 올라온다', shifted[0].date)
+    ok(shifted[0].when === 'today' && shifted[0].ok === true, '오늘 이미 쓴 것으로 보인다', shifted[0].when)
+    ok(shifted.length === 1, '같은 날이 「쓴 것」과 「앞날」로 두 줄이 되지 않는다', String(shifted.length))
+    // at 이 없거나 이상하면 적힌 날짜를 쓴다 (옛 기록을 잃지 않는다)
+    ok(autoDraftDays({ runs: [{ date: '2026-08-20', ok: true }], planned: [], today: '2026-08-26' })[0].date === '2026-08-20',
+      'at 이 없으면 적힌 날짜를 쓴다')
+
     const { shouldRevise, REVISE_MAX_ROUNDS } = require(`${OUT}/writing/autodraft.js`)
     const R = (over = {}) => shouldRevise({ round: 0, needsRevise: true, short: false, elapsedMs: 60_000, lastCallMs: 40_000, improved: true, ...over })
     ok(R(), '아직 발행선 아래면 고쳐 쓴다')

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { readDB } from '@/lib/store'
 import { keyStatus } from '@/lib/naver/client'
 import { STALE_DAYS, balanceReport, cadenceReport, freshnessReport } from '@/lib/writing/rotation'
+import { seoulToday } from '@/lib/writing/autodraft'
 import { buildRankViews, isFirstPage, rankLabel } from '@/lib/analysis/rank'
 import { checkPost } from '@/lib/writing/checker'
 import { POST_STATUS_LABEL, POST_TYPE_LABEL } from '@/lib/types'
@@ -50,8 +51,11 @@ export default async function Dashboard() {
     stores: db.stores,
     posts: db.posts,
     rankTargets: db.rankTargets,
-    // 오늘 자동 초안을 가려내려면 오늘 날짜가 필요하다 (nextActions 는 시각을 안 만든다)
-    today: new Date().toISOString().slice(0, 10),
+    /*
+     * 오늘 자동 초안을 가려내려면 오늘 날짜가 필요하다 (nextActions 는 시각을 안 만든다).
+     * **한국 시간으로 센다** — 자동 초안 기록이 그 기준이라 UTC 로 재면 하루씩 어긋난다.
+     */
+    today: seoulToday(),
     autoDraftRuns: db.autoDraftRuns,
     // 개수가 아니라 **어느 키워드가** 밀렸는지 넘긴다 — 그래야 분석을 바로 띄운다
     fallen: fallen.map((v) => ({ keyword: v.target.keyword })),
