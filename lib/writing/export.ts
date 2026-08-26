@@ -37,10 +37,14 @@ export interface CopyPackage {
   tags: string
   /** 네이버 태그 칸에 붙여넣는 형태 — `#` 없이 쉼표로 구분 */
   tagsPlain: string
+  /** 같은 것을 줄바꿈으로 — 태그 칸이 Enter 로 나누는 화면에서 쓴다 */
+  tagsLines: string
   /** 하나씩 붙여넣을 수 있게 정리한 태그 (공백 제거 · 중복 제거) */
   tagList: string[]
   /** 우리가 손본 태그 (무엇을 왜 바꿨는지 화면에 보여준다) */
   tagFixes: { from: string; to: string }[]
+  /** 추리면서 뺀 태그 — 다른 태그에 통째로 들어 있어서 자리만 차지하던 것 */
+  tagDrops: { tag: string; inside: string }[]
   checklist: { label: string; detail?: string }[]
 }
 
@@ -466,16 +470,42 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
    * 태그 칸은 한 칸에 하나씩 넣는 곳이고, 공백이 든 태그는 거기서 끊긴다.
    */
   const tagFixes: { from: string; to: string }[] = []
-  const tagList: string[] = []
+  const tagsClean: string[] = []
   for (const raw of post.tags) {
     const clean = normalizeTag(raw)
     if (!clean) continue
     if (clean !== raw.replace(/^#+/, '')) tagFixes.push({ from: raw.replace(/^#+/, ''), to: clean })
     // 공백을 붙이면 중복이 생길 수 있다 (「쌍용동 헬스장」 + 「쌍용동헬스장」)
-    if (!tagList.includes(clean)) tagList.push(clean)
+    if (!tagsClean.includes(clean)) tagsClean.push(clean)
+  }
+  /*
+   * **다른 태그에 통째로 들어 있는 짧은 태그는 뺀다** (2026-08-26 회원 요청: "태그칸에 넣을
+   * 키워드들을 추려줘야 하고").
+   *
+   * 회원 화면에 「쌍용동」과 「쌍용동헬스장」이 함께 올라와 있었다. 「쌍용동」은 자리만
+   * 차지한다 — 태그 칸에 넣는 개수는 한정돼 있고, 우리가 노리는 검색어는 긴 쪽이다.
+   *
+   * **버리지 않고 무엇을 왜 뺐는지 남긴다** (`tagDrops`) — 조용히 잘라내면 회원이 「내가
+   * 넣은 태그가 왜 없지」를 알 수 없다.
+   */
+  const tagDrops: { tag: string; inside: string }[] = []
+  const tagList: string[] = []
+  for (const t of tagsClean) {
+    const bigger = tagsClean.find((o) => o !== t && o.includes(t))
+    if (bigger) {
+      tagDrops.push({ tag: t, inside: bigger })
+      continue
+    }
+    tagList.push(t)
   }
   const tags = tagList.map((t) => `#${t}`).join(' ')
   const tagsPlain = tagList.join(',')
+  /*
+   * **줄바꿈으로도 낸다** (2026-08-26). 태그 칸이 어떤 구분자로 나누는지는 화면마다 다르다 —
+   * 쉼표로 나누는 곳, 줄바꿈(Enter)으로 나누는 곳이 있다. 회원이 한 번 붙여 보고 되는 쪽을
+   * 쓰면 되도록 둘 다 준다. **어느 쪽이 되는지 우리가 지어내지 않는다.**
+   */
+  const tagsLines = tagList.join('\n')
 
   const checklist: { label: string; detail?: string }[] = [
     { label: '제목을 붙여넣고 30~40자인지 확인', detail: `현재 ${post.title.length}자` },
@@ -518,9 +548,9 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
      * 「태그가 안 먹힌다」고 했다. 태그 칸은 한 칸에 하나씩 넣는 곳이다.
      */
     {
-      label: `해시태그 ${tagList.length}개 — 본문에 이미 붙어 있습니다`,
+      label: `해시태그 ${tagList.length}개 — 글 아래 「태그 편집」 칸에 붙여넣기`,
       detail:
-        '「2. 본문」을 복사하면 맨 아래에 #태그 한 줄이 함께 붙습니다 (본문 카드에서 끌 수 있습니다). 태그 칸(글 아래 「태그 편집」)에는 그 한 줄을 붙이지 마세요 — 한 칸에 하나씩 넣는 곳이라 통째로 붙이면 태그 하나로 들어갑니다',
+        '아래 태그 카드의 「태그 칸에 붙이기 (쉼표)」를 먼저 써 보시고, 하나로 뭉쳐 들어가면 「줄바꿈으로」를 써 보세요 — 태그 칸이 무엇으로 나누는지는 화면마다 다릅니다. 둘 다 뭉치면 태그를 하나씩 눌러 복사한 뒤 붙이고 Enter 를 반복하세요. 태그 안에 공백이 있으면 거기서 끊기니 붙여 씁니다',
     },
     /*
      * 정보글은 팩트가 우선이다 (회원 요청 2026-08-10). 검수가 「연구에 따르면」과 효과 수치는
@@ -584,8 +614,10 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     imagePlan,
     tags,
     tagsPlain,
+    tagsLines,
     tagList,
     tagFixes,
+    tagDrops,
     checklist,
   }
 }
