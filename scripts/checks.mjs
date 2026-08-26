@@ -258,14 +258,19 @@ ok(dupTags.tagList.length === 1, `같은 태그 세 형태가 하나로 합쳐�
  */
 ok(pkg.tags.split(' ').length === pkg.tagList.length, '한 줄에 태그가 전부 들어간다', pkg.tags)
 ok(pkg.tags.split(' ').every((t) => t.startsWith('#')), '낱말마다 # 이 붙는다 (하나만 붙으면 태그 하나로 잡힌다)')
-ok(pkg.checklist.some((c) => c.label.includes('본문 맨 아래에 한 줄로')), '체크리스트가 한 줄로 붙이라고 먼저 알려준다')
+/*
+ * **붙일 자리를 회원이 고르게 하지 않는다** (2026-08-26 재지적). 「본문 맨 아래에」라고
+ * 적어 뒀는데도 회원이 태그 칸에 붙였고 통째로 태그 하나가 됐다 — 카드 이름이 「해시태그」라
+ * 그 칸이 태그 칸으로 읽히는 것이 당연하다. 그래서 **본문 복사에 태그 줄을 넣어 둔다.**
+ */
+ok(pkg.checklist.some((c) => c.label.includes('본문에 이미 붙어 있습니다')), '체크리스트가 「따로 할 일 없다」고 알려준다')
 ok(
-  pkg.checklist.some((c) => c.detail?.includes('파란 글씨로 바뀌었는지')),
-  '되는지 확인하는 방법을 함께 알려준다 (에디터에 따라 글자로만 남을 수 있다)'
+  pkg.checklist.some((c) => c.detail?.includes('태그 칸(글 아래 「태그 편집」)에는 그 한 줄을 붙이지 마세요')),
+  '태그 칸에 붙이면 안 된다고 못 박는다 (회원이 거기 붙였다)'
 )
 ok(
-  pkg.checklist.some((c) => c.detail?.includes('한 칸에 하나씩')),
-  '안 될 때 하나씩 넣는 길도 남겨 둔다'
+  pkg.checklist.some((c) => c.detail?.includes('태그 하나로 들어갑니다')),
+  '붙이면 무슨 일이 일어나는지 적는다'
 )
 {
   // 화면도 같은 순서로 말해야 한다 — 한쪽만 고치면 체크리스트와 카드가 서로 다른 말을 한다
@@ -273,9 +278,13 @@ ok(
   const ed = rf(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
   ok(ed.includes('label="#태그 한 줄 복사"'), '태그 카드에 한 줄 복사 버튼이 있다')
   ok(ed.includes('text={pkg.tags}'), '그 버튼이 # 붙은 한 줄을 복사한다')
-  ok(ed.includes('본문 맨 마지막 줄에 붙이기'), '어디에 붙이는지 화면이 말해준다')
-  ok(ed.includes('파란 글씨로 바뀌었는지'), '되는지 확인하는 방법을 화면에도 적는다')
-  ok(ed.includes('태그 칸에 붙이고 Enter'), '안 될 때 하나씩 넣는 길도 화면에 남긴다')
+  // 본문 복사에 태그 줄이 함께 붙는다 — 회원이 자리를 고를 일이 없다
+  ok(/const \[withTags, setWithTags\] = useState\(true\)/.test(ed), '본문 복사에 태그 줄을 기본으로 붙인다')
+  ok(/tagLine \? `\$\{base\}\\n\\n\$\{tagLine\}` : base/.test(ed), '글자 복사에도 태그 줄이 들어간다')
+  ok(ed.includes('<p><br></p><p>${tagLine}</p>'), '서식 포함 복사에도 태그 줄이 들어간다')
+  ok(ed.includes('맨 아래에 #태그'), '태그 줄을 끌 수 있다는 것도 보여준다')
+  ok(ed.includes('태그 칸(글 아래 「태그 편집」)에는 한 줄을 붙이지 마세요'), '태그 칸에 붙이면 안 된다고 화면이 못 박는다')
+  ok(ed.includes('태그 칸에 붙이고 Enter'), '그래도 안 되면 하나씩 넣는 길을 남긴다')
 }
 console.log(`  파일명 예: ${pkg.imagePlan[0].fileName} / alt: ${pkg.imagePlan[0].altText}`)
 
@@ -1425,6 +1434,46 @@ ok(sysReview.includes('내돈내산'), '「내돈내산」을 쓰지 말라고 �
   ok(notJson.includes('JSON 이 아니었습니다'), 'JSON 이 아니면 그렇게 적는다', notJson)
   const err = describeEmpty(JSON.stringify({ error: { message: '한도 초과' } }), 'anthropic', 'claude-sonnet-5')
   ok(err.includes('한도 초과'), '오류 메시지가 있으면 그대로 보여준다')
+}
+
+/*
+ * **AI 회사 오류를 「그래서 무엇을 하면 되나」로 바꾼다** (2026-08-26).
+ *
+ * 회원이 이 줄을 보고 물었다 — "이거 왜 이래?":
+ *   글 생성 실패 (400, Anthropic (Claude) · claude-sonnet-5). Your credit balance is too
+ *   low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.
+ *
+ * 앱이 고장난 것이 아니라 키의 잔액이 0 이 된 것인데, 화면에는 영어 원문만 있고 어디서
+ * 충전하는지는 아무 데도 없었다. 매일 새벽 크론도 같은 줄을 실패 기록에 남긴다.
+ */
+{
+  const { explainProviderError } = require(`${OUT}/ai/llm.js`)
+  const real =
+    'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'
+  const money = explainProviderError('anthropic', 400, real)
+  ok(money.includes('잔액이 없습니다'), '잔액 문제라고 한국어로 말해준다', money)
+  ok(money.includes('console.anthropic.com'), '어디서 충전하는지 적는다')
+  ok(money.includes('앱 문제가 아닙니다'), '앱 고장이 아니라는 것을 밝힌다 (회원이 그걸 물었다)')
+  ok(
+    explainProviderError('openai', 429, 'You exceeded your current quota, please check your plan and billing details.')
+      .includes('platform.openai.com'),
+    '회사마다 충전하는 자리가 다르다'
+  )
+  const key = explainProviderError('anthropic', 401, 'invalid x-api-key')
+  ok(key.includes('키가 잘못됐거나'), '키 문제는 키 문제라고 말한다', key)
+  ok(key.includes('환경변수'), '어디서 고치는지 적는다')
+  ok(explainProviderError('anthropic', 429, 'rate_limit_error').includes('1~2분 뒤'), '너무 자주 부른 것은 기다리면 된다')
+  ok(explainProviderError('anthropic', 529, 'overloaded_error').includes('잠시 뒤'), '서버가 몰린 것도 기다리면 된다')
+  // **모르는 오류는 지어내지 않는다** — 빈 값이면 부르는 쪽이 원문을 그대로 보여준다
+  ok(explainProviderError('anthropic', 500, '알 수 없는 무엇') === '', '모르는 오류는 해석하지 않는다')
+  /*
+   * **원문을 지우지 않는다.** 우리가 못 알아본 오류를 삼키면 원인을 영영 못 찾는다 —
+   * 이 저장소에서 조용한 실패로 이미 며칠을 잃었다.
+   */
+  const { readFileSync: rf } = require('node:fs')
+  const llm = rf(new URL('../lib/ai/llm.ts', import.meta.url), 'utf8')
+  ok(/todo\s*\?[\s\S]{0,200}\$\{said\}/.test(llm), '해석을 앞에 세우고 원문은 뒤에 남긴다')
+  ok(/explainProviderError\(c\.provider, res\.status, said\)/.test(llm), '실제 호출 자리에서 쓴다')
 }
 
 /*

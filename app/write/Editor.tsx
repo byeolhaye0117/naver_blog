@@ -1811,7 +1811,12 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
   return (
     <Card
       title="4. 해시태그"
-      subtitle={`${pkg.tagList.length}개 · 태그 칸에 하나씩 넣으세요`}
+      /*
+        **여기 설명이 아래 안내와 반대말을 하고 있었다** (2026-08-26). 위에서는 「본문 맨 아래에
+        한 줄로」라고 해놓고 카드 제목 옆에는 여태 「태그 칸에 하나씩」이 붙어 있었다. 회원이
+        태그 칸에 붙였고 통째로 태그 하나가 됐다 — 안내가 헷갈리게 되어 있던 것이 원인이다.
+      */
+      subtitle={`${pkg.tagList.length}개 · 위 「2. 본문」을 복사하면 이 태그도 함께 들어갑니다`}
       /*
         **한 줄로 전부 복사하는 길을 앞에 둔다** (2026-08-26 회원 요청: "지금 태그 붙일려면
         하나씩 클릭해서 해야 하는데, 전체 복사해서 붙여넣으면 해시태그로 인식되게 해줘").
@@ -1851,16 +1856,28 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
             **어디에 붙이느냐가 갈린다.** 같은 태그라도 붙이는 자리가 다르면 되는 방법이
             다르다 — 그걸 안 적어둬서 회원이 태그 칸에 한 줄을 붙이고 「안 먹힌다」고 했다.
           */}
+          {/*
+            **붙이는 자리를 못 박는다** (2026-08-26). 「본문 맨 아래」라고 적어 뒀는데도 회원이
+            태그 칸에 붙였고, 통째로 태그 하나(`#쌍용동헬스장,쌍용동헬스장PT…`)가 됐다.
+            카드 이름이 「해시태그」라 그 칸이 태그 칸으로 읽히는 것이 당연하다.
+
+            그래서 **본문 복사에 태그 줄을 넣어 두고**(위 「2. 본문」), 여기서는 그 사실을
+            먼저 말한다. 이 카드의 복사 버튼은 본문을 따로 손봤을 때 쓰는 예비 수단이다.
+          */}
           <div className="mt-2.5 space-y-1.5 text-[11px] leading-relaxed">
             <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2 text-emerald-900 dark:text-emerald-200">
-              <b>①「#태그 한 줄 복사」 → 본문 맨 마지막 줄에 붙이기.</b> 한 번에 {pkg.tagList.length}개가
-              들어갑니다. 붙인 뒤 <b>태그가 파란 글씨로 바뀌었는지</b> 한 번만 보세요 — 바뀌었으면 끝입니다.
+              <b>따로 하실 일이 없습니다.</b> 위 <b>「2. 본문」의 「서식 포함 복사」</b>를 누르면 이
+              태그 {pkg.tagList.length}개가 본문 맨 아래에 <b>#태그</b> 한 줄로 함께 붙습니다.
+            </p>
+            <p className="rounded-xl border border-rose-500/30 bg-rose-500/8 px-3 py-2 text-rose-900 dark:text-rose-200">
+              <b>태그 칸(글 아래 「태그 편집」)에는 한 줄을 붙이지 마세요.</b> 거기는 한 칸에 하나씩 넣는
+              곳이라, 한 줄을 통째로 넣으면 <b>「#쌍용동헬스장,쌍용동헬스장PT…」처럼 태그 하나</b>로
+              들어갑니다.
             </p>
             <p className="muted">
-              <b>② 파란 글씨로 안 바뀌었다면</b> 글자로만 붙은 것입니다. 그때는 아래 태그를 눌러 복사한 뒤{' '}
-              <b>태그 칸에 붙이고 Enter</b>를 반복하세요 — 태그 칸은 한 칸에 하나씩 넣는 곳이라 한 줄을
-              통째로 넣으면 태그 하나로 들어가거나 버려집니다. 「쉼표로 전부」는 쉼표를 구분자로 받는
-              화면(모바일 앱 등)에서 한 번에 넣을 때 씁니다.
+              <b>본문을 따로 손보셔서 태그 줄이 빠졌다면</b> 위 「#태그 한 줄 복사」로 본문 맨 마지막 줄에
+              붙이시고, 그래도 안 되면 아래 태그를 눌러 복사한 뒤 <b>태그 칸에 붙이고 Enter</b>를
+              반복하세요. 「쉼표로 전부」는 쉼표를 구분자로 받는 화면(모바일 앱 등)에서 씁니다.
             </p>
           </div>
 
@@ -1907,16 +1924,35 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
 function BodyCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
   const [mode, setMode] = useState<'mobile' | 'plain'>('mobile')
   const [style, setStyle] = useState<HeadingStyle>('quote')
+  /*
+   * **태그 줄을 본문 끝에 함께 준다** (2026-08-26 회원 요청·재지적).
+   *
+   * "전체 복사해서 네이버 블로그에 붙여넣으면 해시태그로 인식될 수 있게 바꿔줘."
+   * 그래서 태그 카드에 「#태그 한 줄 복사」를 만들었는데, 회원이 그 줄을 **태그 칸**에 붙였고
+   * 통째로 태그 하나(`#쌍용동헬스장,쌍용동헬스장PT…`)가 됐다. 카드 이름이 「해시태그」라
+   * 그 칸이 태그 칸으로 읽히는 것이 당연하다 — 붙일 자리를 회원이 고르게 만든 것이 잘못이다.
+   *
+   * 본문에 붙여 주면 **고를 일이 없다.** 「서식 포함 복사」 한 번으로 본문과 태그가 같이 간다.
+   * 끄고 싶을 수도 있으니 칸은 남겨 둔다 (예전처럼 태그 칸에 넣는 회원도 있다).
+   */
+  const [withTags, setWithTags] = useState(true)
 
-  const text = mode === 'mobile' ? blocksToText(pkg.blocks, style === 'quote') : pkg.body
-  const html = mode === 'mobile' ? blocksToHtml(pkg.blocks, style) : pkg.body
+  const tagLine = withTags && pkg.tags ? pkg.tags : ''
+  const base = mode === 'mobile' ? blocksToText(pkg.blocks, style === 'quote') : pkg.body
+  const baseHtml = mode === 'mobile' ? blocksToHtml(pkg.blocks, style) : pkg.body
+  const text = tagLine ? `${base}\n\n${tagLine}` : base
+  const html = tagLine ? `${baseHtml}<p><br></p><p>${tagLine}</p>` : baseHtml
   const headings = pkg.blocks.filter((b) => b.kind === 'heading').length
   const lines = pkg.blocks.reduce((n, b) => n + b.groups.reduce((m, g) => m + g.length, 0), 0)
 
   return (
     <Card
       title="2. 본문"
-      subtitle="작성 안내 줄과 이미지 지시문은 빠진 상태입니다"
+      subtitle={
+        withTags && pkg.tagList.length
+          ? `작성 안내 줄과 이미지 지시문은 빠진 상태입니다 · 맨 아래에 #태그 ${pkg.tagList.length}개가 함께 붙습니다`
+          : '작성 안내 줄과 이미지 지시문은 빠진 상태입니다'
+      }
       right={
         <div className="flex items-center gap-1.5">
           <CopyRichButton html={html} text={text} />
@@ -1967,6 +2003,21 @@ function BodyCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
         <span className="muted text-[11px]">
           소제목 {headings}개 · {mode === 'mobile' ? `${lines}줄` : `${pkg.blocks.length}문단`}
         </span>
+        {/*
+          태그를 본문 끝에 함께 붙일지. 켜 두는 것이 기본이다 — 회원이 원한 것이 「한 번
+          복사해서 붙이면 태그까지 되는 것」이었다 (2026-08-26).
+        */}
+        {pkg.tagList.length > 0 && (
+          <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[11.5px] font-semibold">
+            <input
+              type="checkbox"
+              checked={withTags}
+              onChange={(e) => setWithTags(e.target.checked)}
+              className="size-3.5 shrink-0"
+            />
+            맨 아래에 #태그 {pkg.tagList.length}개
+          </label>
+        )}
       </div>
 
       <pre className="bd scroll-x max-h-80 overflow-y-auto rounded-xl border px-3 py-2.5 text-[12px] leading-relaxed whitespace-pre-wrap">
