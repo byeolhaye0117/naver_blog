@@ -144,7 +144,8 @@ export default function Editor({
   const [sub1, setSub1] = useState(existing?.subKeywords[0] ?? initialSubs?.[0] ?? '')
   const [legacySub, setLegacySub] = useState(existing?.subKeywords[1] ?? '')
   const [localKeyword, setLocalKeyword] = useState(existing?.localKeyword ?? initialLocal ?? '')
-  const [tagText, setTagText] = useState((existing?.tags ?? []).join(', '))
+  // 예전에 `#` 가 붙어 저장된 글도 있다 — 화면에서는 떼고 보여준다 (2026-08-26)
+  const [tagText, setTagText] = useState((existing?.tags ?? []).map((t) => t.replace(/^#+/, '')).join(', '))
   const [introType, setIntroType] = useState(existing?.introType ?? '')
   const [angle, setAngle] = useState(existing?.angle ?? '')
   const [format, setFormat] = useState(existing?.format ?? '')
@@ -660,7 +661,7 @@ export default function Editor({
         if (json.rotation.topicGroup && !topicGroup) setTopicGroup(json.rotation.topicGroup)
       }
       if (Array.isArray(json.draft.tags) && json.draft.tags.length) {
-        setTagText(json.draft.tags.join(', '))
+        setTagText(json.draft.tags.map((t: string) => t.replace(/^#+/, '')).join(', '))
       }
       /*
        * **분량이 기준 미만이면 버튼을 기다리지 않고 곧바로 한 번 더 부른다** (2026-08-11).
@@ -1569,8 +1570,16 @@ export default function Editor({
                     className={inputClass}
                     placeholder="쌍용동 헬스장, 쌍용동PT, 천안헬스장"
                   />
-                  <p className="muted mt-1.5 text-[11px]">
+                  <p className="muted mt-1.5 text-[11px] leading-relaxed">
                     쉼표로 구분 · 8~12개 · 메인 키워드와 보조 키워드는 반드시 포함 — 현재 {tags.length}개
+                    {/*
+                      **이 줄을 복사해 네이버에 붙이면 안 된다** (2026-08-26). 회원이 그렇게 해서
+                      태그 하나로 뭉쳤다 (`#쌍용동헬스장,MTO피트니…`). 여기는 **적는 칸**이고,
+                      네이버에 넣을 것은 「복사용 패키지 → 4. 해시태그」에서 하나씩 복사한다.
+                    */}
+                    <br />
+                    <b>이 줄을 복사해서 네이버에 붙이지 마세요</b> — 태그 하나로 뭉칩니다. 네이버에 넣을
+                    때는 <b>「복사용 패키지 → 4. 해시태그」</b>에서 하나씩 복사하세요.
                   </p>
                 </div>
               </Card>
