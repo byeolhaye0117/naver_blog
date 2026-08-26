@@ -1812,7 +1812,20 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
     <Card
       title="4. 해시태그"
       subtitle={`${pkg.tagList.length}개 · 태그 칸에 하나씩 넣으세요`}
-      right={<CopyButton text={pkg.tagsPlain} label="쉼표로 전부" className="bg-slate-500/15 !text-inherit" />}
+      /*
+        **한 줄로 전부 복사하는 길을 앞에 둔다** (2026-08-26 회원 요청: "지금 태그 붙일려면
+        하나씩 클릭해서 해야 하는데, 전체 복사해서 붙여넣으면 해시태그로 인식되게 해줘").
+
+        태그 **칸**이 한 칸에 하나씩 넣는 곳인 것은 그대로다. 대신 **본문 맨 아래**는
+        `#낱말`이 해시태그로 잡히는 자리라, 거기 한 줄을 붙이면 열한 번 누를 일이 없다.
+        하나씩 복사는 그대로 두되(안 잡히는 에디터가 있을 수 있다) 순서만 바꾼다.
+      */
+      right={
+        <div className="flex items-center gap-1.5">
+          <CopyButton text={pkg.tags} label="#태그 한 줄 복사" />
+          <CopyButton text={pkg.tagsPlain} label="쉼표로 전부" className="bg-slate-500/15 !text-inherit" />
+        </div>
+      }
     >
       {pkg.tagList.length === 0 ? (
         <p className="muted text-sm">태그가 없습니다. 위에서 태그를 먼저 넣어주세요.</p>
@@ -1834,12 +1847,22 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
             ))}
           </div>
 
-          <p className="muted mt-2.5 text-[11px] leading-relaxed">
-            <b>「#태그 #태그」 한 줄을 그대로 붙이면 안 걸립니다.</b> 네이버 태그 칸은 한 칸에 하나씩
-            넣는 곳이라, 한 줄을 통째로 넣으면 태그 하나로 들어가거나 버려집니다. 위 태그를{' '}
-            <b>눌러서 복사 → 태그 칸에 붙이고 Enter</b>를 반복하세요. 「쉼표로 전부」는 쉼표를 구분자로
-            받는 화면(모바일 앱 등)에서 한 번에 넣을 때 쓰세요 — 안 나뉘면 하나씩 넣는 쪽이 확실합니다.
-          </p>
+          {/*
+            **어디에 붙이느냐가 갈린다.** 같은 태그라도 붙이는 자리가 다르면 되는 방법이
+            다르다 — 그걸 안 적어둬서 회원이 태그 칸에 한 줄을 붙이고 「안 먹힌다」고 했다.
+          */}
+          <div className="mt-2.5 space-y-1.5 text-[11px] leading-relaxed">
+            <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/8 px-3 py-2 text-emerald-900 dark:text-emerald-200">
+              <b>①「#태그 한 줄 복사」 → 본문 맨 마지막 줄에 붙이기.</b> 한 번에 {pkg.tagList.length}개가
+              들어갑니다. 붙인 뒤 <b>태그가 파란 글씨로 바뀌었는지</b> 한 번만 보세요 — 바뀌었으면 끝입니다.
+            </p>
+            <p className="muted">
+              <b>② 파란 글씨로 안 바뀌었다면</b> 글자로만 붙은 것입니다. 그때는 아래 태그를 눌러 복사한 뒤{' '}
+              <b>태그 칸에 붙이고 Enter</b>를 반복하세요 — 태그 칸은 한 칸에 하나씩 넣는 곳이라 한 줄을
+              통째로 넣으면 태그 하나로 들어가거나 버려집니다. 「쉼표로 전부」는 쉼표를 구분자로 받는
+              화면(모바일 앱 등)에서 한 번에 넣을 때 씁니다.
+            </p>
+          </div>
 
           {pkg.tagFixes.length > 0 && (
             <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
