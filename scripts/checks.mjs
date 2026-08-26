@@ -259,32 +259,48 @@ ok(dupTags.tagList.length === 1, `같은 태그 세 형태가 하나로 합쳐�
 ok(pkg.tags.split(' ').length === pkg.tagList.length, '한 줄에 태그가 전부 들어간다', pkg.tags)
 ok(pkg.tags.split(' ').every((t) => t.startsWith('#')), '낱말마다 # 이 붙는다 (하나만 붙으면 태그 하나로 잡힌다)')
 /*
- * **붙일 자리를 회원이 고르게 하지 않는다** (2026-08-26 재지적). 「본문 맨 아래에」라고
- * 적어 뒀는데도 회원이 태그 칸에 붙였고 통째로 태그 하나가 됐다 — 카드 이름이 「해시태그」라
- * 그 칸이 태그 칸으로 읽히는 것이 당연하다. 그래서 **본문 복사에 태그 줄을 넣어 둔다.**
+ * **태그는 태그 칸의 것이다** (2026-08-26 회원 결정: "태그는 본문 복사에 넣을 게 아니라
+ * 태그 칸에 넣을 키워드들을 추려줘야 하고, 복사버튼 누르면 태그칸에 자동으로 하나씩
+ * 인식되어 들어갈 수 있게 해줘야 해").
+ *
+ * 태그 칸이 무엇으로 태그를 나누는지는 화면마다 다르다 — 쉼표로 나누는 곳, 줄바꿈으로
+ * 나누는 곳이 있다. **우리가 지어내지 않는다.** 둘 다 주고 되는 쪽을 쓰게 한다.
  */
-ok(pkg.checklist.some((c) => c.label.includes('본문에 이미 붙어 있습니다')), '체크리스트가 「따로 할 일 없다」고 알려준다')
+ok(pkg.tagsLines.split('\n').length === pkg.tagList.length, '줄바꿈으로도 낸다 (Enter 로 나누는 화면용)')
+ok(!pkg.tagsLines.includes('#'), '태그 칸용에는 # 이 없다 (# 이 글자로 들어가면 그것도 태그가 된다)')
+ok(pkg.checklist.some((c) => c.label.includes('글 아래 「태그 편집」 칸에 붙여넣기')), '체크리스트가 붙일 자리를 말한다')
 ok(
-  pkg.checklist.some((c) => c.detail?.includes('태그 칸(글 아래 「태그 편집」)에는 그 한 줄을 붙이지 마세요')),
-  '태그 칸에 붙이면 안 된다고 못 박는다 (회원이 거기 붙였다)'
+  pkg.checklist.some((c) => c.detail?.includes('하나로 뭉쳐 들어가면 「줄바꿈으로」')),
+  '한쪽이 안 되면 다른 쪽을 쓰라고 알려준다'
 )
-ok(
-  pkg.checklist.some((c) => c.detail?.includes('태그 하나로 들어갑니다')),
-  '붙이면 무슨 일이 일어나는지 적는다'
-)
+/*
+ * **추려서 낸다.** 회원 화면에 「쌍용동」과 「쌍용동헬스장」이 함께 올라와 있었다 — 짧은
+ * 쪽은 긴 쪽에 이미 들어 있어 자리만 차지한다. 다만 조용히 지우지 않고 무엇을 뺐는지 남긴다.
+ */
+{
+  const dup = buildCopyPackage({
+    ...goodPromo, id:'y', status:'draft', storeId:'s', createdAt:'', updatedAt:'',
+    tags: ['쌍용동', '쌍용동헬스장', '천안헬스장'],
+  })
+  ok(!dup.tagList.includes('쌍용동'), '긴 태그에 들어 있는 짧은 태그는 뺀다', dup.tagList.join(','))
+  ok(dup.tagList.includes('쌍용동헬스장') && dup.tagList.includes('천안헬스장'), '나머지는 그대로 남는다')
+  ok(
+    dup.tagDrops.some((d) => d.tag === '쌍용동' && d.inside === '쌍용동헬스장'),
+    '무엇을 왜 뺐는지 남긴다 (조용히 지우지 않는다)'
+  )
+}
 {
   // 화면도 같은 순서로 말해야 한다 — 한쪽만 고치면 체크리스트와 카드가 서로 다른 말을 한다
   const { readFileSync: rf } = require('node:fs')
   const ed = rf(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
-  ok(ed.includes('label="#태그 한 줄 복사"'), '태그 카드에 한 줄 복사 버튼이 있다')
-  ok(ed.includes('text={pkg.tags}'), '그 버튼이 # 붙은 한 줄을 복사한다')
-  // 본문 복사에 태그 줄이 함께 붙는다 — 회원이 자리를 고를 일이 없다
-  ok(/const \[withTags, setWithTags\] = useState\(true\)/.test(ed), '본문 복사에 태그 줄을 기본으로 붙인다')
-  ok(/tagLine \? `\$\{base\}\\n\\n\$\{tagLine\}` : base/.test(ed), '글자 복사에도 태그 줄이 들어간다')
-  ok(ed.includes('<p><br></p><p>${tagLine}</p>'), '서식 포함 복사에도 태그 줄이 들어간다')
-  ok(ed.includes('맨 아래에 #태그'), '태그 줄을 끌 수 있다는 것도 보여준다')
-  ok(ed.includes('태그 칸(글 아래 「태그 편집」)에는 한 줄을 붙이지 마세요'), '태그 칸에 붙이면 안 된다고 화면이 못 박는다')
-  ok(ed.includes('태그 칸에 붙이고 Enter'), '그래도 안 되면 하나씩 넣는 길을 남긴다')
+  // 본문에는 태그를 넣지 않는다 (2026-08-26 회원 결정) — 태그는 태그 칸의 것이다
+  const edCode = ed.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  ok(!edCode.includes('withTags') && !edCode.includes('tagLine'), '본문 복사에 태그 줄을 붙이지 않는다')
+  ok(ed.includes('label="태그 칸에 붙이기 (쉼표)"'), '태그 칸용 복사가 먼저 온다')
+  ok(ed.includes('text={pkg.tagsPlain}') && ed.includes('text={pkg.tagsLines}'), '쉼표·줄바꿈 두 가지를 준다')
+  ok(ed.includes('글 아래 「태그 편집」 칸을 누르고 붙여넣으세요'), '어디에 붙이는지 화면이 말해준다')
+  ok(ed.includes('태그 칸에 붙이고 Enter'), '둘 다 뭉치면 하나씩 넣는 길을 남긴다')
+  ok(ed.includes('pkg.tagDrops'), '추리면서 뺀 태그를 화면이 보여준다')
 }
 console.log(`  파일명 예: ${pkg.imagePlan[0].fileName} / alt: ${pkg.imagePlan[0].altText}`)
 
