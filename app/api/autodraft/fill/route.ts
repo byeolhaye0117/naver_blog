@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { readDB } from '@/lib/store'
-import { fillDays } from '@/lib/writing/autodraft'
+import { fillDays, seoulToday } from '@/lib/writing/autodraft'
 import type { AutoDraftPlan } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'

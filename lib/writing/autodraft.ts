@@ -238,6 +238,37 @@ function day(iso?: string): string {
 }
 
 /**
+ * ── 날짜는 **한국 시간**으로 센다 (2026-08-26 회원 지적) ────────
+ *
+ * "8/26일이면 채워두신 앞날이 아니라 이미 쓰여진게 정상인거 아니야?"
+ *
+ * 맞다. 오늘 아침에 글이 나왔는데 목록에는 **08/25 로** 적혀 있었고, 08/26 은 「앞날」에
+ * 있었다. 날짜를 UTC 로 셌기 때문이다.
+ *
+ * 크론은 20:00 UTC 에 돈다 — 한국에서는 **다음 날 새벽 5시**다. 그래서 「8월 26일 새벽에
+ * 쓴 글」이 UTC 로는 8월 25일이 된다. 하루씩 밀린 목록을 회원이 매일 보게 되는 셈이다.
+ *
+ * 이 앱은 천안에서 쓰는 앱이고 회원이 말하는 「오늘」은 한국 시간의 오늘이다. 자동 초안이
+ * 쓰는 날짜(실행 기록·채워 둔 날·쉬는 날·오늘 것이 있나)는 전부 이걸로 센다.
+ *
+ * 한국은 서머타임이 없어 고정 +9 로 맞다.
+ */
+export const SEOUL_OFFSET_MS = 9 * 60 * 60 * 1000
+
+/** 그 순간이 한국에서 몇 월 며칠인가 (YYYY-MM-DD). 읽을 수 없으면 빈 문자열 */
+export function seoulDay(at: string | number | Date | undefined): string {
+  if (at === undefined || at === null || at === '') return ''
+  const ms = typeof at === 'number' ? at : Date.parse(String(at instanceof Date ? at.toISOString() : at))
+  if (!Number.isFinite(ms)) return ''
+  return new Date(ms + SEOUL_OFFSET_MS).toISOString().slice(0, 10)
+}
+
+/** 지금 한국에서 몇 월 며칠인가 */
+export function seoulToday(now: number = Date.now()): string {
+  return seoulDay(now)
+}
+
+/**
  * 오늘 몫이 이미 있나 — **크론이 두 번 불려도 하루 한 편**이다.
  *
  * Vercel 크론은 재시도가 있고, 회원이 화면에서 손으로 한 번 더 누를 수도 있다. 그때마다
@@ -245,7 +276,12 @@ function day(iso?: string): string {
  * 여러 편이면 유사문서로 묶인다.
  */
 export function hasTodayAutoDraft(posts: Post[] | undefined, today: string): boolean {
-  return (posts ?? []).some((p) => isAutoDraft(p) && day(p.createdAt) === day(today))
+  /*
+   * **글이 만들어진 시각을 한국 시간으로 본다** (2026-08-26). `createdAt` 은 UTC 라
+   * 새벽 5시(=20:00 UTC 전날)에 쓴 글은 UTC 날짜가 하루 이르다. 그대로 비교하면 「오늘
+   * 것이 이미 있나」가 매일 틀리고, 하루에 두 편이 쓰인다.
+   */
+  return (posts ?? []).some((p) => isAutoDraft(p) && seoulDay(p.createdAt) === day(today))
 }
 
 /**
@@ -617,7 +653,7 @@ export interface AutoDraftDay {
  * 그날그날 앱이 골라 쓴다.
  */
 export function autoDraftDays(args: {
-  runs: { date: string; ok: boolean; keyword?: string; topic?: string; error?: string; score?: number | null; postId?: string; manual?: boolean; fails?: number; rounds?: number }[] | undefined
+  runs: { date: string; at?: string; ok: boolean; keyword?: string; topic?: string; error?: string; score?: number | null; postId?: string; manual?: boolean; fails?: number; rounds?: number }[] | undefined
   /** 회원이 채워 둔 앞날 — 계산한 예정이 아니다. 키워드는 그 날 아침에 정해진다 */
   planned: { date: string; topic: string }[]
   today: string
@@ -626,23 +662,35 @@ export function autoDraftDays(args: {
 }): AutoDraftDay[] {
   const runs = [...(args.runs ?? [])]
   /*
+   * **실행 시각(`at`)으로 한국 날짜를 다시 낸다** (2026-08-26).
+   *
+   * 회원: "8/26일이면 채워두신 앞날이 아니라 이미 쓰여진게 정상인거 아니야?"
+   *
+   * 예전 기록의 `date` 는 UTC 로 적혀 있어서, 새벽 5시에 쓴 글이 **하루 이른 날짜**로
+   * 남아 있다. 저장된 값을 고치는 대신 `at`(정확한 시각)에서 한국 날짜를 다시 뽑는다 —
+   * 데이터를 손대지 않고 지난 기록까지 제자리로 온다. `at` 이 없거나 이상하면 적힌 값을 쓴다.
+   */
+  const dayOf = (r: (typeof runs)[number]) => seoulDay(r.at) || r.date
+
+  /*
    * 하루에 여러 번 돌 수 있다 (실패하고 손으로 다시 누르는 등). 그 날을 대표하는 것은
    * **성공한 실행**이다 — 실패만 있으면 그중 마지막 것을 쓴다.
    */
   const byDate = new Map<string, (typeof runs)[number]>()
   for (const r of runs) {
-    const prev = byDate.get(r.date)
-    if (!prev || (!prev.ok && r.ok)) byDate.set(r.date, r)
+    const d = dayOf(r)
+    const prev = byDate.get(d)
+    if (!prev || (!prev.ok && r.ok)) byDate.set(d, r)
   }
 
-  const past: AutoDraftDay[] = [...byDate.values()]
-    .sort((a, b) => b.date.localeCompare(a.date))
+  const past: AutoDraftDay[] = [...byDate.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
     .slice(0, args.pastKeep ?? 14)
-    .map((r): AutoDraftDay => ({
-      date: r.date,
+    .map(([date, r]): AutoDraftDay => ({
+      date,
       keyword: r.keyword ?? '—',
       topic: r.topic ?? '—',
-      when: r.date === args.today ? 'today' : 'past',
+      when: date === args.today ? 'today' : 'past',
       ok: r.ok,
       error: r.error,
       score: r.score ?? null,

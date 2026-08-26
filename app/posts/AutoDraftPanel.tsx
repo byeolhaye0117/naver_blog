@@ -128,11 +128,17 @@ export default function AutoDraftPanel({
       const filled: { date: string; topic: string }[] = data?.days ?? []
       if (!filled.length)
         throw new Error('쓸 키워드가 없어 정하지 못했습니다 — ①에서 키워드를 고르거나 순위 추적에 등록해 주세요.')
+      /*
+       * **채운 날은 쉬는 날에서 뺀다** (2026-08-26). 예전에 「삭제」로 뺐던 날을 다시 채우면
+       * 두 곳에 같은 날짜가 남아 화면에 「이 날은 쓰지 않습니다」와 「미리 채워둠」이 함께
+       * 떴다. 크론은 쉬는 날을 먼저 보므로 실제로는 안 쓰인다 — 나중에 한 일이 이긴다.
+       */
       setPlan((p) => ({
         ...p,
         days: [...(p.days ?? []).filter((x) => !filled.some((n) => n.date === x.date)), ...filled].sort(
           (a, b) => a.date.localeCompare(b.date)
         ),
+        skip: (p.skip ?? []).filter((d) => !filled.some((n) => n.date === d)),
       }))
       setFillMsg(
         `${filled[0].date} 은 「${filled[0].topic}」으로 채웠습니다. 아래 「설정 저장」을 눌러야 반영됩니다.`

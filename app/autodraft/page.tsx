@@ -1,7 +1,7 @@
 import { readDB } from '@/lib/store'
 import { PageHeader } from '@/components/AppShell'
 import { Card } from '@/components/ui'
-import { autoDraftDays, hasTodayAutoDraft, normalizePlan } from '@/lib/writing/autodraft'
+import { autoDraftDays, hasTodayAutoDraft, normalizePlan, seoulToday } from '@/lib/writing/autodraft'
 import AutoDraftPanel from '../posts/AutoDraftPanel'
 import DayList from './DayList'
 
@@ -23,7 +23,8 @@ export const dynamic = 'force-dynamic'
  */
 export default async function AutoDraftPage() {
   const db = await readDB()
-  const today = new Date().toISOString().slice(0, 10)
+  // 회원이 말하는 「오늘」은 한국 시간의 오늘이다 (2026-08-26 — UTC 로 세서 하루씩 밀렸다)
+  const today = seoulToday()
   const keywordPool = [
     ...new Set(
       [...db.rankTargets.map((t) => t.keyword), ...db.stores.flatMap((s) => s.localKeywords ?? [])]
@@ -38,7 +39,13 @@ export default async function AutoDraftPage() {
    * 예전에는 로테이션을 앞으로 돌려 이레치를 그렸다. 참고용이라고 적어 뒀지만 **줄로 서
    * 있는 것은 정해진 일정으로 읽힌다** — 하루만 채웠는데 닷새가 더 잡혀 있으니 당연하다.
    */
-  const planned = normalizePlan(db.autoDraftPlan).days ?? []
+  /*
+   * **쉬기로 한 날은 앞날에 넣지 않는다** (2026-08-26). 화면에 08/26 이 「삭제함 — 이 날은
+   * 쓰지 않습니다」와 「미리 채워둠」으로 **동시에** 떴다. 크론은 쉬는 날을 먼저 보므로 그 날은
+   * 실제로 안 쓴다 — 「채워뒀다」고 적어두면 거짓말이다.
+   */
+  const plan = normalizePlan(db.autoDraftPlan)
+  const planned = (plan.days ?? []).filter((d) => !plan.skip?.includes(d.date))
   const days = autoDraftDays({ runs: db.autoDraftRuns, planned, today })
 
   return (
