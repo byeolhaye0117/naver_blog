@@ -8,6 +8,7 @@ import { checkPost } from '@/lib/writing/checker'
 import type { Arena } from '@/lib/writing/arena'
 import { buildTemplate, hasGuides, stripGuides } from '@/lib/writing/templates'
 import TopicExplorer from '@/components/TopicExplorer'
+import { classifyIntent } from '@/lib/writing/topic-explore'
 import { PUBLISH_THRESHOLD } from '@/lib/writing/checker'
 import { explainNonJson } from '@/lib/ai/httperror'
 
@@ -954,12 +955,33 @@ export default function Editor({
                     label={type === 'info' ? '정보 메인 키워드' : '메인 키워드'}
                     hint={
                       type === 'info'
-                        ? '독자가 실제로 검색창에 치는 말. 예: 다이어트 정체기 극복, 헬스 초보 운동 순서'
+                        ? '독자가 실제로 검색창에 치는 말 — 지역명·상호명이 아닙니다. 예: 다이어트 정체기 극복, 헬스 초보 운동 순서. 지역 키워드는 아래 「지역 키워드 (조연)」 칸에 넣으세요.'
                         : '지역 키워드. 같은 지점 글마다 로테이션하세요 (자기잠식 방지)'
                     }
                   >
                     <input value={mainKeyword} onChange={(e) => setMainKeyword(e.target.value)} className={inputClass} />
                   </Field>
+
+                  {/*
+                    **정보글 메인 칸에 구매력 있는 말이 있으면 말해준다** (2026-08-27 회원 결정:
+                    "그 키워드는 구매력이 있는 키워드면 안돼").
+
+                    판단은 주제 탐색기가 쓰는 것과 **같은 기준**이다 (classifyIntent). 두 곳에
+                    따로 적으면 한쪽만 늘어난다.
+
+                    막지는 않는다 — 회원이 알고 그렇게 쓰는 경우가 있고, 이 앱은 조용히
+                    바꾸지 않는다. 다만 「그러면 홍보글이 된다」는 사실은 알려드린다.
+                  */}
+                  {type === 'info' && mainKeyword.trim() && ['buy', 'local'].includes(classifyIntent(mainKeyword.trim())) && (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[11.5px] leading-relaxed text-amber-800 dark:text-amber-200">
+                      <b>「{mainKeyword.trim()}」는 업체·값을 찾는 키워드입니다</b> — 구매력 있는 말이라
+                      정보글 메인 자리에 두면 제목이 「{mainKeyword.trim()} ○○…」으로 열리고, 사실상 홍보글이
+                      됩니다. 정보글은 신뢰도를 쌓는 글(정보 : 홍보 = 2 : 1 의 '2')이라 목적이 다릅니다.
+                      <br />
+                      아래 「주제 탐색」에서 실제로 검색되는 정보성 키워드를 고르시면 이 칸이 그것으로 바뀌고,
+                      지금 값은 <b>지역 키워드(조연)</b> 칸으로 내려갑니다.
+                    </div>
+                  )}
 
                   {/*
                     이 키워드가 경쟁 센 자리인지 **글 쓰기 전에** 보여준다.
@@ -1156,9 +1178,31 @@ export default function Editor({
                         <summary className="cursor-pointer text-[12px] font-bold select-none">
                           주제 탐색 — 실제로 검색되는 것에서 고르기
                         </summary>
+                        {/*
+                          **고른 주제가 메인 키워드가 된다** (2026-08-27 회원 지적: "주제
+                          골라도 메인키워드는 바뀌지 않는데?").
+
+                          여태 이 버튼은 주제 칸만 채웠다. 그래서 화면이 이렇게 남았다 —
+                          메인 키워드 「성정동 헬스장」 · 주제 「벌크업식단」. 정보성 키워드가
+                          주제 칸에, 구매력 있는 지역 키워드가 메인 칸에 있는 것이고, 그 상태로
+                          쓰면 제목이 「성정동 헬스장 벌크업식단…」으로 나간다.
+
+                          자동 초안은 같은 날 고쳤는데(lib/writing/autodraft.ts) 손으로 쓰는
+                          이 화면은 그대로였다 — 한쪽만 고친 것이다.
+
+                          지역 키워드는 버리지 않고 **조연 칸으로 내린다** (비어 있을 때만 —
+                          회원이 이미 고른 값을 덮어쓰지 않는다).
+                        */}
                         <TopicExplorer
                           picked={infoTopic.trim() ? [infoTopic.trim()] : []}
-                          onPick={(t) => setInfoTopic(t)}
+                          onPick={(t) => {
+                            setInfoTopic(t)
+                            const before = mainKeyword.trim()
+                            setMainKeyword(t)
+                            if (before && !localKeyword.trim() && ['buy', 'local'].includes(classifyIntent(before))) {
+                              setLocalKeyword(before)
+                            }
+                          }}
                           pickLabel="이 주제로"
                           pickedLabel="고름"
                         />
