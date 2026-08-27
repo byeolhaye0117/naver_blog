@@ -446,7 +446,27 @@ export function planAssignment(args: {
    */
   const fixed = wantDate ? plan.days?.find((d) => d.date === wantDate) : undefined
   if (fixed) {
-    const mainKeyword = rotated?.mainKeyword ?? keywords[0]?.trim()
+    /*
+     * **주제를 회원이 정했으면 키워드는 「가장 오래 안 쓴 것」으로 고른다** (2026-08-26).
+     *
+     * 조합 로테이션(pickAssignment)의 답을 그대로 쓰면 안 된다. 그건 (키워드 × 주제)를
+     * 보는데 주제가 이미 정해져 있으면 그 축이 죽어서 **같은 키워드가 계속 나온다** —
+     * 사흘을 채워 두고 미리 세어 보니 세 날 다 같은 키워드였다.
+     *
+     * 여기서는 축이 하나뿐이므로 키워드만 놓고 오래 안 쓴 순서로 고른다. 같으면 목록 순서
+     * (같은 입력이면 늘 같은 답이 나오게 — 화면의 예상과 실제가 달라지면 안 된다).
+     */
+    const infoPosts = (args.posts ?? [])
+      .filter((p) => p.type === 'info')
+      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+    const age = (kw: string) => {
+      const i = infoPosts.findIndex((p) => p.mainKeyword === kw)
+      return i < 0 ? Infinity : i
+    }
+    const pool = keywords.map((k) => k.trim()).filter(Boolean)
+    const mainKeyword =
+      [...pool].sort((a, b) => age(b) - age(a) || pool.indexOf(a) - pool.indexOf(b))[0] ??
+      rotated?.mainKeyword
     if (!mainKeyword) return null
     return {
       mainKeyword,
@@ -610,14 +630,71 @@ export function forecastAutoDrafts(args: {
   return out
 }
 
+/**
+ * **회원이 채워 둔 날에 어떤 키워드가 나갈지** 미리 계산한다 (2026-08-26 회원 요청:
+ * "키워드도 보이게 해줘").
+ *
+ * 키워드는 그 날 아침 로테이션이 고른다. 그렇다고 화면에 안 적으면 회원이 「무슨 키워드로
+ * 나가지」를 알 방법이 없다 — **정해지는 규칙이 있으니 미리 셀 수 있다.** 같은 입력이면 같은
+ * 답이 나오게 만들어 뒀다 (pickAssignment 의 마지막 정렬 기준이 그 때문에 있다).
+ *
+ * `forecastAutoDrafts` 와 다른 점: **앞날을 지어내지 않는다.** 회원이 채워 둔 날만 돌면서
+ * 그 날 몫을 계산한다. 여러 날을 채워 뒀으면 앞의 날이 쓰인 셈 치고 다음 날을 계산해야
+ * 키워드가 날마다 다르게 나온다 — 그래서 가짜 글을 쌓아가며 센다.
+ *
+ * **예상이다.** 그 사이에 손으로 정보글을 쓰거나 ① 키워드를 바꾸면 달라진다 — 화면이
+ * 그렇게 적는다.
+ */
+export function plannedAssignments(args: {
+  plan: AutoDraftPlan | undefined
+  posts: Post[] | undefined
+  fallbackKeywords: string[]
+  /** 이 날짜부터 (지난 날짜로 채워 둔 것은 세지 않는다) */
+  from: string
+}): { date: string; topic: string; keyword?: string }[] {
+  const plan = normalizePlan(args.plan)
+  const days = (plan.days ?? [])
+    .filter((d) => d.date >= args.from && !plan.skip?.includes(d.date))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  if (plan.off) return days
+  let posts = [...(args.posts ?? [])]
+  return days.map((d, i) => {
+    const a = planAssignment({ plan, posts, fallbackKeywords: args.fallbackKeywords, date: d.date })
+    if (!a) return d
+    posts = [
+      {
+        id: `planned-${i}`,
+        type: 'info',
+        status: 'draft',
+        storeId: '',
+        title: '',
+        body: '',
+        mainKeyword: a.mainKeyword,
+        subKeywords: [],
+        tags: [],
+        auto: true,
+        autoTopic: a.topic,
+        createdAt: `${d.date}T05:00:00.000Z`,
+        updatedAt: `${d.date}T05:00:00.000Z`,
+      },
+      ...posts,
+    ]
+    return { date: d.date, topic: d.topic, keyword: a.mainKeyword }
+  })
+}
+
 export interface AutoDraftDay {
   date: string
   /**
    * 그 날 쓴(쓸) 키워드.
    *
-   * 앞날에는 **없다** — 키워드는 그 날 아침 로테이션이 고르므로 미리 말할 수 없다.
-   * 예전에는 미리 계산해서 보여줬는데, 그러면 회원이 정하지도 않은 앞날 일정이 화면에
-   * 잡혀 「왜 그 후 일정까지 설정되냐」가 됐다 (2026-08-25).
+   * 지난 날은 실제로 쓴 것이고, **채워 둔 앞날은 예상**이다 (2026-08-26 회원 요청: "키워드도
+   * 보이게 해줘"). 키워드는 그 날 아침 로테이션이 고르지만 규칙이 정해져 있어 미리 셀 수
+   * 있다 — `plannedAssignments` 가 센다. 못 세면 없다.
+   *
+   * 예전에 앞날 전체를 계산해 그렸다가 「정하지도 않은 일정이 잡힌다」는 지적을 받았는데,
+   * 그건 **날짜를 지어낸 것**이 문제였지 키워드를 센 것이 문제가 아니었다. 지금은 회원이
+   * 채워 둔 날에만 붙인다.
    */
   keyword?: string
   topic: string
@@ -654,8 +731,8 @@ export interface AutoDraftDay {
  */
 export function autoDraftDays(args: {
   runs: { date: string; at?: string; ok: boolean; keyword?: string; topic?: string; error?: string; score?: number | null; postId?: string; manual?: boolean; fails?: number; rounds?: number }[] | undefined
-  /** 회원이 채워 둔 앞날 — 계산한 예정이 아니다. 키워드는 그 날 아침에 정해진다 */
-  planned: { date: string; topic: string }[]
+  /** 회원이 채워 둔 앞날 — 계산한 예정이 아니다. 키워드는 예상값이 있으면 함께 온다 */
+  planned: { date: string; topic: string; keyword?: string }[]
   today: string
   /** 지난 기록은 이만큼만 */
   pastKeep?: number
@@ -710,6 +787,7 @@ export function autoDraftDays(args: {
     .map((f): AutoDraftDay => ({
       date: f.date,
       topic: f.topic,
+      keyword: f.keyword,
       when: f.date === args.today ? 'today' : 'upcoming',
     }))
     .sort((a, b) => b.date.localeCompare(a.date))

@@ -9135,8 +9135,53 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     // 회원이 정하지 않은 날은 목록에 없다 — 있으면 「그 후 일정까지 설정됐다」로 읽힌다
     ok(!rows.some((r) => ['2026-08-27', '2026-08-28', '2026-08-29'].includes(r.date)),
       '채우지 않은 앞날은 목록에 없다', rows.map((r) => r.date).join())
-    ok(rows.every((r) => r.when !== 'upcoming' || r.keyword === undefined),
-      '앞날에는 키워드를 미리 적지 않는다 (그 날 아침에 정해진다)')
+    /*
+     * **채워 둔 앞날에는 키워드도 붙는다** (2026-08-26 회원 요청: "키워드도 보이게 해줘").
+     * 그 날 아침에 정해지지만 규칙이 있어 미리 셀 수 있다 — `plannedAssignments` 가 센다.
+     * 넘겨준 것이 없으면 없다 (지어내지 않는다).
+     */
+    ok(rows.find((r) => r.date === '2026-08-26')?.keyword === undefined, '넘겨준 키워드가 없으면 비워 둔다')
+    const withKw = autoDraftDays({
+      runs: [],
+      planned: [{ date: '2026-08-26', topic: '채운주제', keyword: '쌍용동헬스장' }],
+      today: '2026-08-26',
+    })
+    ok(withKw[0].keyword === '쌍용동헬스장', '넘겨준 키워드는 그대로 붙는다', withKw[0].keyword)
+
+    /*
+     * **여러 날을 채워 뒀으면 날마다 다른 키워드가 나와야 한다.** 앞의 날이 쓰인 셈 치고
+     * 다음 날을 세지 않으면 채운 날 전부에 같은 키워드가 붙는다.
+     */
+    const { plannedAssignments } = require(`${OUT}/writing/autodraft.js`)
+    const three = plannedAssignments({
+      plan: { keywords: ['가키워드', '나키워드', '다키워드'], topics: ['가주제', '나주제', '다주제'], days: [
+        { date: '2026-08-27', topic: '가주제' },
+        { date: '2026-08-28', topic: '나주제' },
+        { date: '2026-08-29', topic: '다주제' },
+      ] },
+      posts: [],
+      fallbackKeywords: FALLBACK,
+      from: '2026-08-26',
+    })
+    ok(three.length === 3 && three.every((d) => d.keyword), '채워 둔 날마다 키워드를 센다', JSON.stringify(three))
+    ok(new Set(three.map((d) => d.keyword)).size === 3, '날마다 다른 키워드가 나온다', three.map((d) => d.keyword).join())
+    ok(three.map((d) => d.topic).join() === '가주제,나주제,다주제', '주제는 회원이 채운 것 그대로다')
+    // 지난 날짜로 채워 둔 것과 쉬는 날은 세지 않는다
+    const skipped = plannedAssignments({
+      plan: { keywords: ['가키워드'], topics: ['가주제'], skip: ['2026-08-27'], days: [
+        { date: '2026-08-20', topic: '옛날' },
+        { date: '2026-08-27', topic: '쉬는날' },
+        { date: '2026-08-28', topic: '쓰는날' },
+      ] },
+      posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26',
+    })
+    ok(skipped.map((d) => d.date).join() === '2026-08-28', '지난 날짜와 쉬는 날은 빼고 센다', skipped.map((d) => d.date).join())
+    // 꺼두면 키워드를 세지 않는다 (그 날 안 쓰므로 거짓말이 된다)
+    ok(
+      plannedAssignments({ plan: { off: true, days: [{ date: '2026-08-27', topic: '가' }] }, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26' })
+        .every((d) => d.keyword === undefined),
+      '꺼두면 키워드를 세지 않는다'
+    )
     // 지나간 날짜로 채워 둔 것이 남아 있어도 「앞으로 쓸 것」이라고 하지 않는다
     ok(!autoDraftDays({ runs: [], planned: [{ date: '2026-08-01', topic: '옛날' }], today: '2026-08-25' }).length,
       '지난 날짜로 채워 둔 것은 앞날에 넣지 않는다')
@@ -9303,7 +9348,7 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
      * 날은 쓰지 않습니다」와 「미리 채워둠」으로 동시에 떴다. 크론은 쉬는 날을 먼저 보므로
      * 그 날은 실제로 안 쓴다 — 「채워뒀다」고 적어두면 거짓말이다.
      */
-    ok(/skip\?\.includes\(d\.date\)/.test(pageCode), '쉬기로 한 날은 앞날 목록에 넣지 않는다')
+    ok(pageCode.includes('plannedAssignments'), '쉬기로 한 날·지난 날짜는 plannedAssignments 가 걸러 준다')
     ok(page.includes('날짜별 목록'), '그 이름으로 보여준다')
     const dayUi = rf(new URL('../app/autodraft/DayList.tsx', import.meta.url), 'utf8')
     const cronDraft = rf(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
@@ -9406,8 +9451,9 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(!dayCode.includes('앞으로 쓸 예정'), '정하지 않은 날을 「예정」이라고 부르지 않는다')
     ok(dayUi.includes('아직 안 쓴 것입니다'), '앞날이 기록이 아니라는 것을 밝힌다')
     ok(dayUi.includes('아직 쓴 글이 없습니다'), '쓴 것이 없으면 그렇게 말한다 (빈 화면을 남기지 않는다)')
-    // 앞날 줄에 키워드를 적으면 그 날 아침에 달라져서 거짓말이 된다
-    ok(dayUi.includes('키워드는 그 날 아침에'), '앞날에는 키워드를 미리 적지 않는다고 밝힌다')
+    // 예상이라는 것을 밝힌다 — 그 사이에 손으로 글을 쓰면 달라진다
+    ok(dayUi.includes('지금 설정이면 이 키워드가 나갑니다'), '앞날 키워드가 예상이라는 것을 밝힌다')
+    ok(pageCode.includes('plannedAssignments'), '화면이 채워 둔 날의 키워드를 센다')
     const autoPage = rf(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
     ok(autoPage.includes('채우지 않은 날은 여기 나오지 않습니다'), '카드 설명도 같은 말을 한다')
     ok(dayUi.includes("'/api/autodraft/runs'") && /기록을 삭제할까요/.test(dayUi), '지난 기록도 물어보고 지운다')
