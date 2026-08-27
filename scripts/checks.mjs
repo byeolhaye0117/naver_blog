@@ -283,10 +283,10 @@ ok(!pkg.tagsPlain.includes('#'), '태그 칸용에는 # 이 없다 (# 이 글자
  */
 ok(!/[#\s]/.test(pkg.tagsPlain), '한 번에 붙이는 형태에는 # 도 공백도 없다', pkg.tagsPlain)
 ok(pkg.tagsPlain.split(',').length === pkg.tagList.length, '쉼표로만 나뉜다', pkg.tagsPlain)
-ok(pkg.checklist.some((c) => c.label.includes('글 아래 「태그 편집」 칸에')), '체크리스트가 붙일 자리를 말한다')
+ok(pkg.checklist.some((c) => c.label.includes('「태그 편집」 칸에 붙이고 Enter')), '체크리스트가 붙일 자리와 누를 것을 말한다')
 ok(
-  pkg.checklist.some((c) => c.detail?.includes('한 번에 붙이기')),
-  '체크리스트가 한 번에 붙이는 것을 먼저 말한다'
+  pkg.checklist.some((c) => c.detail?.includes('한 덩어리로 들어가면')),
+  '안 될 때 무엇을 하면 되는지도 적는다'
 )
 /*
  * **추려서 낸다.** 회원 화면에 「쌍용동」과 「쌍용동헬스장」이 함께 올라와 있었다 — 짧은
@@ -312,17 +312,18 @@ ok(
   const edCode = ed.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
   ok(!edCode.includes('withTags') && !edCode.includes('tagLine'), '본문 복사에 태그 줄을 붙이지 않는다')
   /*
-   * **한 번에 붙이는 것이 먼저, 하나씩은 안 될 때의 길이다** (2026-08-26). 회원이 원하는
-   * 것은 한 번에 넣는 것이고, 하나씩은 불편하다고 두 번 말했다.
+   * **복사 버튼 하나로 줄인다** (2026-08-26 회원 요청: "이 이미지에 있는 기능 다 필요 없고
+   * 복사 버튼 누르면 태그편집칸에 인식될 수 있도록 원하는거야").
+   *
+   * 안 되는 것을 여러 번 고치다 보니 버튼 두 개·순서 세는 칸·번호 붙은 칩이 쌓였다.
+   * 회원이 원하는 것은 복사 버튼 하나다.
    */
-  ok(ed.includes('label="태그 칸에 한 번에 붙이기"'), '한 번에 붙이는 버튼이 있다')
-  ok(ed.includes('text={pkg.tagsPlain}'), '# 도 공백도 없는 쉼표 목록을 복사한다')
-  ok(ed.includes("label=\"줄바꿈으로\""), '안 나뉘면 줄바꿈도 시험해 볼 수 있다')
-  ok(ed.includes('한 번에 안 되면 — 하나씩'), '하나씩은 안 될 때의 길이라고 밝힌다')
-  ok(/const \[next, setNext\] = useState\(0\)/.test(edCode), '어디까지 넣었는지 센다')
-  ok(/setNext\(i \+ 1\)/.test(edCode), '누를 때마다 다음 태그로 넘어간다')
-  ok(ed.includes('{next + 1} / {pkg.tagList.length}'), '몇 개 중 몇 번째인지 보여준다')
-  ok(ed.includes('처음부터 다시'), '다 넣은 뒤 되돌릴 수 있다')
+  ok(ed.includes('label="태그 복사"') && ed.includes('text={pkg.tagsPlain}'), '복사 버튼 하나로 태그를 담는다')
+  ok(!edCode.includes('setNext') && !edCode.includes('처음부터 다시'), '순서 세는 장치를 두지 않는다')
+  ok((ed.match(/<CopyButton/g) ?? []).length === 4, '태그 카드에 복사 버튼이 하나뿐이다 (제목·본문·기록 셋 + 태그 하나)', String((ed.match(/<CopyButton/g) ?? []).length))
+  ok(ed.includes('{pkg.tagsPlain}\n          </p>'), '무엇이 복사되는지 그대로 보여준다')
+  ok(ed.includes('「태그 편집」 칸에 붙여넣고 Enter'), '어디에 붙이고 무엇을 누르는지 한 줄로 말한다')
+  ok(ed.includes('눌러서 이 태그만 복사'), '한 번에 안 되면 눌러서 하나만 복사할 수 있다')
   /*
    * **화면 어디서도 여러 태그가 한 줄로 복사되지 않게 한다** (2026-08-26 회원 지적: "태그
    * 아직도 이렇게 나와 — 하나씩 인식이 안된단말이야". 캡처는 `#쌍용동헬스장,MTO피트니…`).
