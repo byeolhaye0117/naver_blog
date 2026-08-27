@@ -6,8 +6,12 @@ import { analyzePastedSerp } from '@/lib/analysis/serp'
 import { recentBlogCount, topBlogPosts } from '@/lib/naver/blogsection'
 import { fetchPublishedPost, measureTopPosts } from '@/lib/naver/blogpost'
 import { buildCutline } from '@/lib/analysis/cutline'
+import { staleTitleTargets } from '@/lib/analysis/rank'
 import { prescriptionKey, upsertPrescription } from '@/lib/analysis/prescription'
 import type { RankSnapshot } from '@/lib/types'
+
+/** 한 번 돌 때 제목을 몇 개까지 읽나 — 조회가 늘면 순위 재는 일이 밀린다 */
+const TITLE_READ_PER_RUN = 3
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -64,18 +68,29 @@ export async function GET(req: Request) {
    * 한 번 채우면 다시 읽지 않는다 (제목은 잘 안 바뀐다). 한 번에 몇 개만 — 조회가 늘면
    * 순위 재는 일이 밀린다.
    */
-  const linkedIds = new Set(db.posts.map((p) => p.id))
-  const needTitle = db.rankTargets
-    .filter((t) => !t.title?.trim())
-    .filter((t) => !(t.postId && linkedIds.has(t.postId)))
-    .slice(0, 3)
+  /*
+   * **앱에서 쓴 글도 읽는다** (2026-08-27 회원 지적: "실제 업로드된 제목과 다르게 나와").
+   *
+   * 예전에는 앱과 연결된 항목을 건너뛰었다 — 「앱에서 쓴 글은 제목이 이어져 오니까」.
+   * 그런데 회원은 올리기 직전에 제목을 손본다:
+   *   앱 초안  「쌍용동 헬스장 초보도 지금 등록해도 될까? 8월 3개월 9.9만원」
+   *   실제     「쌍용동 헬스장 지금 등록해도 될까? 8월무료 3개월 9.9만원」
+   * 순위는 실제로 올라간 글에 붙으므로, 목록에도 실제 제목이 떠야 한다.
+   *
+   * **한 번 읽고 끝내지도 않는다.** 제목이 잘 안 바뀌는 것은 맞지만 안 바뀐다고 볼 근거는
+   * 없고, 회원이 글을 고쳐 올리면 또 갈린다. 마지막으로 읽은 지 오래된 것부터 다시 읽는다.
+   * 한 번에 몇 개만 — 조회가 늘면 순위 재는 일이 밀린다.
+   */
+  const needTitle = staleTitleTargets(db.rankTargets, new Date().toISOString(), TITLE_READ_PER_RUN)
   for (const t of needTitle) {
     const read = await fetchPublishedPost(t.url).catch(() => null)
     const title = read?.title?.trim()
     if (!title) continue
     await mutate((d) => {
       const found = d.rankTargets.find((x) => x.id === t.id)
-      if (found) found.title = title
+      if (!found) return
+      found.title = title
+      found.titleAt = new Date().toISOString()
     })
   }
 

@@ -557,6 +557,29 @@ export function findLatinWords(text: string, extraAllow: string[] = []): string[
 }
 
 /**
+ * **해시태그로 쓸 수 있는 말인가.**
+ *
+ * 2026-08-27 부터 정보글의 메인 키워드는 지역 키워드가 아니라 **정보성 검색어**다
+ * (회원: "그 키워드는 구매력이 있는 키워드면 안돼"). 탐색기가 네이버에서 가져온 검색어는
+ * 「어깨뭉침 스트레칭」처럼 짧아 그대로 태그가 되지만, 기본 주제 목록에는 「주 2회밖에 못
+ * 갈 때 짜는 순서」 같은 **문장**도 있다.
+ *
+ * 문장을 태그로 요구하면 「#주2회밖에못갈때짜는순서」가 나온다 — 아무도 검색하지 않는
+ * 말이고, 모델이 안 넣으면 검수가 fail 로 점수를 79 에 묶는다. 그래서 **태그가 될 만한
+ * 말일 때만** 태그에 있으라고 요구한다.
+ *
+ * 기준은 네이버 태그 칸에서 실제로 쓰이는 모양이다 — 공백 뺀 20자 이내, 어절 3개 이내,
+ * 문장부호 없음. 재보고 정한 수치가 아니라 **모양으로 자른 선**이다.
+ */
+export function isTaggable(word: string): boolean {
+  const w = (word ?? '').trim()
+  if (!w) return false
+  if (/[.?!,·…"'\[\](){}]/.test(w)) return false
+  if (w.split(/\s+/).length > 3) return false
+  return w.replace(/\s+/g, '').length <= 20
+}
+
+/**
  * **이미지로만 전달한 내용이 있나** — 설명에 있는 말이 본문에도 있는지 본다.
  *
  * 네이버가 낸 「콘텐츠 셀프 체크」 다섯 번째 항목이다: 「멀티미디어로 전달한 내용을
@@ -1499,19 +1522,39 @@ export function checkPost(input: CheckInput): CheckResult {
   })
 
   const flatTags = input.tags.map((t) => t.replace(/^#/, '').replace(/\s+/g, ''))
-  const tagHasMain = main ? flatTags.includes(main.replace(/\s+/g, '')) : false
+  /*
+   * **문장은 태그로 요구하지 않는다** (2026-08-27). 정보글의 메인 키워드가 지역 키워드에서
+   * 정보성 검색어로 바뀌면서, 「주 2회밖에 못 갈 때 짜는 순서」 같은 긴 주제도 이 자리에
+   * 들어오게 됐다. 그걸 태그로 요구하면 「#주2회밖에못갈때짜는순서」가 나온다 — 검색되지
+   * 않는 말인데 없으면 fail 이라 점수가 79 에 묶인다.
+   *
+   * 태그가 될 만한 말이면 여태처럼 필수, 아니면 **지역 키워드로 대신 잡는다** (정보글의
+   * 지역 신호는 원래 태그에서 확보하기로 한 것이다 — 아래 tagLocal).
+   */
+  const mainTaggable = isTaggable(main)
+  const tagHasMain = main && mainTaggable ? flatTags.includes(main.replace(/\s+/g, '')) : false
+  const localTag = input.localKeyword?.trim()
+  const tagHasLocal = localTag ? flatTags.includes(localTag.replace(/\s+/g, '')) : false
+  const needMain = Boolean(main) && mainTaggable
+  const mainOk = needMain ? tagHasMain : tagHasLocal || flatTags.length >= 6
   const missingSubTags = subs.filter((s) => !flatTags.includes(s.replace(/\s+/g, '')))
   add({
     id: 'tagContents',
     group: '이미지·태그',
     label: '해시태그 필수 구성',
-    level: tagHasMain && missingSubTags.length === 0 ? 'pass' : tagHasMain ? 'warn' : 'fail',
-    value: tagHasMain
+    level: mainOk && missingSubTags.length === 0 ? 'pass' : mainOk ? 'warn' : 'fail',
+    value: mainOk
       ? missingSubTags.length
         ? `보조 키워드 누락: ${missingSubTags.join(', ')}`
-        : '메인 + 보조 모두 포함'
-      : '메인 키워드 누락',
-    target: '메인 키워드 + 보조 키워드 2개 필수',
+        : needMain
+          ? '메인 + 보조 모두 포함'
+          : '주제어·지역 키워드로 구성'
+      : needMain
+        ? '메인 키워드 누락'
+        : '주제를 잡아줄 태그가 없음',
+    target: needMain
+      ? '메인 키워드 + 보조 키워드 2개 필수'
+      : '주제가 문장이라 그대로는 태그가 아닙니다 — 주제 속 검색어와 지역 키워드로 채우세요',
     weight: 2,
   })
 

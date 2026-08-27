@@ -202,7 +202,13 @@ async function run(
       body: JSON.stringify({
         type: 'info',
         storeId: store.id,
+        /*
+         * **메인은 정보성 키워드, 지역 키워드는 조연** (2026-08-27 회원 결정).
+         * 여태 이 자리에 지역 키워드가 들어가서 제목이 「쌍용동헬스장 벌크업식단…」으로
+         * 나갔다 — 정보글로 신뢰도를 쌓겠다면서 매출 키워드를 앞세운 셈이었다.
+         */
         mainKeyword: assignment.mainKeyword,
+        localKeyword: assignment.localKeyword,
         subKeywords: [],
         infoTopic: assignment.topic,
         ...extra,
@@ -231,7 +237,7 @@ async function run(
       (first.data
         ? `글을 쓰지 못했습니다 (응답에 draft.body 가 없습니다) — ${first.raw.slice(0, 160)}`
         : `JSON 이 아닌 응답 (상태 ${first.res.status}) — ${first.raw.slice(0, 160)}`)
-    await record({ ok: false, keyword: assignment.mainKeyword, topic: assignment.topic, error })
+    await record({ ok: false, keyword: assignment.localKeyword, topic: assignment.topic, error })
     return NextResponse.json({ error, assignment, status: first.res.status }, { status: 502 })
   }
 
@@ -290,6 +296,7 @@ async function run(
     title: best.draft?.title ?? '',
     body: best.draft?.body ?? '',
     mainKeyword: assignment.mainKeyword,
+    localKeyword: assignment.localKeyword,
     subKeywords: [],
     tags: best.draft?.tags ?? [],
     /*
@@ -313,7 +320,7 @@ async function run(
 
   await record({
     ok: true,
-    keyword: assignment.mainKeyword,
+    keyword: assignment.localKeyword,
     topic: assignment.topic,
     postId: post.id,
     score: best.check?.score ?? null,
@@ -325,7 +332,7 @@ async function run(
   return NextResponse.json({
     saved: post.id,
     date: today,
-    keyword: assignment.mainKeyword,
+    keyword: assignment.localKeyword,
     topic: assignment.topic,
     why: assignment.why,
     score: best.check?.score ?? null,

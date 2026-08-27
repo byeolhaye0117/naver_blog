@@ -183,8 +183,13 @@ export default function DayList({
                 )}
               </div>
 
+              {/*
+                **주제가 앞이다** (2026-08-27). 주제가 곧 메인 키워드가 됐다 — 정보성
+                검색어로 제목을 열고, 지역 키워드는 본문·태그에서 조연으로만 쓴다.
+              */}
               <p className="text-[13px] leading-snug font-semibold">
-                {d.keyword ?? '—'} <span className="muted font-medium">· {d.topic}</span>
+                {d.topic}
+                {d.keyword ? <span className="muted font-medium"> · 지역 {d.keyword}</span> : null}
               </p>
               {d.ok === false && d.error && (
                 <p className="mt-1 text-[11.5px] leading-relaxed text-rose-700 dark:text-rose-300">{d.error}</p>
@@ -282,18 +287,13 @@ export default function DayList({
                   정보글을 쓰거나 ① 키워드를 바꾸면 달라지므로 「예상」이라고 적는다.
                 */}
                 <p className="text-[13px] leading-snug font-semibold">
-                  {d.keyword ? (
-                    <>
-                      {d.keyword} <span className="muted font-medium">· {d.topic}</span>
-                    </>
-                  ) : (
-                    d.topic
-                  )}
+                  {d.topic}
+                  {d.keyword ? <span className="muted font-medium"> · 지역 {d.keyword}</span> : null}
                 </p>
                 <p className="muted mt-0.5 text-[11px] leading-relaxed">
                   {d.keyword
-                    ? '키워드는 그 날 아침에 정해집니다 — 지금 설정이면 이 키워드가 나갑니다.'
-                    : '키워드는 그 날 아침에 ①에서 고르신 것 중에서 앱이 정합니다.'}
+                    ? '제목은 주제(정보성 검색어)로 엽니다. 지역 키워드는 본문과 해시태그에서 조연으로만 씁니다 — 그 날 아침에 ①에서 고르신 것 중에서 앱이 정하며, 지금 설정이면 이 키워드가 나갑니다.'
+                    : '제목은 주제(정보성 검색어)로 엽니다. 지역 키워드는 그 날 아침에 ①에서 고르신 것 중에서 앱이 정합니다.'}
                 </p>
                 <div className="mt-2 flex">
                   <button

@@ -212,6 +212,19 @@ export interface RankView {
    * 순위인지 구별할 수 없다 — URL 만 보고 가려내야 했다.
    */
   postTitle?: string
+  /**
+   * 앱에 저장된 초안 제목이 **실제로 올라간 제목과 다를 때** 그 초안 제목.
+   *
+   * 회원 지적 (2026-08-27): "실제 업로드된 제목과 다르게 나와." 화면이 앱 초안 제목을
+   * 먼저 썼는데, 회원은 올리기 직전에 제목을 손보는 경우가 많다 —
+   *   앱 초안  「쌍용동 헬스장 초보도 지금 등록해도 될까? 8월 3개월 9.9만원」
+   *   실제     「쌍용동 헬스장 지금 등록해도 될까? 8월무료 3개월 9.9만원」
+   * 순위는 **실제로 올라간 글**에 붙으므로 목록에도 그것이 떠야 한다.
+   *
+   * 다르면 그것도 알려준다 — 검수는 초안 제목으로 봤으니 「검수 통과한 제목」과 「지금
+   * 노출되는 제목」이 다르다는 뜻이고, 회원이 알아야 할 사실이다. 같으면 비워 둔다.
+   */
+  draftTitle?: string
   /** YYYY-MM-DD — 추적 항목에 직접 적었거나 연결된 글에서 가져온 값 */
   publishedAt?: string
   /** 발행 후 경과일 */
@@ -221,6 +234,40 @@ export interface RankView {
   revisedAt?: string
   /** 수정 앞뒤 순위 비교 — 실험 결과 (lib/analysis/revise.ts) */
   revise: ReviseEffect | null
+}
+
+/** 제목을 다시 읽는 주기 — 자주 바뀌는 값이 아니라 넉넉히 둔다 (2026-08-27) */
+export const TITLE_REFRESH_DAYS = 14
+
+/**
+ * **제목을 다시 읽어야 할 항목 고르기.**
+ *
+ * 회원 지적 (2026-08-27): "실제 업로드된 제목과 다르게 나와."
+ *
+ * 예전에는 앱과 연결된 항목을 아예 건너뛰었다 — 「앱에서 쓴 글은 제목이 이어져 오니까」.
+ * 그런데 회원은 올리기 직전에 제목을 손본다. 앱 초안과 실제가 갈리면 목록이 **올라가지도
+ * 않은 제목**을 보여주게 되고, 순위는 실제로 올라간 글에 붙는다.
+ *
+ * 순서: ① 한 번도 못 읽은 것 (목록에 글 번호만 떠 있는 줄) ② 읽은 지 오래된 것.
+ * 한 번에 몇 개만 읽는다 — 조회가 늘면 순위 재는 일이 밀린다.
+ */
+export function staleTitleTargets(
+  targets: RankTarget[],
+  now: string,
+  limit: number,
+  refreshDays = TITLE_REFRESH_DAYS
+): RankTarget[] {
+  const t0 = Date.parse(now)
+  const before = Number.isFinite(t0) ? new Date(t0 - refreshDays * 86_400_000).toISOString() : ''
+  return targets
+    .filter((t) => !t.title?.trim() || !t.titleAt || t.titleAt < before)
+    .sort(
+      (a, b) =>
+        Number(Boolean(a.title?.trim())) - Number(Boolean(b.title?.trim())) ||
+        (a.titleAt ?? '').localeCompare(b.titleAt ?? '') ||
+        a.id.localeCompare(b.id)
+    )
+    .slice(0, Math.max(0, limit))
 }
 
 function daysSince(date: string): number | null {
@@ -263,8 +310,16 @@ export function buildRankViews(
 
     return {
       target,
-      // 앱에 글이 없으면 추적 항목에 적어둔 제목(네이버에서 읽어온 것)을 쓴다
-      postTitle: linked?.title?.trim() || target.title?.trim() || undefined,
+      /*
+       * **네이버에서 읽어온 제목이 먼저다** (2026-08-27 회원 지적: "실제 업로드된 제목과
+       * 다르게 나와"). 앱 초안 제목은 올리기 전 것이라, 회원이 제목을 손보고 올리면
+       * 화면과 실제가 갈린다. 순위는 실제로 올라간 글에 붙는다.
+       */
+      postTitle: target.title?.trim() || linked?.title?.trim() || undefined,
+      draftTitle:
+        target.title?.trim() && linked?.title?.trim() && target.title.trim() !== linked.title.trim()
+          ? linked.title.trim()
+          : undefined,
       history,
       current,
       previous,

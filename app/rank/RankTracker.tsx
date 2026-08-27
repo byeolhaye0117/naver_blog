@@ -475,7 +475,31 @@ export default function RankTracker({
 
               {open && (
                 <div className="px-4 pb-4 sm:px-5">
-                  <p className="muted mb-3 truncate text-[11px]">{v.target.url}</p>
+                  {/*
+                    **주소를 누르면 그 글로 간다** (2026-08-27 회원 요청: "url클릭하면 해당
+                    블로그로 갈 수 있도록 해줘"). 여태 글자로만 적혀 있어서 회원이 복사해
+                    주소창에 붙여야 했다. 새 탭으로 연다 — 여기서 보던 순위 화면이 사라지면
+                    돌아와서 다시 펼쳐야 한다.
+                  */}
+                  <a
+                    href={v.target.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mb-3 block truncate text-[11px] text-sky-700 underline underline-offset-2 hover:opacity-70 dark:text-sky-300"
+                  >
+                    {v.target.url}
+                  </a>
+                  {/*
+                    **앱 초안 제목과 실제 제목이 다르면 밝힌다** (2026-08-27). 회원이 올리기
+                    직전에 제목을 손보면 검수를 통과한 제목과 지금 노출되는 제목이 달라진다 —
+                    순위는 실제로 올라간 쪽에 붙으므로 알고 계셔야 한다.
+                  */}
+                  {v.draftTitle && (
+                    <p className="muted mb-3 text-[11px] leading-relaxed">
+                      앱에 저장된 초안 제목은 「{v.draftTitle}」입니다. 위에 보이는 것은 네이버에서
+                      읽어온 실제 제목입니다 — 올리시면서 제목을 고치신 것으로 보입니다.
+                    </p>
+                  )}
               {/* 발행 후 며칠인지에 따라 같은 순위도 뜻이 달라진다 */}
               {v.phase ? (
                 <div
