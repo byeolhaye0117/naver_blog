@@ -1,7 +1,7 @@
 import { readDB } from '@/lib/store'
 import { PageHeader } from '@/components/AppShell'
 import { Card } from '@/components/ui'
-import { autoDraftDays, hasTodayAutoDraft, normalizePlan, seoulToday } from '@/lib/writing/autodraft'
+import { autoDraftDays, hasTodayAutoDraft, normalizePlan, plannedAssignments, seoulToday } from '@/lib/writing/autodraft'
 import AutoDraftPanel from '../posts/AutoDraftPanel'
 import DayList from './DayList'
 
@@ -45,7 +45,17 @@ export default async function AutoDraftPage() {
    * 실제로 안 쓴다 — 「채워뒀다」고 적어두면 거짓말이다.
    */
   const plan = normalizePlan(db.autoDraftPlan)
-  const planned = (plan.days ?? []).filter((d) => !plan.skip?.includes(d.date))
+  /*
+   * 채워 둔 날에 **어떤 키워드가 나갈지도 함께 센다** (2026-08-26 회원 요청: "키워드도
+   * 보이게 해줘"). 키워드는 그 날 아침에 정해지지만 규칙이 있어 미리 셀 수 있다 — 다만
+   * 그 사이에 손으로 정보글을 쓰면 달라지므로 화면이 「예상」이라고 적는다.
+   */
+  const planned = plannedAssignments({
+    plan,
+    posts: db.posts,
+    fallbackKeywords: keywordPool,
+    from: today,
+  })
   const days = autoDraftDays({ runs: db.autoDraftRuns, planned, today })
 
   return (

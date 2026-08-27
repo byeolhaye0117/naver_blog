@@ -276,10 +276,24 @@ export default function DayList({
                   {d.when === 'today' && <Badge tone="info">오늘</Badge>}
                   {filledDates.has(d.date) && <Badge tone="good">미리 채워둠</Badge>}
                 </div>
-                <p className="text-[13px] leading-snug font-semibold">{d.topic}</p>
-                {/* 키워드는 그 날 아침 로테이션이 고른다 — 미리 적으면 거짓말이 된다 */}
+                {/*
+                  **키워드도 보여준다** (2026-08-26 회원 요청: "키워드도 보이게 해줘").
+                  그 날 아침에 정해지지만 규칙이 있어 미리 셀 수 있다 — 다만 그 사이에 손으로
+                  정보글을 쓰거나 ① 키워드를 바꾸면 달라지므로 「예상」이라고 적는다.
+                */}
+                <p className="text-[13px] leading-snug font-semibold">
+                  {d.keyword ? (
+                    <>
+                      {d.keyword} <span className="muted font-medium">· {d.topic}</span>
+                    </>
+                  ) : (
+                    d.topic
+                  )}
+                </p>
                 <p className="muted mt-0.5 text-[11px] leading-relaxed">
-                  키워드는 그 날 아침에 ①에서 고르신 것 중에서 앱이 정합니다.
+                  {d.keyword
+                    ? '키워드는 그 날 아침에 정해집니다 — 지금 설정이면 이 키워드가 나갑니다.'
+                    : '키워드는 그 날 아침에 ①에서 고르신 것 중에서 앱이 정합니다.'}
                 </p>
                 <div className="mt-2 flex">
                   <button
