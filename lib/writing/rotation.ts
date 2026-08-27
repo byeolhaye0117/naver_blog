@@ -180,14 +180,42 @@ export function adviseRotation(
   const warnings: string[] = []
   const today = new Date().toISOString().slice(0, 10)
 
-  const storePosts = posts
-    .filter((p) => p.storeId === storeId)
-    .sort((a, b) => (b.publishedAt ?? b.createdAt).localeCompare(a.publishedAt ?? a.createdAt))
+  /*
+   * ─── 정보글은 지점을 가리지 않는다 (2026-08-27) ────────────────────
+   *
+   * 회원: "정보성글에는 구지 지점정보가 필요하지 않을것 같아 … 유사문서 방지는 지금 내가
+   * 발행 완료한 글을 기준으로 따지면 되지 않을까?"
+   *
+   * 맞는 정리다. **유사문서 판정은 블로그 안에서 일어난다.** 지점이 여럿이어도 글은 전부
+   * 같은 네이버 블로그 하나에 올라가므로, 지점으로 나눠 세면 겹침을 놓친다 — 이 저장소에서
+   * 이미 겪은 일이다 (지점만 바꿔 쓴 글이 90.4% 겹쳤고, 그래서 app/api/write 는 참고용
+   * 최근 글을 진작에 블로그 전체로 바꿨다). 로테이션만 지점에 남아 있었다.
+   *
+   * 게다가 08-27 부터 정보글은 지점을 아예 고르지 않는다 (화자가 일반 블로거라 지점 정보가
+   * 글에 하나도 안 들어간다). storeId 가 비어 있으니 지점으로 거르면 **아무것도 안 걸러진다** —
+   * 로테이션이 통째로 죽는다.
+   *
+   * **발행 완료한 글만 센다** (회원이 말한 기준). 유사문서는 네이버에 올라간 글끼리 붙는
+   * 것이므로 초안은 아직 그 판에 없다.
+   *
+   * 홍보글·후기글은 그대로 지점별이다 — 그 글들은 지점이 주인공이고, 같은 지점 글끼리
+   * 서로 잡아먹는 자기잠식이 실제 위험이다.
+   */
+  const blogWide = type === 'info'
+  const storePosts = (
+    blogWide ? posts.filter((p) => p.status === 'published') : posts.filter((p) => p.storeId === storeId)
+  ).sort((a, b) => (b.publishedAt ?? b.createdAt).localeCompare(a.publishedAt ?? a.createdAt))
 
   const sameType = storePosts.filter((p) => p.type === type).slice(0, 6)
 
-  // 발행 간격 — 같은 지점 글은 최소 2~3주 간격
-  const lastSameStore = storePosts.find((p) => p.status === 'published' && p.publishedAt)
+  /*
+   * 발행 간격 — 같은 지점 글은 최소 2~3주 간격.
+   *
+   * **정보글에는 붙이지 않는다** (2026-08-27). 이 경고는 같은 지점 홍보글이 서로 잡아먹는
+   * 자기잠식을 막으려고 만든 것이다. 정보글은 지점이 없고 키워드도 매번 다르므로 서로
+   * 잡아먹을 것이 없다 — 블로그 전체로 세면 매일 쓰는 회원에게 날마다 뜬다.
+   */
+  const lastSameStore = blogWide ? undefined : storePosts.find((p) => p.status === 'published' && p.publishedAt)
   if (lastSameStore?.publishedAt) {
     const gap = daysBetween(today, lastSameStore.publishedAt)
     if (gap < 14) {
