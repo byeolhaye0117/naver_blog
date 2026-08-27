@@ -260,6 +260,16 @@ function labelOf(t: PostType): string {
 /**
  * 정보글:홍보글 ≈ 2:1 균형 점검.
  * 홍보글만 연속 발행하면 상업성 과다 신호가 되고, 정보글이 키운 신뢰도를 홍보글이 수확하는 구조가 깨진다.
+ *
+ * ── 비율보다 **순서**가 먼저다 (2026-08-27) ────────────────────
+ * 회원 정리: "매출에 도움이 되지 않는 순수 정보성 키워드로 글을 여러 개 올린 후에 상업성
+ * 키워드를 작성할 때 상위노출 시켜준다는 거 같아."
+ *
+ * 맞는 읽기다. 그런데 이 함수는 **최근 12편의 비율만** 봤다. 그래서 정보글 3편·홍보글 1편을
+ * 쓴 갓 시작한 블로그에도 「비율 안입니다. 홍보글을 내도 좋습니다」라고 말했다 —
+ * 쌓인 것이 없는데 수확하라고 한 셈이다.
+ *
+ * 그래서 **누적 정보글이 모자라면 비율과 무관하게 정보글을 권한다.**
  */
 export interface BalanceReport {
   info: number
@@ -272,11 +282,28 @@ export interface BalanceReport {
   level: 'good' | 'warn' | 'bad'
 }
 
+/**
+ * **홍보글을 권하기 전에 쌓여 있어야 하는 정보글 수.**
+ *
+ * **실측이 아니라 우리 판단이다.** 「정보글 몇 편부터 홍보글이 올라간다」를 잰 적이 없고,
+ * 영상도 숫자를 주지 않는다 (그 로직은 자기만 안다고 한다 — 컨설팅 판매 문구다).
+ *
+ * 6편으로 두는 근거는 우리가 이미 정한 2:1 비율이다 — 홍보글 3편을 받치려면 정보글 6편이
+ * 있어야 한다. 순위 데이터가 생기면 그때 이 숫자를 고치면 된다.
+ */
+export const INFO_BASE_BEFORE_PROMO = 6
+
 export function balanceReport(posts: Post[], window = 12): BalanceReport {
-  const recent = posts
-    .filter((p) => p.status === 'published')
+  const published = posts.filter((p) => p.status === 'published')
+  const recent = [...published]
     .sort((a, b) => (b.publishedAt ?? b.createdAt).localeCompare(a.publishedAt ?? a.createdAt))
     .slice(0, window)
+
+  /*
+   * **누적**으로도 센다 (2026-08-27). 최근 12편의 비율만 보면 「쌓인 게 없는데 수확하라」고
+   * 말하게 된다 — 회원이 정리한 순서(정보글로 지수를 올린 뒤 홍보성 키워드)와 어긋난다.
+   */
+  const infoTotal = published.filter((p) => p.type === 'info').length
 
   const info = recent.filter((p) => p.type === 'info').length
   // 후기글도 독자 입장에서는 상업 문서로 읽힌다 — 홍보 쪽에 함께 센다.
@@ -298,6 +325,22 @@ export function balanceReport(posts: Post[], window = 12): BalanceReport {
 
   const ratio = commercial > 0 ? info / commercial : info
   const consecutiveCommercial = countLeading(recent, (p) => p.type !== 'info')
+
+  /*
+   * **아직 쌓는 단계면 비율을 보기 전에 여기서 끝낸다.** 비율이 아무리 좋아도 정보글이
+   * 여섯 편도 안 되면 「홍보글을 내도 좋다」고 할 수 없다.
+   */
+  if (infoTotal < INFO_BASE_BEFORE_PROMO) {
+    return {
+      info,
+      promo,
+      review,
+      ratio: `${info} : ${commercial}`,
+      next: 'info',
+      message: `지금까지 낸 정보글이 ${infoTotal}편입니다. 홍보성 키워드는 정보글로 신뢰도를 쌓은 뒤에 올라갑니다 — ${INFO_BASE_BEFORE_PROMO}편까지는 정보글을 채우세요 (매출로 바로 이어지지 않는 키워드가 이 자리에 맞습니다).`,
+      level: infoTotal === 0 ? 'bad' : 'warn',
+    }
+  }
 
   if (consecutiveCommercial >= 2) {
     return {

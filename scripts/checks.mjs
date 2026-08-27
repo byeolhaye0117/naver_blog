@@ -3557,6 +3557,44 @@ ok(reviseSummary([]).includes('아직 판정할 수 있는 수정 기록이 없�
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[48-3] 지점별 최신성 — 어느 지점이 식었나')
+/*
+ * ── 비율보다 순서가 먼저다 (2026-08-27) ────────────────────────
+ *
+ * 회원 정리: "매출에 도움이 되지 않는 순수 정보성 키워드로 글을 여러 개 올린 후에 상업성
+ * 키워드를 작성할 때 상위노출 시켜준다는 거 같아."
+ *
+ * `balanceReport` 는 **최근 12편의 비율만** 봤다. 그래서 정보글 3편·홍보글 1편인 갓 시작한
+ * 블로그에도 「비율 안입니다. 홍보글을 내도 좋습니다」라고 말했다 — 쌓인 것이 없는데
+ * 수확하라고 한 셈이다.
+ */
+{
+  const { balanceReport, INFO_BASE_BEFORE_PROMO } = require(`${OUT}/writing/rotation.js`)
+  const post = (type, i) => ({
+    id: `p${i}`, type, status: 'published', storeId: 's', title: '', body: '',
+    mainKeyword: '', subKeywords: [], tags: [],
+    publishedAt: `2026-08-${String(10 + i).padStart(2, '0')}`,
+    createdAt: `2026-08-${String(10 + i).padStart(2, '0')}`, updatedAt: '',
+  })
+  // 정보글 3편 · 홍보글 1편 — 비율(3:1)은 좋지만 쌓인 것이 없다
+  const early = balanceReport([...Array(3)].map((_, i) => post('info', i)).concat([post('promo', 3)]))
+  ok(early.next === 'info', '쌓는 단계에서는 정보글을 권한다', early.next)
+  ok(early.message.includes('정보글이 3편'), '몇 편인지 그대로 말해준다', early.message)
+  ok(early.message.includes('신뢰도를 쌓은 뒤에'), '왜 아직인지 밝힌다')
+  // 한 편도 없으면 더 세게 말한다
+  ok(balanceReport([post('promo', 0)]).level === 'bad', '정보글이 하나도 없으면 경고')
+  /*
+   * **쌓이면 비율 판정으로 넘어간다.** 이 울타리가 없으면 정보글만 쓰는 블로그가 된다 —
+   * 정보글은 매출로 이어지지 않으므로 그것대로 회원에게 손해다.
+   */
+  const grown = [...Array(INFO_BASE_BEFORE_PROMO)].map((_, i) => post('info', i))
+  const ready = balanceReport(grown)
+  ok(ready.next === 'promo', `정보글 ${INFO_BASE_BEFORE_PROMO}편이 쌓이면 홍보글을 권한다`, ready.next)
+  ok(!ready.message.includes('신뢰도를 쌓은 뒤에'), '쌓인 뒤에는 쌓으라는 말을 하지 않는다')
+  // 연속 홍보는 쌓인 뒤에도 그대로 잡는다
+  const spam = balanceReport(grown.concat([post('promo', 6), post('promo', 7)]))
+  ok(spam.next === 'info' && spam.level === 'bad', '홍보글 연속은 쌓인 뒤에도 막는다', spam.message)
+}
+
 const { freshnessReport, STALE_DAYS } = require(`${OUT}/writing/rotation.js`)
 
 const frNow = Date.parse('2026-08-05T00:00:00Z')
