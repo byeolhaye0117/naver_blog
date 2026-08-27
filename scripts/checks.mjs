@@ -285,26 +285,25 @@ ok(!pkg.tagsPlain.includes('#'), '태그 칸용에는 # 이 없다 (# 이 글자
  */
 ok(!/[#\s]/.test(pkg.tagsPlain), '보여주는 형태에는 # 도 공백도 없다', pkg.tagsPlain)
 ok(pkg.tagsPlain.split(',').length === pkg.tagList.length, '쉼표로만 나뉜다', pkg.tagsPlain)
-ok(pkg.checklist.some((c) => c.label.includes('「태그 편집」 칸에 붙이고 Enter')), '체크리스트가 붙일 자리와 누를 것을 말한다')
+ok(pkg.checklist.some((c) => c.label.includes('「태그 편집」 칸에 하나씩 붙이고 Enter')), '체크리스트가 붙일 자리와 누를 것을 말한다')
 ok(
-  pkg.checklist.some((c) => c.detail?.includes('한 덩어리로 들어가면')),
-  '안 될 때 무엇을 하면 되는지도 적는다'
+  pkg.checklist.some((c) => c.detail?.includes('한 번에 여러 개를 받지 않습니다')),
+  '왜 하나씩인지도 적는다 (실측이다)'
 )
 /*
- * **추려서 낸다.** 회원 화면에 「쌍용동」과 「쌍용동헬스장」이 함께 올라와 있었다 — 짧은
- * 쪽은 긴 쪽에 이미 들어 있어 자리만 차지한다. 다만 조용히 지우지 않고 무엇을 뺐는지 남긴다.
+ * **회원이 넣은 태그를 조용히 빼지 않는다** (2026-08-26 회원 요청: "이거 두개는 삭제해줘" —
+ * 화면의 「겹치는 태그를 뺐습니다」 안내를 가리켰다).
+ *
+ * 한때 「쌍용동」처럼 긴 태그에 통째로 들어 있는 것을 뺐다. 그 안내를 지우면서 **빼는 것도
+ * 함께 껐다** — 안내만 지우고 빼기를 남기면 태그가 조용히 사라진다.
  */
 {
   const dup = buildCopyPackage({
     ...goodPromo, id:'y', status:'draft', storeId:'s', createdAt:'', updatedAt:'',
     tags: ['쌍용동', '쌍용동헬스장', '천안헬스장'],
   })
-  ok(!dup.tagList.includes('쌍용동'), '긴 태그에 들어 있는 짧은 태그는 뺀다', dup.tagList.join(','))
-  ok(dup.tagList.includes('쌍용동헬스장') && dup.tagList.includes('천안헬스장'), '나머지는 그대로 남는다')
-  ok(
-    dup.tagDrops.some((d) => d.tag === '쌍용동' && d.inside === '쌍용동헬스장'),
-    '무엇을 왜 뺐는지 남긴다 (조용히 지우지 않는다)'
-  )
+  ok(dup.tagList.length === 3, '넣은 태그는 그대로 다 남는다', dup.tagList.join(','))
+  ok(dup.tagList.includes('쌍용동'), '긴 태그에 들어 있어도 빼지 않는다')
 }
 {
   // 화면도 같은 순서로 말해야 한다 — 한쪽만 고치면 체크리스트와 카드가 서로 다른 말을 한다
@@ -323,7 +322,6 @@ ok(
   ok(ed.includes('label="태그 복사"') && ed.includes('text={pkg.tagsPlain}'), '복사 버튼 하나로 태그를 담는다')
   ok(!edCode.includes('setNext') && !edCode.includes('처음부터 다시'), '순서 세는 장치를 두지 않는다')
   ok((ed.match(/<CopyButton/g) ?? []).length === 4, '태그 카드에 복사 버튼이 하나뿐이다 (제목·본문·기록 셋 + 태그 하나)', String((ed.match(/<CopyButton/g) ?? []).length))
-  ok(ed.includes('{pkg.tagsPlain}\n          </p>'), '무엇이 복사되는지 그대로 보여준다')
   ok(ed.includes('「태그 편집」 칸에 붙여넣고 Enter'), '어디에 붙이고 무엇을 누르는지 한 줄로 말한다')
   ok(ed.includes('눌러서 이 태그만 복사'), '한 번에 안 되면 눌러서 하나만 복사할 수 있다')
   /*
@@ -340,7 +338,6 @@ ok(
     const write = rf(new URL('../app/api/write/route.ts', import.meta.url), 'utf8')
     ok(/\.map\(\(t\) => t\.replace\(\/\^#\+\/, ''\)\.trim\(\)\)/.test(write), '들어오는 자리에서 `#` 를 뗀다 (모델이 붙여 보낼 때가 있다)')
   }
-  ok(ed.includes('pkg.tagDrops'), '추리면서 뺀 태그를 화면이 보여준다')
 }
 console.log(`  파일명 예: ${pkg.imagePlan[0].fileName} / alt: ${pkg.imagePlan[0].altText}`)
 

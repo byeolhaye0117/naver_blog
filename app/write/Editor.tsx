@@ -1836,13 +1836,11 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
         <p className="muted text-sm">태그가 없습니다. 위에서 태그를 먼저 넣어주세요.</p>
       ) : (
         <>
-          {/* 무엇이 복사되는지 그대로 보여준다 — 붙여넣기 전에 눈으로 확인할 수 있어야 한다 */}
-          <p className="bd rounded-xl border px-3 py-2.5 text-[12px] leading-relaxed break-all">
-            {pkg.tagsPlain}
-          </p>
-
-          {/* 한 번에 안 나뉘면 눌러서 하나만 복사 — 장치를 더 두지 않는다 */}
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {/*
+            **미리보기 줄과 「겹치는 태그」 안내는 뺐다** (2026-08-26 회원 요청: "이거 두개는
+            삭제해줘"). 태그 카드는 태그 목록과 복사 버튼이면 된다.
+          */}
+          <div className="flex flex-wrap gap-1.5">
             {pkg.tagList.map((t, i) => (
               <button
                 key={t}
@@ -1866,24 +1864,6 @@ function TagCard({ pkg }: { pkg: ReturnType<typeof buildCopyPackage> }) {
               `#` 를 붙이지 않습니다. 태그 칸은 `#` 를 글자로 받아 「#쌍용동헬스장」이 태그가 됩니다.
             </span>
           </p>
-
-          {/*
-            **추리면서 뺀 것을 보여준다** (2026-08-26 회원 요청: "태그 칸에 넣을 키워드들을
-            추려줘야 하고"). 「쌍용동」과 「쌍용동헬스장」이 함께 있으면 짧은 쪽은 자리만
-            차지한다 — 다만 조용히 지우면 「내가 넣은 태그가 왜 없지」가 된다.
-          */}
-          {pkg.tagDrops.length > 0 && (
-            <p className="muted mt-2 rounded-xl border px-3 py-2 text-[11px] leading-relaxed">
-              <b>겹치는 태그를 뺐습니다.</b> 긴 쪽에 이미 들어 있어 자리만 차지합니다 —{' '}
-              {pkg.tagDrops.map((d, i) => (
-                <span key={d.tag}>
-                  {i > 0 && ' · '}
-                  <span className="line-through opacity-70">{d.tag}</span> (「{d.inside}」 안에 있음)
-                </span>
-              ))}
-              . 그래도 넣고 싶으시면 위 태그 칸에서 직접 적어 넣으세요.
-            </p>
-          )}
 
           {pkg.tagFixes.length > 0 && (
             <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
