@@ -9,6 +9,7 @@ import {
 import { TITLE_SHAPE_LABEL, titleAdvice, titleShape } from '../analysis/title'
 import { analyzeReviews, placeReviewUrl, verifyReviewQuotes } from '../analysis/reviews'
 import { findHardWords } from './plainwords'
+import { classifyIntent } from './topic-explore'
 import { coverageOf, requestedTopics } from './request'
 import { titleHasBrand, type ArenaLevel } from './arena'
 import type { PlaceReview } from '../analysis/reviews'
@@ -1017,10 +1018,23 @@ export function checkPost(input: CheckInput): CheckResult {
    *   정보형 38편 중 **25편(66%)이 홍보 요소가 하나도 없는 순수 정보글**
    *   전화번호  정보형 5% / 그 밖 28%   ·   혜택 낱말  정보형 3% / 그 밖 31%
    *
-   * **`fail` 로 막지 않고 `warn` 으로 알린다.** 1페이지에 링크를 달고도 올라온 글이 26%
-   * 있었다 — 「링크가 있으면 못 오른다」는 우리 표본으로 증명되지 않는다(1페이지에 있는 글만
-   * 봤으니 못 오른 글은 표본에 없다). 확실한 것은 **분류 위험**이고, 그건 알릴 일이지 막을
-   * 일이 아니다.
+   * ── 2026-08-27: 홍보 멘트는 `fail` 로 올린다 ────────────────
+   * 회원이 두 번 말했다. "정보성에는 홍보문구가 아예 들어가면 안돼" (08-21), 그리고
+   * "정보성글에 홍보성 멘트가 들어가지 않게" (08-27). 두 번 말한 것은 결정이다.
+   *
+   * 예전에 `warn` 으로 둔 근거는 **순위**였다 — 1페이지에 링크를 달고도 올라온 글이 26%
+   * 있었으니 「링크가 있으면 못 오른다」는 우리 표본으로 증명되지 않는다. 그 판단은 지금도
+   * 유효하고 여기서 뒤집지 않는다. **이건 순위 규칙이 아니라 목적 규칙이다** — 정보글은
+   * 블로그 지수를 쌓으려고 쓰는 글이고, 네이버 공지가 「연락을 유도하는 활동」을 홍보성
+   * 게시물로 규정하므로 홍보 멘트가 섞이면 그 목적 자체가 무너진다.
+   *
+   * `fail` 이면 점수가 79 에 묶여 발행선(85)을 못 넘는다. 그게 노린 것이다 — 자동 초안의
+   * 고쳐 쓰기 루프도 fail 을 보고 다시 돌므로, 이제 **알리는 데서 그치지 않고 실제로
+   * 걷어낸다.**
+   *
+   * **상호명은 예외다.** 회원이 직접 요청한 것이고(08-21 "인사말에 업체명 한번을
+   * 소개되게"), 여섯 가지 중 상호명만 우리가 실측한 적이 없다. 홍보 멘트가 하나도 없이
+   * 상호명만 두 번 이상이면 `warn` 에 둔다 — 그건 「멘트」가 아니다.
    */
   if (input.type === 'info') {
     const marks: { label: string; re: RegExp }[] = [
@@ -1065,21 +1079,88 @@ export function checkPost(input: CheckInput): CheckResult {
      * 상호명만 우리가 실측한 적이 없다 (SPECS.info 의 legalNameMin 주석).
      * 2회 이상은 계속 잡는다 — 그때부터가 「반복」이다.
      */
+    // 홍보 멘트는 여기까지 — 아래 상호명은 성격이 다르므로 따로 센다
+    const promoHits = hit.length
     if (input.legalName && legalNameCount > 1) hit.push(`상호명 ${legalNameCount}회 (1회까지만)`)
 
     add({
       id: 'info-purity',
       group: '내용 균형',
       label: '정보글 순수성 (업체를 드러내는 것)',
-      level: hit.length ? 'warn' : 'pass',
+      // 홍보 멘트 = 즉시수정 / 상호명 반복만 = 주의 (2026-08-27, 위 주석 참고)
+      level: promoHits ? 'fail' : hit.length ? 'warn' : 'pass',
       value: hit.length ? hit.join(' · ') : '없음 — 순수 정보글',
       target: '하나도 넣지 않는다',
-      hint: hit.length
-        ? '정보글의 목적은 **블로그 지수를 쌓는 것**이고, 전환은 홍보글이 맡습니다. 네이버 공식 공지가 「연락을 유도하는 활동」을 홍보성 게시물로 규정하므로, 위 요소가 들어가면 이 글이 정보글로 안 세어질 수 있습니다. 실측에서도 1페이지 정보형 38편 중 **25편(66%)이 이런 요소가 하나도 없었습니다**(전화번호는 5%뿐). 지우고 정보만 남기세요 — 상호명·전화·링크·위치·이벤트·「상담 주세요」 전부입니다.'
-        : undefined,
+      hint: promoHits
+        ? '**정보글에서는 이 문장들을 빼세요.** 정보글의 목적은 블로그 지수를 쌓는 것이고, 전환은 홍보글이 맡습니다. 네이버 공식 공지가 「연락을 유도하는 활동」을 홍보성 게시물로 규정하므로, 위 요소가 들어가면 이 글이 정보글로 안 세어질 수 있습니다. 실측에서도 1페이지 정보형 38편 중 **25편(66%)이 이런 요소가 하나도 없었습니다**(전화번호는 5%뿐). 지우고 정보만 남기세요 — 전화·링크·위치·이벤트·「상담 주세요」 전부입니다. 「상담하면서 보면」처럼 근거를 대던 자리는 「수업하면서」·「회원분들 보면」으로 바꾸면 됩니다.'
+        : hit.length
+          ? '상호명은 인사말에서 한 번만 밝히고, 나머지는 빼세요. 반복되면 업체 글로 읽힙니다.'
+          : undefined,
       /*
        * 가중치 4. 이 글의 성격을 정하는 항목이라 분량·키워드급으로 둔다. 다만 `fail` 이
        * 아니라서 점수를 79로 묶지는 않는다 — 회원이 알고도 넣을 수 있어야 한다.
+       */
+      weight: 4,
+    })
+  }
+
+  /*
+   * ─── 정보글 키워드에 구매력이 섞였는가 (2026-08-27) ───────────────
+   *
+   * 회원: "정보성글에 홍보성 멘트가 들어가지 않게, 구매력 있는 키워드가 들어가지 않게해줘."
+   *
+   * `info-purity` 는 **본문 문장**을 본다. 그런데 홍보는 문장보다 먼저 **키워드**로 들어온다 —
+   * 메인 키워드가 「쌍용동 헬스장」이거나 「헬스장 가격」이면 본문이 아무리 깨끗해도 그 글은
+   * 업체를 찾는 검색에 놓인 글이다. 제목이 그 말로 열리고, 검색한 사람은 업체를 찾아 온다.
+   *
+   * 판단은 **주제 탐색기와 같은 기준**이다 (classifyIntent 의 buy·local). 두 곳에 따로
+   * 적으면 한쪽만 늘어난다 — 이 저장소에서 여러 번 겪은 실패다.
+   *
+   * 지역 키워드(조연)는 세지 않는다. 정보글에서도 지역 신호를 본문 1~2회·해시태그로 잡기로
+   * 한 것이고(`localKeyword`·`tagLocal`), 그건 회원이 고른 자리다. 여기서 잡는 것은
+   * **메인·보조 칸에 구매력 있는 말이 들어온 경우**뿐이다.
+   */
+  if (input.type === 'info') {
+    const local = input.localKeyword?.trim()
+    const buyish = (w: string) => {
+      const t = w.trim()
+      return Boolean(t) && ['buy', 'local'].includes(classifyIntent(t, local ? [local] : []))
+    }
+    /*
+     * **메인 칸에는 예외가 없다.** 조연으로 고른 지역 키워드가 메인 칸에도 들어가 있으면
+     * 그건 봐줄 일이 아니라 **바로 그 실수**다 — 회원 화면에 실제로 그렇게 남아 있었다
+     * (메인 「성정동 헬스장」 · 조연 비어 있음 · 주제 「벌크업식단」).
+     */
+    const badMain = main && buyish(main) ? main : ''
+    // 보조 칸은 조연으로 고른 말과 같으면 넘어간다 — 같은 말을 두 항목이 서로 반대로 시키면 안 된다
+    const badSubs = subs.filter((k) => k.trim() !== local && buyish(k))
+    /*
+     * 해시태그는 **값을 묻는 말(buy)만** 본다. 지역 키워드는 태그에 넣으라고 우리가 시키는
+     * 자리라(`tagLocal`) 여기서 잡으면 한 화면의 두 항목이 서로 반대를 시킨다.
+     */
+    const badTags = input.tags
+      .map((t) => t.replace(/^#/, '').trim())
+      .filter((t) => t && t !== local && classifyIntent(t, []) === 'buy')
+    const badSoft = [...badSubs, ...badTags]
+    const bad = [...(badMain ? [badMain] : []), ...badSoft]
+    add({
+      id: 'info-keyword-purity',
+      group: '내용 균형',
+      label: '정보글 키워드 (구매력 없는 말인가)',
+      /*
+       * 메인은 즉시수정 — 제목이 그 말로 열리므로 글의 성격 자체가 바뀐다.
+       * 보조는 주의 — 본문 안에서 몇 번 쓰이는 자리라 되돌리기 쉽다.
+       */
+      level: badMain ? 'fail' : badSoft.length ? 'warn' : 'pass',
+      value: bad.length ? bad.map((k) => `「${k}」`).join(' · ') : '없음 — 순수 정보성 키워드',
+      target: '업체·값을 찾는 말은 쓰지 않는다 (지역 키워드는 조연 칸에)',
+      hint: badMain
+        ? `「${badMain}」는 업체·값을 찾는 키워드입니다 — 구매력 있는 말이라 정보글 메인 자리에 두면 제목이 그 말로 열리고 사실상 홍보글이 됩니다. 그 자리에는 「공복 유산소 효과」처럼 **답을 찾는 검색어**를 넣고, 지금 값은 「지역 키워드 (조연)」 칸으로 옮기세요. 실제로 검색되는 말은 「주제 탐색」에서 고를 수 있습니다.`
+        : badSoft.length
+          ? `${badSoft.map((k) => `「${k}」`).join(' · ')} 가 업체·값을 찾는 말입니다. 정보글의 보조 키워드와 해시태그는 답을 넓히는 자리이지 업체로 끌어오는 자리가 아닙니다 — 빼거나 정보성 표현으로 바꾸세요. (지역 키워드 하나는 해시태그에 그대로 두셔도 됩니다.)`
+          : undefined,
+      /*
+       * 가중치 4 — `info-purity` 와 같다. 둘 다 「이 글이 무슨 글인가」를 정하는 항목이다.
        */
       weight: 4,
     })

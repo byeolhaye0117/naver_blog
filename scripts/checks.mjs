@@ -8245,15 +8245,58 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   ok(pure({ body: infoPost.body + '\n궁금하시면 편하게 문의 주세요.' }).value.includes('방문·연락 유도'), '연락 유도를 잡는다')
   // 상호명은 설정이 있을 때만 센다 (infoPost 본문에 상호명이 두 번 들어 있다)
   ok(pure({}).value.includes('상호명'), '상호명이 본문에 있으면 잡는다', pure({}).value)
-  ok(pure({}).level === 'warn', '있으면 주의 — 막지는 않는다')
-  ok(pure({}).hint.includes('66%'), '왜 그런지 실측으로 말한다')
   ok(!checkPost({ ...goodPromo }).items.some((i) => i.id === 'info-purity'), '홍보글에는 이 항목을 만들지 않는다')
+
   /*
-   * **막지 않는다.** 1페이지에 링크를 달고도 올라온 글이 26% 있었다 — 「링크가 있으면 못
-   * 오른다」는 우리 표본으로 증명되지 않는다(못 오른 글은 표본에 없다). 확실한 것은 분류
-   * 위험이고, 그건 알릴 일이지 막을 일이 아니다.
+   * **홍보 멘트는 막는다** (2026-08-27). 회원이 두 번 말했다 — "정보성에는 홍보문구가 아예
+   * 들어가면 안돼"(08-21), "정보성글에 홍보성 멘트가 들어가지 않게"(08-27).
+   *
+   * 예전에 `warn` 이던 근거는 **순위**였다: 1페이지에 링크를 달고도 올라온 글이 26% 있었다.
+   * 그 판단은 지금도 유효하고 뒤집지 않는다 — 이건 순위 규칙이 아니라 **목적 규칙**이다.
+   * 정보글이 홍보성 게시물로 분류되면 지수를 쌓으려던 목적 자체가 무너진다.
+   *
+   * fail 이면 점수가 79 에 묶여 발행선(85)을 못 넘고, 자동 초안의 고쳐 쓰기 루프가 그것을
+   * 보고 다시 돈다 — 알리는 데서 그치지 않고 실제로 걷어낸다.
    */
-  ok(checkPost({ ...infoPost }).items.every((i) => i.id !== 'info-purity' || i.level !== 'fail'), '즉시수정으로 막지 않는다')
+  ok(pure({ body: infoPost.body + '\n궁금하시면 편하게 문의 주세요.' }).level === 'fail', '홍보 멘트는 즉시수정이다')
+  ok(pure({ body: infoPost.body + '\n문의는 010-2455-2896 으로 주세요.' }).level === 'fail', '전화번호도 즉시수정')
+  ok(pure({ body: infoPost.body + '\n8월 이벤트로 할인 중입니다.' }).level === 'fail', '혜택 낱말도 즉시수정')
+  ok(pure({ body: infoPost.body + '\n궁금하시면 편하게 문의 주세요.' }).hint.includes('66%'), '왜 그런지 실측으로 말한다')
+
+  /*
+   * **상호명은 예외다.** 회원이 직접 요청한 것이고(08-21 "인사말에 업체명 한번을 소개되게"),
+   * 여섯 가지 중 상호명만 우리가 실측한 적이 없다. 홍보 멘트 없이 상호명만 두 번 이상이면
+   * 주의에 둔다 — 그건 「멘트」가 아니다.
+   */
+  ok(pure({}).level === 'warn', '상호명 반복만 있으면 주의에 그친다', pure({}).value)
+  ok(pure({}).hint.includes('한 번만'), '상호명은 한 번만 밝히라고 말한다', pure({}).hint)
+  ok(pure({ legalName: undefined }).level === 'pass', '아무것도 없으면 통과')
+
+  /*
+   * ─── 구매력 있는 키워드 (2026-08-27) ─────────────────────────
+   *
+   * 회원: "구매력 있는 키워드가 들어가지 않게해줘."
+   *
+   * info-purity 는 **본문 문장**을 본다. 홍보는 그보다 먼저 **키워드**로 들어온다 — 메인이
+   * 「쌍용동 헬스장」이면 본문이 아무리 깨끗해도 업체를 찾는 검색에 놓인 글이다.
+   */
+  {
+    const kw = (patch) => checkPost({ ...infoPost, ...patch }).items.find((i) => i.id === 'info-keyword-purity')
+    ok(kw({}).level === 'pass', '정보성 검색어면 통과', kw({}).value)
+    ok(kw({ mainKeyword: '쌍용동 헬스장' }).level === 'fail', '업체를 찾는 말이 메인이면 즉시수정')
+    ok(kw({ mainKeyword: '헬스장 가격' }).level === 'fail', '값을 묻는 말도 즉시수정')
+    ok(kw({ mainKeyword: '헬스장 가격' }).hint.includes('조연'), '어디로 옮기면 되는지 말해준다', kw({ mainKeyword: '헬스장 가격' }).hint)
+    // 보조는 주의 — 본문 안에서 쓰이는 자리라 되돌리기 쉽다
+    ok(kw({ subKeywords: ['헬스장 등록비'] }).level === 'warn', '보조 키워드는 주의에 그친다')
+    /*
+     * **지역 키워드(조연)는 세지 않는다.** 정보글에서도 지역 신호를 본문 1~2회·해시태그로
+     * 잡기로 한 것이고(localKeyword·tagLocal), 그건 회원이 고른 자리다. 여기서 잡으면
+     * 한 화면의 두 항목이 서로 반대를 시킨다.
+     */
+    ok(kw({ localKeyword: '쌍용동 헬스장' }).level === 'pass', '조연 칸의 지역 키워드는 잡지 않는다')
+    ok(kw({ subKeywords: ['쌍용동 헬스장'], localKeyword: '쌍용동 헬스장' }).level === 'pass', '조연과 같은 말이 보조에 겹쳐도 잡지 않는다')
+    ok(!checkPost({ ...goodPromo }).items.some((i) => i.id === 'info-keyword-purity'), '홍보글에는 이 항목을 만들지 않는다')
+  }
 }
 
 /*
