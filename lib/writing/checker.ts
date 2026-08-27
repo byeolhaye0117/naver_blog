@@ -1511,18 +1511,46 @@ export function checkPost(input: CheckInput): CheckResult {
   }
 
   if (spec.requireLocalKeyword) {
+    /*
+     * ─── 메인이 전국 정보 키워드면 본문 강제를 푼다 (2026-08-27) ────────
+     *
+     * 회원: "메인 키워드가 벌크업 식단인데 상위노출도 그에 맞게 될 수 있게 해주면 좋겠어."
+     *
+     * 이 규칙은 정보글 메인이 **지역 키워드**이던 때 만들었다 (「쌍용동 헬스장」이 메인이고
+     * 지역 신호를 본문에서도 한 번 더 잡던 판). 08-27 에 메인이 정보성 검색어로 바뀌면서
+     * 상황이 달라졌다 — 「벌크업 식단」을 찾는 사람에게 「쌍용동 헬스장」은 **찾던 것이 아니고**,
+     * 억지로 넣으면 그 글이 무엇에 대한 글인지 흐려진다.
+     *
+     * **지역 신호를 버리는 것이 아니다.** 해시태그 자리는 그대로 있고(`tagLocal`), 본문에
+     * 자연스럽게 한두 번 들어가면 그것도 통과다. 없다고 깎지 않을 뿐이다.
+     *
+     * 메인이 여전히 지역 키워드인 글(「쌍용동 헬스장」으로 정보글을 쓰는 경우)은 예전 그대로
+     * 본문 1~2회를 본다 — 그 글은 지역 판에 들어가는 글이 맞다.
+     *
+     * **순위 근거가 아니다.** 우리가 잰 1페이지 표본은 지역 키워드 판이었고, 「벌크업 식단」
+     * 같은 전국 정보 키워드의 1페이지는 재본 적이 없다. 그래서 **더 요구하지 않는 쪽**으로만
+     * 움직인다 — 모르는 판에서 규칙을 지어내지 않는다.
+     */
+    const localKw = input.localKeyword?.trim()
+    const mainIsLocal = Boolean(main) && classifyIntent(main, localKw ? [localKw] : []) === 'local'
     add({
       id: 'localKeyword',
       group: '키워드',
       label: `지역 키워드 "${input.localKeyword || '(미설정)'}"`,
-      level: level(localKeywordCount >= 1 && localKeywordCount <= 2, localKeywordCount <= 3),
+      level: mainIsLocal
+        ? level(localKeywordCount >= 1 && localKeywordCount <= 2, localKeywordCount <= 3)
+        : level(localKeywordCount <= 2, localKeywordCount <= 3),
       value: `${localKeywordCount}회`,
-      target: '본문 1~2회 + 해시태그',
+      target: mainIsLocal
+        ? '본문 1~2회 + 해시태그'
+        : '해시태그 1개 (본문은 자연스러우면 1~2회, 없어도 됩니다)',
       hint:
         localKeywordCount > 2
           ? '정보글에서 지역 키워드는 조연입니다. 정보 흐름을 끊으면 빼고 해시태그로만 처리하세요.'
           : localKeywordCount === 0
-            ? '도입부 화자 소개 1회, 마지막 소프트 브릿지 1회가 자연스러운 자리입니다.'
+            ? mainIsLocal
+              ? '이 글은 메인 키워드가 지역 키워드라 지역 판에 들어갑니다. 본문에도 한 번은 자연스럽게 넣으세요.'
+              : `메인이 「${main}」이라 이 글은 전국 검색에 놓입니다. 지역 신호는 **해시태그**로 잡으면 충분합니다 — 본문에 억지로 넣으면 무엇에 대한 글인지 흐려집니다.`
             : undefined,
       weight: 3,
     })

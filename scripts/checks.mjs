@@ -5264,6 +5264,40 @@ ok(CTA_MIN_BY_TYPE.info === 0, '정보글은 0회 — 상담 유도 구간이 �
    */
   ok(infoClean.items.find((i) => i.id === 'info-purity')?.level === 'pass', '지역명이 있어도 정보글 순수성은 통과')
   ok(infoClean.items.find((i) => i.id === 'localKeyword')?.level === 'pass', '지역 키워드 1회는 통과')
+
+  /*
+   * ─── 메인이 전국 정보 키워드면 본문 강제를 푼다 (2026-08-27) ────────
+   *
+   * 회원: "메인 키워드가 벌크업 식단인데 상위노출도 그에 맞게 될 수 있게 해주면 좋겠어."
+   *
+   * 이 규칙은 정보글 메인이 지역 키워드이던 때 만들었다. 메인이 정보성 검색어로 바뀌면서
+   * 「벌크업 식단」을 찾는 사람에게 「쌍용동 헬스장」은 찾던 것이 아니게 됐다 — 억지로
+   * 넣으면 그 글이 무엇에 대한 글인지 흐려진다.
+   *
+   * **순위 근거가 아니다.** 우리가 잰 1페이지 표본은 지역 키워드 판이었다. 그래서 **더
+   * 요구하지 않는 쪽**으로만 움직인다 — 모르는 판에서 규칙을 지어내지 않는다.
+   */
+  {
+    const loc = (patch) =>
+      checkPost({
+        type: 'info', title: '벌크업 식단, 뭐부터 챙길까요', mainKeyword: '벌크업 식단',
+        subKeywords: [], tags: ['벌크업식단', '쌍용동헬스장'], localKeyword: '쌍용동 헬스장',
+        body: '## 무엇부터\n' + '가'.repeat(600), ...patch,
+      }).items.find((i) => i.id === 'localKeyword')
+    ok(loc({}).level === 'pass', '전국 정보 키워드면 본문 0회도 통과', loc({}).value)
+    ok(loc({}).target.includes('없어도 됩니다'), '무엇이 기준인지 화면에 적는다', loc({}).target)
+    ok(loc({}).hint.includes('해시태그'), '지역 신호를 어디서 잡는지 알려준다')
+    // 넣어도 통과다 — 버리는 것이 아니라 강제하지 않는 것이다
+    ok(loc({ body: '## 무엇부터\n쌍용동 헬스장에서도 그렇습니다. ' + '가'.repeat(600) }).level === 'pass', '자연스럽게 넣은 1회도 통과')
+    // 너무 많으면 여전히 잡는다 (정보 흐름을 끊는다)
+    ok(loc({ body: '## 무엇부터\n' + '쌍용동 헬스장 '.repeat(4) + '가'.repeat(600) }).level !== 'pass', '많이 넣으면 여전히 잡는다')
+
+    // 메인이 지역 키워드인 글은 예전 그대로 — 그 글은 지역 판에 들어가는 글이 맞다
+    // 제목에는 안 넣는다 — 검수는 제목까지 세므로 본문 0회를 보려면 제목도 비워야 한다
+    const localMain = loc({ mainKeyword: '쌍용동 헬스장', title: '헬스장 고를 때 볼 것' })
+    ok(localMain.level === 'warn', '메인이 지역 키워드면 본문 0회를 여전히 잡는다', localMain.value)
+    ok(localMain.target === '본문 1~2회 + 해시태그', '그 글의 기준은 예전 그대로')
+  }
   const iskel2 = buildTemplate('info', { mainKeyword: '폭식 멈추는 방법', subKeywords: ['다이어트 폭식'], localKeyword: '천안헬스장' })
   ok(!iskel2.includes('본문에는 지역·업체를 쓰지 않는다'), '골격에서 반대되던 문장을 지웠다')
   ok(iskel2.includes('지역 키워드 "천안헬스장"를 본문에 1~2회'), '골격도 본문에 넣으라고 한다 (지시문·검수와 같은 말)')
