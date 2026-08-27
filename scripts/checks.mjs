@@ -10150,9 +10150,22 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(editor2.includes("import TopicExplorer from '@/components/TopicExplorer'"), '글 작성 화면이 같은 탐색기를 쓴다')
     ok(/pickLabel="이 주제로"/.test(editor2), '글 작성에서는 하나를 고른다 (담기가 아니다)')
     ok(/picked=\{infoTopic\.trim\(\) \? \[infoTopic\.trim\(\)\] : \[\]\}/.test(editor2), '이미 고른 주제를 「고름」으로 표시한다')
-    ok(/onPick=\{\(t\) => setInfoTopic\(t\)\}/.test(editor2), '고른 주제가 이 글의 주제 칸에 들어간다')
+    /*
+     * **고른 주제가 메인 키워드가 된다** (2026-08-27 회원 지적: "주제 골라도 메인키워드는
+     * 바뀌지 않는데?").
+     *
+     * 자동 초안은 같은 날 메인/지역 자리를 맞바꿨는데(pickAssignment) 손으로 쓰는 화면은
+     * 그대로여서 이런 상태가 남았다 — 메인 「성정동 헬스장」 · 주제 「벌크업식단」.
+     * 그대로 쓰면 제목이 「성정동 헬스장 벌크업식단…」으로 나간다. 한쪽만 고친 것이다.
+     */
+    ok(/setInfoTopic\(t\)/.test(editor2) && /setMainKeyword\(t\)/.test(editor2), '고른 주제가 주제 칸과 메인 키워드에 함께 들어간다')
+    // 지역 키워드는 버리지 않고 조연 칸으로 내린다 — 비어 있을 때만 (회원이 고른 값을 덮지 않는다)
+    ok(/!localKeyword\.trim\(\)[\s\S]{0,120}setLocalKeyword\(before\)/.test(editor2), '밀려난 지역 키워드는 조연 칸으로 내려간다')
+    // 구매력 있는 말이 메인에 남아 있으면 화면이 말해준다 (막지는 않는다)
+    ok(/classifyIntent/.test(editor2) && /구매력 있는 말이라/.test(editor2), '메인 칸에 업체·값을 찾는 키워드가 있으면 알린다')
+    ok(editor2.includes("from '@/lib/writing/topic-explore'"), '탐색기와 같은 기준을 쓴다 (두 곳에 따로 적지 않는다)')
     // 결과가 펼쳐진 채로 있으면 아래 생성 버튼이 화면 밖으로 밀린다 (자동 작성에서 겪었다)
-    ok(/<details[\s\S]{0,300}주제 탐색[\s\S]{0,200}<TopicExplorer/.test(editor2), '글 작성에서도 접어 둔다')
+    ok(/<details[\s\S]{0,300}주제 탐색[\s\S]{0,1600}<TopicExplorer/.test(editor2), '글 작성에서도 접어 둔다')
     // 탐색기가 두 벌이 되지 않았는지 (복사해 두면 한쪽만 고치게 된다)
     const { existsSync } = require('node:fs')
     ok(!existsSync(new URL('../app/posts/TopicExplorer.tsx', import.meta.url)), '탐색기를 복사해 두지 않았다')
