@@ -28,6 +28,7 @@ import {
 } from '@/lib/writing/export'
 import type { HeadingStyle } from '@/lib/writing/export'
 import { isPrescriptionStale, prescriptionAgeDays, prescriptionKey } from '@/lib/analysis/prescription'
+import { fixList } from '@/lib/writing/next-action'
 import type { PooledFactor } from '@/lib/analysis/factors'
 import type { IntentSuggestion } from '@/lib/analysis/intent'
 import { Badge, Card, Field, inputClass } from '@/components/ui'
@@ -47,8 +48,14 @@ import CopyRichButton from '@/components/CopyRichButton'
  */
 const SPEAKER_LABEL: Record<PostType, string> = {
   promo: '센터',
-  // 정보글 화자도 센터다 (2026-08-10 회원 요청). 목적이 다를 뿐이라 그 차이를 라벨에 적는다.
-  info: '센터 · 정보 전달',
+  /*
+   * **정보글 화자는 일반 블로거다** (2026-08-27 회원 요청: "그냥 정보성을 쓸때는 센타
+   * 입장에서 쓰는게 아니라 일반 블로거가 쓰는 느낌으로 해줘").
+   *
+   * 08-10 에는 「센터 · 정보 전달」이었다. 지시문·골격·검수를 다 바꿔 놓고 **버튼 라벨만
+   * 옛 판에 남아 있었다** — 회원이 누르기 전에 보라고 만든 라벨인데 거짓말을 하고 있었다.
+   */
+  info: '일반 블로거',
   review: '방문객',
 }
 
@@ -372,6 +379,22 @@ export default function Editor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [posts, effStoreId, type, id]
   )
+
+  /*
+   * **고쳐 쓰기에 넘길 항목을 화면이 직접 만든다** (2026-08-27 회원 지적: "검수항목
+   * 고쳐쓰기해도 반영이 안돼").
+   *
+   * 예전에는 **서버가 지난번 응답에 실어 보낸 목록**(fixIssues state)을 그대로 되보냈다.
+   * 그런데 같은 요청에 실려 가는 본문은 **지금 화면에 있는 글**이다. 회원이 그 사이에
+   * 본문을 손대면 둘이 어긋나서, 모델은 이미 없는 항목을 고치라는 말을 듣고 지금 걸려
+   * 있는 항목은 듣지 못한다. 그러면 당연히 아무것도 안 고쳐지고 「나아지지 않아 원래 글을
+   * 두었습니다」가 뜬다.
+   *
+   * 화면은 이미 같은 검수기를 돌리고 있다(result). 그것으로 만들면 **보내는 글과 목록이
+   * 항상 같은 것**이 된다. 서버가 쓰는 fixList 를 그대로 불러 쓴다 — 두 곳에 따로 적으면
+   * 한쪽만 늘어난다.
+   */
+  const liveFixIssues = useMemo(() => fixList(result.items, result.risks), [result])
 
   const draftPost: Post = {
     id: id || 'draft',
@@ -730,13 +753,25 @@ export default function Editor({
         if (json.revised) return ` (고쳐서 ${json.improved}점 올랐습니다)`
         return ' (고쳐 써도 나아지지 않아 원래 글을 두었습니다 — 한 번 더 누르면 다시 시도합니다)'
       }
-      const fails = (json.check?.issues ?? []).filter((i) => i.level === 'fail').length
+      const failItems = (json.check?.issues ?? []).filter((i) => i.level === 'fail')
+      const fails = failItems.length
+      /*
+       * **무엇이 걸렸는지 이름을 적는다** (2026-08-27 회원 지적: "검수항목 고쳐쓰기해도
+       * 반영이 안돼"). 「수정필요 2개」만 적으면 회원은 아래 검수표를 다시 훑어서 어느
+       * 둘인지 찾아야 한다. 안 고쳐졌을 때 특히 그렇다 — 무엇이 버티고 있는지가 곧 다음
+       * 할 일이다.
+       */
+      const failNames = failItems
+        .map((i) => i.label)
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(' · ')
       setAiMsg(
         `${score}점으로 나왔습니다` +
           fixNote() +
           '. ' +
           (left
-            ? `아직 ${left}개 항목이 남았습니다${fails ? ` (그중 수정필요 ${fails}개 — 점수는 이걸 다 없애야 올라갑니다)` : ' (전부 주의라서 발행해도 됩니다)'}.`
+            ? `아직 ${left}개 항목이 남았습니다${fails ? ` (그중 수정필요 ${fails}개 — 점수는 이걸 다 없애야 올라갑니다${failNames ? `: ${failNames}` : ''})` : ' (전부 주의라서 발행해도 됩니다)'}.`
             : '검수 항목을 모두 통과했습니다.') +
           (json.searched ? ' · 자료를 찾아 인용했습니다 (출처가 맞는지 한 번 확인해 주세요)' : '') +
           (json.provider ? ` · ${json.provider}` : '')
@@ -1395,15 +1430,21 @@ export default function Editor({
                       </span>
                       {aiBusy ? '쓰는 중…' : `AI로 ${POST_TYPE_LABEL[type]} 쓰기 (화자: ${SPEAKER_LABEL[type]})`}
                     </button>
-                    {/* 두 번째 호출 — 초안이 85점 미만일 때만 보인다 */}
-                    {fixIssues && (
+                    {/*
+                      두 번째 호출 — **지금 걸려 있는 항목**을 넘긴다 (2026-08-27).
+
+                      전에는 AI 로 한 번 쓴 뒤에만(fixIssues state) 버튼이 나왔다. 그래서 저장해
+                      둔 79점짜리 글을 열면 고칠 방법이 화면에 없었다. 검수가 걸려 있고 본문이
+                      있으면 언제든 누를 수 있게 한다.
+                    */}
+                    {(fixIssues || (body.trim() && liveFixIssues.length > 0)) && (
                       <button
                         type="button"
-                        onClick={() => callWrite({ draft: { title, body, tags }, issues: fixIssues })}
-                        disabled={aiBusy}
+                        onClick={() => callWrite({ draft: { title, body, tags }, issues: liveFixIssues })}
+                        disabled={aiBusy || !liveFixIssues.length}
                         className="bd rounded-full border px-3 py-2 text-xs font-bold hover:bg-slate-500/8 disabled:opacity-50"
                       >
-                        {aiBusy ? '고치는 중…' : `검수 항목 고쳐 쓰기 (${fixIssues.length}개)`}
+                        {aiBusy ? '고치는 중…' : `검수 항목 고쳐 쓰기 (${liveFixIssues.length}개)`}
                       </button>
                     )}
                     <button
