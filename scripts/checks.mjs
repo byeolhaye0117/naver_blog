@@ -1700,6 +1700,59 @@ ok(advised.introType && !advised.introType.includes(REVIEW_INTRO_TYPES[0]), '최
 ok(REVIEW_INTRO_TYPES.includes(advised.introType), '후기글에는 후기 도입 목록에서 고른다')
 ok(!INTRO_TYPES.includes(advised.introType), '홍보글 도입 목록을 후기에 쓰지 않는다')
 
+/*
+ * ─── 정보글은 지점을 가리지 않는다 (2026-08-27) ────────────────────
+ *
+ * 회원: "정보성글에는 구지 지점정보가 필요하지 않을것 같아 … 유사문서 방지는 지금 내가
+ * 발행 완료한 글을 기준으로 따지면 되지 않을까?"
+ *
+ * 맞는 정리다. **유사문서 판정은 블로그 안에서 일어난다** — 지점이 여럿이어도 글은 전부
+ * 같은 네이버 블로그 하나에 올라간다. 지점으로 나눠 세면 겹침을 놓친다 (지점만 바꿔 쓴 글이
+ * 90.4% 겹쳤던 그 일이다).
+ *
+ * 게다가 08-27 부터 정보글은 지점을 아예 안 고른다. 지점으로 거르면 **아무것도 안 걸러져서
+ * 로테이션이 통째로 죽는다** — 매번 같은 형식이 나온다.
+ */
+{
+  const { INFO_FORMATS, TOPIC_GROUPS } = require(`${OUT}/writing/rotation.js`)
+  const infoPost = (patch) => ({
+    id: patch.id, type: 'info', status: 'published', storeId: patch.storeId ?? 'other',
+    mainKeyword: 'k', body: '', createdAt: patch.createdAt ?? '2026-08-20',
+    publishedAt: patch.publishedAt ?? '2026-08-20', ...patch,
+  })
+  // 다른 지점(또는 지점 없음)에서 쓴 형식도 피한다 — 같은 블로그에 올라간 글이니까
+  const elsewhere = [
+    infoPost({ id: '1', storeId: 'A', format: INFO_FORMATS[0], topicGroup: TOPIC_GROUPS[0], publishedAt: '2026-08-26' }),
+    infoPost({ id: '2', storeId: '', format: INFO_FORMATS[1], topicGroup: TOPIC_GROUPS[1], publishedAt: '2026-08-25' }),
+  ]
+  const infoAdv = adviseRotation(elsewhere, '', 'info')
+  ok(infoAdv.format !== INFO_FORMATS[0] && infoAdv.format !== INFO_FORMATS[1],
+    '다른 지점에서 쓴 형식도 피한다', infoAdv.format)
+  ok(infoAdv.topicGroup !== TOPIC_GROUPS[0] && infoAdv.topicGroup !== TOPIC_GROUPS[1],
+    '소재 묶음도 마찬가지')
+  ok(infoAdv.recentSummaries.length === 2, '최근 글 기록도 블로그 전체로 보여준다')
+
+  /*
+   * **발행 완료한 글만 센다** (회원이 말한 기준). 유사문서는 네이버에 올라간 글끼리 붙는
+   * 것이므로 초안은 아직 그 판에 없다.
+   */
+  const draftOnly = [infoPost({ id: '3', status: 'draft', format: INFO_FORMATS[0], topicGroup: TOPIC_GROUPS[0] })]
+  ok(adviseRotation(draftOnly, '', 'info').recentSummaries.length === 0, '초안은 세지 않는다')
+
+  /*
+   * **발행 간격 경고는 정보글에 붙이지 않는다.** 그 경고는 같은 지점 홍보글이 서로
+   * 잡아먹는 자기잠식을 막는 것이다. 블로그 전체로 세면 매일 쓰는 회원에게 날마다 뜬다.
+   */
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  ok(adviseRotation([infoPost({ id: '4', publishedAt: yesterday })], '', 'info').warnings.length === 0,
+    '어제 발행했어도 정보글에는 간격 경고를 안 낸다')
+
+  // 홍보글·후기글은 그대로 지점별이다 — 그 글들은 지점이 주인공이다
+  const promoElsewhere = [{ id: '5', type: 'promo', status: 'published', storeId: 'A', mainKeyword: 'k', body: '', createdAt: '2026-08-26', publishedAt: '2026-08-26', introType: INTRO_TYPES[0] }]
+  ok(adviseRotation(promoElsewhere, 'B', 'promo').recentSummaries.length === 0, '홍보글은 다른 지점 글을 보지 않는다')
+  ok(adviseRotation(promoElsewhere, 'A', 'promo').warnings.some((w) => w.includes('2~3주')), '같은 지점 홍보글에는 간격 경고가 그대로 뜬다')
+}
+
 const fix = buildFixPrompt(['본문 글자수: 지금 1,500자 / 기준 1,900~2,100자'], 1500, { charMin: 1900, charMax: 2100 })
 ok(fix.includes('1,500') && fix.includes('1,900'), '고쳐 쓰기 지시에 현재값과 기준이 들어간다')
 ok(fix.includes('JSON'), '고쳐 쓸 때도 JSON 으로 받는다')
@@ -10359,6 +10412,31 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
      * 잘못인지 아는 앱이 고치는 일은 회원에게 미룬 셈이다.
      */
     ok(/지역 키워드\(조연\) 칸으로 내리기/.test(editor2), '버튼 하나로 조연 칸에 옮겨준다')
+
+    /*
+     * ─── 정보글에는 지점 칸이 없다 (2026-08-27) ────────────────────
+     *
+     * 회원: "정보성글에는 구지 지점정보가 필요하지 않을것 같아 … 지점칸은 정보성으로
+     * 아무런 정보가 들어가지 않게 해주면 좋겠어."
+     *
+     * 08-27 에 화자가 일반 블로거가 되면서 지점에서 오던 값이 지시문에서 전부 빠졌다 —
+     * 상호명·표시 이름·위치·24시간·시설·강점·전화번호. 남은 건 **칸 하나뿐**이었고,
+     * 고르든 안 고르든 글이 같았다. 「고르라고 해놓고 아무 일도 안 하는 칸」이 제일 헷갈린다.
+     */
+    ok(/type === 'info' \? \([\s\S]{0,400}해당 없음/.test(editor2), '정보글에는 지점 대신 「해당 없음」을 보여준다')
+    // 값도 새어 나가지 않아야 한다 — 「값을 주면 쓰게 된다」가 이 저장소의 반복된 실패다
+    ok(/const effStoreId = type === 'info' \? '' : storeId/.test(editor2), '정보글이면 지점 값을 비운다')
+    ok(!/storeId: store\.id/.test(editor2), '생성 요청에도 지점을 그대로 싣지 않는다')
+    // state 는 지우지 않는다 — 홍보글로 되돌릴 때 고르셨던 지점이 살아 있어야 한다
+    ok(/setStoreId/.test(editor2), '지점 선택 자체는 남는다 (유형을 되돌리면 돌아온다)')
+
+    /*
+     * **한쪽만 고치면 생성 버튼이 400 으로 죽는다.** 화면에서 칸을 없앴으면 라우트도
+     * 지점 없이 받아야 한다 — 이 저장소가 반복해서 겪은 실패다.
+     */
+    const writeRoute = require('node:fs').readFileSync(new URL('../app/api/write/route.ts', import.meta.url), 'utf8')
+    ok(/if \(!store && body\.type !== 'info'\)/.test(writeRoute), '정보글은 지점 없이도 생성된다')
+    ok(!/legalName: store\.legalName/.test(writeRoute), '지점이 없어도 터지지 않는다 (검수에 넘기는 값)')
     /*
      * **한 화면에서 반대를 시키지 않는다.** 경고 상자 바로 아래 「경쟁 센 자리」 문단이
      * 정보글에도 「제목에 업체 이름을 넣으라」고 말하고 있었다 (08-20 판이 남아 있었다).

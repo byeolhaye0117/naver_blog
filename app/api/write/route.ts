@@ -143,7 +143,19 @@ async function handle(req: Request, ms: () => string) {
     const db = await readDB()
     const evidence = poolStoredRuns(db.factorRuns)
     const store = db.stores.find((s) => s.id === body.storeId)
-    if (!store) {
+    /*
+     * **정보글은 지점 없이 쓴다** (2026-08-27 회원 요청: "정보성글에는 구지 지점정보가
+     * 필요하지 않을것 같아").
+     *
+     * 08-27 에 화자가 일반 블로거가 되면서 지점에서 오던 값이 지시문에서 전부 빠졌다 —
+     * 상호명·표시 이름·위치·24시간·시설·강점·전화번호. 그러니 정보글에는 지점을 요구할
+     * 이유가 없다. 여기서 계속 막으면 화면에서 칸을 없애도 **생성 버튼이 400 으로 죽는다**
+     * (한쪽만 고친 것 — 이 저장소가 반복해서 겪은 실패다).
+     *
+     * 홍보글·후기글은 그대로 막는다. 그 글들은 상호명·시설·위치가 본문의 뼈대라 지점 없이
+     * 쓰면 빈칸투성이가 된다.
+     */
+    if (!store && body.type !== 'info') {
       return NextResponse.json({ error: '지점을 먼저 골라주세요.' }, { status: 400 })
     }
 
@@ -175,7 +187,8 @@ async function handle(req: Request, ms: () => string) {
      * **최근에 안 쓴 것을 서버가 고른다** (rotation.ts 가 그 계산을 이미 한다).
      * 회원이 고른 값이 있으면 그게 이긴다.
      */
-    const rotation = adviseRotation(db.posts, store.id, type, store, body.request?.trim())
+    // 정보글은 지점이 없다 — rotation 이 그때는 블로그 전체(발행 완료)를 본다 (2026-08-27)
+    const rotation = adviseRotation(db.posts, store?.id ?? '', type, store, body.request?.trim())
 
     /*
      * 경쟁 수준은 **서버가 저장된 측정에서 찾는다** (화면이 보내는 값을 쓰지 않는다).
@@ -231,8 +244,8 @@ async function handle(req: Request, ms: () => string) {
         subKeywords: request.subKeywords,
         localKeyword: request.localKeyword,
         tags: d.tags,
-        legalName: store.legalName,
-        womenOnly: store.womenOnly,
+        legalName: store?.legalName,
+        womenOnly: store?.womenOnly,
         sponsorship: body.sponsorship ?? 'unset',
         eventText: request.eventText,
         promoNote: request.promoNote,
@@ -241,8 +254,8 @@ async function handle(req: Request, ms: () => string) {
          * 돌지 않는다 — 회원이 "요청사항이 거의 반영되지 않았어"라고 한 그 검사다.
          */
         request: request.request,
-        placeReviews: store.placeReviews,
-        placeId: store.placeId,
+        placeReviews: store?.placeReviews,
+        placeId: store?.placeId,
         // AI 가 스스로 고칠 때도 같은 근거로 채점한다 — 화면 점수와 다르면 안 된다
         evidence,
       })

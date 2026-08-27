@@ -314,7 +314,15 @@ export default function Editor({
     }
   }
 
-  const store = stores.find((s) => s.id === storeId)
+  /*
+   * **정보글은 지점을 쓰지 않는다** (2026-08-27 회원 요청). 고른 값이 남아 있으면 저장·지시문·
+   * 검수로 새어 나간다 — 「값을 주면 쓰게 된다」가 이 파일에서 여러 번 확인된 일이다.
+   *
+   * state 를 지우지 않고 **파생값으로** 비운다. 유형을 홍보글로 되돌리면 고르셨던 지점이
+   * 그대로 돌아온다 — 유형을 잘못 눌렀다가 되돌릴 때 값을 잃으면 그게 더 나쁘다.
+   */
+  const effStoreId = type === 'info' ? '' : storeId
+  const store = stores.find((s) => s.id === effStoreId)
   const subKeywords = [sub1, legacySub].filter(Boolean)
   const tags = tagText
     .split(/[,\n#]/)
@@ -353,23 +361,23 @@ export default function Editor({
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // eventText 를 빼면 이벤트를 지웠는데 「후킹에 이벤트 훅」이 그대로 남는다
-    [type, title, body, mainKeyword, sub1, legacySub, localKeyword, tagText, storeId, sponsorship, eventText, arenas]
+    [type, title, body, mainKeyword, sub1, legacySub, localKeyword, tagText, effStoreId, sponsorship, eventText, arenas]
   )
 
   /** 지금 메인 키워드의 경쟁 수준 — 서버가 넘긴 표에서 찾는다 (없으면 아무 말도 안 한다) */
   const arena = arenas?.[mainKeyword.trim()]
 
   const advice = useMemo(
-    () => adviseRotation(posts.filter((p) => p.id !== id), storeId, type, store),
+    () => adviseRotation(posts.filter((p) => p.id !== id), effStoreId, type, store),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [posts, storeId, type, id]
+    [posts, effStoreId, type, id]
   )
 
   const draftPost: Post = {
     id: id || 'draft',
     type,
     status,
-    storeId,
+    storeId: effStoreId,
     title,
     body,
     mainKeyword,
@@ -399,7 +407,7 @@ export default function Editor({
     title,
     tagText,
     type,
-    storeId,
+    effStoreId,
     localKeyword,
     mainKeyword,
     sponsorship,
@@ -445,7 +453,7 @@ export default function Editor({
 
   /** AI 로 본문까지 쓰게 한다 — 생성 후 앱 검수기가 매긴 점수를 함께 받는다 */
   async function writeWithAi() {
-    if (!store) {
+    if (!store && type !== 'info') {
       setAiMsg('지점을 먼저 골라주세요.')
       return
     }
@@ -466,7 +474,7 @@ export default function Editor({
    * 덮어쓰기 전에 한 번 묻는다 — 되돌릴 수 없는 동작이다.
    */
   async function rewriteForType() {
-    if (!store) {
+    if (!store && type !== 'info') {
       setAiMsg('지점을 먼저 골라주세요.')
       return
     }
@@ -558,7 +566,8 @@ export default function Editor({
   }
 
   async function callWrite(extra: { draft?: Draft; issues?: string[] }) {
-    if (!store) return
+    // 정보글은 지점 없이 쓴다 (2026-08-27) — 지시문에 지점 값이 하나도 안 들어간다
+    if (!store && type !== 'info') return
     const fixing = Boolean(extra.draft)
     setAiBusy(true)
     /*
@@ -585,10 +594,11 @@ export default function Editor({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type,
-          storeId: store.id,
+          storeId: effStoreId,
           mainKeyword,
           subKeywords,
-          localKeyword: localKeyword || store.localKeywords[0],
+          // 정보글은 지점이 없으므로 지점 기본값을 끌어오지 않는다 — 비워도 된다
+          localKeyword: localKeyword || store?.localKeywords[0],
           eventText,
           promoNote,
           infoTopic,
@@ -925,17 +935,40 @@ export default function Editor({
                   )}
                   {intentBusy && <p className="muted text-[11px]">이 키워드에 유리한 유형을 보는 중…</p>}
 
+                  {/*
+                    **정보글에는 지점 칸이 없다** (2026-08-27 회원 요청: "정보성글에는 구지
+                    지점정보가 필요하지 않을것 같아 … 지점칸은 정보성으로 아무런 정보가
+                    들어가지 않게 해주면 좋겠어").
+
+                    맞는 정리다. 08-27 에 화자가 일반 블로거가 되면서 지점에서 오던 값이
+                    지시문에서 전부 빠졌다 — 상호명·표시 이름·위치·24시간·시설·강점·전화번호.
+                    남아 있던 것은 **칸 하나뿐**이었고, 고르든 안 고르든 글이 같았다.
+                    「고르라고 해놓고 아무 일도 안 하는 칸」이 제일 헷갈린다.
+
+                    유사문서 방지는 회원 말대로 **발행 완료한 글 전체**로 센다
+                    (lib/writing/rotation.ts) — 지점이 여럿이어도 글은 같은 블로그 하나에
+                    올라가므로 그게 원래 맞는 셈법이다.
+                  */}
                   <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                    <Field label="지점" hint={store?.womenOnly ? '여성전용 지점 — 남성 대상 표현을 검사합니다' : undefined}>
-                      <select value={storeId} onChange={(e) => setStoreId(e.target.value)} className={inputClass}>
-                        <option value="">(지점 미지정)</option>
-                        {stores.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name} — {s.legalName}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
+                    {type === 'info' ? (
+                      <Field
+                        label="지점"
+                        hint="정보글은 지점 정보를 쓰지 않습니다 — 상호명·위치·시설이 글에 들어가지 않으므로 고를 것이 없습니다. 유사문서 방지는 발행 완료한 글 전체로 셉니다."
+                      >
+                        <div className={`${inputClass} muted flex items-center`}>해당 없음</div>
+                      </Field>
+                    ) : (
+                      <Field label="지점" hint={store?.womenOnly ? '여성전용 지점 — 남성 대상 표현을 검사합니다' : undefined}>
+                        <select value={storeId} onChange={(e) => setStoreId(e.target.value)} className={inputClass}>
+                          <option value="">(지점 미지정)</option>
+                          {stores.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} — {s.legalName}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    )}
                     <Field label="상태">
                       <select
                         value={status}
@@ -1746,7 +1779,7 @@ export default function Editor({
               text={stripGuides(body)}
               posts={posts}
               stores={stores}
-              storeId={storeId}
+              storeId={effStoreId}
               postId={id || undefined}
             />
             {/*
