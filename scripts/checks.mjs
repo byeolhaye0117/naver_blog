@@ -2206,7 +2206,7 @@ console.log('\n[37-2] 순위 목록 — 같은 키워드를 어떻게 구분하�
  * 수정해주면 좋겠어."
  */
 {
-  const { rankItemName, sortRankViews } = require(`${OUT}/analysis/rank.js`)
+  const { rankItemName, sortRankViews, staleTitleTargets } = require(`${OUT}/analysis/rank.js`)
   const v = (patch) => ({
     target: { id: patch.id ?? 't', keyword: patch.keyword ?? '쌍용동 헬스장', url: patch.url ?? 'https://blog.naver.com/x/1', label: patch.label },
     postTitle: patch.postTitle,
@@ -2246,8 +2246,73 @@ console.log('\n[37-2] 순위 목록 — 같은 키워드를 어떻게 구분하�
 
     const rankCron = require('node:fs').readFileSync(new URL('../app/api/cron/rank/route.ts', import.meta.url), 'utf8')
     ok(/needTitle/.test(rankCron) && rankCron.includes('found.title = title'), '순위 크론이 빠진 제목을 채운다')
-    // 한 번 채우면 다시 읽지 않는다 — 매일 조회를 늘리면 순위 재는 일이 밀린다
-    ok(/!t\.title\?\.trim\(\)/.test(rankCron), '이미 제목이 있으면 다시 읽지 않는다')
+
+    /*
+     * **실제로 올라간 제목이 먼저다** (2026-08-27 회원 지적: "실제 업로드된 제목과 다르게
+     * 나와"). 화면 사진으로 확인한 실제 사례다:
+     *   앱 초안  「쌍용동 헬스장 초보도 지금 등록해도 될까? 8월 3개월 9.9만원」
+     *   네이버   「쌍용동 헬스장 지금 등록해도 될까? 8월무료 3개월 9.9만원」
+     * 회원이 올리기 직전에 제목을 손본 것이다. 순위는 실제로 올라간 글에 붙으므로 목록도
+     * 그것을 보여야 한다 — 예전에는 앱 초안이 이겨서 **올라가지도 않은 제목**이 떴다.
+     */
+    {
+      const DRAFT = '쌍용동 헬스장 초보도 지금 등록해도 될까? 8월 3개월 9.9만원'
+      const LIVE = '쌍용동 헬스장 지금 등록해도 될까? 8월무료 3개월 9.9만원'
+      const v = buildRankViews(
+        [target({ title: LIVE })],
+        [],
+        [post({ title: DRAFT, publishedUrl: 'https://blog.naver.com/j2h2896/224382220243' })]
+      )[0]
+      ok(v.postTitle === LIVE, '네이버에서 읽어온 제목이 앱 초안보다 먼저다', String(v.postTitle))
+      ok(rankItemName(v) === LIVE, '목록 줄에도 실제 제목이 뜬다')
+      // 다르다는 사실 자체를 알려준다 — 검수는 초안 제목으로 봤다
+      ok(v.draftTitle === DRAFT, '초안 제목이 다르면 그것도 함께 준다', String(v.draftTitle))
+      const same = buildRankViews(
+        [target({ title: DRAFT })],
+        [],
+        [post({ title: DRAFT, publishedUrl: 'https://blog.naver.com/j2h2896/224382220243' })]
+      )[0]
+      ok(same.draftTitle === undefined, '같으면 굳이 알리지 않는다')
+    }
+
+    /*
+     * **연결된 글도 읽는다.** 예전에는 앱과 이어진 항목을 통째로 건너뛰어서(「앱에서 쓴
+     * 글은 제목이 이어져 오니까」) 위 어긋남을 영영 못 고쳤다. 한 번 읽고 끝내지도 않는다 —
+     * 제목이 잘 안 바뀌는 것은 맞지만 안 바뀐다고 볼 근거는 없다.
+     */
+    {
+      const T = (patch) => ({ id: patch.id, keyword: 'k', url: 'https://blog.naver.com/x/1', createdAt: '2026-08-01', ...patch })
+      const NOW = '2026-08-27T00:00:00.000Z'
+      const picked = staleTitleTargets(
+        [
+          T({ id: 'fresh', title: '읽은 지 얼마 안 됨', titleAt: '2026-08-26T00:00:00.000Z' }),
+          T({ id: 'stale', title: '오래됨', titleAt: '2026-07-01T00:00:00.000Z' }),
+          T({ id: 'never' }),
+        ],
+        NOW,
+        5
+      )
+      ok(picked.map((t) => t.id).join() === 'never,stale', '한 번도 못 읽은 것 → 오래된 것 순서', picked.map((t) => t.id).join())
+      ok(!picked.some((t) => t.id === 'fresh'), '방금 읽은 것은 다시 읽지 않는다')
+      ok(staleTitleTargets([T({ id: 'a' }), T({ id: 'b' })], NOW, 1).length === 1, '한 번에 몇 개만 읽는다')
+      // 앱과 이어진 항목이라고 건너뛰지 않는다 (그게 바로 어긋나던 줄이다)
+      ok(staleTitleTargets([T({ id: 'linked', postId: 'p1' })], NOW, 5).length === 1, '앱과 이어진 항목도 읽는다')
+      ok(rankCron.includes('staleTitleTargets'), '순위 크론이 같은 기준을 쓴다')
+      const checkRoute = require('node:fs').readFileSync(new URL('../app/api/rank/check/route.ts', import.meta.url), 'utf8')
+      // 화면에서 「지금 확인」을 눌렀는데 제목이 그대로면 회원은 안 고쳐졌다고 본다
+      ok(checkRoute.includes('staleTitleTargets') && checkRoute.includes('found.titleAt'), '손으로 조회할 때도 제목을 다시 읽는다')
+    }
+
+    /*
+     * **주소를 누르면 그 글로 간다** (2026-08-27 회원 요청: "url클릭하면 해당 블로그로 갈
+     * 수 있도록 해줘"). 글자로만 적혀 있으면 복사해서 주소창에 붙여야 한다.
+     */
+    {
+      const tracker = require('node:fs').readFileSync(new URL('../app/rank/RankTracker.tsx', import.meta.url), 'utf8')
+      ok(/<a[^>]*href=\{v\.target\.url\}/.test(tracker), '추적 목록의 주소가 링크다')
+      ok(/href=\{v\.target\.url\}[\s\S]{0,200}rel="noopener noreferrer"/.test(tracker), '새 탭으로 열되 opener 를 넘기지 않는다')
+      ok(tracker.includes('v.draftTitle'), '초안 제목과 다르면 화면이 밝힌다')
+    }
   }
 
   /*
@@ -8839,9 +8904,61 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
   // ── 무엇을 쓸 차례인가
   const KWS = ['쌍용동 헬스장', '두정동 헬스장']
   const first = pickAssignment({ posts: [], keywords: KWS })
-  ok(first?.mainKeyword === KWS[0], `글이 없으면 첫 키워드부터 — ${first?.mainKeyword}`)
+  ok(first?.localKeyword === KWS[0], `글이 없으면 첫 키워드부터 — ${first?.localKeyword}`)
   ok(INFO_TOPICS.includes(first.topic), '주제도 목록 안에서 고른다')
+  /*
+   * **메인 키워드는 주제(정보성 검색어)다** (2026-08-27 회원 결정: "중요한건 상업성키워드가
+   * 아닌 순수 정보성 키워드를 찾는 기능을 넣어야하고 … 그 키워드는 구매력이 있는 키워드면
+   * 안돼"). 지역 키워드는 조연 칸으로 내려간다.
+   *
+   * 이게 뒤집히면 「쌍용동헬스장 벌크업식단, …」 같은 제목이 다시 나온다 — 정보글로
+   * 신뢰를 쌓겠다면서 매출 키워드를 앞세우는 꼴이다.
+   */
+  ok(first.mainKeyword === first.topic, '메인 키워드는 정보성 주제다', first.mainKeyword)
+  ok(first.mainKeyword !== first.localKeyword, '지역 키워드를 메인으로 올리지 않는다')
   ok(first.why.includes('아직 안 쓴'), '왜 이 조합인지 밝힌다')
+
+  /*
+   * **구매력 있는 말은 메인이 될 수 없다** — 회원이 그은 선이다.
+   *
+   * 판단은 탐색기(classifyIntent)가 이미 하고 있으므로 같은 기준을 쓴다. 두 곳에 따로
+   * 적으면 한쪽만 늘어난다.
+   */
+  {
+    const { pureInfoTopics } = require(`${OUT}/writing/autodraft.js`)
+    const { classifyIntent } = require(`${OUT}/writing/topic-explore.js`)
+    // 기본 목록은 전부 순수 정보성이어야 한다 — 아니면 탐색기를 안 돌린 날 매출 키워드가 나간다
+    const impure = INFO_TOPICS.filter((t) => ['buy', 'local'].includes(classifyIntent(t)))
+    ok(impure.length === 0, '기본 주제 10개가 전부 순수 정보성이다', impure.join(' · '))
+    // 문장이 아니라 검색어여야 한다 — 메인 키워드는 제목 앞과 해시태그에 그대로 들어간다
+    const { isTaggable } = require(`${OUT}/writing/checker.js`)
+    const unusable = INFO_TOPICS.filter((t) => !isTaggable(t))
+    ok(unusable.length === 0, '기본 주제가 전부 해시태그로 쓸 수 있는 꼴이다', unusable.join(' · '))
+
+    const mixed = ['쌍용동 헬스장', '헬스장 가격', '천안 헬스장 추천', '어깨 뭉침 스트레칭']
+    ok(pureInfoTopics(mixed).join() === '어깨 뭉침 스트레칭', '업체·값을 묻는 말을 뺀다', pureInfoTopics(mixed).join())
+    // 다 걸러 하나도 안 남으면 기본 목록으로 — 안 쓰는 것보다 낫다
+    ok(pureInfoTopics(['쌍용동 헬스장']).length === INFO_TOPICS.length, '전부 걸러지면 기본 목록으로 돌아간다')
+    // 회원이 손으로 적은 주제는 지우지 않는다 (구매력만 막는다)
+    ok(pureInfoTopics(['아무 주제나']).join() === '아무 주제나', '구매력이 아니면 그대로 둔다')
+
+    // 실제로 골라도 마찬가지 — 순위 추적 키워드가 전부 지역 키워드여도 메인은 정보성이다
+    const picked = pickAssignment({ posts: [], keywords: KWS, topics: ['쌍용동 헬스장', '헬스장 가격', '공복 유산소 효과'] })
+    ok(picked.mainKeyword === '공복 유산소 효과', '구매력 있는 말은 메인 자리에 못 온다', picked.mainKeyword)
+  }
+
+  /*
+   * **문장을 해시태그로 요구하지 않는다** (2026-08-27). 메인 키워드가 주제 자리로 오면서
+   * 「주 2회밖에 못 갈 때 짜는 순서」 같은 긴 말도 이 자리에 올 수 있게 됐다. 그걸 태그로
+   * 요구하면 「#주2회밖에못갈때짜는순서」가 나오고, 없으면 fail 이라 점수가 79 에 묶인다.
+   */
+  {
+    const { isTaggable } = require(`${OUT}/writing/checker.js`)
+    ok(isTaggable('공복 유산소 효과'), '검색어 꼴은 태그가 된다')
+    ok(!isTaggable('주 2회밖에 못 갈 때 짜는 순서'), '문장은 태그가 아니다')
+    ok(!isTaggable('체중이 안 빠질 때 점검할 것'), '어절이 넷 넘으면 태그가 아니다')
+    ok(!isTaggable(''), '빈 말은 태그가 아니다')
+  }
   // 같은 입력이면 늘 같은 답 — 크론이 두 번 돌아도 흔들리지 않는다
   ok(JSON.stringify(pickAssignment({ posts: [], keywords: KWS })) === JSON.stringify(first), '같은 입력이면 같은 답')
   ok(!pickAssignment({ posts: [], keywords: [] }), '키워드가 없으면 아무것도 고르지 않는다')
@@ -8856,8 +8973,8 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
     let posts = []
     for (let i = 0; i < 8; i++) {
       const a = pickAssignment({ posts, keywords: KWS })
-      used.push(`${a.mainKeyword}|${a.topic}`)
-      posts = [post({ mainKeyword: a.mainKeyword, autoTopic: a.topic, auto: true, createdAt: `2026-08-${String(10 + i).padStart(2, '0')}T20:00:00.000Z` }), ...posts]
+      used.push(`${a.localKeyword}|${a.topic}`)
+      posts = [post({ mainKeyword: a.mainKeyword, localKeyword: a.localKeyword, autoTopic: a.topic, auto: true, createdAt: `2026-08-${String(10 + i).padStart(2, '0')}T20:00:00.000Z` }), ...posts]
     }
     ok(new Set(used).size === used.length, `여덟 번 돌려도 조합이 겹치지 않는다 — ${new Set(used).size}/8`)
     // 주제도 바로 되풀이하지 않는다 (키워드가 달라도 본문이 닮는다)
@@ -8872,7 +8989,7 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
     const oneTopic = ['새벽 운동 시작하기']
     const posts = [post({ mainKeyword: KWS[0], autoTopic: oneTopic[0], createdAt: '2026-08-20T00:00:00.000Z' })]
     const a = pickAssignment({ posts, keywords: [KWS[0]], topics: oneTopic })
-    ok(a?.mainKeyword === KWS[0] && a.topic === oneTopic[0], '쓸 조합이 하나뿐이면 그것을 다시 고른다')
+    ok(a?.localKeyword === KWS[0] && a.topic === oneTopic[0], '쓸 조합이 하나뿐이면 그것을 다시 고른다')
     ok(a.why.includes('오래 안 썼'), '되돌아온 것임을 밝힌다')
   }
 
@@ -9110,8 +9227,8 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
 
   // ── ① 아무것도 안 정했으면 여태 방식 그대로
   const auto = planAssignment({ plan: undefined, posts: [], fallbackKeywords: FALLBACK })
-  ok(auto?.mainKeyword === FALLBACK[0] && TOPICS.includes(auto.topic), '설정이 없으면 순위 추적 키워드로 돈다')
-  ok(planAssignment({ plan: {}, posts: [], fallbackKeywords: FALLBACK })?.mainKeyword === FALLBACK[0], '빈 설정도 마찬가지')
+  ok(auto?.localKeyword === FALLBACK[0] && TOPICS.includes(auto.topic), '설정이 없으면 순위 추적 키워드로 돈다')
+  ok(planAssignment({ plan: {}, posts: [], fallbackKeywords: FALLBACK })?.localKeyword === FALLBACK[0], '빈 설정도 마찬가지')
 
   // ── 꺼두면 아무것도 안 쓴다 (지우는 것보다 끄는 편이 낫다 — 설정이 남는다)
   ok(!planAssignment({ plan: { off: true }, posts: [], fallbackKeywords: FALLBACK }), '꺼두면 쓰지 않는다')
@@ -9123,11 +9240,11 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     posts: [],
     fallbackKeywords: FALLBACK,
   })
-  ok(scoped?.mainKeyword === '천안 헬스장', '고른 키워드만 쓴다', scoped?.mainKeyword)
+  ok(scoped?.localKeyword === '천안 헬스장', '고른 키워드만 쓴다', scoped?.localKeyword)
   ok(scoped?.topic === '어깨가 자주 뭉칠 때', '직접 적어 넣은 주제도 그대로 쓴다', scoped?.topic)
   // 한쪽만 골랐으면 나머지는 기본값 — 둘 다 고르라고 강요하지 않는다
   const halfway = planAssignment({ plan: { keywords: ['천안 헬스장'] }, posts: [], fallbackKeywords: FALLBACK })
-  ok(halfway?.mainKeyword === '천안 헬스장' && TOPICS.includes(halfway.topic), '키워드만 골라도 된다')
+  ok(halfway?.localKeyword === '천안 헬스장' && TOPICS.includes(halfway.topic), '키워드만 골라도 된다')
 
   /*
    * **예약(줄 세우기) 칸은 뺐다** (2026-08-24 회원 요청: "위에 칸은 삭제하고").
@@ -9139,7 +9256,7 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
   ok(!('queue' in normalizePlan({ queue: [{ keyword: 'A', topic: '가' }] })), '예약 칸을 저장하지 않는다')
   ok(
     planAssignment({ plan: { queue: [{ keyword: '엉뚱한 키워드', topic: '가' }], keywords: ['천안 헬스장'] }, posts: [], fallbackKeywords: FALLBACK })
-      ?.mainKeyword === '천안 헬스장',
+      ?.localKeyword === '천안 헬스장',
     '예전에 저장된 예약이 남아 있어도 무시한다'
   )
 
@@ -9352,7 +9469,8 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     const withDay = { ...PLAN, days: [{ date: '2026-08-26', topic: '그날만다른주제' }] }
     const fixedDay = planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' })
     ok(fixedDay?.topic === '그날만다른주제', '채워 둔 날은 그 주제를 쓴다', fixedDay?.topic)
-    ok(PLAN.keywords.includes(fixedDay.mainKeyword), '키워드는 ①에서 고른 것 안에서 돈다', fixedDay.mainKeyword)
+    ok(PLAN.keywords.includes(fixedDay.localKeyword), '키워드는 ①에서 고른 것 안에서 돈다', fixedDay.localKeyword)
+    ok(fixedDay.mainKeyword === '그날만다른주제', '채워 둔 날도 메인은 주제다', fixedDay.mainKeyword)
     ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-27' })?.topic === '한가지주제',
       '안 채운 날은 그날그날 앱이 고른다')
     ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK })?.topic === '한가지주제', '날짜가 없으면 로테이션')

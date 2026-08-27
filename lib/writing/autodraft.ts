@@ -19,6 +19,7 @@
  * 종류의 실수라, 테스트가 볼 수 있는 자리에 둔다. 라우트는 이 결정을 받아 실행만 한다.
  */
 import type { AutoDraftPlan, Post } from '../types'
+import { classifyIntent } from './topic-explore'
 
 /**
  * 정보글 주제 풀.
@@ -31,17 +32,45 @@ import type { AutoDraftPlan, Post } from '../types'
  * 못 채운다.
  */
 export const INFO_TOPICS: string[] = [
-  '새벽 운동 시작하기',
-  '다이어트 첫 달에 할 것',
-  '처음 등록했을 때 첫 2주',
-  '체중이 안 빠질 때 점검할 것',
-  '하체 운동 자세 잡기',
-  '퇴근 후 30분 루틴',
-  '저녁 폭식이 반복될 때',
-  '무릎이 아플 때 대신 할 운동',
-  '운동해도 배가 안 빠질 때',
-  '주 2회밖에 못 갈 때 짜는 순서',
+  '헬스 초보 루틴',
+  '유산소 근력 순서',
+  '공복 유산소 효과',
+  '스쿼트 무릎 자세',
+  '체지방 감량 식단',
+  '다이어트 정체기 탈출',
+  '하루 단백질 섭취량',
+  '어깨 뭉침 스트레칭',
+  '저녁 폭식 습관',
+  '주 2회 분할운동',
 ]
+
+/**
+ * **구매력 있는 말은 정보글 메인이 될 수 없다** (2026-08-27 회원 결정).
+ *
+ * 회원: "중요한건 상업성키워드가 아닌 순수 정보성 키워드를 찾는 기능을 넣어야하고 …
+ * 그 키워드는 구매력이 있는 키워드면 안돼."
+ *
+ * 메인 키워드가 곧 주제가 되면서 이 자리에 「쌍용동 헬스장」·「헬스장 가격」이 들어가면
+ * 정보글이 아니라 홍보글이 된다. 탐색기가 이미 그 판단을 하고 있으므로(classifyIntent)
+ * **같은 기준을 여기서도 쓴다** — 두 곳에 따로 적으면 한쪽만 늘어난다.
+ *
+ * 거르는 것은 `buy`(값·등록·후기·순위를 묻는 말)와 `local`(업체를 찾는 말) **둘뿐이다.**
+ * `offlimit`·`thin` 은 두지 않는다 — 회원이 손으로 적어 넣은 주제까지 앱이 지워버리면
+ * 「분명 저장했는데 안 나온다」가 된다. 구매력만 막는 것이 회원이 말한 선이다.
+ *
+ * 다 걸러 하나도 안 남으면 기본 목록으로 돌아간다 — 안 쓰는 것보다 낫고, 기본 목록은
+ * 위에서 이 기준을 통과하도록 골라 뒀다 (테스트가 그것을 지킨다).
+ */
+export function pureInfoTopics(topics: string[], localKeywords: string[] = []): string[] {
+  const kept = topics
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .filter((t) => {
+      const intent = classifyIntent(t, localKeywords)
+      return intent !== 'buy' && intent !== 'local'
+    })
+  return kept.length ? kept : INFO_TOPICS
+}
 
 /*
  * **유사성 3축(format·topicGroup)에 값을 넣지 않는다.**
@@ -53,9 +82,32 @@ export const INFO_TOPICS: string[] = [
  */
 
 export interface Assignment {
-  /** 정보글 메인 키워드 (지역 키워드를 메인으로 잡는다 — 2026-08-21 회원 결정) */
+  /**
+   * **정보글 메인 키워드 = 순수 정보성 키워드** (2026-08-27 회원 결정).
+   *
+   * 회원: "중요한건 상업성키워드가 아닌 순수 정보성 키워드를 찾는 기능을 넣어야하고 …
+   * 그 키워드는 구매력이 있는 키워드면 안돼."
+   *
+   * ── 여태 거꾸로였다 ─────────────────────────────────────────
+   * 2026-08-21 에는 지역 키워드를 메인으로 잡았다. 그래서 실제로 나간 글이 이랬다:
+   *   mainKeyword 「쌍용동헬스장」 · autoTopic 「벌크업식단」
+   *   제목 「쌍용동헬스장 벌크업식단, 교대근무자는 뭐부터 시작할까?」
+   *
+   * **정보성 키워드가 주제 칸에, 구매력 있는 상업 키워드가 메인 칸에** 있었다. 정보글로
+   * 신뢰도를 쌓겠다면서 매출 키워드를 앞세운 셈이다.
+   *
+   * 게다가 우리 지시문은 이미 「제목은 정보 메인 키워드로 연다. 그 앞에 아무것도 붙이지
+   * 않는다 — 지역명·상호명…」이라고 시키고 있었다. 지시문과 넘기는 값이 서로 반대였다.
+   *
+   * 이제 메인은 주제(=탐색기가 네이버에서 가져온 실제 검색어)이고, 지역 키워드는 조연이다.
+   */
   mainKeyword: string
-  /** 이번 글에서 다룰 주제 */
+  /**
+   * 지역 키워드 — **조연이다.** 검수도 그렇게 본다 (「정보글에서 지역 키워드는 조연입니다」).
+   * 본문 한두 번과 해시태그가 자리다.
+   */
+  localKeyword: string
+  /** 이번 글에서 다룰 주제 (메인 키워드와 같다 — 검색되는 말이 곧 주제다) */
   topic: string
   /** 왜 이 조합인지 — 화면·로그에 그대로 적는다 */
   why: string
@@ -285,6 +337,17 @@ export function hasTodayAutoDraft(posts: Post[] | undefined, today: string): boo
 }
 
 /**
+ * 그 정보글이 **어떤 지역 키워드로 나갔나**.
+ *
+ * 2026-08-27 에 메인/지역 자리를 맞바꿨다(메인 = 정보성 검색어). 그 전에 쓴 글은 지역
+ * 키워드가 `mainKeyword` 자리에 들어 있으므로 여기서 함께 본다 — 안 그러면 옛 글이
+ * 「안 쓴 것」으로 보여 로테이션이 처음으로 되감긴다.
+ */
+function localOf(p: Post): string {
+  return (p.localKeyword ?? '').trim() || (p.mainKeyword ?? '').trim()
+}
+
+/**
  * 무엇을 쓸 차례인가 — **가장 오래 안 쓴 (키워드 × 주제) 조합**을 고른다.
  *
  * ── 왜 조합으로 도는가 ──────────────────────────────────────
@@ -305,7 +368,11 @@ export function pickAssignment(args: {
   avoidRecent?: number
 }): Assignment | null {
   const keywords = args.keywords.map((k) => k.trim()).filter(Boolean)
-  const topics = (args.topics ?? INFO_TOPICS).map((t) => t.trim()).filter(Boolean)
+  /*
+   * **메인이 될 주제에서 구매력 있는 말을 뺀다** (2026-08-27). 이 자리가 곧 메인 키워드라
+   * 「쌍용동 헬스장」·「헬스장 가격」이 들어오면 정보글이 아니라 홍보글이 된다.
+   */
+  const topics = pureInfoTopics(args.topics ?? INFO_TOPICS, keywords)
   if (!keywords.length || !topics.length) return null
 
   /*
@@ -318,7 +385,7 @@ export function pickAssignment(args: {
 
   /** 그 조합을 마지막으로 쓴 순서 (0 = 가장 최근). 안 썼으면 Infinity */
   const lastUsed = (kw: string, topic: string): number => {
-    const i = infoPosts.findIndex((p) => p.mainKeyword === kw && p.autoTopic === topic)
+    const i = infoPosts.findIndex((p) => localOf(p) === kw && p.autoTopic === topic)
     return i < 0 ? Infinity : i
   }
   /** 그 주제를 마지막으로 쓴 순서 — 키워드가 달라도 본문이 닮는다 */
@@ -355,7 +422,9 @@ export function pickAssignment(args: {
   const best = pairs[0]
   const never = best.pairAge === Infinity
   return {
-    mainKeyword: best.kw,
+    // 메인은 주제(정보성 검색어), 지역 키워드는 조연 (2026-08-27)
+    mainKeyword: best.topic,
+    localKeyword: best.kw,
     topic: best.topic,
     why: never
       ? `아직 안 쓴 조합입니다 (「${best.kw}」 × 「${best.topic}」).`
@@ -433,7 +502,8 @@ export function planAssignment(args: {
   if (wantDate && plan.skip?.includes(wantDate)) return null
 
   const keywords = plan.keywords?.length ? plan.keywords : args.fallbackKeywords
-  const topics = plan.topics?.length ? plan.topics : INFO_TOPICS
+  // 구매력 있는 말은 메인(=주제) 자리에 못 들어온다 — pureInfoTopics 가 같은 기준을 쓴다
+  const topics = pureInfoTopics(plan.topics?.length ? plan.topics : INFO_TOPICS, keywords)
   const rotated = pickAssignment({ posts: args.posts, keywords, topics })
 
   /*
@@ -460,16 +530,23 @@ export function planAssignment(args: {
       .filter((p) => p.type === 'info')
       .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
     const age = (kw: string) => {
-      const i = infoPosts.findIndex((p) => p.mainKeyword === kw)
+      const i = infoPosts.findIndex((p) => localOf(p) === kw)
       return i < 0 ? Infinity : i
     }
     const pool = keywords.map((k) => k.trim()).filter(Boolean)
-    const mainKeyword =
+    /*
+     * 지역 키워드가 하나도 없어도 **글은 쓴다** (2026-08-27). 예전에는 여기서 null 을
+     * 돌려 그 날을 건너뛰었는데, 그때는 지역 키워드가 메인이라 없으면 쓸 것이 없었다.
+     * 이제 메인은 회원이 채워 둔 주제다 — 조연이 없다고 주연까지 접을 이유가 없다.
+     */
+    const localKeyword =
       [...pool].sort((a, b) => age(b) - age(a) || pool.indexOf(a) - pool.indexOf(b))[0] ??
-      rotated?.mainKeyword
-    if (!mainKeyword) return null
+      rotated?.localKeyword ??
+      ''
     return {
-      mainKeyword,
+      // 메인은 회원이 채워 둔 주제(정보성 검색어)다 — 지역 키워드는 조연 (2026-08-27)
+      mainKeyword: fixed.topic,
+      localKeyword,
       topic: fixed.topic,
       why: `${fixed.date} 몫으로 「${fixed.topic}」을 미리 채워 두었습니다.`,
     }
@@ -607,7 +684,8 @@ export function forecastAutoDrafts(args: {
     if (plan.skip?.includes(date)) continue
     const a = planAssignment({ plan, posts, fallbackKeywords: args.fallbackKeywords, date })
     if (!a) break
-    out.push({ date, keyword: a.mainKeyword, topic: a.topic })
+    // 화면의 「키워드」 칸은 지역 키워드다 — 메인은 곧 주제라 두 번 적을 이유가 없다 (2026-08-27)
+    out.push({ date, keyword: a.localKeyword, topic: a.topic })
     posts = [
       {
         id: `forecast-${i}`,
@@ -617,6 +695,7 @@ export function forecastAutoDrafts(args: {
         title: '',
         body: '',
         mainKeyword: a.mainKeyword,
+        localKeyword: a.localKeyword,
         subKeywords: [],
         tags: [],
         auto: true,
@@ -670,6 +749,7 @@ export function plannedAssignments(args: {
         title: '',
         body: '',
         mainKeyword: a.mainKeyword,
+        localKeyword: a.localKeyword,
         subKeywords: [],
         tags: [],
         auto: true,
@@ -679,7 +759,7 @@ export function plannedAssignments(args: {
       },
       ...posts,
     ]
-    return { date: d.date, topic: d.topic, keyword: a.mainKeyword }
+    return { date: d.date, topic: d.topic, keyword: a.localKeyword }
   })
 }
 
