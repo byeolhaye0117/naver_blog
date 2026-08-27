@@ -55,8 +55,6 @@ export interface CopyPackage {
   tagList: string[]
   /** 우리가 손본 태그 (무엇을 왜 바꿨는지 화면에 보여준다) */
   tagFixes: { from: string; to: string }[]
-  /** 추리면서 뺀 태그 — 다른 태그에 통째로 들어 있어서 자리만 차지하던 것 */
-  tagDrops: { tag: string; inside: string }[]
   checklist: { label: string; detail?: string }[]
 }
 
@@ -491,25 +489,14 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     if (!tagsClean.includes(clean)) tagsClean.push(clean)
   }
   /*
-   * **다른 태그에 통째로 들어 있는 짧은 태그는 뺀다** (2026-08-26 회원 요청: "태그칸에 넣을
-   * 키워드들을 추려줘야 하고").
+   * **겹치는 태그를 빼던 것을 껐다** (2026-08-26 회원 요청: "이거 두개는 삭제해줘" — 화면의
+   * 「겹치는 태그를 뺐습니다」 안내를 가리켰다).
    *
-   * 회원 화면에 「쌍용동」과 「쌍용동헬스장」이 함께 올라와 있었다. 「쌍용동」은 자리만
-   * 차지한다 — 태그 칸에 넣는 개수는 한정돼 있고, 우리가 노리는 검색어는 긴 쪽이다.
-   *
-   * **버리지 않고 무엇을 왜 뺐는지 남긴다** (`tagDrops`) — 조용히 잘라내면 회원이 「내가
-   * 넣은 태그가 왜 없지」를 알 수 없다.
+   * 한때 「쌍용동」처럼 긴 태그(「쌍용동헬스장」)에 통째로 들어 있는 것을 뺐다. 그 안내를
+   * 지우면서 **빼는 것도 함께 껐다** — 안내만 지우고 빼기를 남기면 회원이 넣은 태그가
+   * 조용히 사라진다. 이 저장소는 조용히 잘라내는 것을 하지 않는다.
    */
-  const tagDrops: { tag: string; inside: string }[] = []
-  const tagList: string[] = []
-  for (const t of tagsClean) {
-    const bigger = tagsClean.find((o) => o !== t && o.includes(t))
-    if (bigger) {
-      tagDrops.push({ tag: t, inside: bigger })
-      continue
-    }
-    tagList.push(t)
-  }
+  const tagList = tagsClean
   const tags = tagList.map((t) => `#${t}`).join(' ')
   const tagsPlain = tagList.join(',')
 
@@ -554,9 +541,9 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
      * 「태그가 안 먹힌다」고 했다. 태그 칸은 한 칸에 하나씩 넣는 곳이다.
      */
     {
-      label: `해시태그 ${tagList.length}개 — 「태그 복사」 → 「태그 편집」 칸에 붙이고 Enter`,
+      label: `해시태그 ${tagList.length}개 — 「태그 편집」 칸에 하나씩 붙이고 Enter`,
       detail:
-        '한 덩어리로 들어가면 네이버 태그 칸이 한 번에 안 받는 것입니다 — 그때는 태그를 눌러 하나씩 복사해 붙이고 Enter 하세요. `#` 는 붙이지 않습니다 (태그 칸은 `#` 를 글자로 받습니다). 태그 안에 공백이 있으면 거기서 끊기니 붙여 씁니다',
+        '태그 카드에서 태그를 눌러 복사한 뒤 붙이고 Enter 를 반복하세요. 네이버 태그 칸은 한 번에 여러 개를 받지 않습니다 (쉼표·줄바꿈 모두 확인했습니다). 태그 안에 공백이 있으면 거기서 끊기니 붙여 씁니다',
     },
     /*
      * 정보글은 팩트가 우선이다 (회원 요청 2026-08-10). 검수가 「연구에 따르면」과 효과 수치는
@@ -622,7 +609,6 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     tagsPlain,
     tagList,
     tagFixes,
-    tagDrops,
     checklist,
   }
 }
