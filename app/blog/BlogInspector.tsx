@@ -37,6 +37,8 @@ interface Result {
   firstPageRate?: number
   indexDetail?: IndexCheck[]
   indexSummary?: IndexSummary
+  /** 어느 글로 쟀는지 — 2주 지난 글로만 잰다 (최신 글은 아직 반영 전일 수 있다) */
+  indexNote?: string
   meaning: string
   agency?: AgencyJudgement
   sponsorScans?: { title: string; url: string; level: SponsorLevel; found: string[]; note: string }[]
@@ -359,6 +361,14 @@ export default function BlogInspector({ initialId }: { initialId: string }) {
                   블로그탭 {data.indexSummary?.blogTabRate ?? '—'}% · 통합검색{' '}
                   {data.indexSummary?.unifiedRate ?? '—'}% (표본 {data.indexDetail.length}편)
                 </p>
+                {/*
+                  **어느 글로 쟀는지 밝힌다** (2026-08-27). 최신 글로 재면 아직 반영 전인
+                  글이 누락으로 잡혀 멀쩡한 블로그가 저품질로 나온다 — 그래서 2주 지난
+                  글로만 재는데, 그 사실을 안 적으면 회원이 판정만 보고 결론을 낸다.
+                */}
+                {data.indexNote && (
+                  <p className="muted mt-1 text-[11px] leading-relaxed">{data.indexNote}</p>
+                )}
                 <ul className="mt-2 space-y-2">
                   {data.indexDetail.map((d) => (
                     <li key={d.title} className="panel bd rounded-xl border px-2.5 py-2">
