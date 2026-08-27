@@ -129,3 +129,62 @@ export function summarizeIndex(checks: IndexCheck[]): IndexSummary {
 
   return { blogTabRate, unifiedRate, counts, headline }
 }
+
+/**
+ * **색인 검사에 쓸 글을 고른다 — 최신 글로 재면 안 된다** (2026-08-27).
+ *
+ * ── 왜 (회원이 보내준 영상에서) ─────────────────────────────
+ * "지금은 글을 발행하고 2주 뒤, 늦으면 4주 뒤에 반영되는 글들이 상당히 많습니다.
+ *  그래서 어제 글 기준으로 체크하시면 안 되는 겁니다."
+ *
+ * 우리 색인 검사는 **RSS 맨 앞 세 편**, 즉 가장 최근 글로 쟀다. 그건 「아직 반영이 안 된
+ * 글」을 「검색에서 빠진 글」로 세는 것이고, 그대로 두면 멀쩡한 블로그가 저품질로 나온다.
+ * 회원이 그 판정을 보고 블로그를 갈아엎으면 그건 우리가 만든 손해다.
+ *
+ * ── 어떻게 고르나 ───────────────────────────────────────────
+ * ① 발행 2주(`INDEX_MIN_AGE_DAYS`)가 지난 글부터 고른다.
+ * ② 그것만으로 표본이 모자라면 남은 자리를 4주 지난 글로 채우지 않는다 — 2주가 이미
+ *    4주를 포함한다 (오래된 글일수록 조건을 만족한다). 모자라면 **모자란 대로 둔다.**
+ * ③ 2주 지난 글이 하나도 없으면(=블로그를 막 시작했으면) 판정하지 않는다. 억지로 최신
+ *    글을 넣어 「누락」이라고 하는 것보다 「아직 잴 수 없다」가 맞다.
+ *
+ * 날짜를 못 읽은 글은 **넣지 않는다** — 언제 쓴 것인지 모르면 이 판정에 쓸 수 없다.
+ */
+export const INDEX_MIN_AGE_DAYS = 14
+
+export interface IndexSamplePick<T> {
+  picks: T[]
+  /** 조건을 만족한 글이 몇 편이었나 (고른 개수와 다르다 — 상한이 있다) */
+  eligible: number
+  /** 왜 이만큼만 골랐는지 화면에 그대로 적는다 */
+  note: string
+}
+
+export function pickIndexSamples<T extends { date?: string }>(
+  items: T[],
+  today: string,
+  want: number,
+  minAgeDays: number = INDEX_MIN_AGE_DAYS
+): IndexSamplePick<T> {
+  const day = (s: string) => Date.parse(`${s.slice(0, 10)}T00:00:00.000Z`)
+  const now = day(today)
+  const aged = !Number.isFinite(now)
+    ? []
+    : items.filter((i) => {
+        const t = day(i.date ?? '')
+        return Number.isFinite(t) && (now - t) / 86_400_000 >= minAgeDays
+      })
+  const picks = aged.slice(0, Math.max(0, want))
+  if (!picks.length) {
+    return {
+      picks,
+      eligible: 0,
+      note: `발행한 지 ${minAgeDays}일이 지난 글이 없어 색인 검사를 하지 않았습니다 — 최신 글은 아직 반영 전일 수 있어 넣으면 누락으로 잘못 나옵니다.`,
+    }
+  }
+  return {
+    picks,
+    eligible: aged.length,
+    note: `발행한 지 ${minAgeDays}일이 지난 글 ${picks.length}편으로 쟀습니다 — 네이버 반영이 2~4주 걸리는 때가 있어 최신 글로 재면 멀쩡한 글도 누락으로 나옵니다.`,
+  }
+}

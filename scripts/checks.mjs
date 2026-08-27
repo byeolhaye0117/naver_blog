@@ -2833,8 +2833,55 @@ ok(noAd.adDepth === undefined && noAd.adNote === undefined, '광고 지표를 �
 
 // ─────────────────────────────────────────────────────────────
 console.log('\n[41] 누락 판별 — 블로그탭과 통합검색을 따로 본다')
-const { indexVerdict, buildIndexCheck, summarizeIndex, verdictNote, VERDICT_LABEL, VERDICT_TONE } =
+const { indexVerdict, buildIndexCheck, summarizeIndex, verdictNote, VERDICT_LABEL, VERDICT_TONE, pickIndexSamples, INDEX_MIN_AGE_DAYS } =
   require(`${OUT}/analysis/indexcheck.js`)
+
+/*
+ * ── 색인 검사에 쓸 글을 고른다 (2026-08-27) ────────────────────
+ *
+ * 회원이 보내준 영상의 핵심 지적: "지금은 글을 발행하고 2주 뒤, 늦으면 4주 뒤에 반영되는
+ * 글들이 상당히 많습니다. 그래서 어제 글 기준으로 체크하시면 안 되는 겁니다."
+ *
+ * 우리 색인 검사는 **RSS 맨 앞 세 편**(=가장 최근 글)으로 쟀다. 아직 반영이 안 된 글을
+ * 「검색에서 빠진 글」로 세는 것이라, 멀쩡한 블로그가 저품질로 나온다. 회원이 그 판정을
+ * 보고 블로그를 갈아엎으면 그건 우리가 만든 손해다.
+ */
+{
+  const T = '2026-08-27'
+  const items = [
+    { title: '어제 글', date: '2026-08-26' },
+    { title: '엿새 전 글', date: '2026-08-21' },
+    { title: '보름 전 글', date: '2026-08-12' },
+    { title: '한 달 전 글', date: '2026-07-25' },
+    { title: '두 달 전 글', date: '2026-06-20' },
+  ]
+  const got = pickIndexSamples(items, T, 3)
+  ok(got.picks.length === 3, '표본 수만큼 고른다', String(got.picks.length))
+  ok(!got.picks.some((p) => p.title === '어제 글' || p.title === '엿새 전 글'),
+    `${INDEX_MIN_AGE_DAYS}일이 안 지난 글은 넣지 않는다`, got.picks.map((p) => p.title).join())
+  ok(got.picks[0].title === '보름 전 글', '조건을 만족하는 것 중 최신부터 (오래된 것만 보면 옛 상태를 재게 된다)', got.picks[0].title)
+  ok(got.note.includes(`${INDEX_MIN_AGE_DAYS}일`), '왜 이 글들로 쟀는지 화면에 적을 말을 준다', got.note)
+
+  // 갓 시작한 블로그 — 억지로 최신 글을 넣어 「누락」이라고 하지 않는다
+  const fresh = pickIndexSamples([{ title: '어제 글', date: '2026-08-26' }], T, 3)
+  ok(fresh.picks.length === 0 && fresh.eligible === 0, '2주 지난 글이 없으면 재지 않는다')
+  ok(fresh.note.includes('색인 검사를 하지 않았습니다'), '안 쟀다고 밝힌다 (빈 화면을 남기지 않는다)')
+
+  // 날짜를 못 읽은 글은 뺀다 — 언제 쓴 것인지 모르면 이 판정에 쓸 수 없다
+  ok(pickIndexSamples([{ title: '날짜없음' }, { title: '보름 전 글', date: '2026-08-12' }], T, 3)
+    .picks.map((p) => p.title).join() === '보름 전 글', '날짜를 모르는 글은 넣지 않는다')
+  ok(pickIndexSamples(items, '엉뚱한날짜', 3).picks.length === 0, '오늘 날짜가 이상하면 재지 않는다')
+
+  // 라우트가 실제로 이걸 쓰는지 — 규칙만 만들고 안 쓰면 아무것도 안 달라진다
+  const { readFileSync: rf } = require('node:fs')
+  const blogApi = rf(new URL('../app/api/blog/route.ts', import.meta.url), 'utf8')
+  const blogCode = blogApi.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  ok(blogCode.includes('pickIndexSamples'), '색인 검사가 이 규칙으로 표본을 고른다')
+  ok(!/feed\.items[\s\S]{0,200}\.slice\(0, INDEX_SAMPLE\)/.test(blogCode), '최신 글부터 그냥 자르지 않는다')
+  ok(blogCode.includes('indexNote'), '어느 글로 쟀는지 화면으로 넘긴다')
+  const blogUi = rf(new URL('../app/blog/BlogInspector.tsx', import.meta.url), 'utf8')
+  ok(blogUi.includes('data.indexNote'), '화면이 그 말을 보여준다')
+}
 
 ok(indexVerdict(true, true) === 'normal', '두 곳 다 나오면 정상')
 ok(indexVerdict(true, false) === 'unifiedMissing', '블로그탭에만 있으면 통합검색 누락')

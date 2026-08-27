@@ -11,7 +11,7 @@ import {
 } from '@/lib/analysis/blogscore'
 import { findBlogRank, isTrivialQuery, totalBlogCount, TRIVIAL_QUERY_MAX } from '@/lib/naver/blogsection'
 import { checkUnifiedIndexed } from '@/lib/naver/unified'
-import { buildIndexCheck, summarizeIndex, type IndexCheck } from '@/lib/analysis/indexcheck'
+import { buildIndexCheck, pickIndexSamples, summarizeIndex, type IndexCheck } from '@/lib/analysis/indexcheck'
 import { judgeAgency, scanSponsorship, type SponsorScan } from '@/lib/analysis/agency'
 import { fetchPublishedPost } from '@/lib/naver/blogpost'
 import { fetchBlogStat, fetchPostPage, fetchSympathyCount, type PostRow } from '@/lib/naver/blogstat'
@@ -132,6 +132,7 @@ export async function POST(req: Request) {
       | { query: string; rank: number | null; total: number | null; trivial: boolean; competition: string }[]
       | undefined
     let indexedRate: number | undefined
+    let indexNote: string | undefined
     let indexDetail: IndexCheck[] | undefined
     let indexSummary: ReturnType<typeof summarizeIndex> | undefined
 
@@ -149,9 +150,17 @@ export async function POST(req: Request) {
        * **주인이 검색을 막아둔 글은 뺀다.** 「검색 허용 안 함」으로 올린 글이 검색에
        * 안 나오는 건 당연한데, 그걸 색인 검사에 넣으면 정상 블로그를 누락으로 오판한다.
        */
-      const idxPicks = feed.items
-        .filter((i) => i.title.length >= 8 && ![...unsearchable].some((no) => i.link.includes(no)))
-        .slice(0, INDEX_SAMPLE)
+      /*
+       * **최신 글로 재면 안 된다** (2026-08-27, 회원이 보내준 영상). 네이버 반영이 2~4주
+       * 걸리는 때가 있어, 어제 글이 안 나오는 것은 누락이 아니라 아직 반영 전인 것이다.
+       * 여기서 최신 글을 넣으면 멀쩡한 블로그가 저품질로 나온다.
+       */
+      const idxPick = pickIndexSamples(
+        feed.items.filter((i) => i.title.length >= 8 && ![...unsearchable].some((no) => i.link.includes(no))),
+        today,
+        INDEX_SAMPLE
+      )
+      const idxPicks = idxPick.picks
       const idxGot: IndexCheck[] = []
       for (const it of idxPicks) {
         // 두 조회는 서로 무관하므로 같이 던진다 (한 표본에 2초씩 더 쓰지 않게)
@@ -165,6 +174,7 @@ export async function POST(req: Request) {
         if (tab === null && uni === null) continue
         idxGot.push(buildIndexCheck({ title: it.title, blogTab: tab, unified: uni }))
       }
+      indexNote = idxPick.note
       if (idxGot.length) {
         indexDetail = idxGot
         indexSummary = summarizeIndex(idxGot)
@@ -256,6 +266,7 @@ export async function POST(req: Request) {
       trivialMax: TRIVIAL_QUERY_MAX,
       indexDetail,
       indexSummary,
+      indexNote,
       meaning: meaningForUs(profile),
       agency,
       sponsorScans: scans,
