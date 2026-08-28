@@ -1042,7 +1042,19 @@ export function checkPost(input: CheckInput): CheckResult {
    * 상호명만 두 번 이상이면 `warn` 에 둔다 — 그건 「멘트」가 아니다.
    */
   if (input.type === 'info') {
-    const marks: { label: string; re: RegExp }[] = [
+    /*
+     * `unless` — **앞뒤를 봐야 뜻이 갈리는 낱말**이 있다 (2026-08-28).
+     *
+     * 회원: "아직도 안돼." 「벌크업 식단」 글에서 즉시수정이 안 없어졌다. 이 갈래에서 가장
+     * 새기 쉬운 것이 「상담」이다 — 우리를 부르는 말일 때만 홍보다:
+     *   「궁금하시면 상담 주세요」        → 홍보 (막아야 한다)
+     *   「몸에 이상이 있으면 전문가와 상담」 → 안전 안내 (정보글에 있어도 되는 말이다)
+     *
+     * 뒤엣것까지 막으면 **고칠 방법이 없는 즉시수정**이 된다. 모델은 건강 주제에서 그
+     * 문장을 자연스럽게 다시 쓰고, 점수는 79 에 묶인 채 돌기만 한다 — 「칼로리」에서 겪은
+     * 것과 같은 모양이다.
+     */
+    const marks: { label: string; re: RegExp; unless?: RegExp }[] = [
       { label: '전화번호', re: /0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/ },
       { label: '링크', re: /(https?:\/\/|naver\.me|talk\.naver|booking\.naver|카카오톡\s*채널|카톡\s*채널|오픈채팅|스마트스토어|네이버\s*톡톡)/ },
       { label: '플레이스·위치', re: /(place\.naver|찾아오시는\s*길|오시는\s*길|위치는\s*아래|지도\s*보기)/ },
@@ -1068,7 +1080,12 @@ export function checkPost(input: CheckInput): CheckResult {
        * 「수업하면서」·「가르치다 보면」·「현장에서 보면」. (처음에 권했던 「회원분들 보면」은
        * 2026-08-27 에 뺐다 — 아래 「회원·등록 관계」 주석 참고.)
        */
-      { label: '홍보 낱말', re: /(상담|예약|문의|등록\s*(하|해|은|을|비)|회원권|이용권)/ },
+      {
+        label: '홍보 낱말',
+        // 앞 낱말까지 함께 잡아 두고 unless 로 걸러낸다 (뒤돌아보기 정규식은 쓰지 않는다)
+        re: /([가-힣]{2,6}(?:와|과|에게|한테)\s*)?(상담|예약|문의|등록\s*(?:하|해|은|을|비)|회원권|이용권)/,
+        unless: /^(전문가|의사|병원|약사|영양사|담당의|주치의|의료진|전문의)(와|과|에게|한테)/,
+      },
       /*
        * **「우리 회원」 관계를 드러내는 말** (2026-08-27 회원 요청: "정보성글에는 제가 센타
        * 상담하다보면 등록하는 회원님들 이런 문구들도 모두빼줘").
@@ -1106,8 +1123,24 @@ export function checkPost(input: CheckInput): CheckResult {
     ]
     const hit: string[] = []
     for (const m of marks) {
-      const found = m.re.exec(bodyText)
-      if (found) hit.push(`${m.label}(「${found[0].trim().slice(0, 20)}」)`)
+      /*
+       * `unless` 가 있으면 **걸린 구절을 한 번 더 본다.** 앞에 붙은 말이 뜻을 뒤집는
+       * 경우가 있다 (「전문가와 상담」). 첫 번째 것이 걸러지면 그 뒤도 훑는다 — 한 문장이
+       * 봐줄 만하다고 글 전체가 통과하면 안 된다.
+       */
+      if (!m.unless) {
+        const found = m.re.exec(bodyText)
+        if (found) hit.push(`${m.label}(「${found[0].trim().slice(0, 20)}」)`)
+        continue
+      }
+      const all = new RegExp(m.re.source, 'g')
+      let f: RegExpExecArray | null
+      while ((f = all.exec(bodyText))) {
+        const phrase = f[0].trim()
+        if (m.unless.test(phrase)) continue
+        hit.push(`${m.label}(「${phrase.slice(0, 20)}」)`)
+        break
+      }
     }
     /*
      * **상호명은 이제 1회도 안 된다** (2026-08-27, 회원 요청 "일반 블로거가 쓰는 느낌으로").
