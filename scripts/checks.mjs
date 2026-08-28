@@ -9294,6 +9294,27 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
       require(`${OUT}/writing/autodraft.js`)
     const at5 = (d) => post({ auto: true, autoTopic: '가', createdAt: `${d}T20:00:00.000Z` })
 
+    /*
+     * ─── 하루 여러 편은 **다른 주제로 각 1편씩**이다 (2026-08-28 회원 정리) ──────────
+     *
+     * "같은주제로 2편을 쓰고 싶다는게 아니라 다른 주제로 각 1편씩 쓰고 싶단 이야기였어."
+     *
+     * 같은 주제로 두 편을 쓰면 그건 유사문서다 — 자동화가 스스로 감점을 만드는 짓이다.
+     * 한 편 채울 때마다 그 글이 쓰인 셈 치고 다음 것을 고르므로 같은 날 안에서도 겹치지
+     * 않는다. 화면 문구도 그 사실을 적는다.
+     */
+    {
+      const { fillDays } = require(`${OUT}/writing/autodraft.js`)
+      const two = fillDays({ plan: { perDay: 2, topics: ['가주제', '나주제', '다주제'] }, posts: [], from: '2026-08-29', days: 2 })
+      ok(two.length === 2 && two.every((d) => d.date === '2026-08-29'), '고른 날 하루에 두 줄을 채운다', JSON.stringify(two))
+      ok(new Set(two.map((d) => d.topic)).size === 2, '두 줄의 주제가 서로 다르다', JSON.stringify(two))
+      const three = fillDays({ plan: { perDay: 3 }, posts: [], from: '2026-08-29', days: 3 })
+      ok(new Set(three.map((d) => d.topic)).size === 3, '세 편도 전부 다른 주제다', JSON.stringify(three.map((d) => d.topic)))
+      // 화면이 그 사실을 적어야 회원이 「같은 주제로 두 편인가」를 묻지 않는다
+      const panelSrc = require('node:fs').readFileSync(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
+      ok(panelSrc.includes('편마다 다른 주제'), '편마다 다른 주제라고 화면에 적는다')
+    }
+
     ok(perDayOf(undefined) === 1, '안 정하면 하루 한 편')
     ok(perDayOf({ perDay: 2 }) === 2, '정한 값을 그대로 쓴다')
     ok(perDayOf({ perDay: 0 }) === 1 && perDayOf({ perDay: -3 }) === 1, '0 이하는 한 편으로 본다')
