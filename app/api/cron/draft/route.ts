@@ -142,11 +142,11 @@ async function run(
     return NextResponse.json({ skipped: '오늘 자동 초안이 이미 있습니다.', date: today })
   }
 
+  /*
+   * 지점은 **키워드 풀을 고를 때만** 쓴다 (2026-08-28). 글에는 안 들어가므로 없어도
+   * 쓸 수 있다 — 순위 추적 키워드가 있으면 그것으로 돈다. 아래에서 풀이 비었을 때만 막는다.
+   */
   const store = db.stores?.[0]
-  if (!store) {
-    await record({ ok: false, error: '지점이 없습니다. 지점을 먼저 등록해주세요.' })
-    return NextResponse.json({ skipped: '지점이 없습니다.' })
-  }
 
   /*
    * 키워드는 **순위 추적에 등록한 것**을 쓴다. 회원이 「이걸로 올라가고 싶다」고 직접 적어둔
@@ -154,7 +154,11 @@ async function run(
    * 키워드로 넘어간다.
    */
   const keywords = (db.rankTargets ?? []).map((t) => t.keyword).filter(Boolean)
-  const pool = keywords.length ? keywords : (store.localKeywords ?? [])
+  const pool = keywords.length ? keywords : (store?.localKeywords ?? [])
+  if (!pool.length) {
+    await record({ ok: false, error: '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록하거나 지점에 지역 키워드를 넣어주세요.' })
+    return NextResponse.json({ skipped: '쓸 키워드가 없습니다.' })
+  }
 
   /*
    * **회원이 정해 둔 것이 먼저다** (2026-08-23 요청: "그거 주제랑 키워드 내가 원하는걸로
@@ -201,7 +205,18 @@ async function run(
       },
       body: JSON.stringify({
         type: 'info',
-        storeId: store.id,
+        /*
+         * **지점을 넘기지 않는다** (2026-08-28 회원 요청: "자동완성되는것도 적용해줘").
+         *
+         * 손으로 쓰는 화면은 08-27 에 정보글에서 지점 칸을 없앴는데(회원 요청 "정보성글에는
+         * 구지 지점정보가 필요하지 않을것 같아") **새벽 크론만 예전처럼 지점을 실어 보내고
+         * 있었다.** 그러면 같은 정보글인데 손으로 쓴 것은 지점이 없고 자동으로 쓴 것은
+         * 지점이 붙어, 발행 관리·로테이션에서 두 갈래로 갈린다.
+         *
+         * 지점은 여기서 **키워드 풀을 고를 때만** 쓴다 (아래 pool) — 그건 글에 들어가는
+         * 값이 아니라 무엇으로 쓸지 정하는 값이다.
+         */
+        storeId: '',
         /*
          * **메인은 정보성 키워드, 지역 키워드는 조연** (2026-08-27 회원 결정).
          * 여태 이 자리에 지역 키워드가 들어가서 제목이 「쌍용동헬스장 벌크업식단…」으로
@@ -292,7 +307,8 @@ async function run(
     id: newId('post'),
     type: 'info',
     status: 'draft',
-    storeId: store.id,
+    // 정보글에는 지점이 없다 (2026-08-27~28) — 손으로 쓴 글과 같은 모양으로 저장한다
+    storeId: '',
     title: best.draft?.title ?? '',
     body: best.draft?.body ?? '',
     mainKeyword: assignment.mainKeyword,
