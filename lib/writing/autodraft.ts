@@ -362,18 +362,27 @@ function localOf(p: Post): string {
  */
 export function pickAssignment(args: {
   posts: Post[] | undefined
-  keywords: string[]
+  /**
+   * **지역 키워드 (조연) — 이제 자동 초안은 쓰지 않는다** (2026-08-28 회원 요청:
+   * "아예 이 칸을 없앨래").
+   *
+   * 08-27 에 메인 키워드가 주제로 바뀌면서 이 자리는 조연이 됐고, 회원이 화면에서 그 칸을
+   * 없애 달라고 했다. 값을 안 받으면 로테이션은 **주제 하나로만** 돈다.
+   *
+   * 손으로 쓰는 화면에는 조연 칸이 그대로 있다 — 없앤 것은 **자동 초안 설정**이다.
+   */
+  keywords?: string[]
   topics?: string[]
   /** 이만큼 안에 쓴 주제는 피한다 */
   avoidRecent?: number
 }): Assignment | null {
-  const keywords = args.keywords.map((k) => k.trim()).filter(Boolean)
+  const keywords = (args.keywords ?? []).map((k) => k.trim()).filter(Boolean)
   /*
    * **메인이 될 주제에서 구매력 있는 말을 뺀다** (2026-08-27). 이 자리가 곧 메인 키워드라
    * 「쌍용동 헬스장」·「헬스장 가격」이 들어오면 정보글이 아니라 홍보글이 된다.
    */
   const topics = pureInfoTopics(args.topics ?? INFO_TOPICS, keywords)
-  if (!keywords.length || !topics.length) return null
+  if (!topics.length) return null
 
   /*
    * 정보글만 본다. 홍보글·후기글이 같은 키워드를 써도 본문이 전혀 다르므로 로테이션을
@@ -396,7 +405,8 @@ export function pickAssignment(args: {
 
   const avoid = args.avoidRecent ?? Math.min(3, topics.length - 1)
   const pairs: { kw: string; topic: string; pairAge: number; topicAge: number }[] = []
-  for (const kw of keywords) {
+  // 지역 키워드를 안 쓰면 축이 주제 하나뿐이다 — 빈 칸 하나로 돌린다 (2026-08-28)
+  for (const kw of keywords.length ? keywords : ['']) {
     for (const topic of topics) {
       pairs.push({ kw, topic, pairAge: lastUsed(kw, topic), topicAge: topicLastUsed(topic) })
     }
@@ -427,8 +437,10 @@ export function pickAssignment(args: {
     localKeyword: best.kw,
     topic: best.topic,
     why: never
-      ? `아직 안 쓴 조합입니다 (「${best.kw}」 × 「${best.topic}」).`
-      : `이 조합을 가장 오래 안 썼습니다 — 정보글 ${best.pairAge + 1}편 전.`,
+      ? best.kw
+        ? `아직 안 쓴 조합입니다 (「${best.kw}」 × 「${best.topic}」).`
+        : `아직 안 쓴 주제입니다 (「${best.topic}」).`
+      : `${best.kw ? '이 조합을' : '이 주제를'} 가장 오래 안 썼습니다 — 정보글 ${best.pairAge + 1}편 전.`,
   }
 }
 
@@ -486,8 +498,6 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
 export function planAssignment(args: {
   plan: AutoDraftPlan | undefined
   posts: Post[] | undefined
-  /** 계획에 키워드가 없을 때 쓸 것 (순위 추적 → 지점 지역 키워드) */
-  fallbackKeywords: string[]
   /** 어느 날 몫인가 — 쉬는 날인지, 그 날 주제가 정해져 있는지를 이걸로 본다 */
   date?: string
 }): Assignment | null {
@@ -501,10 +511,18 @@ export function planAssignment(args: {
   const wantDate = args.date?.slice(0, 10)
   if (wantDate && plan.skip?.includes(wantDate)) return null
 
-  const keywords = plan.keywords?.length ? plan.keywords : args.fallbackKeywords
-  // 구매력 있는 말은 메인(=주제) 자리에 못 들어온다 — pureInfoTopics 가 같은 기준을 쓴다
-  const topics = pureInfoTopics(plan.topics?.length ? plan.topics : INFO_TOPICS, keywords)
-  const rotated = pickAssignment({ posts: args.posts, keywords, topics })
+  /*
+   * **지역 키워드 축을 없앴다** (2026-08-28 회원 요청: "아예 이 칸을 없앨래").
+   *
+   * 08-27 에 메인 키워드가 주제로 바뀌면서 지역 키워드는 조연이 됐고, 회원이 자동 작성
+   * 설정에서 그 칸을 없애 달라고 했다. **값을 안 쓰기로 했으면 계산에서도 빼야 한다** —
+   * 화면만 지우고 안에서 계속 고르면, 저장된 옛 목록으로 조용히 돌아간다.
+   *
+   * 옛 설정에 남아 있는 plan.keywords 도 읽지 않는다 (지우라고 시키지도 않는다 — 그냥 안 본다).
+   * 손으로 쓰는 화면의 조연 칸은 그대로다.
+   */
+  const topics = pureInfoTopics(plan.topics?.length ? plan.topics : INFO_TOPICS)
+  const rotated = pickAssignment({ posts: args.posts, topics })
 
   /*
    * **그 날 몫으로 채워 둔 주제가 있으면 그것을 쓴다** (2026-08-25 회원 요청).
@@ -512,41 +530,17 @@ export function planAssignment(args: {
    * 회원: "지금 저장된 설정에서 날짜가 있어서 같은 주제로 매일 돌지 않게 해줘야해."
    *
    * 다만 그 주제를 **회원이 고른 것이 아니다** — 날짜만 고르면 `fillDays` 가 로테이션을
-   * 돌려 날마다 다른 주제를 채워 넣는다. 키워드는 여기서도 로테이션이 고른다.
+   * 돌려 날마다 다른 주제를 채워 넣는다.
    */
   const fixed = wantDate ? plan.days?.find((d) => d.date === wantDate) : undefined
   if (fixed) {
     /*
-     * **주제를 회원이 정했으면 키워드는 「가장 오래 안 쓴 것」으로 고른다** (2026-08-26).
-     *
-     * 조합 로테이션(pickAssignment)의 답을 그대로 쓰면 안 된다. 그건 (키워드 × 주제)를
-     * 보는데 주제가 이미 정해져 있으면 그 축이 죽어서 **같은 키워드가 계속 나온다** —
-     * 사흘을 채워 두고 미리 세어 보니 세 날 다 같은 키워드였다.
-     *
-     * 여기서는 축이 하나뿐이므로 키워드만 놓고 오래 안 쓴 순서로 고른다. 같으면 목록 순서
-     * (같은 입력이면 늘 같은 답이 나오게 — 화면의 예상과 실제가 달라지면 안 된다).
+     * **채워 둔 날은 그 주제가 곧 메인 키워드다.** 지역 키워드를 고르던 자리는 2026-08-28 에
+     * 없앴다 (회원: "아예 이 칸을 없앨래") — 축이 하나뿐이라 고를 것이 없다.
      */
-    const infoPosts = (args.posts ?? [])
-      .filter((p) => p.type === 'info')
-      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
-    const age = (kw: string) => {
-      const i = infoPosts.findIndex((p) => localOf(p) === kw)
-      return i < 0 ? Infinity : i
-    }
-    const pool = keywords.map((k) => k.trim()).filter(Boolean)
-    /*
-     * 지역 키워드가 하나도 없어도 **글은 쓴다** (2026-08-27). 예전에는 여기서 null 을
-     * 돌려 그 날을 건너뛰었는데, 그때는 지역 키워드가 메인이라 없으면 쓸 것이 없었다.
-     * 이제 메인은 회원이 채워 둔 주제다 — 조연이 없다고 주연까지 접을 이유가 없다.
-     */
-    const localKeyword =
-      [...pool].sort((a, b) => age(b) - age(a) || pool.indexOf(a) - pool.indexOf(b))[0] ??
-      rotated?.localKeyword ??
-      ''
     return {
-      // 메인은 회원이 채워 둔 주제(정보성 검색어)다 — 지역 키워드는 조연 (2026-08-27)
       mainKeyword: fixed.topic,
-      localKeyword,
+      localKeyword: '',
       topic: fixed.topic,
       why: `${fixed.date} 몫으로 「${fixed.topic}」을 미리 채워 두었습니다.`,
     }
@@ -567,7 +561,6 @@ export function planAssignment(args: {
 export function fillDays(args: {
   plan: AutoDraftPlan | undefined
   posts: Post[] | undefined
-  fallbackKeywords: string[]
   /** 이 날짜부터 (YYYY-MM-DD) */
   from: string
   /** 며칠치 — 쉬는 날은 세지 않는다 */
@@ -666,7 +659,6 @@ export function planSummary(plan: AutoDraftPlan | undefined): string {
 export function forecastAutoDrafts(args: {
   plan: AutoDraftPlan | undefined
   posts: Post[] | undefined
-  fallbackKeywords: string[]
   /** 이 날짜부터 (YYYY-MM-DD) */
   from: string
   days: number
@@ -689,7 +681,7 @@ export function forecastAutoDrafts(args: {
   for (let i = 0; i < MAX_LOOK && out.length < want; i++) {
     const date = new Date(start + i * 86_400_000).toISOString().slice(0, 10)
     if (plan.skip?.includes(date)) continue
-    const a = planAssignment({ plan, posts, fallbackKeywords: args.fallbackKeywords, date })
+    const a = planAssignment({ plan, posts, date })
     if (!a) break
     // 화면의 「키워드」 칸은 지역 키워드다 — 메인은 곧 주제라 두 번 적을 이유가 없다 (2026-08-27)
     out.push({ date, keyword: a.localKeyword, topic: a.topic })
@@ -734,7 +726,6 @@ export function forecastAutoDrafts(args: {
 export function plannedAssignments(args: {
   plan: AutoDraftPlan | undefined
   posts: Post[] | undefined
-  fallbackKeywords: string[]
   /** 이 날짜부터 (지난 날짜로 채워 둔 것은 세지 않는다) */
   from: string
 }): { date: string; topic: string; keyword?: string }[] {
@@ -745,7 +736,7 @@ export function plannedAssignments(args: {
   if (plan.off) return days
   let posts = [...(args.posts ?? [])]
   return days.map((d, i) => {
-    const a = planAssignment({ plan, posts, fallbackKeywords: args.fallbackKeywords, date: d.date })
+    const a = planAssignment({ plan, posts, date: d.date })
     if (!a) return d
     posts = [
       {

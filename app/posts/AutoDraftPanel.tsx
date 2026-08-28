@@ -22,7 +22,6 @@ export default function AutoDraftPanel({
   today,
   hasTodayDraft,
   plan: savedPlan,
-  keywordPool,
   settingsOpen = false,
 }: {
   runs?: AutoDraftRun[]
@@ -30,8 +29,6 @@ export default function AutoDraftPanel({
   hasTodayDraft: boolean
   /** 회원이 정해 둔 것 (2026-08-23) */
   plan?: AutoDraftPlan
-  /** 고를 수 있는 키워드 — 순위 추적 + 지점 지역 키워드 */
-  keywordPool: string[]
   /**
    * 설정을 펼친 채로 열까.
    *
@@ -127,7 +124,7 @@ export default function AutoDraftPanel({
       if (!res.ok) throw new Error(data?.error ?? '주제를 정하지 못했습니다.')
       const filled: { date: string; topic: string }[] = data?.days ?? []
       if (!filled.length)
-        throw new Error('쓸 키워드가 없어 정하지 못했습니다 — ②에서 지역 키워드를 고르거나 순위 추적에 등록해 주세요.')
+        throw new Error('쓸 주제가 없어 정하지 못했습니다 — ①에서 주제를 담아 주세요.')
       /*
        * **채운 날은 쉬는 날에서 뺀다** (2026-08-26). 예전에 「삭제」로 뺐던 날을 다시 채우면
        * 두 곳에 같은 날짜가 남아 화면에 「이 날은 쓰지 않습니다」와 「미리 채워둠」이 함께
@@ -356,50 +353,21 @@ export default function AutoDraftPanel({
             </details>
           </section>
 
-          {/* ── ② 지역 키워드 (조연) ── */}
-          <section>
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              {/*
-                **번호를 ②로 내리고 이름을 바꿨다** (2026-08-28 회원 요청: "자동작성 키워드
-                부분 수정해줘").
+          {/*
+            **② 지역 키워드 칸을 없앴다** (2026-08-28 회원 요청: "아예 이 칸을 없앨래").
 
-                08-27 에 정보글 메인 키워드가 **주제(정보성 검색어)**로 바뀌면서, 이 칸의
-                말들(「성정동 헬스장」·「쌍용동PT」)은 **조연**이 됐다 — 본문 한두 번과
-                해시태그 자리다. 그런데 화면은 여전히 이 칸을 ①「쓸 키워드」로 맨 앞에 두고
-                있었다. 회원 화면 요약에도 「키워드 성정동 헬스장 · 주제 식물성단백질음식」
-                순서로 떠서, 무엇이 제목을 여는 말인지 거꾸로 읽힌다.
-              */}
-              <h3 className="text-[13px] font-bold">② 지역 키워드 (조연)</h3>
-              <Badge tone={plan.keywords?.length ? 'good' : 'default'}>
-                {plan.keywords?.length ? `${plan.keywords.length}개 고름` : '전부'}
-              </Badge>
-            </div>
-            <p className="muted mb-2 text-[11px] leading-relaxed">
-              <b>제목을 여는 말이 아닙니다.</b> 정보글 제목은 위 ①의 주제로 열고, 이 지역 키워드는
-              본문에 한두 번과 해시태그에만 들어갑니다 — 지역 신호를 잡는 자리입니다. 고른 것
-              안에서만 돌아가며 쓰고, 하나도 안 고르면 순위 추적에 등록한 것 전부를 씁니다.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {keywordPool.map((k) => {
-                const on = (plan.keywords ?? []).includes(k)
-                return (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => toggle('keywords', k)}
-                    className={`rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition ${
-                      on ? 'bg-brand-600 border-brand-600 text-white' : 'bd hover:bg-slate-500/8'
-                    }`}
-                  >
-                    {k}
-                  </button>
-                )
-              })}
-              {keywordPool.length === 0 && (
-                <p className="muted text-[11.5px]">순위 추적에 등록한 키워드가 없습니다.</p>
-              )}
-            </div>
-          </section>
+            08-27 에 정보글 메인 키워드가 주제(정보성 검색어)로 바뀌면서 이 칸의 말들
+            (「성정동 헬스장」·「쌍용동PT」)은 조연이 됐다. 08-28 오전에 이름과 순서를
+            바로잡았는데, 회원이 그 다음 말이 이것이다 — 조연이면 자동 초안 설정에 칸을
+            둘 이유가 없다.
+
+            **계산에서도 뺐다** (lib/writing/autodraft.ts). 화면만 지우고 안에서 계속 고르면
+            저장된 옛 목록으로 조용히 돌아간다 — 이 저장소가 반복해서 겪은 「한쪽만 고친 것」이다.
+            그래서 자동 초안의 로테이션은 이제 **주제 하나로만** 돈다.
+
+            손으로 쓰는 화면(app/write)의 「지역 키워드 (조연)」 칸은 그대로다 — 없앤 것은
+            자동 초안 설정이다.
+          */}
 
           {/*
             ── ③ 날짜별 주제 — 날짜는 회원이, 주제는 앱이 (2026-08-25) ──────────
