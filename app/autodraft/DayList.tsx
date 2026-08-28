@@ -156,10 +156,11 @@ export default function DayList({
       )}
 
       <ul className="space-y-2">
-        {written.map((d) => {
+        {/* 하루에 여러 편이면 같은 날짜가 여러 줄이다 (2026-08-28) — 열쇠에 주제를 붙인다 */}
+        {written.map((d, i) => {
           return (
             <li
-              key={d.date}
+              key={`${d.date}|${d.topic}|${i}`}
               className={`rounded-xl px-3.5 py-3 ${d.when === 'upcoming' ? 'bd border border-dashed' : 'panel'}`}
             >
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -270,12 +271,13 @@ export default function DayList({
       {upcoming.length > 0 && (
         <details className="bd mt-3 rounded-xl border border-dashed px-3.5 py-2.5">
           <summary className="cursor-pointer text-[12px] font-bold select-none">
-            채워 두신 앞날 {upcoming.length}일 보기
+            {/* 하루 여러 편이면 「일」이 아니라 「편」이다 (2026-08-28) */}
+            채워 두신 앞날 {upcoming.length}편 보기
             <span className="muted ml-2 font-semibold">— 아직 안 쓴 것입니다</span>
           </summary>
           <ul className="mt-2 space-y-2">
-            {upcoming.map((d) => (
-              <li key={d.date} className="bd rounded-xl border border-dashed px-3.5 py-3">
+            {upcoming.map((d, i) => (
+              <li key={`${d.date}|${d.topic}|${i}`} className="bd rounded-xl border border-dashed px-3.5 py-3">
                 <div className="mb-1 flex flex-wrap items-center gap-1.5">
                   <span className="tnum text-[12px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
                   {d.when === 'today' && <Badge tone="info">오늘</Badge>}

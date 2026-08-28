@@ -1,7 +1,15 @@
 import { readDB } from '@/lib/store'
 import { PageHeader } from '@/components/AppShell'
 import { Card } from '@/components/ui'
-import { autoDraftDays, hasTodayAutoDraft, normalizePlan, plannedAssignments, seoulToday } from '@/lib/writing/autodraft'
+import {
+  autoDraftDays,
+  hasTodayAutoDraft,
+  normalizePlan,
+  perDayOf,
+  plannedAssignments,
+  seoulToday,
+  todayAutoDraftCount,
+} from '@/lib/writing/autodraft'
 import AutoDraftPanel from '../posts/AutoDraftPanel'
 import DayList from './DayList'
 
@@ -50,13 +58,15 @@ export default async function AutoDraftPage() {
     <>
       <PageHeader
         title="자동 작성"
-        desc="매일 새벽 5시에 정보글 초안을 한 편 써 둡니다. 무엇으로 쓸지 여기서 정하고, 실제로 나온 글과 실행 기록도 여기서 봅니다. 발행 버튼은 회원님이 누르셔야 합니다 — 네이버는 자동 발행을 열어두지 않습니다."
+        desc="매일 새벽 5시부터 정보글 초안을 써 둡니다 (하루 편수는 아래에서 정합니다 — 5·6·7시에 한 편씩). 무엇으로 쓸지 여기서 정하고, 실제로 나온 글과 실행 기록도 여기서 봅니다. 발행 버튼은 회원님이 누르셔야 합니다 — 네이버는 자동 발행을 열어두지 않습니다."
       />
 
       <AutoDraftPanel
         runs={db.autoDraftRuns}
         today={today}
         hasTodayDraft={hasTodayAutoDraft(db.posts, today)}
+        // 오늘 몇 편 썼고 몇 편이 목표인가 — 상태 줄이 그것을 말한다 (2026-08-28)
+        perDay={{ wrote: todayAutoDraftCount(db.posts, today), want: perDayOf(db.autoDraftPlan) }}
         plan={db.autoDraftPlan}
         // 이 화면 전체가 자동 작성이다 — 설정을 접어 둘 이유가 없다 (2026-08-24)
         settingsOpen
@@ -81,7 +91,7 @@ export default async function AutoDraftPage() {
           emptyNote={
             db.autoDraftPlan?.off
               ? '자동 초안을 꺼두셨습니다. 위에서 다시 켜면 매일 새벽에 한 편씩 씁니다.'
-              : '아직 쓴 글도, 채워 두신 날도 없습니다. 매일 새벽 5시에 한 편씩 쓰고, 쓴 날은 여기에 쌓입니다.'
+              : '아직 쓴 글도, 채워 두신 날도 없습니다. 매일 새벽 5시부터 한 편씩 쓰고, 쓴 날은 여기에 쌓입니다.'
           }
         />
       </Card>
