@@ -4,7 +4,7 @@ import { gatherSuggestions } from '@/lib/naver/autocomplete'
 import { keywordTool } from '@/lib/naver/searchad'
 import { recentBlogCount } from '@/lib/naver/blogsection'
 import { hasAdKeys } from '@/lib/naver/client'
-import { SHOW_MAX, TOPIC_SEEDS, attachRecent, buildCandidates, pageOf, pageRange } from '@/lib/writing/topic-explore'
+import { SHOW_MAX, TOPIC_SEEDS, attachRecent, buildCandidates, dedupeByCore, pageOf, pageRange } from '@/lib/writing/topic-explore'
 
 export const dynamic = 'force-dynamic'
 // 자동완성 3개 + 검색광고 1회 + 발행량 여러 번을 순서대로 부른다
@@ -78,7 +78,16 @@ export async function POST(req: Request) {
      * 검색광고는 같은 씨앗에 같은 순서로 오므로 다시 눌러도 열두 줄이 그대로다.
      */
     const page = Number.isFinite(body.page) ? Math.max(0, Math.trunc(body.page as number)) : 0
-    const info = candidates.filter((c) => c.intent === 'info')
+    /*
+     * **뜻이 같은 말을 하나로 묶는다** (2026-08-28 회원 요청: "주제가 비슷한게 너무 많아 …
+     * 기초대사량 / 기초대사량 높이기 이런것들 사실은 다 기초대사량에 관한거잖아").
+     *
+     * 줄 세운 뒤에 묶는다 — 발행량이 적은 쪽이 남는다. 묶인 말은 버리지 않고 그 줄에
+     * 적어 돌려준다 (조용히 잘라내지 않는다).
+     */
+    const infoAll = candidates.filter((c) => c.intent === 'info')
+    const info = dedupeByCore(infoAll)
+    const merged = infoAll.length - info.length
     const pick = pageOf(info, page)
     const range = pageRange(info.length, page)
 
@@ -109,6 +118,8 @@ export async function POST(req: Request) {
       note: {
         found: candidates.length,
         shown: shown.length,
+        /** 뜻이 같아 한 줄로 묶은 개수 — 화면이 그 사실을 밝힌다 (2026-08-28) */
+        merged,
         /** 지금 몇 번째를 보고 있나 — 「409개 중 13~24번째」 */
         total: info.length,
         from: range.from,
