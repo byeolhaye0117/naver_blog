@@ -25,6 +25,23 @@ export interface HardWord {
   easy: string
   /** 왜 걸렸는지 — 화면에 이유를 적어준다 */
   why: '다른 분야 용어' | '어렵게 쓴 말' | '단위는 기호로'
+  /**
+   * **숫자에 붙어 있을 때만 잡는다** (2026-08-28).
+   *
+   * 회원 지적: "해도 안고쳐지는데?" — 「벌크업 식단」 글이 「평소 쓰는 말로 쓰기」에서 계속
+   * 즉시수정으로 걸려 79점에 묶여 있었다. 걸린 낱말이 「칼로리」였다.
+   *
+   * 이 규칙은 원래 **단위**를 위한 것이다 (회원 요청 2026-08-10: "g, kg 같은 단위는
+   * 한글이 아니라 영어로 나오게"). 「단백질 10그램」 → 「10g」이 그 얘기다.
+   *
+   * 그런데 「칼로리」·「그램」은 **보통명사로도 쓰인다** — 「하루 칼로리를 늘리세요」가
+   * 그렇다. 그걸 「하루 kcal를 늘리세요」로 바꿀 수는 없다. 즉 **고칠 방법이 없는 즉시수정**을
+   * 만들어 놓고 고쳐 쓰기를 돌린 셈이고, 식단 글에서는 이 낱말이 안 나올 수가 없다.
+   *
+   * 그래서 단위 갈래는 **앞에 숫자가 붙어 있을 때만** 잡는다. 다른 갈래(딴 분야 말·어렵게
+   * 쓴 말)는 그대로다 — 그건 어디에 나와도 바꿀 수 있는 말이다.
+   */
+  numeric?: true
 }
 
 export const HARD_WORDS: HardWord[] = [
@@ -76,19 +93,19 @@ export const HARD_WORDS: HardWord[] = [
    *
    * 시간(분·초·시간)은 넣지 않는다 — 「15분」이 「15min」보다 자연스럽다.
    */
-  { word: '킬로그램', easy: 'kg', why: '단위는 기호로' },
-  { word: '킬로칼로리', easy: 'kcal', why: '단위는 기호로' },
-  { word: '센티미터', easy: 'cm', why: '단위는 기호로' },
-  { word: '밀리미터', easy: 'mm', why: '단위는 기호로' },
-  { word: '킬로미터', easy: 'km', why: '단위는 기호로' },
-  { word: '밀리리터', easy: 'ml', why: '단위는 기호로' },
-  { word: '그램', easy: 'g', why: '단위는 기호로' },
-  { word: '칼로리', easy: 'kcal', why: '단위는 기호로' },
+  { word: '킬로그램', easy: 'kg', why: '단위는 기호로', numeric: true },
+  { word: '킬로칼로리', easy: 'kcal', why: '단위는 기호로', numeric: true },
+  { word: '센티미터', easy: 'cm', why: '단위는 기호로', numeric: true },
+  { word: '밀리미터', easy: 'mm', why: '단위는 기호로', numeric: true },
+  { word: '킬로미터', easy: 'km', why: '단위는 기호로', numeric: true },
+  { word: '밀리리터', easy: 'ml', why: '단위는 기호로', numeric: true },
+  { word: '그램', easy: 'g', why: '단위는 기호로', numeric: true },
+  { word: '칼로리', easy: 'kcal', why: '단위는 기호로', numeric: true },
   /*
    * 「프로」(30프로)는 넣지 않는다 — 「프로그램」이 그대로 걸린다 (앞이 글 시작이면 가드가
    * 안 듣는다). 「퍼센트」만 잡는다.
    */
-  { word: '퍼센트', easy: '%', why: '단위는 기호로' },
+  { word: '퍼센트', easy: '%', why: '단위는 기호로', numeric: true },
 ]
 
 /*
@@ -118,10 +135,19 @@ export function findHardWords(text: string): HardWordHit[] {
   const hay = text ?? ''
   const hits: HardWordHit[] = []
   for (const w of HARD_WORDS) {
-    // 앞: 한글이 아닌 것(또는 글 시작) / 뒤: 조사·어미가 붙을 수 있다
-    const re = new RegExp(`(^|[^가-힣])(${w.word}[가-힣]{0,3})`, 'g')
+    /*
+     * 단위 갈래는 **숫자에 붙어 있을 때만** 잡는다 (2026-08-28) — 「단백질 10그램」은
+     * 「10g」으로 고칠 수 있지만 「하루 칼로리를 늘리세요」는 고칠 방법이 없다. 위 numeric
+     * 주석 참고.
+     *
+     * 그 밖의 갈래는 앞이 한글이 아니어야 한다 — 「반등」을 막으면서 「일반등급」까지
+     * 잡히면 안 된다.
+     */
+    const re = w.numeric
+      ? new RegExp(`\\d[\\d,.]*\\s*(${w.word}[가-힣]{0,3})`, 'g')
+      : new RegExp(`(?:^|[^가-힣])(${w.word}[가-힣]{0,3})`, 'g')
     const m = re.exec(hay)
-    if (m) hits.push({ ...w, found: m[2] })
+    if (m) hits.push({ ...w, found: m[1] })
   }
   return hits
 }
