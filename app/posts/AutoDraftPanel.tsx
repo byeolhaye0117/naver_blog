@@ -247,7 +247,7 @@ export default function AutoDraftPanel({
                 <dd>
                   {stored.off
                     ? '꺼둠 — 자동으로 쓰지 않습니다'
-                    : `매일 새벽 5시부터 ${perDayOf(stored)}편`}
+                    : `매일 새벽 5시부터 ${perDayOf(stored)}편${perDayOf(stored) > 1 ? ' (편마다 다른 주제)' : ''}`}
                 </dd>
               </div>
               <div className="flex gap-2">
@@ -318,11 +318,18 @@ export default function AutoDraftPanel({
           */}
           <section>
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <h3 className="text-[13px] font-bold">하루 몇 편</h3>
+              {/*
+                **「편마다 다른 주제」를 제목에 붙인다** (2026-08-28 회원 정리: "같은주제로
+                2편을 쓰고 싶다는게 아니라 다른 주제로 각 1편씩 쓰고 싶단 이야기였어").
+                실제 동작이 그렇게 돼 있는데 화면이 안 적어서 회원이 되물었다.
+              */}
+              <h3 className="text-[13px] font-bold">하루 몇 편 — 편마다 다른 주제</h3>
               <Badge tone="default">{perDayOf(plan)}편</Badge>
             </div>
             <p className="muted mb-2 text-[11px] leading-relaxed">
-              새벽 <b>5시 · 6시 · 7시</b>에 한 편씩 씁니다 — 두 편이면 5시·6시, 세 편이면 7시까지입니다.
+              <b>같은 주제로 여러 편을 쓰지 않습니다</b> — 편마다 다른 주제로 한 편씩입니다 (같은 주제로
+              두 편을 쓰면 유사문서가 됩니다). 새벽 <b>5시 · 6시 · 7시</b>에 한 편씩 씁니다 — 두 편이면
+              5시·6시, 세 편이면 7시까지입니다.
               한 번에 몰아 쓰지 않는 이유는 한 편에 검수·고쳐 쓰기까지 몇 분이 걸려서, 몰아 쓰면
               시간이 넘쳐 <b>한 편도 저장되지 않기</b> 때문입니다.
             </p>
@@ -540,6 +547,7 @@ export default function AutoDraftPanel({
             ) : (
               <p className="muted text-[11.5px] leading-relaxed">
                 아직 채운 날이 없습니다. 위에서 날짜를 고르고 채우기 버튼을 누르세요 — 하루만 정하셔도 됩니다.
+              하루 {perDayOf(plan)}편으로 정해 두셨으니 고른 날에 <b>서로 다른 주제 {perDayOf(plan)}개</b>가 채워집니다.
               </p>
             )}
           </section>
