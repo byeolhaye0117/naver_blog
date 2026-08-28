@@ -9270,8 +9270,18 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
   }
   // 같은 입력이면 늘 같은 답 — 크론이 두 번 돌아도 흔들리지 않는다
   ok(JSON.stringify(pickAssignment({ posts: [], keywords: KWS })) === JSON.stringify(first), '같은 입력이면 같은 답')
-  ok(!pickAssignment({ posts: [], keywords: [] }), '키워드가 없으면 아무것도 고르지 않는다')
-  ok(!pickAssignment({ posts: [], keywords: ['  '] }), '빈 키워드만 있어도 마찬가지')
+  /*
+   * ─── 지역 키워드 없이도 돈다 (2026-08-28 회원 요청: "아예 이 칸을 없앨래") ────────
+   *
+   * 자동 초안 설정에서 지역 키워드 칸을 없앴다. 축이 주제 하나뿐이어도 로테이션이 돌아야
+   * 한다 — 예전에는 키워드가 없으면 null 을 돌려 **아무 글도 안 썼다.**
+   */
+  ok(pickAssignment({ posts: [], keywords: [] })?.topic, '지역 키워드가 없어도 주제로 돈다')
+  ok(pickAssignment({ posts: [] })?.localKeyword === '', '지역 키워드 자리는 비워 둔다')
+  ok(pickAssignment({ posts: [], keywords: ['  '] })?.topic, '빈 키워드만 있어도 마찬가지')
+  // 주제를 비워 보내도 기본 목록으로 돌아간다 (pureInfoTopics) — 「글이 안 나오는 날」을 만들지 않는다
+  ok(INFO_TOPICS.includes(pickAssignment({ posts: [], topics: [] })?.topic), '주제를 비워도 기본 목록으로 돈다')
+  ok(pickAssignment({ posts: [] })?.why.includes('주제'), '왜 이 주제인지 밝힌다', pickAssignment({ posts: [] })?.why)
 
   /*
    * **같은 조합을 이어서 고르지 않는다.** 이게 틀리면 매일 같은 글이 나온다 — 자동화가
@@ -9558,25 +9568,25 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
   const FALLBACK = ['쌍용동 헬스장', '두정동 헬스장']
 
   // ── ① 아무것도 안 정했으면 여태 방식 그대로
-  const auto = planAssignment({ plan: undefined, posts: [], fallbackKeywords: FALLBACK })
-  ok(auto?.localKeyword === FALLBACK[0] && TOPICS.includes(auto.topic), '설정이 없으면 순위 추적 키워드로 돈다')
-  ok(planAssignment({ plan: {}, posts: [], fallbackKeywords: FALLBACK })?.localKeyword === FALLBACK[0], '빈 설정도 마찬가지')
+  const auto = planAssignment({ plan: undefined, posts: [] })
+  ok(auto && TOPICS.includes(auto.topic), '설정이 없으면 기본 주제로 돈다')
+  /*
+   * **지역 키워드는 자동 초안에서 안 쓴다** (2026-08-28 회원 요청: "아예 이 칸을 없앨래").
+   * 화면만 지우고 안에서 계속 고르면 저장된 옛 목록으로 조용히 돌아간다.
+   */
+  ok(auto.localKeyword === '', '지역 키워드 자리는 비어 있다', auto.localKeyword)
+  ok(planAssignment({ plan: {}, posts: [] })?.localKeyword === '', '빈 설정도 마찬가지')
+  ok(planAssignment({ plan: { keywords: ['성정동 헬스장'] }, posts: [] })?.localKeyword === '',
+    '옛 설정에 키워드가 남아 있어도 쓰지 않는다')
 
   // ── 꺼두면 아무것도 안 쓴다 (지우는 것보다 끄는 편이 낫다 — 설정이 남는다)
-  ok(!planAssignment({ plan: { off: true }, posts: [], fallbackKeywords: FALLBACK }), '꺼두면 쓰지 않는다')
+  ok(!planAssignment({ plan: { off: true }, posts: [] }), '꺼두면 쓰지 않는다')
   ok(planSummary({ off: true }).includes('꺼두셨습니다'), '꺼둔 것을 화면에 밝힌다')
 
   // ── ② 고른 범위 안에서만
-  const scoped = planAssignment({
-    plan: { keywords: ['천안 헬스장'], topics: ['어깨가 자주 뭉칠 때'] },
-    posts: [],
-    fallbackKeywords: FALLBACK,
-  })
-  ok(scoped?.localKeyword === '천안 헬스장', '고른 키워드만 쓴다', scoped?.localKeyword)
+  const scoped = planAssignment({ plan: { topics: ['어깨가 자주 뭉칠 때'] }, posts: [] })
   ok(scoped?.topic === '어깨가 자주 뭉칠 때', '직접 적어 넣은 주제도 그대로 쓴다', scoped?.topic)
-  // 한쪽만 골랐으면 나머지는 기본값 — 둘 다 고르라고 강요하지 않는다
-  const halfway = planAssignment({ plan: { keywords: ['천안 헬스장'] }, posts: [], fallbackKeywords: FALLBACK })
-  ok(halfway?.localKeyword === '천안 헬스장' && TOPICS.includes(halfway.topic), '키워드만 골라도 된다')
+  ok(scoped?.mainKeyword === '어깨가 자주 뭉칠 때', '그 주제가 곧 메인 키워드다')
 
   /*
    * **예약(줄 세우기) 칸은 뺐다** (2026-08-24 회원 요청: "위에 칸은 삭제하고").
@@ -9587,8 +9597,8 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
    */
   ok(!('queue' in normalizePlan({ queue: [{ keyword: 'A', topic: '가' }] })), '예약 칸을 저장하지 않는다')
   ok(
-    planAssignment({ plan: { queue: [{ keyword: '엉뚱한 키워드', topic: '가' }], keywords: ['천안 헬스장'] }, posts: [], fallbackKeywords: FALLBACK })
-      ?.localKeyword === '천안 헬스장',
+    planAssignment({ plan: { queue: [{ keyword: '엉뚱한 키워드', topic: '가' }], topics: ['어깨가 자주 뭉칠 때'] }, posts: [] })
+      ?.topic === '어깨가 자주 뭉칠 때',
     '예전에 저장된 예약이 남아 있어도 무시한다'
   )
 
@@ -9618,9 +9628,17 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(line.includes('지역 키워드'), '지역 키워드라고 이름 붙인다', line)
     // 화면의 ①② 도 같이 맞바꿨다 — 한쪽만 고치면 요약과 설정칸이 서로 다른 순서를 말한다
     const panel2 = require('node:fs').readFileSync(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
-    ok(panel2.indexOf('① 쓸 주제') < panel2.indexOf('② 지역 키워드'), '설정칸도 주제가 ①이다')
     ok(panel2.includes('= 정보글 메인 키워드'), '주제가 곧 메인 키워드라고 적는다')
-    ok(panel2.includes('제목을 여는 말이 아닙니다'), '지역 키워드가 조연이라고 적는다')
+    /*
+     * ─── 지역 키워드 칸을 아예 없앴다 (2026-08-28 회원 요청: "아예 이 칸을 없앨래") ──────
+     *
+     * 08-28 오전에 이름과 순서를 바로잡았는데 회원의 다음 말이 이것이었다 — 조연이면
+     * 자동 초안 설정에 칸을 둘 이유가 없다. **계산에서도 뺐다** (planAssignment): 화면만
+     * 지우고 안에서 계속 고르면 저장된 옛 목록으로 조용히 돌아간다.
+     */
+    const panelCode2 = panel2.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    ok(!panelCode2.includes('② 지역 키워드'), '설정칸에 지역 키워드 칸이 없다')
+    ok(!panelCode2.includes('keywordPool'), '고를 목록도 더 이상 받지 않는다')
     // 「지금 저장된 설정」 줄도 같은 순서여야 한다 — 한 화면에서 두 순서가 나오면 안 된다
     const savedTopic = panel2.indexOf('font-semibold">주제</dt>')
     const savedLocal = panel2.indexOf('font-semibold">지역</dt>')
@@ -9649,24 +9667,23 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
   {
     const { forecastAutoDrafts, autoDraftDays, fillDays, rerollTopic } = require(`${OUT}/writing/autodraft.js`)
     const fc = forecastAutoDrafts({
-      plan: { keywords: ['가키워드', '나키워드'], topics: ['가주제', '나주제'] },
+      plan: { topics: ['가주제', '나주제', '다주제', '라주제'] },
       posts: [],
-      fallbackKeywords: FALLBACK,
       from: '2026-08-25',
       days: 4,
     })
     ok(fc.length === 4, `이레치를 미리 계산한다 — ${fc.length}일`)
     ok(fc[0].date === '2026-08-25' && fc[3].date === '2026-08-28', '날짜가 하루씩 늘어난다', fc.map((f) => f.date).join())
     // **매일 달라져야 한다** — 예정이 같은 조합만 늘어놓으면 볼 이유가 없다
-    ok(new Set(fc.map((f) => `${f.keyword}|${f.topic}`)).size === 4, '조합이 날마다 다르다', fc.map((f) => f.topic).join())
+    // **매일 달라져야 한다.** 축이 주제 하나뿐이므로(2026-08-28) 담은 주제 수만큼 돌아간다
+    ok(new Set(fc.map((f) => f.topic)).size === 4, '주제가 날마다 다르다', fc.map((f) => f.topic).join())
     // 같은 입력이면 같은 답 — 화면을 새로고침할 때마다 예정이 바뀌면 못 믿는다
     ok(
-      JSON.stringify(forecastAutoDrafts({ plan: { keywords: ['가키워드', '나키워드'], topics: ['가주제', '나주제'] }, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 4 })) === JSON.stringify(fc),
+      JSON.stringify(forecastAutoDrafts({ plan: { topics: ['가주제', '나주제', '다주제', '라주제'] }, posts: [], from: '2026-08-25', days: 4 })) === JSON.stringify(fc),
       '새로고침해도 같은 예정이 나온다'
     )
-    ok(forecastAutoDrafts({ plan: { off: true }, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 4 }).length === 0, '꺼두면 예정도 없다')
-    ok(forecastAutoDrafts({ plan: {}, posts: [], fallbackKeywords: [], from: '2026-08-25', days: 4 }).length === 0, '쓸 키워드가 없으면 예정도 없다')
-    ok(forecastAutoDrafts({ plan: {}, posts: [], fallbackKeywords: FALLBACK, from: '엉뚱한날짜', days: 4 }).length === 0, '날짜가 이상하면 터지지 않는다')
+    ok(forecastAutoDrafts({ plan: { off: true }, posts: [], from: '2026-08-25', days: 4 }).length === 0, '꺼두면 예정도 없다')
+    ok(forecastAutoDrafts({ plan: {}, posts: [], from: '엉뚱한날짜', days: 4 }).length === 0, '날짜가 이상하면 터지지 않는다')
 
     /*
      * ── 지난 기록과 **회원이 채워 둔 앞날**을 한 목록으로 ──────────
@@ -9715,11 +9732,11 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
         { date: '2026-08-29', topic: '다주제' },
       ] },
       posts: [],
-      fallbackKeywords: FALLBACK,
       from: '2026-08-26',
     })
-    ok(three.length === 3 && three.every((d) => d.keyword), '채워 둔 날마다 키워드를 센다', JSON.stringify(three))
-    ok(new Set(three.map((d) => d.keyword)).size === 3, '날마다 다른 키워드가 나온다', three.map((d) => d.keyword).join())
+    ok(three.length === 3 && three.every((d) => d.topic), '채워 둔 날마다 주제를 센다', JSON.stringify(three))
+    // 자동 초안은 지역 키워드를 쓰지 않는다 (2026-08-28) — 화면도 그 칸을 비워 둔다
+    ok(three.every((d) => !d.keyword), '지역 키워드 칸은 비어 있다', JSON.stringify(three.map((d) => d.keyword)))
     ok(three.map((d) => d.topic).join() === '가주제,나주제,다주제', '주제는 회원이 채운 것 그대로다')
     // 지난 날짜로 채워 둔 것과 쉬는 날은 세지 않는다
     const skipped = plannedAssignments({
@@ -9728,12 +9745,12 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
         { date: '2026-08-27', topic: '쉬는날' },
         { date: '2026-08-28', topic: '쓰는날' },
       ] },
-      posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26',
+      posts: [], from: '2026-08-26',
     })
     ok(skipped.map((d) => d.date).join() === '2026-08-28', '지난 날짜와 쉬는 날은 빼고 센다', skipped.map((d) => d.date).join())
     // 꺼두면 키워드를 세지 않는다 (그 날 안 쓰므로 거짓말이 된다)
     ok(
-      plannedAssignments({ plan: { off: true, days: [{ date: '2026-08-27', topic: '가' }] }, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26' })
+      plannedAssignments({ plan: { off: true, days: [{ date: '2026-08-27', topic: '가' }] }, posts: [], from: '2026-08-26' })
         .every((d) => d.keyword === undefined),
       '꺼두면 키워드를 세지 않는다'
     )
@@ -9778,13 +9795,13 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
      */
     const PLAN = { keywords: ['가키워드', '나키워드'], topics: ['한가지주제'] }
     // 주제가 하나뿐이면 로테이션은 매일 그것을 낸다 (이게 회원이 겪은 상황이다)
-    const sameEveryDay = forecastAutoDrafts({ plan: PLAN, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3 })
+    const sameEveryDay = forecastAutoDrafts({ plan: PLAN, posts: [], from: '2026-08-25', days: 3 })
     ok(sameEveryDay.every((f) => f.topic === '한가지주제'), '주제가 하나면 매일 같은 주제가 나온다 (그래서 화면이 경고한다)')
 
     // 몇 개만 담으면 날마다 다른 주제가 나온다 — 회원이 원한 것이 이것이다
     const varied = forecastAutoDrafts({
       plan: { keywords: ['가키워드'], topics: ['가주제', '나주제', '다주제'] },
-      posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3,
+      posts: [], from: '2026-08-25', days: 3,
     })
     ok(new Set(varied.map((f) => f.topic)).size === 3, '주제를 여럿 담으면 날마다 다른 주제가 나온다', varied.map((f) => f.topic).join())
 
@@ -9793,7 +9810,7 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
      * 고르라고 나온다」로 돌아가지 않는다.
      */
     const MANY = { keywords: ['가키워드'], topics: ['가주제', '나주제', '다주제', '라주제'] }
-    const filled = fillDays({ plan: MANY, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26', days: 4 })
+    const filled = fillDays({ plan: MANY, posts: [], from: '2026-08-26', days: 4 })
     ok(filled.length === 4, '고른 날 수만큼 채운다', String(filled.length))
     ok(filled[0].date === '2026-08-26', '고른 날짜부터 채운다', filled[0].date)
     ok(new Set(filled.map((d) => d.topic)).size === 4, '날마다 다른 주제를 채운다', filled.map((d) => d.topic).join())
@@ -9803,16 +9820,16 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
      * 하루면 돼"). 처음에 고를 수 있는 값을 3·5·7·14·30 으로 둔 것이 잘못이다 — 가장 흔한
      * 일(그 날 하루만 정하기)이 아예 안 됐다.
      */
-    const oneDay = fillDays({ plan: MANY, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26', days: 1 })
+    const oneDay = fillDays({ plan: MANY, posts: [], from: '2026-08-26', days: 1 })
     ok(oneDay.length === 1 && oneDay[0].date === '2026-08-26', '고른 날 하루만 채울 수 있다', JSON.stringify(oneDay))
     // 이미 채워 둔 날이 있어도 새로 계산한다 — 옛 값을 베끼면 「다시 채우기」가 안 듣는다
     const refilled = fillDays({
       plan: { ...MANY, days: [{ date: '2026-08-26', topic: '엉뚱한옛주제' }] },
-      posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26', days: 2,
+      posts: [], from: '2026-08-26', days: 2,
     })
     ok(!refilled.some((d) => d.topic === '엉뚱한옛주제'), '다시 채우면 옛 값을 베끼지 않는다', JSON.stringify(refilled))
     // 쉬는 날은 채우지 않는다 (그 날은 애초에 안 쓴다)
-    ok(!fillDays({ plan: { ...MANY, skip: ['2026-08-27'] }, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-26', days: 3 })
+    ok(!fillDays({ plan: { ...MANY, skip: ['2026-08-27'] }, posts: [], from: '2026-08-26', days: 3 })
       .some((d) => d.date === '2026-08-27'), '쉬는 날은 채우지 않는다')
 
     /*
@@ -9820,15 +9837,15 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
      * 여기서도 로테이션이 고른다 (회원에게 두 번 묻지 않는다).
      */
     const withDay = { ...PLAN, days: [{ date: '2026-08-26', topic: '그날만다른주제' }] }
-    const fixedDay = planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' })
+    const fixedDay = planAssignment({ plan: withDay, posts: [], date: '2026-08-26' })
     ok(fixedDay?.topic === '그날만다른주제', '채워 둔 날은 그 주제를 쓴다', fixedDay?.topic)
-    ok(PLAN.keywords.includes(fixedDay.localKeyword), '키워드는 ①에서 고른 것 안에서 돈다', fixedDay.localKeyword)
+    ok(fixedDay.localKeyword === '', '지역 키워드는 안 고른다 (2026-08-28)', fixedDay.localKeyword)
     ok(fixedDay.mainKeyword === '그날만다른주제', '채워 둔 날도 메인은 주제다', fixedDay.mainKeyword)
-    ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-27' })?.topic === '한가지주제',
+    ok(planAssignment({ plan: withDay, posts: [], date: '2026-08-27' })?.topic === '한가지주제',
       '안 채운 날은 그날그날 앱이 고른다')
-    ok(planAssignment({ plan: withDay, posts: [], fallbackKeywords: FALLBACK })?.topic === '한가지주제', '날짜가 없으면 로테이션')
+    ok(planAssignment({ plan: withDay, posts: [] })?.topic === '한가지주제', '날짜가 없으면 로테이션')
     // 예정 계산도 채워 둔 것을 반영해야 한다 (화면과 실제가 다르면 못 믿는다)
-    ok(forecastAutoDrafts({ plan: withDay, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3 })
+    ok(forecastAutoDrafts({ plan: withDay, posts: [], from: '2026-08-25', days: 3 })
       .find((f) => f.date === '2026-08-26')?.topic === '그날만다른주제', '예정에도 채워 둔 날이 그대로 뜬다')
 
     // 엉뚱한 값·키워드는 저장하지 않는다 (키워드까지 저장하면 ①과 두 곳에서 정해진다)
@@ -9871,14 +9888,14 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
      *   · 지난 줄은 실행 기록이라 진짜로 지운다 (글은 그대로 둔다)
      */
     const skipPlan = { keywords: ['가키워드'], topics: ['가주제'], skip: ['2026-08-26'] }
-    ok(!planAssignment({ plan: skipPlan, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-26' }), '건너뛴 날은 아무것도 쓰지 않는다')
-    ok(planAssignment({ plan: skipPlan, posts: [], fallbackKeywords: FALLBACK, date: '2026-08-27' }), '다른 날은 그대로 쓴다')
+    ok(!planAssignment({ plan: skipPlan, posts: [], date: '2026-08-26' }), '건너뛴 날은 아무것도 쓰지 않는다')
+    ok(planAssignment({ plan: skipPlan, posts: [], date: '2026-08-27' }), '다른 날은 그대로 쓴다')
 
     /*
      * **건너뛴 날은 세지 않는다.** 이레를 보여달라고 했으면 「쓰는 날」 이레여야 한다 —
      * 건너뛴 날을 채워 넣으면 볼 수 있는 앞날이 그만큼 줄어든다.
      */
-    const fcSkip = forecastAutoDrafts({ plan: skipPlan, posts: [], fallbackKeywords: FALLBACK, from: '2026-08-25', days: 3 })
+    const fcSkip = forecastAutoDrafts({ plan: skipPlan, posts: [], from: '2026-08-25', days: 3 })
     ok(fcSkip.length === 3, `건너뛰어도 이레는 이레 — ${fcSkip.length}일`)
     ok(!fcSkip.some((f) => f.date === '2026-08-26'), '건너뛴 날은 예정에 없다', fcSkip.map((f) => f.date).join())
     ok(fcSkip.map((f) => f.date).join() === '2026-08-25,2026-08-27,2026-08-28', '그만큼 뒤를 더 본다', fcSkip.map((f) => f.date).join())
@@ -10007,8 +10024,12 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(!dayCode.includes('앞으로 쓸 예정'), '정하지 않은 날을 「예정」이라고 부르지 않는다')
     ok(dayUi.includes('아직 안 쓴 것입니다'), '앞날이 기록이 아니라는 것을 밝힌다')
     ok(dayUi.includes('아직 쓴 글이 없습니다'), '쓴 것이 없으면 그렇게 말한다 (빈 화면을 남기지 않는다)')
-    // 예상이라는 것을 밝힌다 — 그 사이에 손으로 글을 쓰면 달라진다
-    ok(dayUi.includes('지금 설정이면 이 키워드가 나갑니다'), '앞날 키워드가 예상이라는 것을 밝힌다')
+    /*
+     * 2026-08-28: 자동 초안이 지역 키워드를 안 쓰게 되면서(회원: "아예 이 칸을 없앨래")
+     * 「지금 설정이면 이 키워드가 나갑니다」가 말할 것이 없어졌다. 앞날 줄이 밝혀야 하는
+     * 것은 이제 **그 주제가 곧 제목을 연다**는 사실이다.
+     */
+    ok(dayUi.includes('이 주제가 그대로 제목을 엽니다'), '앞날 주제가 곧 메인 키워드라는 것을 밝힌다')
     ok(pageCode.includes('plannedAssignments'), '화면이 채워 둔 날의 키워드를 센다')
     const autoPage = rf(new URL('../app/autodraft/page.tsx', import.meta.url), 'utf8')
     ok(autoPage.includes('채우지 않은 날은 여기 나오지 않습니다'), '카드 설명도 같은 말을 한다')

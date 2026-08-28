@@ -27,19 +27,12 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as { plan?: AutoDraftPlan; from?: string; count?: number }
     const db = await readDB()
-    const fallbackKeywords = [
-      ...new Set(
-        [...db.rankTargets.map((t) => t.keyword), ...db.stores.flatMap((s) => s.localKeywords ?? [])]
-          .map((k) => k.trim())
-          .filter(Boolean)
-      ),
-    ]
     const from = (body.from ?? new Date().toISOString()).slice(0, 10)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       return NextResponse.json({ error: '시작 날짜를 골라주세요.' }, { status: 400 })
     }
     const count = Math.min(MAX_DAYS, Math.max(1, Math.trunc(Number(body.count) || 7)))
-    const days = fillDays({ plan: body.plan, posts: db.posts, fallbackKeywords, from, days: count })
+    const days = fillDays({ plan: body.plan, posts: db.posts, from, days: count })
     return NextResponse.json({ days })
   } catch (e) {
     return NextResponse.json(

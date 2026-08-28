@@ -25,13 +25,6 @@ export default async function AutoDraftPage() {
   const db = await readDB()
   // 회원이 말하는 「오늘」은 한국 시간의 오늘이다 (2026-08-26 — UTC 로 세서 하루씩 밀렸다)
   const today = seoulToday()
-  const keywordPool = [
-    ...new Set(
-      [...db.rankTargets.map((t) => t.keyword), ...db.stores.flatMap((s) => s.localKeywords ?? [])]
-        .map((k) => k.trim())
-        .filter(Boolean)
-    ),
-  ]
   /*
    * **앞날은 회원이 채워 둔 날만** (2026-08-25 회원 지적: "나는 하루씩만 설정하고 싶다고.
    * 근데 왜 자꾸 그 후의 일정까지 설정되게 하는거야!").
@@ -50,12 +43,7 @@ export default async function AutoDraftPage() {
    * 보이게 해줘"). 키워드는 그 날 아침에 정해지지만 규칙이 있어 미리 셀 수 있다 — 다만
    * 그 사이에 손으로 정보글을 쓰면 달라지므로 화면이 「예상」이라고 적는다.
    */
-  const planned = plannedAssignments({
-    plan,
-    posts: db.posts,
-    fallbackKeywords: keywordPool,
-    from: today,
-  })
+  const planned = plannedAssignments({ plan, posts: db.posts, from: today })
   const days = autoDraftDays({ runs: db.autoDraftRuns, planned, today })
 
   return (
@@ -72,12 +60,6 @@ export default async function AutoDraftPage() {
         plan={db.autoDraftPlan}
         // 이 화면 전체가 자동 작성이다 — 설정을 접어 둘 이유가 없다 (2026-08-24)
         settingsOpen
-        /*
-         * 고를 수 있는 키워드 — 순위 추적에 등록한 것이 먼저다 (회원이 「이걸로 올라가고
-         * 싶다」고 적어둔 목록이라 자동 글이 그 밖으로 나가지 않는다). 지점의 지역 키워드도
-         * 함께 보여준다 — 아직 순위 추적을 안 걸었어도 고를 수 있어야 한다.
-         */
-        keywordPool={keywordPool}
       />
 
       {/*
