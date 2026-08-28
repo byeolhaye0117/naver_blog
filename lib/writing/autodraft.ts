@@ -630,9 +630,16 @@ function few(list: string[] | undefined, whenEmpty: string, label: string): stri
 export function planSummary(plan: AutoDraftPlan | undefined): string {
   const p = normalizePlan(plan)
   if (p.off) return '자동 초안을 꺼두셨습니다.'
+  /*
+   * **주제를 먼저 적는다** (2026-08-28 회원 요청: "자동작성 키워드 부분 수정해줘").
+   *
+   * 08-27 에 정보글 메인 키워드가 주제(정보성 검색어)로 바뀌었는데 이 한 줄은 여전히
+   * 「키워드 성정동 헬스장 · 주제 식물성단백질음식」 순서로 떴다. 제목을 여는 말이 뒤에
+   * 오니 무엇이 주인공인지 거꾸로 읽힌다. 화면의 ①②도 같이 맞바꿨다.
+   */
   const parts = [
-    few(p.keywords, '키워드는 순위 추적 목록 전부', '키워드'),
     few(p.topics, `주제는 기본 ${INFO_TOPICS.length}개 전부`, '주제'),
+    few(p.keywords, '지역 키워드는 순위 추적 목록 전부', '지역 키워드'),
   ]
   if (p.days?.length) parts.unshift(`날짜별 ${p.days.length}일 채워둠`)
   if (p.skip?.length) parts.unshift(`건너뛰는 날 ${p.skip.length}일`)

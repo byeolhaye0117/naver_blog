@@ -127,7 +127,7 @@ export default function AutoDraftPanel({
       if (!res.ok) throw new Error(data?.error ?? '주제를 정하지 못했습니다.')
       const filled: { date: string; topic: string }[] = data?.days ?? []
       if (!filled.length)
-        throw new Error('쓸 키워드가 없어 정하지 못했습니다 — ①에서 키워드를 고르거나 순위 추적에 등록해 주세요.')
+        throw new Error('쓸 키워드가 없어 정하지 못했습니다 — ②에서 지역 키워드를 고르거나 순위 추적에 등록해 주세요.')
       /*
        * **채운 날은 쉬는 날에서 뺀다** (2026-08-26). 예전에 「삭제」로 뺐던 날을 다시 채우면
        * 두 곳에 같은 날짜가 남아 화면에 「이 날은 쓰지 않습니다」와 「미리 채워둠」이 함께
@@ -232,11 +232,11 @@ export default function AutoDraftPanel({
                 <dd>{stored.off ? '꺼둠 — 자동으로 쓰지 않습니다' : '매일 새벽 5시에 한 편'}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="muted w-11 shrink-0 font-semibold">키워드</dt>
+                <dt className="muted w-11 shrink-0 font-semibold">주제</dt>
                 <dd>
-                  {stored.keywords?.length
-                    ? `${stored.keywords.join(' · ')} (${stored.keywords.length}개)`
-                    : '고른 것 없음 — 순위 추적 키워드 전부를 씁니다'}
+                  {stored.topics?.length
+                    ? `${stored.topics.join(' · ')} (${stored.topics.length}개)`
+                    : `담은 것 없음 — 기본 주제 ${INFO_TOPICS.length}개를 씁니다`}
                 </dd>
               </div>
               {/*
@@ -264,11 +264,12 @@ export default function AutoDraftPanel({
                 </div>
               )}
               <div className="flex gap-2">
-                <dt className="muted w-11 shrink-0 font-semibold">주제</dt>
+                {/* 08-28: 조연이라고 이름을 붙인다 — 제목을 여는 말은 위 「주제」다 */}
+                <dt className="muted w-11 shrink-0 font-semibold">지역</dt>
                 <dd>
-                  {stored.topics?.length
-                    ? `${stored.topics.join(' · ')} (${stored.topics.length}개)`
-                    : `담은 것 없음 — 기본 주제 ${INFO_TOPICS.length}개를 씁니다`}
+                  {stored.keywords?.length
+                    ? `${stored.keywords.join(' · ')} (${stored.keywords.length}개) — 조연`
+                    : '고른 것 없음 — 순위 추적 키워드 전부를 씁니다'}
                 </dd>
               </div>
             </dl>
@@ -288,48 +289,17 @@ export default function AutoDraftPanel({
             매일 새벽 5시에 정보글 초안 한 편 쓰기
           </label>
 
-          {/* ── ① 키워드 ── */}
+          {/* ── ① 주제 = 정보글 메인 키워드 (탐색기에서 담은 것만) ── */}
           <section>
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <h3 className="text-[13px] font-bold">① 쓸 키워드</h3>
-              <Badge tone={plan.keywords?.length ? 'good' : 'default'}>
-                {plan.keywords?.length ? `${plan.keywords.length}개 고름` : '전부'}
-              </Badge>
-            </div>
-            <p className="muted mb-2 text-[11px] leading-relaxed">
-              고른 것 안에서만 돌아가며 씁니다. 하나도 안 고르면 순위 추적에 등록한 키워드 전부를 씁니다.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {keywordPool.map((k) => {
-                const on = (plan.keywords ?? []).includes(k)
-                return (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => toggle('keywords', k)}
-                    className={`rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition ${
-                      on ? 'bg-brand-600 border-brand-600 text-white' : 'bd hover:bg-slate-500/8'
-                    }`}
-                  >
-                    {k}
-                  </button>
-                )
-              })}
-              {keywordPool.length === 0 && (
-                <p className="muted text-[11.5px]">순위 추적에 등록한 키워드가 없습니다.</p>
-              )}
-            </div>
-          </section>
-
-          {/* ── ② 주제 — 탐색기에서 담은 것만 ── */}
-          <section>
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <h3 className="text-[13px] font-bold">② 쓸 주제</h3>
+              {/* 08-28: 이것이 곧 정보글 메인 키워드다 — 그래서 ①로 올렸다 (아래 ② 주석 참고) */}
+              <h3 className="text-[13px] font-bold">① 쓸 주제 (= 정보글 메인 키워드)</h3>
               <Badge tone={plan.topics?.length ? 'good' : 'default'}>
                 {plan.topics?.length ? `${plan.topics.length}개 담음` : '기본 주제'}
               </Badge>
             </div>
             <p className="muted mb-2 text-[11px] leading-relaxed">
+              <b>담은 주제가 그대로 제목을 엽니다</b> — 정보글의 메인 키워드가 이것입니다.
               아래 탐색에서 담은 주제만 씁니다. 하나도 안 담으면 기본 주제 {INFO_TOPICS.length}개를 씁니다.
               <b> 어느 날 어느 주제를 쓸지는 앱이 정합니다</b> — 담은 것 안에서 오래 안 쓴 순서로 돌아가므로
               날마다 다른 글이 나옵니다.
@@ -384,6 +354,51 @@ export default function AutoDraftPanel({
               </summary>
               <TopicExplorer picked={plan.topics ?? []} onPick={addTopic} />
             </details>
+          </section>
+
+          {/* ── ② 지역 키워드 (조연) ── */}
+          <section>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              {/*
+                **번호를 ②로 내리고 이름을 바꿨다** (2026-08-28 회원 요청: "자동작성 키워드
+                부분 수정해줘").
+
+                08-27 에 정보글 메인 키워드가 **주제(정보성 검색어)**로 바뀌면서, 이 칸의
+                말들(「성정동 헬스장」·「쌍용동PT」)은 **조연**이 됐다 — 본문 한두 번과
+                해시태그 자리다. 그런데 화면은 여전히 이 칸을 ①「쓸 키워드」로 맨 앞에 두고
+                있었다. 회원 화면 요약에도 「키워드 성정동 헬스장 · 주제 식물성단백질음식」
+                순서로 떠서, 무엇이 제목을 여는 말인지 거꾸로 읽힌다.
+              */}
+              <h3 className="text-[13px] font-bold">② 지역 키워드 (조연)</h3>
+              <Badge tone={plan.keywords?.length ? 'good' : 'default'}>
+                {plan.keywords?.length ? `${plan.keywords.length}개 고름` : '전부'}
+              </Badge>
+            </div>
+            <p className="muted mb-2 text-[11px] leading-relaxed">
+              <b>제목을 여는 말이 아닙니다.</b> 정보글 제목은 위 ①의 주제로 열고, 이 지역 키워드는
+              본문에 한두 번과 해시태그에만 들어갑니다 — 지역 신호를 잡는 자리입니다. 고른 것
+              안에서만 돌아가며 쓰고, 하나도 안 고르면 순위 추적에 등록한 것 전부를 씁니다.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {keywordPool.map((k) => {
+                const on = (plan.keywords ?? []).includes(k)
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => toggle('keywords', k)}
+                    className={`rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition ${
+                      on ? 'bg-brand-600 border-brand-600 text-white' : 'bd hover:bg-slate-500/8'
+                    }`}
+                  >
+                    {k}
+                  </button>
+                )
+              })}
+              {keywordPool.length === 0 && (
+                <p className="muted text-[11.5px]">순위 추적에 등록한 키워드가 없습니다.</p>
+              )}
+            </div>
           </section>
 
           {/*
@@ -455,7 +470,7 @@ export default function AutoDraftPanel({
                           const after = next.days?.find((x) => x.date === d.date)?.topic
                           setFillMsg(
                             after === d.topic
-                              ? '담아 두신 주제가 하나뿐이라 바꿀 것이 없습니다 — ②에서 몇 개 더 담아주세요.'
+                              ? '담아 두신 주제가 하나뿐이라 바꿀 것이 없습니다 — ①에서 몇 개 더 담아주세요.'
                               : `${d.date} 을 「${after}」으로 바꿨습니다. 아래 「설정 저장」을 눌러야 반영됩니다.`
                           )
                           return next
