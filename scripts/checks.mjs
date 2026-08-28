@@ -9607,6 +9607,27 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
   // ── 화면 한 줄 요약 — 설정을 열어 세어 보지 않아도 알 수 있어야 한다
   ok(planSummary(undefined).includes('순위 추적 목록 전부'), '아무것도 안 정하면 그렇게 말한다', planSummary(undefined))
   /*
+   * **주제가 먼저다** (2026-08-28 회원 요청: "자동작성 키워드 부분 수정해줘").
+   *
+   * 08-27 에 정보글 메인 키워드가 주제로 바뀌었는데 이 한 줄은 「키워드 … · 주제 …」
+   * 순서로 떴다. 제목을 여는 말이 뒤에 오니 무엇이 주인공인지 거꾸로 읽힌다.
+   */
+  {
+    const line = planSummary({ keywords: ['성정동 헬스장'], topics: ['식물성단백질음식'] })
+    ok(line.indexOf('식물성단백질음식') < line.indexOf('성정동 헬스장'), '주제를 먼저 적는다', line)
+    ok(line.includes('지역 키워드'), '지역 키워드라고 이름 붙인다', line)
+    // 화면의 ①② 도 같이 맞바꿨다 — 한쪽만 고치면 요약과 설정칸이 서로 다른 순서를 말한다
+    const panel2 = require('node:fs').readFileSync(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
+    ok(panel2.indexOf('① 쓸 주제') < panel2.indexOf('② 지역 키워드'), '설정칸도 주제가 ①이다')
+    ok(panel2.includes('= 정보글 메인 키워드'), '주제가 곧 메인 키워드라고 적는다')
+    ok(panel2.includes('제목을 여는 말이 아닙니다'), '지역 키워드가 조연이라고 적는다')
+    // 「지금 저장된 설정」 줄도 같은 순서여야 한다 — 한 화면에서 두 순서가 나오면 안 된다
+    const savedTopic = panel2.indexOf('font-semibold">주제</dt>')
+    const savedLocal = panel2.indexOf('font-semibold">지역</dt>')
+    ok(savedTopic > 0 && savedLocal > savedTopic, '저장된 설정도 주제를 먼저 적는다')
+    ok(panel2.includes('(${stored.keywords.length}개) — 조연'), '지역 줄에 조연이라고 붙인다')
+  }
+  /*
    * **개수가 아니라 이름을 적는다** (2026-08-24). 처음엔 「키워드 1개 지정」이라고만 적었는데
    * 회원이 그 줄을 보고 물었다: "저장한 목록이 안나오는데?" 개수는 목록이 아니다.
    */
