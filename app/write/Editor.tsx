@@ -761,11 +761,18 @@ export default function Editor({
        * 둘인지 찾아야 한다. 안 고쳐졌을 때 특히 그렇다 — 무엇이 버티고 있는지가 곧 다음
        * 할 일이다.
        */
+      /*
+       * **걸린 값까지 적는다** (2026-08-28 회원 지적: "해도 안고쳐지는데?").
+       *
+       * 항목 이름만으로는 무엇이 버티는지 모른다 — 「정보글 순수성」이라고만 하면 본문
+       * 어디가 문제인지 다시 찾아야 한다. 값에는 걸린 구절이 그대로 들어 있다
+       * (「운영자·트레이너 신분(「수업하다」)」). 안 고쳐질 때 그게 곧 다음 할 일이다.
+       */
       const failNames = failItems
-        .map((i) => i.label)
+        .map((i) => (i.value ? `${i.label} — ${i.value}` : i.label))
         .filter(Boolean)
         .slice(0, 3)
-        .join(' · ')
+        .join(' / ')
       setAiMsg(
         `${score}점으로 나왔습니다` +
           fixNote() +
