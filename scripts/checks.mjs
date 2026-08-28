@@ -10134,8 +10134,54 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
  * 검색하는지 확인한 적이 없다. 그래서 씨앗만 우리가 넣고 후보는 네이버에서 가져온다.
  */
 {
-  const { TOPIC_SEEDS, classifyIntent, toTopic, rankCandidates, candidateWhy, buildCandidates } =
+  const { TOPIC_SEEDS, classifyIntent, toTopic, rankCandidates, candidateWhy, buildCandidates, topicCore, dedupeByCore } =
     require(`${OUT}/writing/topic-explore.js`)
+
+  /*
+   * ─── 뜻이 같은 말은 한 줄로 묶는다 (2026-08-28 회원 요청) ──────────────
+   *
+   * "주제가 비슷한게 너무 많아. 예를들어 기초대사량 / 기초대사량 높이기 이런것들 사실은
+   * 다 기초대사량에 관한거잖아. 이런거는 하나로만 묶어서."
+   *
+   * 열두 줄 중 여럿이 같은 글이 될 말이면 넘겨 봐도 볼 것이 없다.
+   */
+  ok(topicCore('기초대사량') === topicCore('기초대사량 높이기'), '「높이기」는 떼고 묶는다')
+  ok(topicCore('다이어트') === topicCore('다이어트방법'), '「방법」도 뗀다')
+  ok(topicCore('뱃살빼기') === topicCore('뱃살 빼는 법'), '「빼기」와 「빼는 법」은 같은 말이다')
+  /*
+   * **앞말이 다르면 다른 주제다.** 화면에 「종아리알빼는법」과 「허벅지살빼는법」이 나란히
+   * 떴는데, 그 둘은 부위가 달라 서로 다른 글이다 — 묶으면 안 된다.
+   */
+  ok(topicCore('종아리알빼는법') !== topicCore('허벅지살빼는법'), '부위가 다르면 안 묶는다')
+  /*
+   * **앞말이 겹친다고 묶지 않는다.** 「다이어트운동」과 「다이어트식단」은 앞이 같지만 전혀
+   * 다른 글이다. 그렇게까지 묶으면 볼 수 있는 후보가 확 줄고, 그건 회원이 말한 것과 다르다.
+   */
+  ok(topicCore('다이어트운동') !== topicCore('다이어트식단'), '앞말만 같은 것은 안 묶는다')
+  // 두 글자 밑으로 깎이면 그건 이미 말이 아니다
+  ok(topicCore('방법') === '방법', '낱말 전체가 꼬리면 그대로 둔다')
+
+  {
+    const cand = (topic, recent30) => ({ topic, seedId: 's', monthlySearch: 1000, recent30, intent: 'info', from: 'searchad', why: '' })
+    // 줄 세운 뒤에 묶으므로 **앞에 오는 것이 남는다** (발행량이 적은 쪽)
+    const merged = dedupeByCore(rankCandidates([
+      cand('기초대사량 높이기', 4286),
+      cand('기초대사량', 900),
+      cand('허벅지살빼는법', 2936),
+    ]))
+    ok(merged.length === 2, '같은 뜻은 한 줄로 줄인다', merged.map((c) => c.topic).join())
+    ok(merged[0].topic === '기초대사량', '발행량이 적은 쪽이 남는다', merged[0].topic)
+    // **조용히 버리지 않는다** — 무엇이 묶였는지 그 줄에 적는다
+    ok(merged[0].variants?.join() === '기초대사량 높이기', '묶인 말을 그 줄에 적어 준다', String(merged[0].variants))
+    ok(!merged[1].variants, '묶인 것이 없으면 비워 둔다')
+
+    const route = require('node:fs').readFileSync(new URL('../app/api/autodraft/topics/route.ts', import.meta.url), 'utf8')
+    ok(route.includes('dedupeByCore'), '탐색기 라우트가 묶어서 내려준다')
+    ok(/merged,/.test(route), '몇 개를 묶었는지 함께 내려준다')
+    const ui = require('node:fs').readFileSync(new URL('../components/TopicExplorer.tsx', import.meta.url), 'utf8')
+    ok(ui.includes('같은 뜻으로 묶음'), '묶인 말을 화면에 적는다')
+    ok(/note\.merged > 0/.test(ui), '몇 개를 묶었는지도 밝힌다')
+  }
 
   // 회원이 콕 집어 말한 두 갈래가 있어야 한다
   ok(TOPIC_SEEDS.some((s) => s.label.includes('다이어트')), '다이어트 갈래가 있다')

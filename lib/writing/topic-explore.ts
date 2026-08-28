@@ -387,6 +387,15 @@ export interface TopicCandidate {
   cappedRecent?: boolean
   /** 왜 이 순서인지 한 줄 */
   why: string
+  /**
+   * 이 후보로 **묶인 비슷한 말들** (2026-08-28 회원 요청).
+   *
+   * "주제가 비슷한게 너무 많아. 예를들어 기초대사량 / 기초대사량 높이기 이런것들 사실은
+   * 다 기초대사량에 관한거잖아. 이런거는 하나로만 묶어서."
+   *
+   * **조용히 버리지 않는다** — 무엇이 묶였는지 화면에 적는다. 이 저장소의 규칙이다.
+   */
+  variants?: string[]
 }
 
 /**
@@ -398,6 +407,60 @@ export interface TopicCandidate {
  */
 export function toTopic(query: string): string {
   return query.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * **뜻이 같은 말을 묶는 열쇠.**
+ *
+ * 회원 요청 (2026-08-28): "기초대사량 / 기초대사량 높이기 이런것들 사실은 다 기초대사량에
+ * 관한거잖아. 이런거는 하나로만 묶어서."
+ *
+ * 맞다. 열두 줄 중 여럿이 **같은 글이 될 말**이면 넘겨 봐도 볼 것이 없다.
+ *
+ * ── 무엇으로 묶나 ──────────────────────────────────────────
+ * **뒤에 붙은 「어떻게」만 떼어 낸다.** 「높이기」·「방법」·「빼는 법」처럼 **주어를 바꾸지
+ * 않는 꼬리**다. 앞말이 다르면 다른 주제로 둔다 — 「종아리알빼는법」과 「허벅지살빼는법」은
+ * 부위가 달라 서로 다른 글이다 (실제로 화면에 나란히 떴고, 그 둘은 묶으면 안 된다).
+ *
+ * **앞말이 겹친다고 묶지 않는다.** 「다이어트운동」과 「다이어트식단」은 앞이 같지만 전혀
+ * 다른 글이다. 그렇게까지 묶으면 볼 수 있는 후보가 확 줄고, 그건 회원이 말한 것과 다르다.
+ *
+ * 이 값은 **묶는 데만 쓴다** — 화면에 뜨는 것은 언제나 원래 검색어다 (「식이요법」이
+ * 「식이요」로 깎여도 상관없는 이유다).
+ */
+const TOPIC_TAIL =
+  /(하는\s*방법|하는\s*법|되는\s*법|높이는\s*법|늘리는\s*법|줄이는\s*법|빼는\s*법|없애는\s*법|좋은\s*법|높이기|늘리기|줄이기|빼기|없애기|키우기|방법|순서|법|팁)$/
+
+export function topicCore(query: string): string {
+  let core = (query ?? '').replace(/\s+/g, '')
+  // 「기초대사량높이는법」처럼 꼬리가 겹쳐 붙기도 한다 — 안 줄어들 때까지 몇 번만 뗀다
+  for (let i = 0; i < 3; i++) {
+    const next = core.replace(TOPIC_TAIL, '')
+    // 두 글자 밑으로 깎이면 그건 이미 말이 아니다 — 거기서 멈춘다
+    if (next === core || next.length < 2) break
+    core = next
+  }
+  return core
+}
+
+/**
+ * **뜻이 같은 후보를 하나로 묶는다** (2026-08-28 회원 요청).
+ *
+ * 줄 세운 뒤에 부른다 — 앞에 오는 것이 남는다(발행량이 적은 쪽). 묶인 말은 버리지 않고
+ * `variants` 에 적어 화면이 「비슷한 말 N개를 묶었습니다」라고 밝힐 수 있게 한다.
+ */
+export function dedupeByCore(list: TopicCandidate[]): TopicCandidate[] {
+  const kept = new Map<string, TopicCandidate>()
+  for (const c of list) {
+    const key = topicCore(c.topic)
+    const prev = kept.get(key)
+    if (!prev) {
+      kept.set(key, c)
+      continue
+    }
+    prev.variants = [...(prev.variants ?? []), c.topic]
+  }
+  return [...kept.values()]
 }
 
 /**

@@ -19,6 +19,8 @@ interface Note {
   local: number
   /** 주제가 되기엔 짧은 것 */
   thin: number
+  /** 뜻이 같아 한 줄로 묶은 개수 (2026-08-28 회원 요청) */
+  merged: number
   measured: number
   tried: number
   adKeys: boolean
@@ -173,6 +175,17 @@ export default function TopicExplorer({
                         </Badge>
                       </div>
                       <p className="muted mt-0.5 text-[11px] leading-relaxed">{c.why}</p>
+                      {/*
+                        **무엇이 묶였는지 밝힌다** (2026-08-28 회원 요청: "기초대사량 /
+                        기초대사량 높이기 이런것들 사실은 다 기초대사량에 관한거잖아. 이런거는
+                        하나로만 묶어서"). 조용히 버리면 「다 봤다」로 읽힌다 — 이 파일의 규칙이다.
+                      */}
+                      {c.variants?.length ? (
+                        <p className="muted mt-0.5 text-[11px] leading-relaxed">
+                          같은 뜻으로 묶음: {c.variants.slice(0, 4).join(' · ')}
+                          {c.variants.length > 4 && ` 외 ${c.variants.length - 4}개`}
+                        </p>
+                      ) : null}
                     </div>
                     <button
                       type="button"
@@ -211,6 +224,11 @@ export default function TopicExplorer({
               {note.local > 0 &&
                 ` 업체를 찾는 말 ${note.local.toLocaleString()}개도 뺐습니다 — 「매탄동운동」처럼 남의 동네에서 헬스장을 찾는 말이라, 정보글 주제로 쓰면 홍보글이 되거나 우리와 상관없는 글이 됩니다.`}
               {note.thin > 0 && ` 「엉덩이」처럼 짧아서 글이 안 되는 말 ${note.thin.toLocaleString()}개도 뺐습니다.`}
+              {note.merged > 0 &&
+                ` 「기초대사량」과 「기초대사량 높이기」처럼 **같은 글이 될 말** ${note.merged.toLocaleString()}개는 한 줄로 묶었습니다 — 묶인 말은 그 줄 아래에 적어 뒀습니다.`.replace(
+                  /\*\*/g,
+                  ''
+                )}
               {note.total > note.shown &&
                 ` 정보글로 쓸 만한 것은 ${note.total.toLocaleString()}개이고, 한 번에 ${note.shown}개씩 보여드립니다 — 「다른 주제 보기」로 넘기시면 됩니다.`}
               {` 발행량(경쟁)은 검색량 큰 ${note.tried}개만 쟀고 ${note.measured}개가 답했습니다`}
