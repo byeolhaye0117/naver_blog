@@ -9315,6 +9315,48 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
       ok(panelSrc.includes('편마다 다른 주제'), '편마다 다른 주제라고 화면에 적는다')
     }
 
+  /*
+   * ─── 회원이 하는 그대로 처음부터 끝까지 (2026-08-28) ─────────────────
+   *
+   * 회원: "하루 몇 편에서 2편 선택 → 언제부터를 내일로 → 이 날 주제 채우기 → 설정 저장.
+   * 이렇게 하면 서로다른 주제가 각 1편씩 나오는거야?"
+   *
+   * 조각조각 맞는지는 위에서 봤다. 그런데 회원이 묻는 것은 **그 순서대로 했을 때 실제로
+   * 그렇게 되느냐**다 — 이 저장소에서 여러 번 겪은 실패가 「조각은 다 맞는데 이어 붙이면
+   * 안 되는 것」이라, 이어 붙인 것도 못 박아 둔다.
+   *
+   * 새벽 5·6·7시 실행을 크론이 저장하는 모양 그대로 흉내 낸다.
+   */
+  {
+    const { fillDays: fd, normalizePlan: np } = require(`${OUT}/writing/autodraft.js`)
+    const PLAN2 = { perDay: 2, topics: ['가주제', '나주제', '다주제'] }
+    // ① 채우기 → ② 저장
+    const filled = fd({ plan: PLAN2, posts: [], from: '2026-08-29', days: perDayOf(PLAN2) })
+    const saved = np({ ...PLAN2, days: filled })
+    ok(saved.days.length === 2, '저장해도 두 줄이 남는다', JSON.stringify(saved.days))
+
+    // ③ 새벽 5·6·7시
+    const wrote = []
+    let posts2 = []
+    for (const hour of ['20', '21', '22']) {
+      if (doneForToday(posts2, '2026-08-29', saved)) {
+        wrote.push('skip')
+        continue
+      }
+      const a = planAssignment({ plan: saved, posts: posts2, date: '2026-08-29' })
+      wrote.push(a ? a.topic : 'null')
+      if (a)
+        posts2 = [
+          post({ auto: true, autoTopic: a.topic, mainKeyword: a.mainKeyword, createdAt: `2026-08-28T${hour}:00:00.000Z` }),
+          ...posts2,
+        ]
+    }
+    ok(wrote.join() === '가주제,나주제,skip', '5시·6시에 다른 주제로 한 편씩, 7시는 넘어간다', wrote.join())
+    // 메인 키워드가 곧 그 주제다 — 제목이 그 말로 열린다
+    ok(posts2.every((p) => p.mainKeyword === p.autoTopic), '주제가 그대로 메인 키워드가 된다')
+    ok(new Set(posts2.map((p) => p.autoTopic)).size === 2, '하루에 같은 글이 두 편 나오지 않는다')
+  }
+
     ok(perDayOf(undefined) === 1, '안 정하면 하루 한 편')
     ok(perDayOf({ perDay: 2 }) === 2, '정한 값을 그대로 쓴다')
     ok(perDayOf({ perDay: 0 }) === 1 && perDayOf({ perDay: -3 }) === 1, '0 이하는 한 편으로 본다')
