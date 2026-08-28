@@ -3,7 +3,15 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { AutoDraftPlan, AutoDraftRun } from '@/lib/types'
-import { INFO_TOPICS, autoDraftStatus, normalizePlan, planSummary, rerollTopic } from '@/lib/writing/autodraft'
+import {
+  AUTO_DRAFT_MAX_PER_DAY,
+  INFO_TOPICS,
+  autoDraftStatus,
+  normalizePlan,
+  perDayOf,
+  planSummary,
+  rerollTopic,
+} from '@/lib/writing/autodraft'
 import { Badge, btnGhost, btnPrimary, inputClass } from '@/components/ui'
 import TopicExplorer from '@/components/TopicExplorer'
 
@@ -21,12 +29,15 @@ export default function AutoDraftPanel({
   runs,
   today,
   hasTodayDraft,
+  perDay,
   plan: savedPlan,
   settingsOpen = false,
 }: {
   runs?: AutoDraftRun[]
   today: string
   hasTodayDraft: boolean
+  /** 오늘 몇 편 썼나 · 몇 편이 목표인가 (2026-08-28) */
+  perDay?: { wrote: number; want: number }
   /** 회원이 정해 둔 것 (2026-08-23) */
   plan?: AutoDraftPlan
   /**
@@ -40,7 +51,7 @@ export default function AutoDraftPanel({
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
-  const status = autoDraftStatus(runs, today, hasTodayDraft)
+  const status = autoDraftStatus(runs, today, hasTodayDraft, perDay)
 
   /*
    * **저장본과 편집본을 따로 든다** (2026-08-24).
@@ -117,8 +128,12 @@ export default function AutoDraftPanel({
       const res = await fetch('/api/autodraft/fill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // **고른 날 하루만** — 회원이 정하지 않은 날까지 잡아두지 않는다 (2026-08-25)
-        body: JSON.stringify({ plan, from: fillFrom, count: 1 }),
+        /*
+         * **고른 날 하루만** — 회원이 정하지 않은 날까지 잡아두지 않는다 (2026-08-25).
+         * 다만 하루 편수만큼 채운다 (2026-08-28) — 두 편으로 정해 놓고 한 줄만 채우면
+         * 나머지 한 편은 그날 아침 로테이션이 아무거나 고르게 된다.
+         */
+        body: JSON.stringify({ plan, from: fillFrom, count: perDayOf(plan) }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error ?? '주제를 정하지 못했습니다.')
@@ -132,13 +147,16 @@ export default function AutoDraftPanel({
        */
       setPlan((p) => ({
         ...p,
+        // 그 날에 이미 있던 줄은 새로 채운 것으로 갈아끼운다 (하루 여러 줄이 될 수 있다)
         days: [...(p.days ?? []).filter((x) => !filled.some((n) => n.date === x.date)), ...filled].sort(
           (a, b) => a.date.localeCompare(b.date)
         ),
         skip: (p.skip ?? []).filter((d) => !filled.some((n) => n.date === d)),
       }))
       setFillMsg(
-        `${filled[0].date} 은 「${filled[0].topic}」으로 채웠습니다. 아래 「설정 저장」을 눌러야 반영됩니다.`
+        `${filled[0].date} 은 ${filled.map((f) => `「${f.topic}」`).join(' · ')}${
+          filled.length > 1 ? ` (${filled.length}편)` : ''
+        }으로 채웠습니다. 아래 「설정 저장」을 눌러야 반영됩니다.`
       )
     } catch (e) {
       setFillMsg(e instanceof Error ? e.message : '주제를 정하지 못했습니다.')
@@ -226,7 +244,11 @@ export default function AutoDraftPanel({
             <dl className="space-y-1 text-[11.5px] leading-relaxed">
               <div className="flex gap-2">
                 <dt className="muted w-11 shrink-0 font-semibold">상태</dt>
-                <dd>{stored.off ? '꺼둠 — 자동으로 쓰지 않습니다' : '매일 새벽 5시에 한 편'}</dd>
+                <dd>
+                  {stored.off
+                    ? '꺼둠 — 자동으로 쓰지 않습니다'
+                    : `매일 새벽 5시부터 ${perDayOf(stored)}편`}
+                </dd>
               </div>
               <div className="flex gap-2">
                 <dt className="muted w-11 shrink-0 font-semibold">주제</dt>
@@ -283,8 +305,45 @@ export default function AutoDraftPanel({
               onChange={(e) => setPlan((p) => ({ ...p, off: !e.target.checked }))}
               className="size-4 shrink-0"
             />
-            매일 새벽 5시에 정보글 초안 한 편 쓰기
+            매일 새벽 5시부터 정보글 초안 쓰기
           </label>
+
+          {/*
+            **하루 몇 편** (2026-08-28 회원 요청: "하루에 여러편 작성할 수 있게해줘").
+
+            한 번에 몰아 쓰지 않는다 — 한 편에 생성 1회 + 고쳐 쓰기 최대 3회가 들고 함수
+            실행 한도가 300초라, 두세 편을 한 번에 쓰면 한도를 넘겨 **아무것도 저장되지
+            않는다.** 그래서 크론을 새벽 5·6·7시로 세 번 돌리고 한 번에 한 편씩 쓴다.
+            상한(3)이 크론 시각 수와 같아야 하는 이유다.
+          */}
+          <section>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <h3 className="text-[13px] font-bold">하루 몇 편</h3>
+              <Badge tone="default">{perDayOf(plan)}편</Badge>
+            </div>
+            <p className="muted mb-2 text-[11px] leading-relaxed">
+              새벽 <b>5시 · 6시 · 7시</b>에 한 편씩 씁니다 — 두 편이면 5시·6시, 세 편이면 7시까지입니다.
+              한 번에 몰아 쓰지 않는 이유는 한 편에 검수·고쳐 쓰기까지 몇 분이 걸려서, 몰아 쓰면
+              시간이 넘쳐 <b>한 편도 저장되지 않기</b> 때문입니다.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {Array.from({ length: AUTO_DRAFT_MAX_PER_DAY }, (_, i) => i + 1).map((n) => {
+                const on = perDayOf(plan) === n
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setPlan((p) => ({ ...p, perDay: n }))}
+                    className={`rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition ${
+                      on ? 'bg-brand-600 border-brand-600 text-white' : 'bd hover:bg-slate-500/8'
+                    }`}
+                  >
+                    하루 {n}편
+                  </button>
+                )
+              })}
+            </div>
+          </section>
 
           {/* ── ① 주제 = 정보글 메인 키워드 (탐색기에서 담은 것만) ── */}
           <section>
@@ -420,9 +479,22 @@ export default function AutoDraftPanel({
 
             {(plan.days ?? []).length > 0 ? (
               <ul className="space-y-1.5">
-                {(plan.days ?? []).map((d) => (
-                  <li key={d.date} className="panel flex flex-wrap items-center gap-2 rounded-xl px-3 py-2">
-                    <span className="tnum text-[11.5px] font-bold">{d.date.slice(5).replace('-', '/')}</span>
+                {/*
+                  **한 날짜에 줄이 여러 개일 수 있다** (2026-08-28 회원 요청: "하루에 여러편
+                  작성할 수 있게해줘"). 열쇠와 버튼을 날짜만으로 잡으면 두 줄이 같은 열쇠를
+                  쓰고, 누른 줄이 아니라 그 날 첫 줄이 바뀐다.
+                */}
+                {(plan.days ?? []).map((d, i) => (
+                  <li key={`${d.date}|${d.topic}`} className="panel flex flex-wrap items-center gap-2 rounded-xl px-3 py-2">
+                    <span className="tnum text-[11.5px] font-bold">
+                      {d.date.slice(5).replace('-', '/')}
+                      {/* 같은 날 두 줄이면 몇 편째인지 적는다 — 안 적으면 같은 날이 두 번 뜬 줄 안다 */}
+                      {(plan.days ?? []).filter((x) => x.date === d.date).length > 1 && (
+                        <span className="muted ml-1 font-semibold">
+                          {(plan.days ?? []).slice(0, i + 1).filter((x) => x.date === d.date).length}편째
+                        </span>
+                      )}
+                    </span>
                     <span className="min-w-0 flex-1 text-[12px] leading-snug font-semibold">{d.topic}</span>
                     {/*
                       목록을 열어 고르게 하면 결국 「주제 고르라고 나온다」로 돌아간다.
@@ -434,10 +506,11 @@ export default function AutoDraftPanel({
                       type="button"
                       onClick={() => {
                         setPlan((p) => {
-                          const next = rerollTopic(p, d.date)
-                          const after = next.days?.find((x) => x.date === d.date)?.topic
+                          const next = rerollTopic(p, d.date, d.topic)
+                          const before = new Set((p.days ?? []).map((x) => `${x.date}|${x.topic}`))
+                          const after = next.days?.find((x) => !before.has(`${x.date}|${x.topic}`))?.topic
                           setFillMsg(
-                            after === d.topic
+                            !after
                               ? '담아 두신 주제가 하나뿐이라 바꿀 것이 없습니다 — ①에서 몇 개 더 담아주세요.'
                               : `${d.date} 을 「${after}」으로 바꿨습니다. 아래 「설정 저장」을 눌러야 반영됩니다.`
                           )
@@ -451,7 +524,11 @@ export default function AutoDraftPanel({
                     <button
                       type="button"
                       onClick={() =>
-                        setPlan((p) => ({ ...p, days: (p.days ?? []).filter((x) => x.date !== d.date) }))
+                        // 그 날 전체가 아니라 **이 줄만** 뺀다 (2026-08-28)
+                        setPlan((p) => ({
+                          ...p,
+                          days: (p.days ?? []).filter((x) => !(x.date === d.date && x.topic === d.topic)),
+                        }))
                       }
                       className="muted rounded-lg px-2 py-1 text-[11px] font-semibold hover:text-rose-600"
                     >

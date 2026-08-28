@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { newId } from '@/lib/id'
-import { hasTodayAutoDraft, planAssignment } from '@/lib/writing/autodraft'
+import { doneForToday, perDayOf, planAssignment, todayAutoDraftCount } from '@/lib/writing/autodraft'
 import { AUTO_DRAFT_RUNS_KEEP, baseUrlFor, seoulToday, shouldRevise } from '@/lib/writing/autodraft'
 import type { AutoDraftRun, Post } from '@/lib/types'
 
@@ -137,9 +137,24 @@ async function run(
 ) {
   const db = await readDB()
 
-  // 크론 재시도·손으로 한 번 더 누르기 — 어느 쪽이든 하루 한 편이다
-  if (hasTodayAutoDraft(db.posts, today)) {
-    return NextResponse.json({ skipped: '오늘 자동 초안이 이미 있습니다.', date: today })
+  /*
+   * **하루 몇 편까지** (2026-08-28 회원 요청: "하루에 여러편 작성할 수 있게해줘").
+   *
+   * 크론은 새벽 5·6·7시에 세 번 돌고 **한 번에 한 편**만 쓴다. 한 편에 생성 1회 + 고쳐 쓰기
+   * 최대 3회가 들고 함수 실행 한도가 300초라, 한 번에 몰아 쓰면 한도를 넘겨 **아무것도
+   * 저장되지 않는다.** 그래서 실행을 나누고, 각 실행이 그 날 이미 쓴 편수를 세어 회원이 정한
+   * 편수에 닿았으면 그냥 넘어간다.
+   *
+   * 크론 재시도·손으로 한 번 더 누르기도 같은 셈으로 막힌다.
+   */
+  const perDay = perDayOf(db.autoDraftPlan)
+  if (doneForToday(db.posts, today, db.autoDraftPlan)) {
+    return NextResponse.json({
+      skipped: `오늘 몫 ${perDay}편을 이미 썼습니다.`,
+      date: today,
+      wrote: todayAutoDraftCount(db.posts, today),
+      perDay,
+    })
   }
 
   /*

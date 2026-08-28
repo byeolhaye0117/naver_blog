@@ -9281,6 +9281,61 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
   ok(pickAssignment({ posts: [], keywords: ['  '] })?.topic, '빈 키워드만 있어도 마찬가지')
   // 주제를 비워 보내도 기본 목록으로 돌아간다 (pureInfoTopics) — 「글이 안 나오는 날」을 만들지 않는다
   ok(INFO_TOPICS.includes(pickAssignment({ posts: [], topics: [] })?.topic), '주제를 비워도 기본 목록으로 돈다')
+
+  /*
+   * ─── 하루에 여러 편 (2026-08-28 회원 요청: "하루에 여러편 작성할 수 있게해줘") ────────
+   *
+   * **한 번에 몰아 쓰지 않는다.** 한 편에 생성 1회 + 고쳐 쓰기 최대 3회가 들고 함수 실행
+   * 한도가 300초라, 두세 편을 한 번에 쓰면 한도를 넘겨 **아무것도 저장되지 않는다.**
+   * 그래서 크론을 새벽 5·6·7시로 세 번 돌리고 한 번에 한 편씩 쓴다.
+   */
+  {
+    const { AUTO_DRAFT_MAX_PER_DAY, perDayOf, todayAutoDraftCount, doneForToday, planAssignment } =
+      require(`${OUT}/writing/autodraft.js`)
+    const at5 = (d) => post({ auto: true, autoTopic: '가', createdAt: `${d}T20:00:00.000Z` })
+
+    ok(perDayOf(undefined) === 1, '안 정하면 하루 한 편')
+    ok(perDayOf({ perDay: 2 }) === 2, '정한 값을 그대로 쓴다')
+    ok(perDayOf({ perDay: 0 }) === 1 && perDayOf({ perDay: -3 }) === 1, '0 이하는 한 편으로 본다')
+    ok(perDayOf({ perDay: 99 }) === AUTO_DRAFT_MAX_PER_DAY, '상한을 넘기지 않는다')
+    /*
+     * **상한은 크론 시각 수와 같아야 한다.** 이 값이 크론 개수보다 크면 설정할 수는 있는데
+     * 실제로는 안 써지는 편수가 생긴다 — 화면이 거짓말을 하는 셈이다.
+     */
+    const vercel = JSON.parse(require('node:fs').readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
+    const draftCrons = vercel.crons.filter((c) => c.path === '/api/cron/draft')
+    ok(draftCrons.length === AUTO_DRAFT_MAX_PER_DAY, `크론 시각 수가 상한과 같다 — ${draftCrons.length}/${AUTO_DRAFT_MAX_PER_DAY}`)
+    ok(new Set(draftCrons.map((c) => c.schedule)).size === draftCrons.length, '같은 시각이 두 번 있지 않다')
+
+    // 오늘 몇 편 썼나 — 한국 날짜로 센다 (20:00 UTC = 다음 날 새벽 5시)
+    ok(todayAutoDraftCount([at5('2026-08-21'), at5('2026-08-21')], '2026-08-22') === 2, '오늘 쓴 편수를 센다')
+    ok(todayAutoDraftCount([at5('2026-08-21')], '2026-08-23') === 0, '다른 날 것은 안 센다')
+    ok(!doneForToday([at5('2026-08-21')], '2026-08-22', { perDay: 2 }), '두 편 중 한 편 썼으면 아직 남았다')
+    ok(doneForToday([at5('2026-08-21'), at5('2026-08-21')], '2026-08-22', { perDay: 2 }), '두 편 다 쓰면 끝이다')
+    ok(doneForToday([at5('2026-08-21')], '2026-08-22'), '안 정했으면 한 편으로 끝이다')
+
+    /*
+     * **같은 날 같은 주제를 두 번 쓰지 않는다.** 그냥 첫 줄을 집으면 두 번째 실행이 같은
+     * 주제를 또 써서 하루에 똑같은 글이 두 편 생긴다.
+     */
+    const twoRows = { topics: ['가주제', '나주제'], days: [
+      { date: '2026-08-22', topic: '가주제' },
+      { date: '2026-08-22', topic: '나주제' },
+    ] }
+    const firstRun = planAssignment({ plan: twoRows, posts: [], date: '2026-08-22' })
+    ok(firstRun?.topic === '가주제', '첫 실행은 첫 줄을 쓴다', firstRun?.topic)
+    const wrote1 = [post({ auto: true, autoTopic: '가주제', createdAt: '2026-08-21T20:00:00.000Z' })]
+    const secondRun = planAssignment({ plan: twoRows, posts: wrote1, date: '2026-08-22' })
+    ok(secondRun?.topic === '나주제', '두 번째 실행은 다음 줄을 쓴다', secondRun?.topic)
+
+    // 화면·크론이 같은 기준을 쓴다 — 한쪽만 고치면 「설정은 2편인데 1편만 나온다」가 된다
+    const cronSrc = require('node:fs').readFileSync(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
+    ok(cronSrc.includes('doneForToday'), '크론이 그 날 몫을 다 썼는지로 막는다')
+    ok(!cronSrc.includes('hasTodayAutoDraft'), '「한 편이라도 있으면 그만」으로 막지 않는다')
+    const panel3 = require('node:fs').readFileSync(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
+    ok(panel3.includes('하루 몇 편'), '화면에서 편수를 고른다')
+    ok(/perDay: n/.test(panel3), '고른 값을 설정에 담는다')
+  }
   ok(pickAssignment({ posts: [] })?.why.includes('주제'), '왜 이 주제인지 밝힌다', pickAssignment({ posts: [] })?.why)
 
   /*
@@ -9855,10 +9910,17 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
       { date: '2026-08-27' },
       { date: '2026-08-26', topic: '라' },
     ] })
-    ok(cleaned.days.length === 1, '날짜 꼴이 아니거나 주제가 없는 줄은 버린다', JSON.stringify(cleaned.days))
     ok(!cleaned.days.some((d) => d.date === '엉뚱' || d.date === '2026-08-27'), '엉뚱한 날짜도 주제 없는 날도 남지 않는다')
     ok(cleaned.days.every((d) => !('keyword' in d)), '키워드는 저장하지 않는다')
-    ok(cleaned.days.find((d) => d.date === '2026-08-26')?.topic === '라', '같은 날이 둘이면 나중 것을 남긴다')
+    /*
+     * **하루에 여러 줄이 남는다** (2026-08-28 회원 요청: "하루에 여러편 작성할 수 있게해줘").
+     * 예전에는 날짜를 열쇠로 덮어써서 하루 한 줄만 남았다 — 그러면 두 편을 채워 둬도 한 편만
+     * 남는다. 이제 **날짜 + 주제**로 본다: 같은 날 같은 주제만 겹치지 않게 한다.
+     */
+    ok(cleaned.days.length === 2, '같은 날 다른 주제는 둘 다 남는다', JSON.stringify(cleaned.days))
+    ok(cleaned.days.map((d) => d.topic).join() === '가,라', '적어 넣은 순서를 지킨다', JSON.stringify(cleaned.days))
+    const sameTwice = normalizePlan({ days: [{ date: '2026-08-26', topic: '가' }, { date: '2026-08-26', topic: '가' }] })
+    ok(sameTwice.days.length === 1, '같은 날 같은 주제는 한 번만 남긴다')
 
     /*
      * **「다른 주제로」는 앱이 다음 것을 준다** — 목록을 열어 고르게 하면 결국 회원이 확정하는
@@ -9871,7 +9933,27 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(rolledTopic !== '가주제', '누르면 그 날 주제가 바뀐다', rolledTopic)
     ok(rolledTopic !== '나주제', '옆날에 쓴 주제는 피한다', rolledTopic)
     ok(rolled.days.find((d) => d.date === '2026-08-27').topic === '나주제', '다른 날은 건드리지 않는다')
-    ok(rerollTopic({ topics: [] }, '2026-08-26').days.length === 1, '담은 주제가 없으면 기본 주제에서 준다')
+    /*
+     * 채워 둔 날이 없으면 바꿀 것도 없다 (2026-08-28: 어느 줄인지 못 찾으면 그대로 둔다).
+     * 담은 주제가 하나도 없어도 기본 목록에서 고른다.
+     */
+    ok(rerollTopic({ topics: [] }, '2026-08-26').days.length === 0, '채워 둔 날이 없으면 아무 일도 안 한다')
+    const rolledDefault = rerollTopic({ topics: [], days: [{ date: '2026-08-26', topic: TOPICS[0] }] }, '2026-08-26')
+    ok(rolledDefault.days[0].topic !== TOPICS[0] && TOPICS.includes(rolledDefault.days[0].topic),
+      '담은 주제가 없으면 기본 주제에서 준다', rolledDefault.days[0].topic)
+
+    /*
+     * **하루 여러 편이면 어느 줄인지 알려줘야 한다** (2026-08-28 회원 요청: "하루에 여러편
+     * 작성할 수 있게해줘"). 날짜만 주면 첫 줄이 바뀌어 회원이 누른 줄과 다른 줄이 바뀐다.
+     */
+    const twoRows = { topics: ['가주제', '나주제', '다주제', '라주제'],
+      days: [{ date: '2026-08-26', topic: '가주제' }, { date: '2026-08-26', topic: '나주제' }] }
+    const rolledSecond = rerollTopic(twoRows, '2026-08-26', '나주제')
+    ok(rolledSecond.days.length === 2, '줄 수는 그대로다', JSON.stringify(rolledSecond.days))
+    ok(rolledSecond.days.some((d) => d.topic === '가주제'), '누르지 않은 줄은 그대로 둔다')
+    ok(!rolledSecond.days.some((d) => d.topic === '나주제'), '누른 줄만 바뀐다')
+    // 같은 날 다른 줄과 겹치면 그날 똑같은 글이 두 편 나온다
+    ok(new Set(rolledSecond.days.map((d) => d.topic)).size === 2, '같은 날 다른 줄과 겹치지 않는다')
     /*
      * **담은 주제가 하나뿐이면 바꿀 것이 없다** — 눌러도 그대로다. 화면이 그렇다고 말해야
      * 한다 (조용히 아무 일도 안 하면 버튼이 고장 난 줄 안다). 실제로 회원 설정이 그랬다.
@@ -9959,7 +10041,11 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
      * 그 후의 일정까지 설정되게 하는거야!"). 며칠치를 고르는 칸이 있으면 또 여러 날이 잡힌다.
      */
     ok(!panelCode.includes('며칠치') && !/fillCount/.test(panelCode), '며칠치를 고르는 칸이 없다')
-    ok(/count: 1/.test(panelCode), '채우기는 고른 날 하루만 보낸다')
+    /*
+     * 2026-08-28: 하루 편수만큼 채운다. **날짜는 여전히 하나다** — 「며칠치」 칸은 없다.
+     * 두 편으로 정해 놓고 한 줄만 채우면 나머지 한 편은 그날 아침 로테이션이 아무거나 고른다.
+     */
+    ok(/count: perDayOf\(plan\)/.test(panelCode), '채우기는 고른 날 하루에 편수만큼 보낸다')
     ok(panelCode.includes('min={today}'), '지난 날짜는 고르지 못하게 한다')
     ok(panelCode.includes("fetch('/api/autodraft/fill'"), '주제는 서버 로테이션이 채운다 (화면이 지어내지 않는다)')
 
@@ -10653,6 +10739,29 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(/body\.trim\(\) && liveFixIssues\.length > 0/.test(editor2), 'AI 로 안 쓴 글에도 고쳐 쓰기 버튼이 나온다')
     // 무엇이 버티고 있는지 이름을 적는다 — 그게 곧 다음 할 일이다
     ok(/failNames/.test(editor2), '남은 수정필요 항목 이름을 화면에 적는다')
+
+    /*
+     * ─── 「Failed to fetch」를 그대로 보여주지 않는다 (2026-08-28) ──────────
+     *
+     * 회원: "글쓰기에서 오류나" — 화면에 그 영어 한 줄만 떠 있었다.
+     *
+     * 서버가 낸 오류가 아니라 **브라우저가 연결을 놓은 것**이다. 같은 요청을 프로덕션에
+     * 직접 넣어 보니 56초 만에 200 으로 글이 나왔다 — 서버는 멀쩡했다. 휴대폰에서 글 한
+     * 편에 1~2분이 걸리는 사이 화면이 꺼지거나 다른 앱으로 넘어가면 요청이 끊긴다.
+     *
+     * 회원이 할 일은 「화면 켜 두고 다시 누르기」인데 영어 한 줄로는 알 수 없다.
+     */
+    ok(/Failed to fetch\|NetworkError\|Load failed/.test(editor2), '연결이 끊긴 경우를 따로 알아본다')
+    ok(editor2.includes('서버 오류가 아니라'), '서버 탓이 아니라고 밝힌다')
+    ok(editor2.includes('화면을 켜 둔 채로 다시 눌러 주세요'), '무엇을 하면 되는지 말해준다')
+    // 끊겨도 안 잃는 길 — 자동 작성의 「지금 한 편 쓰기」는 서버에서만 돌아 초안이 저장된다
+    ok(editor2.includes('지금 한 편 쓰기'), '끊겨도 잃지 않는 길을 함께 알려준다')
+
+    /*
+     * 08-27 에 정보글 화자를 일반 블로거로 바꾸면서 「상담 경험」이라는 말이 없어졌는데
+     * 안내 문구에 남아 있었다 — 화면이 검수가 막는 말을 권하고 있었던 셈이다.
+     */
+    ok(!editor2.includes('상담 경험'), '옛 안내(상담 경험)가 남아 있지 않다')
 
     /*
      * **버튼의 화자 라벨은 지시문과 같아야 한다.** 08-27 에 정보글 화자를 일반 블로거로

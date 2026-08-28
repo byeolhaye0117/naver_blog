@@ -251,10 +251,36 @@ export function autoDraftAlert(
 export function autoDraftStatus(
   runs: { date: string; ok: boolean; error?: string; at?: string; manual?: boolean }[] | undefined,
   today: string,
-  hasTodayDraft: boolean
+  hasTodayDraft: boolean,
+  /**
+   * 오늘 몇 편 썼고 몇 편이 목표인가 (2026-08-28 회원 요청: "하루에 여러편 작성할 수 있게해줘").
+   *
+   * 안 주면 예전처럼 「한 편 쓰면 끝」으로 본다 — 부르는 쪽을 다 고치지 않아도 되게.
+   */
+  perDay?: { wrote: number; want: number }
 ): { level: 'good' | 'warn' | 'bad'; text: string; canRun: boolean } {
   const list = runs ?? []
   const todays = list.filter((r) => r.date === today)
+  /*
+   * **하루 여러 편이면 몇 편째인지 말한다** (2026-08-28). 「오늘 초안이 준비됐습니다」만
+   * 적으면 두 편을 시켜 둔 회원은 나머지 한 편이 오는지 알 수 없다.
+   */
+  if (perDay && perDay.want > 1) {
+    if (perDay.wrote >= perDay.want) {
+      return {
+        level: 'good',
+        text: `오늘 몫 ${perDay.want}편을 다 썼습니다. 아래 목록 맨 위에 있습니다.`,
+        canRun: false,
+      }
+    }
+    if (perDay.wrote > 0) {
+      return {
+        level: 'good',
+        text: `오늘 ${perDay.wrote}편 썼습니다 (${perDay.want}편 예정). 남은 ${perDay.want - perDay.wrote}편은 새벽 6·7시에 씁니다.`,
+        canRun: true,
+      }
+    }
+  }
   if (hasTodayDraft) {
     return { level: 'good', text: '오늘 초안이 준비됐습니다. 아래 목록 맨 위에 있습니다.', canRun: false }
   }
@@ -327,6 +353,41 @@ export function seoulToday(now: number = Date.now()): string {
  * 한 편씩 더 쌓이면 하루에 세 편이 생긴다 — 발행 간격이 무너지고, 같은 날 비슷한 글이
  * 여러 편이면 유사문서로 묶인다.
  */
+/**
+ * **하루에 쓸 수 있는 최대 편수** (2026-08-28 회원 요청: "하루에 여러편 작성할 수 있게해줘").
+ *
+ * 크론 시각(새벽 5·6·7시) 수와 같아야 한다 — 한 번 돌 때 한 편씩 쓰므로, 이 값이 크론
+ * 개수보다 크면 **설정할 수는 있는데 실제로는 안 써지는 편수**가 생긴다. vercel.json 과
+ * 여기를 함께 본다.
+ */
+export const AUTO_DRAFT_MAX_PER_DAY = 3
+
+/** 회원이 정한 하루 편수 — 비었거나 이상하면 1편 */
+export function perDayOf(plan: AutoDraftPlan | undefined): number {
+  const n = Math.trunc(Number(plan?.perDay))
+  if (!Number.isFinite(n) || n < 1) return 1
+  return Math.min(AUTO_DRAFT_MAX_PER_DAY, n)
+}
+
+/**
+ * 오늘(한국 날짜) 자동 초안을 **몇 편** 썼나.
+ *
+ * 2026-08-28 에 「있나/없나」에서 개수로 바꿨다 — 하루 여러 편을 쓰게 되면서 「하나라도
+ * 있으면 그만」이 아니라 **몇 편까지 썼나**가 기준이 됐다.
+ */
+export function todayAutoDraftCount(posts: Post[] | undefined, today: string): number {
+  return (posts ?? []).filter((p) => isAutoDraft(p) && seoulDay(p.createdAt) === day(today)).length
+}
+
+/** 오늘 몫을 다 썼나 — 크론과 화면이 같은 기준을 쓴다 */
+export function doneForToday(
+  posts: Post[] | undefined,
+  today: string,
+  plan?: AutoDraftPlan
+): boolean {
+  return todayAutoDraftCount(posts, today) >= perDayOf(plan)
+}
+
 export function hasTodayAutoDraft(posts: Post[] | undefined, today: string): boolean {
   /*
    * **글이 만들어진 시각을 한국 시간으로 본다** (2026-08-26). `createdAt` 은 UTC 라
@@ -473,22 +534,34 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
   ].sort()
 
   /*
-   * 날짜별 주제 — 날짜 꼴이 아니거나 주제가 빈 줄은 버린다. 같은 날이 둘이면 뒤엣것을
-   * 남긴다 (나중에 채운 것). **키워드는 받지 않는다** — 그건 ①에서 고른 범위에서 돈다.
+   * 날짜별 주제 — 날짜 꼴이 아니거나 주제가 빈 줄은 버린다.
+   *
+   * **하루에 여러 줄이 올 수 있다** (2026-08-28 회원 요청: "하루에 여러편 작성할 수
+   * 있게해줘"). 예전에는 날짜를 열쇠로 덮어써서 하루 한 줄만 남았다 — 그러면 두 편을 채워
+   * 둬도 한 편만 남는다. 이제 **날짜 + 주제**로 본다: 같은 날 같은 주제만 겹치지 않게 하고,
+   * 같은 날 다른 주제는 그대로 쌓는다.
+   *
+   * 상한을 여기서 걸지는 않는다 — 편수 설정을 줄였을 때 이미 채워 둔 날을 조용히 지우면
+   * 「분명 채웠는데 없어졌다」가 된다. 크론이 그 날 몫을 세면서 앞에서부터 쓴다.
    */
-  const byDate = new Map<string, { date: string; topic: string }>()
+  const seenDay = new Set<string>()
+  const days: { date: string; topic: string }[] = []
   for (const d of Array.isArray(raw?.days) ? raw.days : []) {
     const date = (d?.date ?? '').slice(0, 10)
     const topic = (d?.topic ?? '').trim()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !topic) continue
-    byDate.set(date, { date, topic })
+    const key = `${date}|${topic}`
+    if (seenDay.has(key)) continue
+    seenDay.add(key)
+    days.push({ date, topic })
   }
 
   return {
     off: raw?.off === true,
+    perDay: raw?.perDay === undefined ? undefined : perDayOf(raw),
     keywords: list(raw?.keywords),
     topics: list(raw?.topics),
-    days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    days: days.sort((a, b) => a.date.localeCompare(b.date)),
     skip,
     updatedAt: raw?.updatedAt,
   }
@@ -532,7 +605,21 @@ export function planAssignment(args: {
    * 다만 그 주제를 **회원이 고른 것이 아니다** — 날짜만 고르면 `fillDays` 가 로테이션을
    * 돌려 날마다 다른 주제를 채워 넣는다.
    */
-  const fixed = wantDate ? plan.days?.find((d) => d.date === wantDate) : undefined
+  /*
+   * **그 날 채워 둔 주제 중 아직 안 쓴 첫 것** (2026-08-28).
+   *
+   * 하루 여러 편을 쓰게 되면서 한 날짜에 줄이 여러 개 올 수 있다. 그냥 첫 줄을 집으면
+   * 두 번째 실행이 **같은 주제를 또 쓴다** — 하루에 똑같은 글이 두 편 생긴다.
+   * 그래서 그 날 이미 쓴 주제를 빼고 고른다.
+   */
+  const writtenToday = new Set(
+    (args.posts ?? [])
+      .filter((p) => isAutoDraft(p) && wantDate && seoulDay(p.createdAt) === wantDate)
+      .map((p) => p.autoTopic ?? '')
+  )
+  const fixed = wantDate
+    ? plan.days?.filter((d) => d.date === wantDate).find((d) => !writtenToday.has(d.topic))
+    : undefined
   if (fixed) {
     /*
      * **채워 둔 날은 그 주제가 곧 메인 키워드다.** 지역 키워드를 고르던 자리는 2026-08-28 에
@@ -577,15 +664,29 @@ export function fillDays(args: {
  * 돌아간다. 그래서 버튼 하나로 **앱이 다음 주제**를 준다. 다른 날에 이미 쓰인 주제는 건너뛴다
  * — 안 그러면 돌릴 때마다 옆날과 겹친다.
  */
-export function rerollTopic(plan: AutoDraftPlan | undefined, date: string): AutoDraftPlan {
+export function rerollTopic(
+  plan: AutoDraftPlan | undefined,
+  date: string,
+  /**
+   * 그 날 여러 줄 중 **어느 줄**을 바꿀까 (2026-08-28). 하루 여러 편을 쓰게 되면서 한 날짜에
+   * 줄이 여러 개 올 수 있다 — 날짜만 주면 어느 줄인지 알 수 없다. 안 주면 첫 줄이다.
+   */
+  topic?: string
+): AutoDraftPlan {
   const p = normalizePlan(plan)
   const pool = p.topics?.length ? p.topics : INFO_TOPICS
   if (!pool.length || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return p
   const days = p.days ?? []
-  const cur = days.find((d) => d.date === date)?.topic
-  const used = new Set(days.filter((d) => d.date !== date).map((d) => d.topic))
-  const start = cur ? pool.indexOf(cur) : -1
-  // 목록을 한 바퀴 돌며 「지금 것도 아니고 다른 날에도 안 쓴」 첫 주제를 고른다
+  const target = days.find((d) => d.date === date && (topic === undefined || d.topic === topic))
+  if (!target) return p
+  const cur = target.topic
+  /*
+   * **다른 날에 쓴 주제뿐 아니라 같은 날 다른 줄도 피한다** (2026-08-28) — 하루 두 편이
+   * 같은 주제면 그날 똑같은 글이 두 편 나온다.
+   */
+  const used = new Set(days.filter((d) => d !== target).map((d) => d.topic))
+  const start = pool.indexOf(cur)
+  // 목록을 한 바퀴 돌며 「지금 것도 아니고 다른 줄에도 안 쓴」 첫 주제를 고른다
   let next = pool[(start + 1 + pool.length) % pool.length]
   for (let i = 1; i <= pool.length; i++) {
     const cand = pool[(start + i + pool.length) % pool.length]
@@ -596,9 +697,9 @@ export function rerollTopic(plan: AutoDraftPlan | undefined, date: string): Auto
   }
   return {
     ...p,
-    days: [...days.filter((d) => d.date !== date), { date, topic: next }].sort((a, b) =>
-      a.date.localeCompare(b.date)
-    ),
+    days: days
+      .map((d) => (d === target ? { date, topic: next } : d))
+      .sort((a, b) => a.date.localeCompare(b.date)),
   }
 }
 
@@ -678,16 +779,25 @@ export function forecastAutoDrafts(args: {
    */
   const want = Math.max(0, Math.trunc(args.days))
   const MAX_LOOK = want + 60
+  /*
+   * **하루에 여러 편이면 그 날에 그만큼 채운다** (2026-08-28 회원 요청: "하루에 여러편
+   * 작성할 수 있게해줘"). 한 날짜에 한 줄만 넣으면 두 편으로 정해 놔도 채워지는 것은
+   * 한 편이고, 나머지 한 편은 그날 아침 로테이션이 아무거나 고르게 된다.
+   *
+   * 안쪽에서 한 편 쓸 때마다 가짜 글을 쌓으므로 같은 날 안에서도 주제가 겹치지 않는다.
+   */
+  const perDay = perDayOf(plan)
   for (let i = 0; i < MAX_LOOK && out.length < want; i++) {
     const date = new Date(start + i * 86_400_000).toISOString().slice(0, 10)
     if (plan.skip?.includes(date)) continue
+    for (let k = 0; k < perDay && out.length < want; k++) {
     const a = planAssignment({ plan, posts, date })
     if (!a) break
     // 화면의 「키워드」 칸은 지역 키워드다 — 메인은 곧 주제라 두 번 적을 이유가 없다 (2026-08-27)
     out.push({ date, keyword: a.localKeyword, topic: a.topic })
     posts = [
       {
-        id: `forecast-${i}`,
+        id: `forecast-${i}-${k}`,
         type: 'info',
         status: 'draft',
         storeId: '',
@@ -704,6 +814,7 @@ export function forecastAutoDrafts(args: {
       },
       ...posts,
     ]
+    }
   }
   return out
 }
@@ -828,32 +939,44 @@ export function autoDraftDays(args: {
   const dayOf = (r: (typeof runs)[number]) => seoulDay(r.at) || r.date
 
   /*
-   * 하루에 여러 번 돌 수 있다 (실패하고 손으로 다시 누르는 등). 그 날을 대표하는 것은
-   * **성공한 실행**이다 — 실패만 있으면 그중 마지막 것을 쓴다.
+   * 하루에 여러 번 돌 수 있다.
+   *
+   * ── 2026-08-28: 성공한 실행을 **전부** 남긴다 ─────────────────
+   * 회원 요청으로 하루 여러 편을 쓰게 됐다 ("하루에 여러편 작성할 수 있게해줘"). 예전에는
+   * 날짜마다 한 줄만 남겨서, 두 편을 써도 목록에는 한 편만 보였다 — 나머지 한 편이 나간
+   * 줄도 모른다.
+   *
+   * 실패는 여전히 한 줄이다. 실패하고 손으로 다시 눌러 성공한 날에 실패 줄까지 늘어놓으면
+   * 「오늘 실패했나」로 읽힌다 — 그 날 성공이 하나라도 있으면 성공만 보여준다.
    */
-  const byDate = new Map<string, (typeof runs)[number]>()
+  const byDate = new Map<string, (typeof runs)[number][]>()
   for (const r of runs) {
     const d = dayOf(r)
-    const prev = byDate.get(d)
-    if (!prev || (!prev.ok && r.ok)) byDate.set(d, r)
+    byDate.set(d, [...(byDate.get(d) ?? []), r])
+  }
+  const rowsOf = (list: (typeof runs)[number][]) => {
+    const ok = list.filter((r) => r.ok)
+    return ok.length ? ok : list.slice(-1)
   }
 
   const past: AutoDraftDay[] = [...byDate.entries()]
     .sort((a, b) => b[0].localeCompare(a[0]))
     .slice(0, args.pastKeep ?? 14)
-    .map(([date, r]): AutoDraftDay => ({
-      date,
-      keyword: r.keyword ?? '—',
-      topic: r.topic ?? '—',
-      when: date === args.today ? 'today' : 'past',
-      ok: r.ok,
-      error: r.error,
-      score: r.score ?? null,
-      postId: r.postId,
-      manual: r.manual,
-      fails: r.fails,
-      rounds: r.rounds,
-    }))
+    .flatMap(([date, list]) =>
+      rowsOf(list).map((r): AutoDraftDay => ({
+        date,
+        keyword: r.keyword ?? '—',
+        topic: r.topic ?? '—',
+        when: date === args.today ? 'today' : 'past',
+        ok: r.ok,
+        error: r.error,
+        score: r.score ?? null,
+        postId: r.postId,
+        manual: r.manual,
+        fails: r.fails,
+        rounds: r.rounds,
+      }))
+    )
 
   /*
    * 이미 기록이 있는 날은 뺀다 (같은 날이 두 줄이면 어느 쪽이 맞는지 알 수 없다).
