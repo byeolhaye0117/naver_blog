@@ -9394,6 +9394,35 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
     // 화면·크론이 같은 기준을 쓴다 — 한쪽만 고치면 「설정은 2편인데 1편만 나온다」가 된다
     const cronSrc = require('node:fs').readFileSync(new URL('../app/api/cron/draft/route.ts', import.meta.url), 'utf8')
     ok(cronSrc.includes('doneForToday'), '크론이 그 날 몫을 다 썼는지로 막는다')
+
+    /*
+     * ─── 상위노출 분석을 하고 쓴다 (2026-08-28 회원 지적) ─────────────────
+     *
+     * 회원: "자동작성하는게 관련키워드 상위노출 분석을 안하고 작성하는거 같아."
+     *
+     * 맞았다. 손으로 쓰는 화면은 처방을 지시문에 함께 넣는데(Editor 의 `prescription`)
+     * **크론은 그 자리를 비워 보내고 있었다** — 같은 앱인데 새벽에 쓴 글만 그 판의 실측
+     * 없이 나갔다 (제목 길이·분량·이미지 수가 전부 일반 기준으로).
+     */
+    ok(/prescription: rxForInfo/.test(cronSrc), '크론이 처방을 함께 보낸다')
+    ok(cronSrc.includes("fetch(`${base}/api/serp`"), '없으면 그 자리에서 상위노출 분석을 돌린다')
+    // 저장된 것이 싱싱하면 다시 재지 않는다 — 조회를 아끼고 화면과 같은 처방을 쓴다
+    ok(cronSrc.includes('isPrescriptionStale'), '저장된 처방이 싱싱하면 그것을 쓴다')
+    // 후기글에게 할 말이 섞여 있다 — 정보글에 그대로 넣으면 화자 검수와 부딪힌다
+    ok(cronSrc.includes("prescriptionForType(prescription, 'info')"), '정보글에 맞게 걸러서 넣는다')
+    /*
+     * **분석 시간을 고쳐 쓰기 예산에서 뺀다.** 분석에 30초쯤 걸리는데 그것을 안 세면
+     * 예산이 넘쳐 함수 실행 한도(300초)를 넘길 수 있다 — 그러면 아무것도 저장되지 않는다.
+     */
+    const askIdx = cronSrc.indexOf('const askedAt = Date.now()')
+    const serpIdx = cronSrc.indexOf("fetch(`${base}/api/serp`")
+    ok(askIdx > 0 && serpIdx > askIdx, '시간 재기를 분석보다 먼저 시작한다')
+    // 분석이 실패해도 글은 쓴다 — 처방 없이 쓰는 것이 안 쓰는 것보다 낫다
+    ok(cronSrc.includes('처방 없이 씁니다'), '분석이 실패해도 글은 쓴다')
+    // 분석하고 썼는지 화면이 말한다 — 안 적으면 회원이 알 방법이 없다 (그래서 물었다)
+    ok(/rx: rxNote/.test(cronSrc), '분석 결과를 실행 기록에 남긴다')
+    const dayUi2 = require('node:fs').readFileSync(new URL('../app/autodraft/DayList.tsx', import.meta.url), 'utf8')
+    ok(dayUi2.includes('상위노출: '), '날짜별 목록이 그것을 보여준다')
     ok(!cronSrc.includes('hasTodayAutoDraft'), '「한 편이라도 있으면 그만」으로 막지 않는다')
     const panel3 = require('node:fs').readFileSync(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
     ok(panel3.includes('하루 몇 편'), '화면에서 편수를 고른다')
