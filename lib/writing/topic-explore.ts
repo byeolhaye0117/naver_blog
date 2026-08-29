@@ -30,17 +30,94 @@
  *
  * 갈래를 고를 때 기준: **헬스장에 오는 사람이 실제로 가진 목적**이어야 한다. 회원이 콕
  * 집어 말한 두 가지(다이어트·체중 증량)를 맨 앞에 둔다.
+ *
+ * ── 갈래마다 여러 개를 적어 두고 날마다 돌려 쓴다 (2026-08-29) ──
+ * 회원: "주제탐색기가 매일 돌릴때마다 같은 주제가 나와."
+ *
+ * 맞는 지적이고, 원인이 여기 있었다. 갈래마다 질의가 **딱 세 개**였고 네이버 연관검색어는
+ * 같은 질의에 **같은 순서로** 답한다 — 어제 물어본 것을 오늘 그대로 물으면 어제 본 목록이
+ * 그대로 온다. 그래서 갈래마다 여덟 개씩 적어 두고 `seedQueries()` 가 날마다 창을 밀어
+ * 세 개씩 고른다. 물어보는 말이 달라지면 **후보 자체가 달라진다** (자리만 옮기는 것과 다르다).
  */
 export const TOPIC_SEEDS: { id: string; label: string; queries: string[] }[] = [
-  { id: 'diet', label: '다이어트 · 체중 감량', queries: ['다이어트', '체지방 감량', '다이어트 정체기'] },
-  { id: 'bulk', label: '체중 증량 · 벌크업', queries: ['벌크업', '체중 증량', '마른 사람 근육'] },
-  { id: 'beginner', label: '헬스 처음 시작', queries: ['헬스 초보', '헬스장 처음', '운동 순서'] },
-  { id: 'form', label: '운동 자세 · 방법', queries: ['스쿼트 자세', '데드리프트 자세', '헬스 루틴'] },
-  { id: 'body', label: '부위별 고민', queries: ['뱃살 빼는법', '허벅지 살 빼기', '팔뚝살'] },
-  { id: 'time', label: '시간 · 습관 만들기', queries: ['새벽 운동', '퇴근 후 운동', '홈트'] },
-  { id: 'pain', label: '통증 · 부상 피하기', queries: ['무릎 통증 운동', '허리 아플때 운동', '어깨 통증'] },
-  { id: 'food', label: '식단 · 영양', queries: ['단백질 섭취량', '야식 끊기', '공복 유산소'] },
+  {
+    id: 'diet',
+    label: '다이어트 · 체중 감량',
+    queries: ['다이어트', '체지방 감량', '다이어트 정체기', '식단 조절', '체중 감량 운동', '요요 현상', '눈바디', '유산소 다이어트'],
+  },
+  {
+    id: 'bulk',
+    label: '체중 증량 · 벌크업',
+    queries: ['벌크업', '체중 증량', '마른 사람 근육', '근육량 늘리기', '린매스업', '고중량 저반복', '근성장', '증량 식단'],
+  },
+  {
+    id: 'beginner',
+    label: '헬스 처음 시작',
+    queries: ['헬스 초보', '헬스장 처음', '운동 순서', '헬스 첫날', '운동 초보 루틴', '헬스 준비물', '3분할 운동', '무분할 운동'],
+  },
+  {
+    id: 'form',
+    label: '운동 자세 · 방법',
+    queries: ['스쿼트 자세', '데드리프트 자세', '헬스 루틴', '벤치프레스 자세', '랫풀다운 자세', '레그프레스', '턱걸이 하는법', 'plank 자세'],
+  },
+  {
+    id: 'body',
+    label: '부위별 고민',
+    queries: ['뱃살 빼는법', '허벅지 살 빼기', '팔뚝살', '옆구리살', '등살 빼기', '힙업 운동', '종아리 알', '복근 만들기'],
+  },
+  {
+    id: 'time',
+    label: '시간 · 습관 만들기',
+    queries: ['새벽 운동', '퇴근 후 운동', '홈트', '운동 지속하는법', '주 3회 운동', '점심시간 운동', '운동 습관', '하루 30분 운동'],
+  },
+  {
+    id: 'pain',
+    label: '통증 · 부상 피하기',
+    queries: ['무릎 통증 운동', '허리 아플때 운동', '어깨 통증', '손목 보호', '운동 후 근육통', '스트레칭 순서', '부상 예방 운동', '거북목 운동'],
+  },
+  {
+    id: 'food',
+    label: '식단 · 영양',
+    queries: ['단백질 섭취량', '야식 끊기', '공복 유산소', '운동 전 식사', '운동 후 식사', '탄수화물 섭취', '물 섭취량', '외식 식단'],
+  },
 ]
+
+/**
+ * **오늘이 며칠째인가** — 1970-01-01 부터 센 날수.
+ *
+ * 하루에 하나씩 늘어나기만 하면 되므로 시간대 보정은 부르는 쪽이 한다 (`seoulToday()` 를
+ * 넘긴다). 값을 못 읽으면 0 을 준다 — 그러면 예전과 똑같이 맨 앞부터 본다.
+ */
+export function dayIndex(date: string | undefined): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((date ?? '').trim())
+  if (!m) return 0
+  const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return Number.isFinite(ms) ? Math.floor(ms / 86400000) : 0
+}
+
+/** 목록에서 `start` 자리부터 `size` 개를 끊어 온다 — 끝에 닿으면 처음으로 돌아온다 */
+export function rotateWindow<T>(list: T[], start: number, size: number): T[] {
+  if (!list.length || size <= 0) return []
+  const n = Math.min(size, list.length)
+  const from = ((Math.trunc(start) % list.length) + list.length) % list.length
+  return Array.from({ length: n }, (_, i) => list[(from + i) % list.length])
+}
+
+/**
+ * **오늘 네이버에 물어볼 말** (2026-08-29 회원 요청: "매일 돌릴때마다 같은 주제가 나와").
+ *
+ * 갈래에 적힌 여덟 개 중 날마다 세 개씩, 창을 하루에 한 칸씩 밀어 고른다. 여덟 개를 매번
+ * 다 묻지 않는 이유는 검색광고 키워드도구가 **한 번에 다섯 개**까지만 받기 때문이고
+ * (searchad.ts 의 `slice(0, 5)`), 자동완성은 한 번에 하나씩 물어 느려지기 때문이다.
+ *
+ * 날짜를 안 넘기면 예전과 같이 앞 세 개다 — **같은 날 다시 눌러도 같은 말**을 묻는다.
+ * 그래야 「다른 주제 보기」로 넘긴 자리가 흔들리지 않는다.
+ */
+export const SEED_QUERY_PER_RUN = 3
+
+export function seedQueries(queries: string[], date?: string, size = SEED_QUERY_PER_RUN): string[] {
+  return rotateWindow(queries, dayIndex(date), size)
+}
 
 export type TopicIntent = 'info' | 'local' | 'buy' | 'offlimit' | 'thin'
 
@@ -483,8 +560,21 @@ export function toTopic(query: string): string {
  * 이 값은 **묶는 데만 쓴다** — 화면에 뜨는 것은 언제나 원래 검색어다 (「식이요법」이
  * 「식이요」로 깎여도 상관없는 이유다).
  */
-const TOPIC_TAIL =
-  /(하는\s*방법|하는\s*법|되는\s*법|높이는\s*법|늘리는\s*법|줄이는\s*법|빼는\s*법|없애는\s*법|좋은\s*법|높이기|늘리기|줄이기|빼기|없애기|키우기|방법|순서|법|팁)$/
+/*
+ * **꼬리를 「어떻게」 + 「방법/법/팁」 두 토막으로 나눠 본다** (2026-08-29에 고쳤다).
+ *
+ * 예전에는 「높이는 법」·「빼는 법」처럼 **붙은 꼴을 통째로** 적어 뒀다. 그래서 실제 화면에
+ * 「기초대사량」과 「기초대사량높이는방법」이 **나란히 떴다** — 회원이 이미 한 번 짚은 바로
+ * 그 짝이다. 「높이는방법」은 목록에 없어서 `방법`만 떨어지고 「기초대사량높이는」이 남았고,
+ * 그건 「기초대사량」과 다른 열쇠라 두 줄로 갈렸다.
+ *
+ * 이제 「높이/빼/줄이/…」 + 「는」 + 「방법/법/팁/순서」를 한 덩어리로 잡는다. 앞말은 건드리지
+ * 않으므로 「종아리알빼는법」과 「허벅지살빼는법」은 여전히 서로 다른 주제로 남는다.
+ */
+const HOW_STEM = '하|되|높이|늘리|줄이|빼|없애|키우|만드|기르|낮추|잡'
+const TOPIC_TAIL = new RegExp(
+  `((?:${HOW_STEM})는\\s*(?:방법|법|팁|순서|요령)|(?:${HOW_STEM})기|좋은\\s*(?:방법|법)|방법|순서|요령|법|팁)$`
+)
 
 export function topicCore(query: string): string {
   let core = (query ?? '').replace(/\s+/g, '')
@@ -586,16 +676,34 @@ export function buildCandidates(args: {
   recent: Record<string, number | null>
   /** 우리 지역 키워드 — 업체 찾는 말을 가려낸다 */
   myLocalKeywords?: string[]
-  /** 이미 고른 주제 — 다시 권하지 않는다 */
+  /**
+   * 이미 고른 주제 · **이미 쓴 글의 주제** — 다시 권하지 않는다.
+   *
+   * 2026-08-29 회원: "매일 돌릴때마다 같은 주제가 나와."
+   *
+   * 예전에는 자동 작성 설정에 담아 둔 주제만 뺐다. 그런데 **이미 글로 쓴 주제**는 그대로
+   * 다시 올라왔다 — 회원이 매일 보는 화면에서 「어제 쓴 그 주제」가 또 첫 줄에 있었던 것이다.
+   * 부르는 쪽이 쓴 글의 주제까지 여기 넘긴다.
+   */
   exclude?: string[]
 }): TopicCandidate[] {
   const seen = new Map<string, TopicCandidate>()
-  const excluded = new Set((args.exclude ?? []).map((t) => toTopic(t).replace(/\s+/g, '')))
+  /*
+   * **글자가 아니라 뜻으로 뺀다.** 「기초대사량」을 이미 썼으면 「기초대사량 높이기」도
+   * 같은 글이 되므로 함께 뺀다 — `dedupeByCore` 가 한 화면 안에서 하는 일과 같은 열쇠다.
+   * 글자만 맞춰 보면 꼬리 하나 다른 말이 매일 새 후보인 척 올라온다.
+   */
+  const excluded = new Set(
+    (args.exclude ?? []).flatMap((t) => {
+      const flat = toTopic(t).replace(/\s+/g, '')
+      return flat ? [flat, topicCore(flat)] : []
+    })
+  )
   const add = (query: string, from: TopicCandidate['from'], monthlySearch: number | null) => {
     const topic = toTopic(query)
     if (!topic) return
     const key = topic.replace(/\s+/g, '')
-    if (excluded.has(key)) return
+    if (excluded.has(key) || excluded.has(topicCore(key))) return
     const recent30 = args.recent[topic] ?? args.recent[query] ?? null
     const next: TopicCandidate = {
       topic,
@@ -642,6 +750,18 @@ export function pageOf<T>(list: T[], page: number, size = SHOW_MAX): T[] {
   const pages = Math.ceil(list.length / size)
   const p = ((Math.trunc(page) % pages) + pages) % pages
   return list.slice(p * size, p * size + size)
+}
+
+/**
+ * **몇 번째 묶음인지 목록 길이에 맞춰 접는다.**
+ *
+ * 「오늘이 며칠째인가」를 그대로 페이지 번호로 쓰면 20,000 같은 수가 되는데, 화면에
+ * 「20693/29」라고 뜨면 회원이 읽을 수 없다. `pageOf` 는 어차피 안에서 접으므로 **화면에
+ * 돌려줄 때도 같은 값으로 접어** 보낸다 — 그래야 「다른 주제 보기」의 +1 이 맞는다.
+ */
+export function normalizePage(page: number, pages: number): number {
+  if (!Number.isFinite(page) || pages <= 0) return 0
+  return ((Math.trunc(page) % pages) + pages) % pages
 }
 
 /** 지금 몇 번째를 보고 있나 — 「409개 중 13~24번째」 */

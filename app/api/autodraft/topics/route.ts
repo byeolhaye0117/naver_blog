@@ -4,7 +4,19 @@ import { gatherSuggestions } from '@/lib/naver/autocomplete'
 import { keywordTool } from '@/lib/naver/searchad'
 import { recentBlogCount } from '@/lib/naver/blogsection'
 import { hasAdKeys } from '@/lib/naver/client'
-import { SHOW_MAX, TOPIC_SEEDS, attachRecent, buildCandidates, dedupeByCore, pageOf, pageRange } from '@/lib/writing/topic-explore'
+import { seoulToday } from '@/lib/writing/autodraft'
+import {
+  SHOW_MAX,
+  TOPIC_SEEDS,
+  attachRecent,
+  buildCandidates,
+  dayIndex,
+  dedupeByCore,
+  normalizePage,
+  pageOf,
+  pageRange,
+  seedQueries,
+} from '@/lib/writing/topic-explore'
 
 export const dynamic = 'force-dynamic'
 // 자동완성 3개 + 검색광고 1회 + 발행량 여러 번을 순서대로 부른다
@@ -40,7 +52,7 @@ const GAP_MS = 400
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { seedId?: string; page?: number }
+    const body = (await req.json()) as { seedId?: string; page?: number | null }
     const seed = TOPIC_SEEDS.find((s) => s.id === body.seedId)
     if (!seed) {
       return NextResponse.json({ error: '어떤 갈래를 볼지 골라주세요.' }, { status: 400 })
@@ -48,13 +60,32 @@ export async function POST(req: Request) {
 
     const db = await readDB()
     const myLocalKeywords = db.stores.flatMap((s) => s.localKeywords ?? [])
-    // 이미 고른 주제는 다시 권하지 않는다
-    const exclude = db.autoDraftPlan?.topics ?? []
+    /*
+     * **이미 고른 주제와 이미 쓴 주제를 뺀다** (2026-08-29 회원: "매일 돌릴때마다 같은
+     * 주제가 나와").
+     *
+     * 예전에는 자동 작성 설정에 담아 둔 것(`autoDraftPlan.topics`)만 뺐다. 그런데 회원이
+     * 매일 보는 화면에는 **어제 글로 쓴 주제**가 그대로 다시 올라왔다 — 담아 두지 않고
+     * 바로 쓴 주제는 아무 데도 기록이 없었기 때문이다. 글에 남아 있는 세 칸을 모두 본다:
+     * 메인 키워드 · 자동 초안이 고른 주제 · 정보 구간 주제.
+     */
+    const written = (db.posts ?? []).flatMap((p) => [p.mainKeyword, p.autoTopic, p.infoTopic])
+    const exclude = [...(db.autoDraftPlan?.topics ?? []), ...written].filter(
+      (t): t is string => typeof t === 'string' && t.trim().length > 0
+    )
+
+    /*
+     * **오늘은 다른 말로 묻는다** (2026-08-29). 갈래에 여덟 개를 적어 두고 날마다 창을 한
+     * 칸씩 밀어 세 개를 고른다 — 네이버 연관검색어는 같은 질의에 같은 순서로 답하므로,
+     * 어제 물어본 말을 오늘 그대로 물으면 어제 본 목록이 그대로 온다.
+     */
+    const today = seoulToday()
+    const queries = seedQueries(seed.queries, today)
 
     // ① 자동완성 · ② 검색광고 — 둘은 서로 기다릴 이유가 없다
     const [suggest, adRows] = await Promise.all([
-      gatherSuggestions(seed.queries).catch(() => ({ words: [] as string[], asked: 0, answered: 0 })),
-      keywordTool(seed.queries).catch(() => []),
+      gatherSuggestions(queries).catch(() => ({ words: [] as string[], asked: 0, answered: 0 })),
+      keywordTool(queries).catch(() => []),
     ])
 
     /*
@@ -77,7 +108,15 @@ export async function POST(req: Request) {
      * 상위 12개만 보여주고 있었는데 남는 후보가 409개였다 — 397개가 한 번도 안 보였다.
      * 검색광고는 같은 씨앗에 같은 순서로 오므로 다시 눌러도 열두 줄이 그대로다.
      */
-    const page = Number.isFinite(body.page) ? Math.max(0, Math.trunc(body.page as number)) : 0
+    /*
+     * **몇 번째 묶음부터 볼까.**
+     *
+     * 회원이 「다른 주제 보기」로 넘기면 그 번호가 그대로 온다. 처음 눌렀을 때는 번호가
+     * 없는데, 예전에는 그때 **언제나 0 번**이었다 — 그래서 매일 아침 첫 화면이 늘 같은
+     * 열두 줄이었다 (검색량이 가장 큰 것들). 이제 그 자리를 **날짜만큼 밀어서** 시작한다.
+     */
+    const asked = typeof body.page === 'number' && Number.isFinite(body.page)
+    const page = asked ? Math.max(0, Math.trunc(body.page as number)) : dayIndex(today)
     /*
      * **뜻이 같은 말을 하나로 묶는다** (2026-08-28 회원 요청: "주제가 비슷한게 너무 많아 …
      * 기초대사량 / 기초대사량 높이기 이런것들 사실은 다 기초대사량에 관한거잖아").
@@ -88,8 +127,9 @@ export async function POST(req: Request) {
     const infoAll = candidates.filter((c) => c.intent === 'info')
     const info = dedupeByCore(infoAll)
     const merged = infoAll.length - info.length
-    const pick = pageOf(info, page)
-    const range = pageRange(info.length, page)
+    const at = normalizePage(page, Math.max(1, Math.ceil(info.length / SHOW_MAX)))
+    const pick = pageOf(info, at)
+    const range = pageRange(info.length, at)
 
     /*
      * 잘린 값(note === 'atLeast')을 함께 넘긴다. 블로그 섹션은 1,000건에서 잘려서 그 위는
@@ -125,7 +165,11 @@ export async function POST(req: Request) {
         from: range.from,
         to: range.to,
         pages: range.pages,
-        page,
+        page: at,
+        /** 오늘 네이버에 실제로 물어본 말 — 매일 달라진다 (2026-08-29) */
+        queries,
+        /** 이미 고르거나 이미 쓴 주제라서 뺀 개수 */
+        excluded: exclude.length,
         offlimit: by('offlimit'),
         local: by('local') + by('buy'),
         thin: by('thin'),

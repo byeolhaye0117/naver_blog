@@ -10548,8 +10548,21 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
  * 검색하는지 확인한 적이 없다. 그래서 씨앗만 우리가 넣고 후보는 네이버에서 가져온다.
  */
 {
-  const { TOPIC_SEEDS, classifyIntent, toTopic, rankCandidates, candidateWhy, buildCandidates, topicCore, dedupeByCore } =
-    require(`${OUT}/writing/topic-explore.js`)
+  const {
+    TOPIC_SEEDS,
+    SEED_QUERY_PER_RUN,
+    classifyIntent,
+    toTopic,
+    rankCandidates,
+    candidateWhy,
+    buildCandidates,
+    topicCore,
+    dedupeByCore,
+    dayIndex,
+    rotateWindow,
+    seedQueries,
+    normalizePage,
+  } = require(`${OUT}/writing/topic-explore.js`)
 
   /*
    * ─── 뜻이 같은 말은 한 줄로 묶는다 (2026-08-28 회원 요청) ──────────────
@@ -10608,6 +10621,18 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
   ok(topicCore('다이어트운동') !== topicCore('다이어트식단'), '앞말만 같은 것은 안 묶는다')
   // 두 글자 밑으로 깎이면 그건 이미 말이 아니다
   ok(topicCore('방법') === '방법', '낱말 전체가 꼬리면 그대로 둔다')
+  /*
+   * **2026-08-29, 프로덕션 화면에서 다시 새어 나온 짝.**
+   *
+   * 「다이어트」 갈래 첫 화면에 「기초대사량」과 「기초대사량높이는방법」이 **나란히** 떴다 —
+   * 회원이 이미 한 번 짚은 바로 그 짝이다. 꼬리 목록에 「높이는방법」이 없어서 `방법`만
+   * 떨어지고 「기초대사량높이는」이 남았고, 그건 「기초대사량」과 다른 열쇠였다.
+   */
+  ok(topicCore('기초대사량높이는방법') === topicCore('기초대사량'), '「높이는방법」도 통째로 뗀다', topicCore('기초대사량높이는방법'))
+  ok(topicCore('뱃살빼는방법') === topicCore('뱃살'), '「빼는방법」도 뗀다', topicCore('뱃살빼는방법'))
+  ok(topicCore('근육늘리는법') === topicCore('근육'), '「늘리는법」도 뗀다', topicCore('근육늘리는법'))
+  // 앞말을 건드리지 않는지 다시 확인한다 — 부위가 다르면 여전히 다른 주제여야 한다
+  ok(topicCore('종아리알빼는방법') !== topicCore('허벅지살빼는방법'), '꼬리를 더 떼도 부위는 안 묶는다')
 
   {
     const cand = (topic, recent30) => ({ topic, seedId: 's', monthlySearch: 1000, recent30, intent: 'info', from: 'searchad', why: '' })
@@ -10636,6 +10661,96 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
   ok(TOPIC_SEEDS.some((s) => s.label.includes('체중 증량')), '체중 증량 갈래가 있다')
   ok(TOPIC_SEEDS.every((s) => s.queries.length > 0), '갈래마다 물어볼 말이 있다')
   ok(new Set(TOPIC_SEEDS.map((s) => s.id)).size === TOPIC_SEEDS.length, '갈래 id 가 겹치지 않는다')
+
+  /*
+   * ─── 매일 다른 주제가 나오게 (2026-08-29 회원 요청) ──────────────
+   *
+   * 회원: "주제탐색기가 매일 돌릴때마다 같은 주제가 나와. 조금더 다양한 주제가 나오게 해줘."
+   *
+   * **프로덕션에서 재고 고쳤다.** 「다이어트」 갈래를 실제로 불러 보니 정보글로 쓸 만한
+   * 후보가 **339개**인데 화면에는 늘 같은 열두 줄이 떴다. 원인이 셋이었다:
+   *   ① 갈래마다 물어볼 말이 **딱 세 개**로 고정 — 네이버 연관검색어는 같은 질의에 같은
+   *      순서로 답하므로 어제 물어본 것을 오늘 그대로 물으면 어제 목록이 그대로 온다.
+   *   ② 갈래를 누를 때 **언제나 0 번 묶음** — 검색량 큰 열두 개가 늘 첫 화면이었다.
+   *   ③ **이미 글로 쓴 주제를 안 뺐다** — 어제 쓴 그 주제가 오늘 또 첫 줄에 있었다.
+   *
+   * 셋 다 여기서 지킨다. 하나만 고치면 나머지가 다시 같은 화면을 만든다.
+   */
+  ok(TOPIC_SEEDS.every((s) => s.queries.length >= 6), '갈래마다 물어볼 말이 넉넉하다 (돌려 쓸 것이 있어야 한다)')
+  ok(
+    TOPIC_SEEDS.every((s) => new Set(s.queries).size === s.queries.length),
+    '한 갈래 안에서 같은 말을 두 번 적지 않았다'
+  )
+  /*
+   * **검색광고 키워드도구는 한 번에 다섯 개까지만 받는다** (searchad.ts 의 `slice(0, 5)`).
+   * 그 위로 보내면 조용히 잘리는데, 잘린 말은 물어본 적 없는 셈이 된다.
+   */
+  ok(SEED_QUERY_PER_RUN <= 5, '한 번에 묻는 말이 검색광고 상한을 넘지 않는다', SEED_QUERY_PER_RUN)
+
+  {
+    // 하루에 한 칸씩만 밀린다 — 날짜를 못 읽으면 예전과 같이 맨 앞이다
+    ok(dayIndex('2026-08-30') - dayIndex('2026-08-29') === 1, '하루가 지나면 하나 는다')
+    ok(dayIndex('2026-08-29') === dayIndex('2026-08-29T23:59:00+09:00'), '같은 날은 같은 값이다')
+    ok(dayIndex('') === 0 && dayIndex(undefined) === 0, '날짜를 못 읽으면 0 (예전과 같은 화면)')
+
+    const abc = ['a', 'b', 'c', 'd', 'e']
+    ok(JSON.stringify(rotateWindow(abc, 0, 3)) === JSON.stringify(['a', 'b', 'c']), '첫 창')
+    ok(JSON.stringify(rotateWindow(abc, 1, 3)) === JSON.stringify(['b', 'c', 'd']), '하루 뒤에는 한 칸 밀린다')
+    ok(JSON.stringify(rotateWindow(abc, 4, 3)) === JSON.stringify(['e', 'a', 'b']), '끝에 닿으면 처음으로 돌아온다')
+    ok(rotateWindow([], 3, 3).length === 0, '빈 목록에도 터지지 않는다')
+    ok(rotateWindow(['a'], 7, 3).length === 1, '있는 것보다 많이 달라고 해도 있는 만큼만')
+
+    const seed = TOPIC_SEEDS[0]
+    const d1 = seedQueries(seed.queries, '2026-08-29')
+    const d2 = seedQueries(seed.queries, '2026-08-30')
+    ok(d1.length === SEED_QUERY_PER_RUN, '하루에 정해진 개수만 묻는다', String(d1.length))
+    ok(JSON.stringify(d1) !== JSON.stringify(d2), '날이 바뀌면 묻는 말이 바뀐다', `${d1}|${d2}`)
+    // **같은 날 다시 눌러도 같은 말**이어야 한다 — 안 그러면 「다른 주제 보기」로 넘긴 자리가 흔들린다
+    ok(JSON.stringify(d1) === JSON.stringify(seedQueries(seed.queries, '2026-08-29')), '같은 날은 같은 말을 묻는다')
+    ok(d1.every((q) => seed.queries.includes(q)), '묻는 말은 갈래에 적어 둔 것뿐이다 (지어내지 않는다)')
+  }
+
+  {
+    // 날짜를 그대로 페이지 번호로 쓰면 「20693/29」가 된다 — 화면에 돌려줄 때는 접어 보낸다
+    ok(normalizePage(dayIndex('2026-08-29'), 29) < 29, '큰 수도 목록 길이 안으로 접는다')
+    ok(normalizePage(3, 3) === 0, '끝나면 처음으로 돌아온다')
+    ok(normalizePage(-1, 5) === 4, '음수는 뒤에서부터 센다')
+    ok(normalizePage(2, 0) === 0, '묶음이 없으면 0')
+  }
+
+  {
+    /*
+     * **이미 쓴 주제는 글자가 아니라 뜻으로 뺀다.** 「기초대사량」을 이미 썼는데 다음 날
+     * 「기초대사량 높이기」가 새 후보인 척 올라오면 회원이 보기엔 같은 주제가 또 나온 것이다.
+     */
+    const built = buildCandidates({
+      seedId: 's',
+      suggestions: ['기초대사량 높이기', '뱃살빼는법', '어깨 스트레칭 순서'],
+      adRows: [],
+      recent: {},
+      exclude: ['기초대사량', '뱃살 빼는 법'],
+    })
+    const got = built.map((c) => c.topic)
+    ok(!got.includes('기초대사량 높이기'), '이미 쓴 주제의 다른 꼴도 뺀다', got.join())
+    ok(!got.includes('뱃살빼는법'), '띄어쓰기만 다른 것도 뺀다', got.join())
+    ok(got.includes('어깨 스트레칭 순서'), '상관없는 주제는 남긴다', got.join())
+    ok(buildCandidates({ seedId: 's', suggestions: ['기초대사량'], adRows: [], recent: {} }).length === 1, '뺄 것이 없으면 그대로 둔다')
+  }
+
+  {
+    const api = require('node:fs').readFileSync(new URL('../app/api/autodraft/topics/route.ts', import.meta.url), 'utf8')
+    ok(api.includes('seedQueries(seed.queries, today)'), '라우트가 날마다 다른 말로 묻는다')
+    // 이미 쓴 글의 주제 세 칸을 모두 본다 — 담아 두지 않고 바로 쓴 주제는 plan 에 없다
+    ok(/p\.mainKeyword, p\.autoTopic, p\.infoTopic/.test(api), '이미 쓴 글의 주제를 뺄 목록에 넣는다')
+    ok(/exclude = \[\.\.\.\(db\.autoDraftPlan\?\.topics \?\? \[\]\), \.\.\.written\]/.test(api), '담아 둔 주제와 함께 넘긴다')
+    ok(/const page = asked \? /.test(api) && /dayIndex\(today\)/.test(api), '번호를 안 보내면 날짜로 시작 자리를 정한다')
+    ok(api.includes('normalizePage'), '화면에 돌려줄 번호는 접어서 보낸다')
+
+    const ui = require('node:fs').readFileSync(new URL('../components/TopicExplorer.tsx', import.meta.url), 'utf8')
+    ok(ui.includes('날마다 다른 말로'), '왜 매일 다른지 화면에 적는다')
+    ok(ui.includes('note.queries'), '오늘 무엇으로 물어봤는지 밝힌다')
+    ok(ui.includes('note.excluded'), '몇 개를 뺐는지 밝힌다')
+  }
 
   /*
    * **업체를 찾는 말을 정보글 주제로 쓰면 홍보글이 된다.** 정보글은 신뢰도를 쌓으려고 쓰는
@@ -10947,7 +11062,7 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(/GAP_MS/.test(api) && /setTimeout\(r, GAP_MS\)/.test(api), '발행량 조회 사이에 간격을 둔다')
     ok(/measured\+\+/.test(api), '몇 개가 실제로 답했는지 센다 (물어본 횟수와 다르다)')
     // 재는 대상은 **보여줄 것**이어야 한다 — 안 그러면 잰 결과가 화면에 한 줄도 안 뜬다
-    ok(/const pick = pageOf\(info, page\)/.test(api), '보여줄 것을 먼저 정한다')
+    ok(/const pick = pageOf\(info, at\)/.test(api), '보여줄 것을 먼저 정한다')
     ok(/for \(const c of pick/.test(api), '그 목록만 잰다')
     ok(/attachRecent\(pick, recent\)/.test(api), '잰 값을 붙여 다시 줄 세운다')
     ok(/note === 'atLeast'/.test(api), '잘린 값인지도 함께 넘긴다 (4,286편과 4,286편 이상은 다르다)')
@@ -10960,7 +11075,13 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(ui.includes('note.total') && ui.includes('note.from'), '몇 개 중 몇 번째를 보고 있는지 밝힌다')
     ok(ui.includes('다른 주제 보기'), '다음 묶음으로 넘기는 버튼이 있다')
     ok(/explore\(seedId, note\.page \+ 1\)/.test(ui), '누르면 다음 묶음을 가져온다')
-    ok(/explore\(s\.id, 0\)/.test(ui), '갈래를 바꾸면 첫 묶음부터 본다')
+    /*
+     * **갈래를 누를 때는 번호를 안 보낸다** (2026-08-29 회원: "매일 돌릴때마다 같은 주제가
+     * 나와"). 예전에는 언제나 0 을 보내서 매일 아침 첫 화면이 늘 같은 열두 줄이었다 —
+     * 번호가 없으면 라우트가 날짜로 시작 자리를 정한다.
+     */
+    ok(/explore\(s\.id\)/.test(ui), '갈래를 누르면 시작 자리는 서버가 날짜로 정한다')
+    ok(/page: next \?\? null/.test(ui), '번호가 없으면 비워서 보낸다')
     ok(api.includes('pageOf') && api.includes('body.page'), '라우트가 묶음 번호를 받아 자른다')
     ok(ui.includes('막은 것 같습니다'), '한 건도 못 쟀으면 왜 그런지 말해준다')
 

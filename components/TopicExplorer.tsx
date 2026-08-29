@@ -25,6 +25,10 @@ interface Note {
   tried: number
   adKeys: boolean
   autocomplete: { asked: number; answered: number }
+  /** 오늘 네이버에 실제로 물어본 말 — 날마다 달라진다 (2026-08-29) */
+  queries?: string[]
+  /** 이미 고르거나 이미 쓴 주제라서 뺀 개수 */
+  excluded?: number
 }
 
 /**
@@ -73,9 +77,14 @@ export default function TopicExplorer({
    */
   const [page, setPage] = useState(0)
 
-  async function explore(id: string, next = 0) {
+  /**
+   * `next` 를 안 넘기면 **어디서부터 볼지 서버가 날짜로 정한다** (2026-08-29 회원 요청:
+   * "매일 돌릴때마다 같은 주제가 나와"). 예전에는 갈래를 누를 때마다 언제나 0 번을 보내서,
+   * 매일 아침 첫 화면이 늘 같은 열두 줄이었다.
+   */
+  async function explore(id: string, next?: number) {
     setSeedId(id)
-    setPage(next)
+    setPage(next ?? 0)
     setLoading(true)
     setError(null)
     setList(null)
@@ -83,7 +92,7 @@ export default function TopicExplorer({
       const res = await fetch('/api/autodraft/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seedId: id, page: next }),
+        body: JSON.stringify({ seedId: id, page: next ?? null }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? '주제를 찾지 못했습니다.')
@@ -103,6 +112,14 @@ export default function TopicExplorer({
         보여줍니다. 갈래 이름만 저희가 넣고, 주제는 전부 네이버에서 온 것입니다.
       </p>
       {/*
+        **매일 다른 것이 나오는 이유를 적어 둔다** (2026-08-29 회원 요청). 조용히 바꾸면
+        회원은 그냥 「오늘은 왜 다르지」가 된다 — 이 저장소의 규칙이다.
+      */}
+      <p className="muted mb-2 text-[11px] leading-relaxed">
+        갈래마다 물어볼 말을 여러 개 적어 두고 <b>날마다 다른 말로</b> 찾아옵니다. 보여드리는 자리도 날마다 옮기고,{' '}
+        <b>이미 담아 뒀거나 이미 쓴 주제는 뺍니다</b> — 그래서 아침마다 같은 열두 줄이 나오지 않습니다.
+      </p>
+      {/*
         **여기서는 「경쟁 센 자리」 같은 등급을 붙이지 않는다** (2026-08-24). 그 경계값
         (300편/100편)은 지역 헬스 키워드로 잰 것이라 전국 정보 키워드에 쓰면 열두 줄이 전부
         「경쟁 센 자리」가 된다 — 모든 줄이 같은 말이면 아무 정보도 아니다. 숫자를 그대로 보여준다.
@@ -118,7 +135,7 @@ export default function TopicExplorer({
             key={s.id}
             type="button"
             disabled={loading}
-            onClick={() => explore(s.id, 0)}
+            onClick={() => explore(s.id)}
             className={`rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition disabled:opacity-50 ${
               seedId === s.id ? 'bg-brand-600 border-brand-600 text-white' : 'bd hover:bg-slate-500/8'
             }`}
@@ -233,6 +250,8 @@ export default function TopicExplorer({
                 ` 정보글로 쓸 만한 것은 ${note.total.toLocaleString()}개이고, 한 번에 ${note.shown}개씩 보여드립니다 — 「다른 주제 보기」로 넘기시면 됩니다.`}
               {` 발행량(경쟁)은 검색량 큰 ${note.tried}개만 쟀고 ${note.measured}개가 답했습니다`}
               {note.measured === 0 && ' — 네이버가 연달아 조회를 막은 것 같습니다. 잠시 뒤 다시 눌러보세요'}.
+              {note.excluded ? ` 이미 담아 뒀거나 이미 쓴 주제 ${note.excluded.toLocaleString()}개는 후보에서 뺐습니다.` : ''}
+              {note.queries?.length ? ` 오늘은 「${note.queries.join('」·「')}」로 물어봤습니다 — 이 말은 날마다 바뀝니다.` : ''}
               {!note.adKeys && ' 검색광고 API 키가 없어 검색량은 샘플 값입니다.'}
               {note.autocomplete.answered < note.autocomplete.asked &&
                 ` 자동완성은 ${note.autocomplete.asked}번 중 ${note.autocomplete.answered}번만 응답했습니다.`}
