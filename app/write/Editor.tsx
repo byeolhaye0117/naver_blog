@@ -1973,7 +1973,8 @@ function CopyPane({
                     있고 무엇을 어떻게 하라는지가 잘려 나갔다.
                   */}
                   {k.detail && (
-                    <p className="muted mt-0.5 text-[11.5px] leading-relaxed">{k.detail}</p>
+                    // 여러 문단이 이어 붙을 수 있다 — 줄바꿈을 그대로 살린다 (2026-08-28)
+                    <p className="muted mt-0.5 text-[11.5px] leading-relaxed whitespace-pre-line">{k.detail}</p>
                   )}
                 </div>
               </li>
