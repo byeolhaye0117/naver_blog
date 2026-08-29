@@ -1949,16 +1949,33 @@ function CopyPane({
       {pkg.keyPoints.length > 0 && (
         <Card
           title="핵심 문구 (순서)"
-          subtitle="본문에서 「첫째」·「①」처럼 순서로 나온 말만 추렸습니다. 요약 상자나 고정 댓글에 그대로 쓰세요 — 본문에 있는 말이고, 앱이 지어낸 것이 아닙니다."
-          right={<CopyButton text={pkg.keyPoints.map((k, i) => `${i + 1}. ${k}`).join('\n')} label="핵심 문구 복사" />}
+          subtitle="본문에서 「첫째」·「①」처럼 순서로 나온 말과 그 밑의 설명을 함께 추렸습니다. 요약 상자나 고정 댓글에 그대로 쓰세요 — 본문에 있는 말이고, 앱이 지어낸 것이 아닙니다."
+          right={
+            <CopyButton
+              text={pkg.keyPoints
+                .map((k, i) => `${i + 1}. ${k.text}${k.detail ? `\n   ${k.detail}` : ''}`)
+                .join('\n')}
+              label="핵심 문구 복사"
+            />
+          }
         >
-          <ol className="space-y-2">
+          <ol className="space-y-2.5">
             {pkg.keyPoints.map((k, i) => (
               <li key={i} className="flex gap-2.5">
                 <span className="muted tnum bd mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold">
                   {i + 1}
                 </span>
-                <span className="text-[12.5px] leading-relaxed">{k}</span>
+                <div className="min-w-0">
+                  <p className="text-[12.5px] leading-relaxed font-semibold">{k.text}</p>
+                  {/*
+                    **부연설명을 함께 보여준다** (2026-08-28 회원 요청: "아니 문구만 나오면
+                    안되고 그 밑에 부연설명도 같이 나오게 해줘"). 첫 문장만 남기니 순서만
+                    있고 무엇을 어떻게 하라는지가 잘려 나갔다.
+                  */}
+                  {k.detail && (
+                    <p className="muted mt-0.5 text-[11.5px] leading-relaxed">{k.detail}</p>
+                  )}
+                </div>
               </li>
             ))}
           </ol>

@@ -261,18 +261,34 @@ ok(normalizeTag(longTag).length === TAG_MAX_LEN + 5, '긴 태그를 조용히 �
       '## 순서를 이렇게 바꿔보세요',
       '첫째, 웨이트를 먼저 하세요. 40분이면 충분합니다. 둘째, 유산소를 뒤에 15분 붙입니다.',
       '① 큰 근육부터 갑니다.',
+      '스쿼트, 데드리프트, 벤치프레스 순서면 됩니다.',
       '1) 세트 사이는 90초 쉬세요.',
       '2단계 호흡은 힘쓰는 구간에서 뱉습니다.',
     ].join('\n')
   )
   ok(kp.length === 5, '표시가 붙은 마디를 전부 뽑는다', JSON.stringify(kp))
   // 한 문단에 「첫째 … 둘째 …」가 이어 붙어도 나눈다
-  ok(kp[0].startsWith('첫째') && kp[1].startsWith('둘째'), '한 줄 안에서도 마디로 나눈다', JSON.stringify(kp.slice(0, 2)))
-  ok(kp[0] === '첫째, 웨이트를 먼저 하세요.', '첫 문장까지만 남긴다', kp[0])
-  ok(kp.some((k) => k.startsWith('①')) && kp.some((k) => k.startsWith('1)')), '동그라미·괄호 번호도 본다', JSON.stringify(kp))
-  ok(kp.some((k) => k.startsWith('2단계')), '「2단계」도 순서로 본다')
+  ok(kp[0].text.startsWith('첫째') && kp[1].text.startsWith('둘째'), '한 줄 안에서도 마디로 나눈다', JSON.stringify(kp.slice(0, 2)))
+  ok(kp[0].text === '첫째, 웨이트를 먼저 하세요.', '표시가 붙은 첫 문장이 문구다', kp[0].text)
+
+  /*
+   * ─── 부연설명도 함께 (2026-08-28 회원 추가 요청) ────────────────────
+   *
+   * "아니 문구만 나오면 안되고 그 밑에 부연설명도 같이 나오게 해줘."
+   *
+   * 첫 문장만 남기니 「두 번째는 큰 근육부터 순서대로 갑니다」로 끝나서 **무엇을 어떻게
+   * 하라는지가 잘려 나갔다.** 순서만 있고 알맹이가 없으면 요약으로 쓸 수가 없다.
+   */
+  ok(kp[0].detail === '40분이면 충분합니다.', '같은 줄에 이어진 설명을 붙인다', kp[0].detail)
+  ok(kp[2].text === '① 큰 근육부터 갑니다.', '동그라미 번호도 문구로 본다', kp[2].text)
+  // 한 줄에 설명이 없으면 **바로 다음 문단**을 본다 — 그렇게 쓰인 글이 흔하다
+  ok(kp[2].detail === '스쿼트, 데드리프트, 벤치프레스 순서면 됩니다.', '설명이 다음 문단에 있어도 붙인다', kp[2].detail)
+  // 다음 문단이 또 순서 표시로 시작하면 그건 다음 항목이다 — 손대지 않는다
+  ok(!kp[3].detail, '다음 항목을 설명으로 끌어오지 않는다', JSON.stringify(kp[3]))
+  ok(kp.some((k) => k.text.startsWith('1)')), '괄호 번호도 본다', JSON.stringify(kp.map((k) => k.text)))
+  ok(kp.some((k) => k.text.startsWith('2단계')), '「2단계」도 순서로 본다')
   // 소제목·이미지 지시문은 본문이 아니다
-  ok(!kp.some((k) => k.includes('순서를 이렇게')), '소제목은 뽑지 않는다')
+  ok(!kp.some((k) => k.text.includes('순서를 이렇게')), '소제목은 뽑지 않는다')
   ok(keyPointsOf('[이미지: 1) 첫 화면]').length === 0, '이미지 지시문도 뽑지 않는다')
   /*
    * **문장 가운데 든 말은 순서가 아니다** — 「셋째 주에는」이 그렇다. 줄 맨 앞이거나
@@ -282,10 +298,16 @@ ok(normalizeTag(longTag).length === TAG_MAX_LEN + 5, '긴 태그를 조용히 �
   ok(keyPointsOf('').length === 0, '본문이 없으면 빈 목록')
   // **지어내지 않는다** — 표시가 없는 글은 빈 목록이고, 화면도 그 칸을 만들지 않는다
   ok(keyPointsOf('그냥 줄글입니다. 순서 표시가 없습니다.').length === 0, '표시가 없으면 아무것도 안 뽑는다')
+  // 설명이 길면 끊고 「…」을 붙인다 — 요약이 본문만큼 길어지면 추린 뜻이 없다
+  const longOne = keyPointsOf(`첫째, 짧은 문장. ${'가'.repeat(400)}`)[0]
+  ok(longOne.detail.length <= 221 && longOne.detail.endsWith('…'), '긴 설명은 끊고 잘렸다고 표시한다', String(longOne.detail?.length))
   ok(Array.isArray(pkg.keyPoints), '발행 패키지가 그 목록을 들고 있다')
   const kpEditor = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
   ok(kpEditor.includes('핵심 문구 (순서)'), '발행 패키지 화면에 따로 칸이 있다')
   ok(/pkg\.keyPoints\.length > 0 &&/.test(kpEditor), '뽑을 것이 없으면 칸을 만들지 않는다')
+  // 화면에도 설명이 함께 나와야 한다 — 문구만 보여주면 회원이 다시 본문을 훑는다
+  ok(/\{k\.detail && \(/.test(kpEditor), '화면이 부연설명도 보여준다')
+  ok(kpEditor.includes('${k.text}${k.detail'), '복사에도 설명이 함께 담긴다')
 }
 
 const dupTags = buildCopyPackage({ ...goodPromo, id:'x', status:'draft', storeId:'s', createdAt:'', updatedAt:'', tags:['쌍용동 헬스장','쌍용동헬스장','#쌍용동 헬스장'] })
