@@ -66,8 +66,15 @@ export interface CopyPackage {
    *
    * **지어내지 않는다** — 본문에 없는 것은 안 나온다. 없으면 빈 배열이고 화면도 그 칸을
    * 만들지 않는다.
+   *
+   * ── 부연설명까지 함께 (2026-08-28 회원 추가 요청) ─────────────
+   * "아니 문구만 나오면 안되고 그 밑에 부연설명도 같이 나오게 해줘."
+   *
+   * 첫 문장만 남기니 「두 번째는 큰 근육부터 순서대로 갑니다」로 끝나서, 정작 **무엇을 어떻게
+   * 하라는지가 잘려 나갔다.** 순서만 있고 알맹이가 없으면 요약으로 쓸 수가 없다.
+   * 그래서 표시가 붙은 첫 문장은 `text`, 그 뒤에 딸린 설명은 `detail` 로 함께 준다.
    */
-  keyPoints: string[]
+  keyPoints: { text: string; detail?: string }[]
   checklist: { label: string; detail?: string }[]
 }
 
@@ -645,12 +652,17 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
 const KEY_POINT_MARK =
   /(첫째|둘째|셋째|넷째|다섯째|여섯째|일곱째|첫\s*번째|두\s*번째|세\s*번째|네\s*번째|다섯\s*번째|[①②③④⑤⑥⑦⑧⑨⑩]|\d+\s*단계|\d+[).]) */
 
-export function keyPointsOf(body: string): string[] {
-  const out: string[] = []
-  for (const rawLine of (body ?? '').split('\n')) {
-    const line = rawLine.trim()
-    // 소제목·이미지 지시문은 본문이 아니다
-    if (!line || line.startsWith('#') || line.startsWith('[')) continue
+export function keyPointsOf(body: string): { text: string; detail?: string }[] {
+  const out: { text: string; detail?: string }[] = []
+  const lines = (body ?? '').split('\n').map((l) => l.trim())
+  /** 본문이 아닌 줄 — 소제목·이미지 지시문 */
+  const skip = (l: string) => !l || l.startsWith('#') || l.startsWith('[')
+  /** 그 줄이 순서 표시로 시작하나 */
+  const startsWithMark = (l: string) => new RegExp(`^${KEY_POINT_MARK.source}`).test(l)
+
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li]
+    if (skip(line)) continue
 
     /*
      * 그 줄 안에서 표시가 나오는 자리를 모두 찾는다. **줄 맨 앞이거나 문장이 끝난 다음**에
@@ -665,18 +677,37 @@ export function keyPointsOf(body: string): string[] {
     }
     for (let i = 0; i < marks.length; i++) {
       const chunk = line.slice(marks[i], marks[i + 1] ?? line.length).trim()
-      if (chunk) out.push(trimPoint(chunk))
+      if (!chunk) continue
+      const first = chunk.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0]?.trim() ?? chunk
+      let detail = chunk.slice(first.length).trim()
+      /*
+       * **한 줄에 설명이 없으면 바로 다음 문단을 본다** (2026-08-28 회원 요청: "그 밑에
+       * 부연설명도 같이 나오게 해줘"). 「두 번째는 …」만 한 줄로 있고 설명이 다음 문단에
+       * 있는 글이 흔하다.
+       *
+       * **한 문단까지만** 가져온다. 그 다음 문단은 다른 항목의 설명이거나 아예 다른 얘기라,
+       * 계속 붙이면 요약이 본문만큼 길어진다. 다음 문단이 또 순서 표시로 시작하면 그건
+       * 다음 항목이므로 손대지 않는다.
+       */
+      if (!detail && i === marks.length - 1) {
+        const next = lines[li + 1]
+        if (next && !skip(next) && !startsWithMark(next)) detail = next
+      }
+      out.push({ text: trimPoint(first), detail: detail ? trimPoint(detail, DETAIL_MAX) : undefined })
     }
   }
   return out
 }
 
-/** 한 항목을 읽기 좋은 길이로 — 첫 문장까지, 그래도 길면 100자에서 끊는다 */
-function trimPoint(chunk: string): string {
-  const firstSentence = chunk.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0]?.trim() ?? chunk
-  if (firstSentence.length <= 100) return firstSentence
-  return `${firstSentence.slice(0, 100).trim()}…`
+/** 부연설명은 이보다 길면 자른다 — 요약이 본문만큼 길어지면 추린 뜻이 없다 */
+const DETAIL_MAX = 220
+
+/** 한 항목을 읽기 좋은 길이로 — 길면 끊고 「…」을 붙여 잘렸다는 것을 숨기지 않는다 */
+function trimPoint(chunk: string, max = 100): string {
+  if (chunk.length <= max) return chunk
+  return `${chunk.slice(0, max).trim()}…`
 }
+
 
 /** 발행 기록 한 줄 (post-log.md 형식) — 스킬과 대화로 주고받을 때 쓴다 */
 export function postLogLine(post: Post, store?: Store): string {
