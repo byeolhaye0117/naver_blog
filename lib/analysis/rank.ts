@@ -352,22 +352,37 @@ export function rankItemName(v: Pick<RankView, 'target' | 'postTitle'>): string 
 }
 
 /**
- * 목록 순서 — **같은 키워드끼리 붙여 놓는다.**
+ * 목록 순서 — **최근에 올린 글부터** (2026-08-28 회원 요청: "날짜 순으로 정리해서 보이게 해줘").
  *
- * 회원 지적 (2026-08-24): "같은 키워드가 많으니까…" 실제로 「쌍용동헬스장」·「쌍용동 헬스장」
- * 처럼 비슷한 키워드로 여러 편을 추적하고 있는데, 등록한 순서대로 흩어져 있으면 같은
- * 키워드의 글들을 비교하려고 위아래로 스크롤해야 한다.
+ * ── 왜 바꿨나 ──────────────────────────────────────────────
+ * 2026-08-24 에는 **같은 키워드끼리** 붙여 놨다 (회원: "같은 키워드가 많으니까…").
+ * 그때는 「쌍용동헬스장」·「쌍용동 헬스장」처럼 비슷한 키워드가 흩어져 있어서 비교하기가
+ * 어려웠다.
  *
- * 같은 키워드 안에서는 **순위가 좋은 것부터** — 그 자리를 지금 누가 잡고 있는지가 먼저다.
- * 순위 밖(null)은 뒤로 민다 (모르는 것을 0위로 치면 맨 앞에 온다).
+ * 그 뒤 글이 쌓이면서 화면이 이렇게 됐다 — 발행 1일차 · 0일차 · 1일차 · 0일차 · 4일차 ·
+ * 11일차 · 10일차 · 8일차 · 2일차. **오늘 올린 글과 열흘 지난 글이 뒤섞여 있다.**
+ * 순위는 발행 직후에 가장 많이 움직이므로 볼 순서는 새 글부터다.
+ *
+ * ── 못 잰 것은 뒤로 ────────────────────────────────────────
+ * 발행일이 없는 항목(손으로 등록했는데 날짜를 안 적은 것)은 맨 뒤에 둔다 — 모르는 것을
+ * 오늘로 치면 맨 앞에 오고, 그러면 정작 새 글이 밀린다.
+ *
+ * 같은 날 글끼리는 예전 규칙 그대로다 — 같은 키워드끼리 묶고, 그 안에서 순위가 좋은 것부터.
  */
 export function sortRankViews(views: RankView[]): RankView[] {
-  return [...views].sort(
-    (a, b) =>
+  const day = (v: RankView) => v.publishedAt?.slice(0, 10) ?? ''
+  return [...views].sort((a, b) => {
+    const da = day(a)
+    const db = day(b)
+    // 날짜를 모르는 것은 맨 뒤로 (오늘로 쳐서 맨 앞에 오면 새 글이 밀린다)
+    if (!da !== !db) return da ? -1 : 1
+    return (
+      db.localeCompare(da) ||
       a.target.keyword.localeCompare(b.target.keyword) ||
       (a.current ?? Number.MAX_SAFE_INTEGER) - (b.current ?? Number.MAX_SAFE_INTEGER) ||
       rankItemName(a).localeCompare(rankItemName(b))
-  )
+    )
+  })
 }
 
 export function rankLabel(rank: number | null): string {
