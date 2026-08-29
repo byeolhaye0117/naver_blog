@@ -1937,6 +1937,34 @@ function CopyPane({
 
       <TagCard pkg={pkg} />
 
+      {/*
+        **본문에서 순서대로 나오는 핵심 문구** (2026-08-28 회원 요청: "정보글 작성하면 본문에
+        첫째, 둘째 같은 순서로 나오는 핵심 문구를 발행패키지에서 따로 추려주면 좋겠어").
+
+        정보글은 순서가 곧 뼈대다. 그것만 모아 두면 요약 상자·댓글 고정·다음 글 소재로
+        그대로 쓸 수 있는데, 지금은 본문을 다시 훑어 손으로 옮겨 적어야 했다.
+
+        **지어내지 않는다** — 본문에 그런 표시가 없으면 이 칸을 아예 만들지 않는다.
+      */}
+      {pkg.keyPoints.length > 0 && (
+        <Card
+          title="핵심 문구 (순서)"
+          subtitle="본문에서 「첫째」·「①」처럼 순서로 나온 말만 추렸습니다. 요약 상자나 고정 댓글에 그대로 쓰세요 — 본문에 있는 말이고, 앱이 지어낸 것이 아닙니다."
+          right={<CopyButton text={pkg.keyPoints.map((k, i) => `${i + 1}. ${k}`).join('\n')} label="핵심 문구 복사" />}
+        >
+          <ol className="space-y-2">
+            {pkg.keyPoints.map((k, i) => (
+              <li key={i} className="flex gap-2.5">
+                <span className="muted tnum bd mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold">
+                  {i + 1}
+                </span>
+                <span className="text-[12.5px] leading-relaxed">{k}</span>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      )}
+
       <Card title="5. 발행 체크리스트" subtitle="이 순서를 지키는 것이 노출의 절반입니다">
         <ul className="space-y-2.5">
           {pkg.checklist.map((c, i) => (
