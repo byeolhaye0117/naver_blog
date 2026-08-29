@@ -3,6 +3,7 @@ import { mutate, readDB } from '@/lib/store'
 import { newId } from '@/lib/id'
 import { doneForToday, perDayOf, planAssignment, todayAutoDraftCount } from '@/lib/writing/autodraft'
 import { AUTO_DRAFT_RUNS_KEEP, baseUrlFor, seoulToday, shouldRevise } from '@/lib/writing/autodraft'
+import { isPrescriptionStale, prescriptionForType, prescriptionKey } from '@/lib/analysis/prescription'
 import type { AutoDraftRun, Post } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -209,7 +210,66 @@ async function run(
    * 우회 비밀값이 있으면 함께 보내고, 없으면 아래에서 「무엇이 돌아왔는지」를 기록에 남긴다.
    */
   const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
+  /*
+   * **시간 재기는 상위노출 분석부터 센다** (2026-08-28). 분석에 30초쯤 걸리는데 그것을
+   * 안 세면 고쳐 쓰기 예산(REVISE_TIME_BUDGET_MS)이 그만큼 넘쳐서 함수 실행 한도(300초)를
+   * 넘길 수 있다 — 그러면 **아무것도 저장되지 않는다.** 분석에 쓴 시간만큼 고쳐 쓰기가
+   * 줄어드는 것이 맞다.
+   */
   const askedAt = Date.now()
+
+  /*
+   * ─── 상위노출 분석을 하고 쓴다 (2026-08-28 회원 지적) ─────────────────
+   *
+   * 회원: "자동작성하는게 관련키워드 상위노출 분석을 안하고 작성하는거 같아."
+   *
+   * 맞다. 손으로 쓰는 화면은 처방을 지시문에 함께 넣는데(app/write/Editor.tsx 의
+   * `prescription`), **크론은 그 자리를 비워 보내고 있었다.** 같은 앱인데 새벽에 쓴 글만
+   * 그 판의 실측 없이 나갔다 — 제목 길이도, 분량도, 이미지 수도 전부 일반 기준으로.
+   *
+   * ── 저장된 것이 있으면 그것부터 ──────────────────────────
+   * 처방은 키워드당 하나가 저장돼 있고(`db.prescriptions`) 화면도 그것을 쓴다. 아직
+   * 싱싱하면 다시 재지 않는다 — 조회를 아끼고, 화면과 크론이 **같은 처방**을 쓰게 된다.
+   *
+   * 없거나 오래됐으면 그 자리에서 분석한다 (`POST /api/serp` — 그 라우트가 재고 저장까지
+   * 한다). 분석이 실패해도 **글은 쓴다** — 처방 없이 쓰는 것이 안 쓰는 것보다 낫다.
+   */
+  const rxKeyword = assignment.mainKeyword
+  const rxKey = prescriptionKey(rxKeyword)
+  const storedRx = (db.prescriptions ?? []).find((p) => p.key === rxKey)
+  let prescription: string[] | undefined =
+    storedRx && !isPrescriptionStale(storedRx.date) ? storedRx.items : undefined
+  let rxNote = prescription ? `저장된 처방 사용 (${storedRx?.date})` : ''
+  if (!prescription) {
+    try {
+      const res = await fetch(`${base}/api/serp`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(bypass ? { 'x-vercel-protection-bypass': bypass } : {}),
+        },
+        body: JSON.stringify({ keyword: rxKeyword }),
+      })
+      const data = (await res.json().catch(() => null)) as
+        | { analysis?: { prescription?: string[]; mock?: boolean } }
+        | null
+      const items = data?.analysis?.prescription
+      if (res.ok && items?.length && !data?.analysis?.mock) {
+        prescription = items
+        rxNote = `상위노출 분석 ${items.length}개`
+      } else {
+        rxNote = '상위노출 분석을 못 했습니다 (처방 없이 씁니다)'
+      }
+    } catch {
+      rxNote = '상위노출 분석에 실패했습니다 (처방 없이 씁니다)'
+    }
+  }
+  /*
+   * **글 유형에 맞게 거른다.** 처방에는 「방문 후기 형태로 맞붙어라」처럼 후기글에게 할
+   * 말이 섞여 있다 — 정보글에 그대로 넣으면 검수의 화자 항목과 부딪힌다.
+   */
+  const rxForInfo = prescription ? prescriptionForType(prescription, 'info') : undefined
+  console.log('[cron/draft] 상위노출 분석', rxNote, `${Date.now() - askedAt}ms`)
   const ask = async (extra: Record<string, unknown> = {}) => {
     const started = Date.now()
     const res = await fetch(`${base}/api/write`, {
@@ -241,6 +301,8 @@ async function run(
         localKeyword: assignment.localKeyword,
         subKeywords: [],
         infoTopic: assignment.topic,
+        // 상위노출 분석 처방 — 이게 빠지면 그 판의 실측이 글에 반영되지 않는다 (2026-08-28)
+        prescription: rxForInfo?.length ? rxForInfo : undefined,
         ...extra,
       }),
     })
@@ -267,7 +329,7 @@ async function run(
       (first.data
         ? `글을 쓰지 못했습니다 (응답에 draft.body 가 없습니다) — ${first.raw.slice(0, 160)}`
         : `JSON 이 아닌 응답 (상태 ${first.res.status}) — ${first.raw.slice(0, 160)}`)
-    await record({ ok: false, keyword: assignment.localKeyword, topic: assignment.topic, error })
+    await record({ ok: false, keyword: assignment.localKeyword, topic: assignment.topic, error, rx: rxNote })
     return NextResponse.json({ error, assignment, status: first.res.status }, { status: 502 })
   }
 
@@ -358,10 +420,13 @@ async function run(
     // 아침에 손댈 것이 있는지를 화면이 그대로 말할 수 있게 남긴다 (2026-08-26)
     fails: best.check?.fail,
     rounds,
+    // 분석하고 썼는지 화면이 그대로 말할 수 있게 (2026-08-28)
+    rx: rxNote,
   })
 
   return NextResponse.json({
     saved: post.id,
+    rx: rxNote,
     date: today,
     keyword: assignment.localKeyword,
     topic: assignment.topic,

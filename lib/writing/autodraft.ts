@@ -899,6 +899,8 @@ export interface AutoDraftDay {
   fails?: number
   /** 고쳐 쓰기를 몇 번 돌렸나 */
   rounds?: number
+  /** 상위노출 분석을 어떻게 했나 (2026-08-28) — 「분석하고 썼는지」를 화면이 말한다 */
+  rx?: string
 }
 
 /**
@@ -919,7 +921,7 @@ export interface AutoDraftDay {
  * 그날그날 앱이 골라 쓴다.
  */
 export function autoDraftDays(args: {
-  runs: { date: string; at?: string; ok: boolean; keyword?: string; topic?: string; error?: string; score?: number | null; postId?: string; manual?: boolean; fails?: number; rounds?: number }[] | undefined
+  runs: { date: string; at?: string; ok: boolean; keyword?: string; topic?: string; error?: string; score?: number | null; postId?: string; manual?: boolean; fails?: number; rounds?: number; rx?: string }[] | undefined
   /** 회원이 채워 둔 앞날 — 계산한 예정이 아니다. 키워드는 예상값이 있으면 함께 온다 */
   planned: { date: string; topic: string; keyword?: string }[]
   today: string
@@ -975,6 +977,7 @@ export function autoDraftDays(args: {
         manual: r.manual,
         fails: r.fails,
         rounds: r.rounds,
+        rx: r.rx,
       }))
     )
 

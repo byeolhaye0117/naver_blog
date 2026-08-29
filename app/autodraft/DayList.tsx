@@ -204,6 +204,16 @@ export default function DayList({
                   {typeof d.fails === 'number' && d.fails > 0 && ' 남은 것은 글을 열어 「검수 항목 고쳐 쓰기」로 마저 고치실 수 있습니다.'}
                 </p>
               )}
+              {/*
+                **상위노출 분석을 하고 썼는지 밝힌다** (2026-08-28 회원 지적: "자동작성하는게
+                관련키워드 상위노출 분석을 안하고 작성하는거 같아").
+
+                실제로 안 하고 있었다. 이제는 하는데, **적어 두지 않으면 회원이 알 방법이
+                없다** — 회원이 물은 것이 바로 그것이다.
+              */}
+              {d.rx && (
+                <p className="muted mt-0.5 text-[11px] leading-relaxed">상위노출: {d.rx}</p>
+              )}
               {d.postId && (
                 <Link
                   href={`/write?id=${d.postId}`}
