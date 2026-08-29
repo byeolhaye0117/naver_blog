@@ -73,6 +73,13 @@ export interface CopyPackage {
    * 첫 문장만 남기니 「두 번째는 큰 근육부터 순서대로 갑니다」로 끝나서, 정작 **무엇을 어떻게
    * 하라는지가 잘려 나갔다.** 순서만 있고 알맹이가 없으면 요약으로 쓸 수가 없다.
    * 그래서 표시가 붙은 첫 문장은 `text`, 그 뒤에 딸린 설명은 `detail` 로 함께 준다.
+   *
+   * ── 그리고 **끝까지** (2026-08-28, 같은 날 다시) ────────────────
+   * "내용이 전체적으로 안나와 핵심 문구와 관련된 전체 문장이 나오게 해줘."
+   *
+   * 그 다음 판은 「다음 한 문단까지, 220자까지」였다. 설명이 여러 문단에 걸쳐 있으면 앞쪽만
+   * 나오고 뒤가 잘렸다 — 화면에 「…자료를 보면」에서 끊긴 줄이 그것이다. 이제 **다음 순서
+   * 표시(또는 소제목·이미지)를 만날 때까지** 이어 붙이고, 길이로는 자르지 않는다.
    */
   keyPoints: { text: string; detail?: string }[]
   checklist: { label: string; detail?: string }[]
@@ -662,7 +669,7 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
  * 끊는다 (끊었으면 「…」을 붙여 **잘렸다는 것을 숨기지 않는다**).
  */
 const KEY_POINT_MARK =
-  /(첫째|둘째|셋째|넷째|다섯째|여섯째|일곱째|(?:첫|두|세|네|다섯|여섯|일곱)\s*(?:번째|단계)|[①②③④⑤⑥⑦⑧⑨⑩]|\d+\s*단계|\d+[).]) */
+  /(첫째|둘째|셋째|넷째|다섯째|여섯째|일곱째|(?:첫|두|세|네|다섯|여섯|일곱)\s*(?:번째|단계)|[①②③④⑤⑥⑦⑧⑨⑩]|\d+\s*단계|\d+[).](?!\d)) */
 
 export function keyPointsOf(body: string): { text: string; detail?: string }[] {
   const out: { text: string; detail?: string }[] = []
@@ -691,28 +698,36 @@ export function keyPointsOf(body: string): { text: string; detail?: string }[] {
       const chunk = line.slice(marks[i], marks[i + 1] ?? line.length).trim()
       if (!chunk) continue
       const first = chunk.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0]?.trim() ?? chunk
-      let detail = chunk.slice(first.length).trim()
+      const parts = [chunk.slice(first.length).trim()]
       /*
-       * **한 줄에 설명이 없으면 바로 다음 문단을 본다** (2026-08-28 회원 요청: "그 밑에
-       * 부연설명도 같이 나오게 해줘"). 「두 번째는 …」만 한 줄로 있고 설명이 다음 문단에
-       * 있는 글이 흔하다.
+       * ─── 관련된 내용을 **끝까지** 가져온다 (2026-08-28 회원 요청) ──────────
        *
-       * **한 문단까지만** 가져온다. 그 다음 문단은 다른 항목의 설명이거나 아예 다른 얘기라,
-       * 계속 붙이면 요약이 본문만큼 길어진다. 다음 문단이 또 순서 표시로 시작하면 그건
-       * 다음 항목이므로 손대지 않는다.
+       * "내용이 전체적으로 안나와 핵심 문구와 관련된 전체 문장이 나오게 해줘."
+       *
+       * 앞 판은 ①같은 줄에 설명이 없을 때만 ②다음 한 문단까지만 봤다. 그래서 설명이
+       * 여러 문단에 걸쳐 있으면 앞쪽만 나오고 뒤가 잘렸다 — 화면에 「…자료를 보면」에서
+       * 끊긴 줄이 그것이다.
+       *
+       * 이제 **다음 순서 표시(또는 소제목·이미지)를 만날 때까지** 이어 붙인다. 그 경계가
+       * 곧 「이 항목에 딸린 내용」의 끝이다. 길이로 자르지 않는다 — 회원이 원한 것이 전체
+       * 문장이고, 임의로 끊으면 또 「내용이 안 나온다」가 된다.
        */
-      if (!detail && i === marks.length - 1) {
-        const next = lines[li + 1]
-        if (next && !skip(next) && !startsWithMark(next)) detail = next
+      if (i === marks.length - 1) {
+        for (let k = li + 1; k < lines.length; k++) {
+          const next = lines[k]
+          if (!next) continue
+          if (skip(next) || startsWithMark(next)) break
+          parts.push(next)
+          li = k
+        }
       }
-      out.push({ text: trimPoint(first), detail: detail ? trimPoint(detail, DETAIL_MAX) : undefined })
+      const detail = parts.filter(Boolean).join('\n')
+      out.push({ text: trimPoint(first), detail: detail || undefined })
     }
   }
   return out
 }
 
-/** 부연설명은 이보다 길면 자른다 — 요약이 본문만큼 길어지면 추린 뜻이 없다 */
-const DETAIL_MAX = 220
 
 /** 한 항목을 읽기 좋은 길이로 — 길면 끊고 「…」을 붙여 잘렸다는 것을 숨기지 않는다 */
 function trimPoint(chunk: string, max = 100): string {

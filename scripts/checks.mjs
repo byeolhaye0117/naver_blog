@@ -326,9 +326,40 @@ ok(normalizeTag(longTag).length === TAG_MAX_LEN + 5, '긴 태그를 조용히 �
   ok(keyPointsOf('').length === 0, '본문이 없으면 빈 목록')
   // **지어내지 않는다** — 표시가 없는 글은 빈 목록이고, 화면도 그 칸을 만들지 않는다
   ok(keyPointsOf('그냥 줄글입니다. 순서 표시가 없습니다.').length === 0, '표시가 없으면 아무것도 안 뽑는다')
-  // 설명이 길면 끊고 「…」을 붙인다 — 요약이 본문만큼 길어지면 추린 뜻이 없다
-  const longOne = keyPointsOf(`첫째, 짧은 문장. ${'가'.repeat(400)}`)[0]
-  ok(longOne.detail.length <= 221 && longOne.detail.endsWith('…'), '긴 설명은 끊고 잘렸다고 표시한다', String(longOne.detail?.length))
+  /*
+   * ─── 관련된 내용을 **끝까지** 가져온다 (2026-08-28 회원 요청) ──────────
+   *
+   * "내용이 전체적으로 안나와 핵심 문구와 관련된 전체 문장이 나오게 해줘."
+   *
+   * 앞 판은 「다음 한 문단까지, 220자까지」였다. 설명이 여러 문단에 걸쳐 있으면 앞쪽만
+   * 나오고 뒤가 잘렸다 — 화면에 「…자료를 보면」에서 끊긴 줄이 그것이다.
+   *
+   * 이제 다음 순서 표시(또는 소제목·이미지)를 만날 때까지 이어 붙이고 **길이로는 자르지
+   * 않는다.** 임의로 끊으면 또 「내용이 안 나온다」가 된다.
+   */
+  {
+    const long = keyPointsOf(`첫째, 짧은 문장. ${'가'.repeat(400)}`)[0]
+    ok(long.detail.length === 400 && !long.detail.endsWith('…'), '길다고 자르지 않는다', String(long.detail.length))
+
+    const many = keyPointsOf(
+      ['첫째, 문구입니다.', '설명 첫 문단입니다.', '설명 둘째 문단입니다.', '둘째, 다음 문구입니다.', '다음 설명입니다.'].join('\n')
+    )
+    ok(many.length === 2, '항목은 둘이다', JSON.stringify(many.map((k) => k.text)))
+    ok(many[0].detail === '설명 첫 문단입니다.\n설명 둘째 문단입니다.', '여러 문단을 끝까지 잇는다', JSON.stringify(many[0].detail))
+    ok(many[1].detail === '다음 설명입니다.', '다음 항목은 제 설명만 갖는다', JSON.stringify(many[1].detail))
+    // 소제목·이미지에서 멈춘다 — 그 아래는 다른 이야기다
+    const stop = keyPointsOf(['첫째, 문구입니다.', '설명입니다.', '## 다른 소제목', '딴 얘기입니다.'].join('\n'))
+    ok(stop[0].detail === '설명입니다.', '소제목을 만나면 멈춘다', JSON.stringify(stop[0].detail))
+    // 화면이 문단 나눔을 살려서 보여준다
+    const ui = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+    ok(/whitespace-pre-line[^]{0,40}k\.detail|k\.detail[^]{0,80}whitespace-pre-line/.test(ui), '화면이 줄바꿈을 살린다')
+  }
+  /*
+   * 소수점을 순서 표시로 보지 않는다 — 「체중 1kg당 1.6~2.2g」의 「1.」이 걸리면 설명이
+   * 거기서 잘린다.
+   */
+  ok(keyPointsOf('첫째, 문구입니다. 체중 1kg당 1.6~2.2g이 필요합니다.')[0].detail === '체중 1kg당 1.6~2.2g이 필요합니다.',
+    '소수점을 순서 표시로 보지 않는다', JSON.stringify(keyPointsOf('첫째, 문구입니다. 체중 1kg당 1.6~2.2g이 필요합니다.')[0].detail))
   ok(Array.isArray(pkg.keyPoints), '발행 패키지가 그 목록을 들고 있다')
   const kpEditor = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
   ok(kpEditor.includes('핵심 문구 (순서)'), '발행 패키지 화면에 따로 칸이 있다')
