@@ -287,6 +287,34 @@ ok(normalizeTag(longTag).length === TAG_MAX_LEN + 5, '긴 태그를 조용히 �
   ok(!kp[3].detail, '다음 항목을 설명으로 끌어오지 않는다', JSON.stringify(kp[3]))
   ok(kp.some((k) => k.text.startsWith('1)')), '괄호 번호도 본다', JSON.stringify(kp.map((k) => k.text)))
   ok(kp.some((k) => k.text.startsWith('2단계')), '「2단계」도 순서로 본다')
+
+  /*
+   * ─── 「첫 단계」를 놓쳤다 (2026-08-28 회원 지적) ────────────────────
+   *
+   * "첫번째는 어디가고 두번째부터 나오는거야?"
+   *
+   * 실제 글을 받아 보니 본문이 이렇게 쓰여 있었다:
+   *   **첫 단계**는 워밍업입니다 … / **두 번째**는 큰 근육부터 … / 세 번째 … / 네 번째 …
+   *
+   * 첫 항목만 「단계」이고 나머지는 「번째」였다. 우리 목록에는 「1단계」처럼 숫자가 붙은
+   * 것만 있어서 「첫 단계」가 빠졌고, 그래서 두 번째부터 나왔다.
+   */
+  {
+    const mixed = keyPointsOf(
+      ['첫 단계는 워밍업입니다. 5분 걸으세요.', '두 번째는 큰 근육부터 갑니다.', '세 번째는 마무리입니다.'].join('\n')
+    )
+    ok(mixed.length === 3, '「첫 단계」로 시작해도 셋 다 뽑는다', JSON.stringify(mixed.map((k) => k.text)))
+    ok(mixed[0].text.startsWith('첫 단계'), '첫 항목이 빠지지 않는다', mixed[0].text)
+    ok(keyPointsOf('두 단계는 무게를 올립니다.').length === 1, '「두 단계」도 본다')
+    /*
+     * 표현이 섞인 것 자체는 글 쪽 문제다 — 지시문에서도 막는다. 뽑는 쪽만 고치면 다음 글도
+     * 「첫 단계 → 두 번째」로 나온다 (이 저장소가 반복해서 겪은 「한쪽만 고친 것」).
+     */
+    const { buildSystemPrompt: sysPrompt } = require(`${OUT}/ai/prompt.js`)
+    for (const t of ['promo', 'info', 'review'])
+      ok(sysPrompt(t).includes('순서를 매길 때는 한 가지 말로 통일하고 첫 항목부터 매긴다'),
+        `${t} 지시문이 순서 표현을 통일하라고 한다`)
+  }
   // 소제목·이미지 지시문은 본문이 아니다
   ok(!kp.some((k) => k.text.includes('순서를 이렇게')), '소제목은 뽑지 않는다')
   ok(keyPointsOf('[이미지: 1) 첫 화면]').length === 0, '이미지 지시문도 뽑지 않는다')
