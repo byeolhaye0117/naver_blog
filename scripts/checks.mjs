@@ -2425,6 +2425,8 @@ console.log('\n[37-2] 순위 목록 — 같은 키워드를 어떻게 구분하�
     target: { id: patch.id ?? 't', keyword: patch.keyword ?? '쌍용동 헬스장', url: patch.url ?? 'https://blog.naver.com/x/1', label: patch.label },
     postTitle: patch.postTitle,
     current: patch.current ?? null,
+    // 목록 순서를 발행일로 매기므로(2026-08-28) 이 값이 있어야 순서를 잴 수 있다
+    publishedAt: patch.publishedAt,
   })
 
   // ── 무엇으로 이 항목을 알아보나
@@ -2530,17 +2532,48 @@ console.log('\n[37-2] 순위 목록 — 같은 키워드를 어떻게 구분하�
   }
 
   /*
-   * **같은 키워드끼리 붙여 놓는다.** 등록 순서대로 흩어져 있으면 같은 키워드의 글들을
-   * 비교하려고 위아래로 스크롤해야 한다.
+   * ─── 최근에 올린 글부터 (2026-08-28 회원 요청) ────────────────────
+   *
+   * "날짜 순으로 정리해서 보이게 해줘."
+   *
+   * 2026-08-24 에는 **같은 키워드끼리** 붙여 놨었다 (회원: "같은 키워드가 많으니까…").
+   * 그 뒤 글이 쌓이면서 화면이 이렇게 됐다 — 1일차 · 0일차 · 1일차 · 0일차 · 4일차 ·
+   * 11일차 · 10일차 · 8일차 · 2일차. **오늘 올린 글과 열흘 지난 글이 뒤섞여 있다.**
+   * 순위는 발행 직후에 가장 많이 움직이므로 볼 순서는 새 글부터다.
    */
-  const sorted = sortRankViews([
-    v({ id: 'b', keyword: '천안 헬스장', current: 3 }),
-    v({ id: 'a2', keyword: '쌍용동 헬스장', current: 74, postTitle: '나' }),
-    v({ id: 'a1', keyword: '쌍용동 헬스장', current: 12, postTitle: '가' }),
+  const byDate = sortRankViews([
+    v({ id: 'old', keyword: '천안 헬스장', current: 3, publishedAt: '2026-08-18' }),
+    v({ id: 'new', keyword: '쌍용동 헬스장', current: 74, publishedAt: '2026-08-28' }),
+    v({ id: 'mid', keyword: '가나 헬스장', current: 12, publishedAt: '2026-08-22' }),
   ])
-  ok(sorted.map((x) => x.target.id).join() === 'a1,a2,b', `같은 키워드가 붙어 있고 순위 좋은 것부터 — ${sorted.map((x) => x.target.id).join()}`)
+  ok(byDate.map((x) => x.target.id).join() === 'new,mid,old', `최근 글부터 — ${byDate.map((x) => x.target.id).join()}`)
+
+  /*
+   * **같은 날 글끼리는 예전 규칙 그대로다** — 같은 키워드끼리 묶고, 그 안에서 순위가
+   * 좋은 것부터. 등록 순서대로 흩어져 있으면 비교하려고 위아래로 스크롤해야 한다.
+   */
+  const sameDay = sortRankViews([
+    v({ id: 'b', keyword: '천안 헬스장', current: 3, publishedAt: '2026-08-28' }),
+    v({ id: 'a2', keyword: '쌍용동 헬스장', current: 74, postTitle: '나', publishedAt: '2026-08-28' }),
+    v({ id: 'a1', keyword: '쌍용동 헬스장', current: 12, postTitle: '가', publishedAt: '2026-08-28' }),
+  ])
+  ok(sameDay.map((x) => x.target.id).join() === 'a1,a2,b', `같은 날은 키워드끼리 붙고 순위 좋은 것부터 — ${sameDay.map((x) => x.target.id).join()}`)
+
+  /*
+   * **발행일을 모르는 것은 맨 뒤로.** 오늘로 치면 맨 앞에 오고, 그러면 정작 새 글이 밀린다
+   * — 모르는 것을 유리하게 쓰지 않는다 (순위 밖을 0위로 치지 않는 것과 같은 이유다).
+   */
+  const noDate = sortRankViews([
+    v({ id: 'none', keyword: '가', current: 1 }),
+    v({ id: 'dated', keyword: '나', current: 90, publishedAt: '2026-08-01' }),
+  ])
+  ok(noDate.map((x) => x.target.id).join() === 'dated,none', '발행일을 모르면 뒤로', noDate.map((x) => x.target.id).join())
+
   // 순위 밖(null)을 0 위로 치면 맨 앞에 온다 — 모르는 것을 유리하게 쓰지 않는다
-  const withNull = sortRankViews([v({ id: 'none', current: null }), v({ id: 'has', current: 90 })])
+  const withNull = sortRankViews([
+    v({ id: 'none', current: null, publishedAt: '2026-08-28' }),
+    v({ id: 'has', current: 90, publishedAt: '2026-08-28' }),
+  ])
   ok(withNull[0].target.id === 'has', '순위 밖은 뒤로', withNull.map((x) => x.target.id).join())
   ok(sortRankViews([]).length === 0, '빈 목록에도 터지지 않는다')
 
@@ -2551,7 +2584,7 @@ console.log('\n[37-2] 순위 목록 — 같은 키워드를 어떻게 구분하�
   const { readFileSync: rf } = require('node:fs')
   const ui = rf(new URL('../app/rank/RankTracker.tsx', import.meta.url), 'utf8')
   ok(ui.includes('rankItemName(v)'), '목록에 제목을 적는다')
-  ok(ui.includes('sortRankViews(initialViews)'), '같은 키워드끼리 모아서 그린다')
+  ok(ui.includes('sortRankViews(initialViews)'), '화면도 같은 순서로 그린다 (최근 글부터)')
   // 조회 뒤에도 같은 순서여야 한다 — 안 그러면 한 번 누를 때마다 목록이 뒤집힌다
   ok(!/setViews\(json\.views\)/.test(ui), '서버에서 받은 목록도 같은 규칙으로 정렬한다')
   // 한 번에 하나만 펼친다
