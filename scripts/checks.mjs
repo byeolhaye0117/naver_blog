@@ -361,6 +361,39 @@ ok(normalizeTag(longTag).length === TAG_MAX_LEN + 5, '긴 태그를 조용히 �
   ok(keyPointsOf('첫째, 문구입니다. 체중 1kg당 1.6~2.2g이 필요합니다.')[0].detail === '체중 1kg당 1.6~2.2g이 필요합니다.',
     '소수점을 순서 표시로 보지 않는다', JSON.stringify(keyPointsOf('첫째, 문구입니다. 체중 1kg당 1.6~2.2g이 필요합니다.')[0].detail))
   ok(Array.isArray(pkg.keyPoints), '발행 패키지가 그 목록을 들고 있다')
+
+  /*
+   * ─── 소제목에서 멈추는지 **패키지에서** 확인한다 (2026-08-28) ─────────
+   *
+   * 회원: "세번째가 왜 이렇게 길어."
+   *
+   * keyPointsOf 자체는 소제목에서 멈추고 있었다. 그런데 buildCopyPackage 가 넘긴 본문이
+   * **붙여넣기용**이어서 `##` 가 이미 떨어져 있었다 — 소제목이 그냥 문단으로 보이니
+   * 마지막 항목이 「흔히 하는 실수들」·「오늘부터 시작한다면」까지 통째로 삼켰다.
+   * 항목 하나가 글의 절반이 됐다.
+   *
+   * 조각(keyPointsOf)만 보면 멀쩡한데 이어 붙이면 틀리는 종류라, **패키지 결과로** 잡는다.
+   */
+  {
+    const pkgKp = buildCopyPackage({
+      id: 'kp', type: 'info', status: 'draft', storeId: '', mainKeyword: 'k', subKeywords: [], tags: [],
+      createdAt: '', updatedAt: '', title: '제목',
+      body: [
+        '## 순서',
+        '첫째, 워밍업입니다.',
+        '5분 걸으세요.',
+        '[이미지: 워밍업 장면]',
+        '## 흔히 하는 실수',
+        '매일 같은 부위만 하는 겁니다.',
+        '## 오늘부터',
+        '오늘 당장 할 수 있는 건 5분입니다.',
+      ].join('\n'),
+    })
+    ok(pkgKp.keyPoints.length === 1, '항목은 하나다', JSON.stringify(pkgKp.keyPoints))
+    ok(pkgKp.keyPoints[0].detail === '5분 걸으세요.', '소제목 아래는 삼키지 않는다', JSON.stringify(pkgKp.keyPoints[0].detail))
+    ok(!pkgKp.keyPoints[0].detail.includes('흔히'), '다음 소제목 내용이 딸려 오지 않는다')
+    ok(!pkgKp.keyPoints[0].detail.includes('오늘 당장'), '그 다음 소제목도 마찬가지')
+  }
   const kpEditor = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
   ok(kpEditor.includes('핵심 문구 (순서)'), '발행 패키지 화면에 따로 칸이 있다')
   ok(/pkg\.keyPoints\.length > 0 &&/.test(kpEditor), '뽑을 것이 없으면 칸을 만들지 않는다')

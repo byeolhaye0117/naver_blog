@@ -488,6 +488,22 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
   // 「그대로」로 붙여넣을 때도 별표는 글자로 박힌다 — 여기서도 뗀다
   const body = stripBold(bodyRaw)
 
+  /*
+   * **핵심 문구를 뽑을 때는 소제목 마크업이 살아 있어야 한다** (2026-08-28 회원 지적:
+   * "세번째가 왜 이렇게 길어").
+   *
+   * 위 `body` 는 붙여넣기용이라 `##` 를 떼어 낸다. 그걸 그대로 훑었더니 소제목이 그냥
+   * 문단으로 보여서, 세 번째 항목이 **「흔히 하는 실수들」·「오늘부터 시작한다면」까지
+   * 통째로 삼켰다.** 항목 하나가 글의 절반이 됐다.
+   *
+   * 그래서 여기서는 `##`·`[이미지: …]` 를 남긴 판을 따로 만든다 — 그 줄들이 「여기서
+   * 멈춰라」는 표시다. 인라인 마크업(**굵게**)만 떼어 화면에 별표가 박히지 않게 한다.
+   */
+  const bodyForPoints = cleaned
+    .split(/\r?\n/)
+    .map((l) => (/^\s*#+\s/.test(l) ? l : stripBold(inlineMarkdown(l))))
+    .join('\n')
+
   const blocks = toBlocks(cleaned)
   const reviewUrl = placeReviewUrl(store?.placeId)
 
@@ -636,7 +652,7 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     tagsPlain,
     tagList,
     tagFixes,
-    keyPoints: keyPointsOf(body),
+    keyPoints: keyPointsOf(bodyForPoints),
     checklist,
   }
 }
