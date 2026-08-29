@@ -55,6 +55,19 @@ export interface CopyPackage {
   tagList: string[]
   /** 우리가 손본 태그 (무엇을 왜 바꿨는지 화면에 보여준다) */
   tagFixes: { from: string; to: string }[]
+  /**
+   * **본문에서 순서대로 나오는 핵심 문구** (2026-08-28 회원 요청).
+   *
+   * "정보글 작성하면 본문에 첫째, 둘째 같은 순서로 나오는 핵심 문구를 발행패키지에서
+   * 따로 추려주면 좋겠어."
+   *
+   * 「첫째」·「둘째」·「①」·「1)」로 시작하는 마디를 순서 그대로 뽑는다. 정보글은 순서가
+   * 곧 뼈대라, 그것만 모아 두면 **요약 상자·댓글 고정·다음 글 소재**로 그대로 쓸 수 있다.
+   *
+   * **지어내지 않는다** — 본문에 없는 것은 안 나온다. 없으면 빈 배열이고 화면도 그 칸을
+   * 만들지 않는다.
+   */
+  keyPoints: string[]
   checklist: { label: string; detail?: string }[]
 }
 
@@ -609,8 +622,60 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     tagsPlain,
     tagList,
     tagFixes,
+    keyPoints: keyPointsOf(body),
     checklist,
   }
+}
+
+/**
+ * 본문에서 **순서대로 나오는 핵심 문구**를 뽑는다 (2026-08-28 회원 요청).
+ *
+ * ── 무엇을 뽑나 ────────────────────────────────────────────
+ * 「첫째」·「둘째」·「첫 번째」·「①」·「1)」·「1.」·「1단계」로 **시작하는** 마디다.
+ * 문장 가운데 나온 「첫째」는 순서를 매기는 말이 아닐 때가 많아서 안 잡는다.
+ *
+ * ── 마디로 자른다 ──────────────────────────────────────────
+ * 한 문단에 「첫째, … 둘째, …」가 이어 붙는 경우가 흔하다. 그래서 줄이 아니라 **표시가
+ * 나오는 자리마다** 잘라서, 다음 표시(또는 줄 끝)까지를 한 항목으로 본다.
+ *
+ * ── 길면 자른다 ────────────────────────────────────────────
+ * 추려 놓은 것이 문단만큼 길면 추린 뜻이 없다. 첫 문장까지만 남기고, 그래도 길면 100자에서
+ * 끊는다 (끊었으면 「…」을 붙여 **잘렸다는 것을 숨기지 않는다**).
+ */
+const KEY_POINT_MARK =
+  /(첫째|둘째|셋째|넷째|다섯째|여섯째|일곱째|첫\s*번째|두\s*번째|세\s*번째|네\s*번째|다섯\s*번째|[①②③④⑤⑥⑦⑧⑨⑩]|\d+\s*단계|\d+[).]) */
+
+export function keyPointsOf(body: string): string[] {
+  const out: string[] = []
+  for (const rawLine of (body ?? '').split('\n')) {
+    const line = rawLine.trim()
+    // 소제목·이미지 지시문은 본문이 아니다
+    if (!line || line.startsWith('#') || line.startsWith('[')) continue
+
+    /*
+     * 그 줄 안에서 표시가 나오는 자리를 모두 찾는다. **줄 맨 앞이거나 문장이 끝난 다음**에
+     * 오는 것만 순서 표시로 본다 — 「셋째 주에는」처럼 문장 가운데 든 말은 순서가 아니다.
+     */
+    const marks: number[] = []
+    const re = new RegExp(KEY_POINT_MARK.source, 'g')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(line))) {
+      const before = line.slice(0, m.index).trim()
+      if (before === '' || /[.!?]$/.test(before)) marks.push(m.index)
+    }
+    for (let i = 0; i < marks.length; i++) {
+      const chunk = line.slice(marks[i], marks[i + 1] ?? line.length).trim()
+      if (chunk) out.push(trimPoint(chunk))
+    }
+  }
+  return out
+}
+
+/** 한 항목을 읽기 좋은 길이로 — 첫 문장까지, 그래도 길면 100자에서 끊는다 */
+function trimPoint(chunk: string): string {
+  const firstSentence = chunk.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0]?.trim() ?? chunk
+  if (firstSentence.length <= 100) return firstSentence
+  return `${firstSentence.slice(0, 100).trim()}…`
 }
 
 /** 발행 기록 한 줄 (post-log.md 형식) — 스킬과 대화로 주고받을 때 쓴다 */

@@ -9,7 +9,7 @@ if (!OUT) {
 const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange, findLatinWords, LATIN_ALLOWED } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
-const { buildCopyPackage, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, normalizeTag, stripBold, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
+const { buildCopyPackage, keyPointsOf, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, normalizeTag, stripBold, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
 const { parsePastedReviews, analyzeReviews, placeReviewUrl, verifyReviewQuotes } = require(`${OUT}/analysis/reviews.js`)
 const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parsePlaceList } = require(
@@ -246,6 +246,48 @@ ok(normalizeTag('  ') === '', '빈 태그는 빈 문자열')
 // 긴 태그는 **자르지 않는다** — 잘린 태그는 틀린 태그다. 화면에서 경고만 한다
 const longTag = 'ㄱ'.repeat(TAG_MAX_LEN + 5)
 ok(normalizeTag(longTag).length === TAG_MAX_LEN + 5, '긴 태그를 조용히 자르지 않는다')
+/*
+ * ─── 순서로 나오는 핵심 문구 (2026-08-28 회원 요청) ────────────────────
+ *
+ * "정보글 작성하면 본문에 첫째, 둘째 같은 순서로 나오는 핵심 문구를 발행패키지에서 따로
+ * 추려주면 좋겠어."
+ *
+ * 정보글은 순서가 곧 뼈대다. 그것만 모아 두면 요약 상자·고정 댓글에 그대로 쓸 수 있는데,
+ * 지금은 본문을 다시 훑어 손으로 옮겨 적어야 했다.
+ */
+{
+  const kp = keyPointsOf(
+    [
+      '## 순서를 이렇게 바꿔보세요',
+      '첫째, 웨이트를 먼저 하세요. 40분이면 충분합니다. 둘째, 유산소를 뒤에 15분 붙입니다.',
+      '① 큰 근육부터 갑니다.',
+      '1) 세트 사이는 90초 쉬세요.',
+      '2단계 호흡은 힘쓰는 구간에서 뱉습니다.',
+    ].join('\n')
+  )
+  ok(kp.length === 5, '표시가 붙은 마디를 전부 뽑는다', JSON.stringify(kp))
+  // 한 문단에 「첫째 … 둘째 …」가 이어 붙어도 나눈다
+  ok(kp[0].startsWith('첫째') && kp[1].startsWith('둘째'), '한 줄 안에서도 마디로 나눈다', JSON.stringify(kp.slice(0, 2)))
+  ok(kp[0] === '첫째, 웨이트를 먼저 하세요.', '첫 문장까지만 남긴다', kp[0])
+  ok(kp.some((k) => k.startsWith('①')) && kp.some((k) => k.startsWith('1)')), '동그라미·괄호 번호도 본다', JSON.stringify(kp))
+  ok(kp.some((k) => k.startsWith('2단계')), '「2단계」도 순서로 본다')
+  // 소제목·이미지 지시문은 본문이 아니다
+  ok(!kp.some((k) => k.includes('순서를 이렇게')), '소제목은 뽑지 않는다')
+  ok(keyPointsOf('[이미지: 1) 첫 화면]').length === 0, '이미지 지시문도 뽑지 않는다')
+  /*
+   * **문장 가운데 든 말은 순서가 아니다** — 「셋째 주에는」이 그렇다. 줄 맨 앞이거나
+   * 문장이 끝난 다음에 온 것만 본다.
+   */
+  ok(keyPointsOf('운동은 셋째 주에는 강도를 올리세요.').length === 0, '문장 가운데 든 말은 안 뽑는다')
+  ok(keyPointsOf('').length === 0, '본문이 없으면 빈 목록')
+  // **지어내지 않는다** — 표시가 없는 글은 빈 목록이고, 화면도 그 칸을 만들지 않는다
+  ok(keyPointsOf('그냥 줄글입니다. 순서 표시가 없습니다.').length === 0, '표시가 없으면 아무것도 안 뽑는다')
+  ok(Array.isArray(pkg.keyPoints), '발행 패키지가 그 목록을 들고 있다')
+  const kpEditor = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+  ok(kpEditor.includes('핵심 문구 (순서)'), '발행 패키지 화면에 따로 칸이 있다')
+  ok(/pkg\.keyPoints\.length > 0 &&/.test(kpEditor), '뽑을 것이 없으면 칸을 만들지 않는다')
+}
+
 const dupTags = buildCopyPackage({ ...goodPromo, id:'x', status:'draft', storeId:'s', createdAt:'', updatedAt:'', tags:['쌍용동 헬스장','쌍용동헬스장','#쌍용동 헬스장'] })
 ok(dupTags.tagList.length === 1, `같은 태그 세 형태가 하나로 합쳐진다 — ${dupTags.tagList.join(',')}`)
 /*
@@ -321,7 +363,12 @@ ok(
    */
   ok(ed.includes('label="태그 복사"') && ed.includes('text={pkg.tagsPlain}'), '복사 버튼 하나로 태그를 담는다')
   ok(!edCode.includes('setNext') && !edCode.includes('처음부터 다시'), '순서 세는 장치를 두지 않는다')
-  ok((ed.match(/<CopyButton/g) ?? []).length === 4, '태그 카드에 복사 버튼이 하나뿐이다 (제목·본문·기록 셋 + 태그 하나)', String((ed.match(/<CopyButton/g) ?? []).length))
+  /*
+   * 2026-08-28: 핵심 문구 복사 버튼이 하나 늘었다 (회원 요청). **태그 쪽은 그대로 하나다** —
+   * 이 검사가 지키려던 것은 「태그 칸에 버튼이 늘어나지 않는 것」이므로 태그 것만 센다.
+   */
+  ok((ed.match(/<CopyButton/g) ?? []).length === 5, '제목·본문·기록 셋 + 태그 하나 + 핵심 문구 하나', String((ed.match(/<CopyButton/g) ?? []).length))
+  ok((ed.match(/label="태그 복사"/g) ?? []).length === 1, '태그 복사 버튼은 하나뿐이다')
   ok(ed.includes('「태그 편집」 칸에 붙여넣고 Enter'), '어디에 붙이고 무엇을 누르는지 한 줄로 말한다')
   ok(ed.includes('눌러서 이 태그만 복사'), '한 번에 안 되면 눌러서 하나만 복사할 수 있다')
   /*
