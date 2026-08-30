@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { mutate, readDB } from '@/lib/store'
 import { newId } from '@/lib/id'
-import { doneForToday, perDayOf, planAssignment, todayAutoDraftCount } from '@/lib/writing/autodraft'
+import { doneForToday, perDayOf, planAssignment, todayAutoDraftCount, writesEveryDay } from '@/lib/writing/autodraft'
 import { AUTO_DRAFT_RUNS_KEEP, baseUrlFor, seoulToday, shouldRevise } from '@/lib/writing/autodraft'
 import { isPrescriptionStale, prescriptionForType, prescriptionKey } from '@/lib/analysis/prescription'
 import type { AutoDraftRun, Post } from '@/lib/types'
@@ -194,8 +194,21 @@ async function run(
   // 그 날에 콕 집어 정해둔 것이 있으면 그것부터 (2026-08-24)
   const assignment = planAssignment({ plan: db.autoDraftPlan, posts: db.posts, date: today })
   if (!assignment) {
-    await record({ ok: false, error: '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록하거나 자동 초안 설정에서 키워드를 골라주세요.' })
-    return NextResponse.json({ skipped: '쓸 키워드가 없습니다.' })
+    /*
+     * **왜 안 썼는지 갈라서 적는다** (2026-08-31 회원 지적: "애초에 그날 하루 주제
+     * 설정한건데 멋대로 다음날 까지 간게 이상한거 아니야?").
+     *
+     * 정한 날에만 쓰기로 한 뒤로는 「그 날 몫이 없어서 안 썼다」가 **정상**이다. 그런데
+     * 예전 문구 하나로 다 덮으면 화면에 「쓸 키워드가 없습니다」라는 빨간 실패가 매일
+     * 뜬다 — 잘 돌고 있는데 고장난 것처럼 보인다.
+     */
+    const planned = !writesEveryDay(db.autoDraftPlan)
+    const reason = planned
+      ? '이 날 몫으로 채워 둔 주제가 없습니다. ③ 날짜별 주제에서 이 날을 채우시거나, 「매일 쓰기」로 바꾸시면 됩니다.'
+      : '쓸 키워드가 없습니다. 순위 추적에 키워드를 등록하거나 자동 초안 설정에서 키워드를 골라주세요.'
+    // 정한 날이 아닌 것은 실패가 아니다 — 기록을 실패로 남기면 알림이 매일 울린다
+    if (!planned) await record({ ok: false, error: reason })
+    return NextResponse.json({ skipped: reason, date: today })
   }
 
   const base = baseUrlFor(process.env) ?? fallbackBase
