@@ -9,6 +9,7 @@ import {
 import { TITLE_SHAPE_LABEL, titleAdvice, titleShape } from '../analysis/title'
 import { analyzeReviews, placeReviewUrl, verifyReviewQuotes } from '../analysis/reviews'
 import { findHardWords } from './plainwords'
+import { bodyForKeyPoints, keyPointFlaws, keyPointsOf } from './keypoints'
 import { classifyIntent } from './topic-explore'
 import { coverageOf, requestedTopics } from './request'
 import { titleHasBrand, type ArenaLevel } from './arena'
@@ -1827,6 +1828,49 @@ export function checkPost(input: CheckInput): CheckResult {
    * 그래서 정보는 4→5, 홍보는 3→2 로 가중치를 옮겼다. 항목을 묶지 않는 이유는 그대로다 —
    * 고치는 방향이 반대(더하기 / 합치기)이기 때문이다.
    */
+  /*
+   * ─── 순서 표시가 성한가 (2026-08-30 회원 지적) ────────────────
+   *
+   * 회원: "문장이 제대로 안나왔어 어떤 글이든 오류가 없이 뽑아 낼 수 있게 점검해서
+   * 업데이트해줘."
+   *
+   * 발행 패키지의 「핵심 문구 (순서)」가 이렇게 나왔다:
+   *
+   *   ① 두 번째 단계는 인클라인이나 디클라인처럼 각도를 바꾼 덤벨 프레스입니다.
+   *   ② 첫 번째에서 쓰지 않은 각도를 골라서 3~4세트, 8~12회 반복으로 넣어주세요.
+   *
+   * ②는 뽑는 쪽의 잘못이라 거기서 고쳤다. 그런데 **①이 「두 번째」로 시작하는 것은
+   * 본문의 잘못**이다 — 1단계를 「제가 이 순서에서 가장 먼저 강조하고 싶은 부분은」이라고
+   * 써서 순서 표시가 아예 없었다. 뽑는 쪽만 고치면 다음 글도 두 번째부터 나온다
+   * (이 저장소가 반복해서 겪은 「한쪽만 고친 것」).
+   *
+   * 그래서 **본문을 고치게 한다.** 발행 패키지와 **같은 규칙**(keypoints.ts)으로 세어서,
+   * 순서가 1번부터 이어지지 않으면 여기서 짚는다. 고쳐 쓰기가 이 지적을 받아 본문에
+   * 표시를 채운다.
+   *
+   * 표시가 아예 없는 글은 걸지 않는다 — 순서를 안 쓰는 글도 있고, 없는 것을 만들라고
+   * 하면 없는 순서를 지어내게 된다.
+   */
+  {
+    const points = keyPointsOf(bodyForKeyPoints(input.body))
+    const flaws = keyPointFlaws(points)
+    if (points.length) {
+      add({
+        id: 'key-point-order',
+        group: '내용 균형',
+        label: '순서 표시 (첫째·1단계·①)',
+        // 걸려도 점수를 79로 묶지 않는다 — 순위와 재본 적 없는 항목이고, 읽기 쉬움의 문제다
+        level: flaws.length ? 'warn' : 'pass',
+        value: flaws.length ? flaws.join(' · ') : `${points.length}개 항목이 1번부터 이어집니다`,
+        target: '첫 항목부터 하나씩',
+        hint: flaws.length
+          ? `**순서를 매긴 자리에 첫 항목 표시가 빠졌습니다.** ${flaws.join(' · ')}. 「가장 먼저 강조하고 싶은 부분은」처럼 표시 없이 시작하고 다음 문단에서 「두 번째 단계는」으로 넘어가면, 읽는 사람에게는 1번이 사라진 목록으로 보입니다. 발행 패키지의 「핵심 문구 (순서)」도 같은 이유로 두 번째부터 나옵니다. 첫 항목을 **다음 항목과 같은 말로** 열어 주세요 — 뒤가 「두 번째 단계는」이면 앞은 「첫 번째 단계는」입니다. 항목은 문단 맨 앞에서 시작하고, 문장 가운데에서 앞 항목을 가리킬 때는 「첫 번째에서」 같은 순번 표현 대신 「앞에서」로 쓰세요.`
+          : undefined,
+        weight: 2,
+      })
+    }
+  }
+
   const balance = contentBalance(scanText, input.type)
   const infoMin = INFO_MIN_BY_TYPE[input.type]
   const promoMax = PROMO_MAX_BY_TYPE[input.type]

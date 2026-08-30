@@ -2,6 +2,7 @@ import type { Post, Store } from '@/lib/types'
 import { stripGuides } from './templates'
 import { parseBody, splitSentences } from './checker'
 import { placeReviewUrl } from '../analysis/reviews'
+import { keyPointFlaws, keyPointsOf, type KeyPoint } from './keypoints'
 
 /**
  * 복사용 패키지.
@@ -81,7 +82,9 @@ export interface CopyPackage {
    * 나오고 뒤가 잘렸다 — 화면에 「…자료를 보면」에서 끊긴 줄이 그것이다. 이제 **다음 순서
    * 표시(또는 소제목·이미지)를 만날 때까지** 이어 붙이고, 길이로는 자르지 않는다.
    */
-  keyPoints: { text: string; detail?: string }[]
+  keyPoints: KeyPoint[]
+  /** 뽑아낸 목록이 어긋난 자리 — 비어 있으면 성한 목록이다 (2026-08-30) */
+  keyPointFlaws: string[]
   checklist: { label: string; detail?: string }[]
 }
 
@@ -503,6 +506,7 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     .split(/\r?\n/)
     .map((l) => (/^\s*#+\s/.test(l) ? l : stripBold(inlineMarkdown(l))))
     .join('\n')
+  const points = keyPointsOf(bodyForPoints)
 
   const blocks = toBlocks(cleaned)
   const reviewUrl = placeReviewUrl(store?.placeId)
@@ -652,104 +656,12 @@ export function buildCopyPackage(post: Post, store?: Store): CopyPackage {
     tagsPlain,
     tagList,
     tagFixes,
-    keyPoints: keyPointsOf(bodyForPoints),
+    keyPoints: points,
+    keyPointFlaws: keyPointFlaws(points),
     checklist,
   }
 }
 
-/**
- * 본문에서 **순서대로 나오는 핵심 문구**를 뽑는다 (2026-08-28 회원 요청).
- *
- * ── 무엇을 뽑나 ────────────────────────────────────────────
- * 「첫째」·「둘째」·「첫 번째」·「첫 단계」·「①」·「1)」·「1.」·「1단계」로 **시작하는** 마디다.
- * 문장 가운데 나온 「첫째」는 순서를 매기는 말이 아닐 때가 많아서 안 잡는다.
- *
- * ── 「첫 단계」를 놓쳤다 (2026-08-28 회원 지적) ─────────────────
- * "첫번째는 어디가고 두번째부터 나오는거야?"
- *
- * 실제 글을 받아 보니 본문이 이렇게 쓰여 있었다:
- *   **첫 단계**는 워밍업입니다 … / **두 번째**는 큰 근육부터 … / 세 번째 … / 네 번째 …
- *
- * 첫 항목만 「단계」이고 나머지는 「번째」였다. 우리 목록에는 「1단계」처럼 **숫자**가 붙은
- * 것만 있어서 「첫 단계」가 빠졌고, 그래서 두 번째부터 나왔다. 이제 「첫·두·세…」에
- * 「번째」든 「단계」든 붙으면 같이 본다.
- *
- * (표현이 섞인 것 자체는 글 쪽 문제라 지시문에서도 막았다 — 순서는 한 가지 말로 통일한다.)
- *
- * ── 마디로 자른다 ──────────────────────────────────────────
- * 한 문단에 「첫째, … 둘째, …」가 이어 붙는 경우가 흔하다. 그래서 줄이 아니라 **표시가
- * 나오는 자리마다** 잘라서, 다음 표시(또는 줄 끝)까지를 한 항목으로 본다.
- *
- * ── 길면 자른다 ────────────────────────────────────────────
- * 추려 놓은 것이 문단만큼 길면 추린 뜻이 없다. 첫 문장까지만 남기고, 그래도 길면 100자에서
- * 끊는다 (끊었으면 「…」을 붙여 **잘렸다는 것을 숨기지 않는다**).
- */
-const KEY_POINT_MARK =
-  /(첫째|둘째|셋째|넷째|다섯째|여섯째|일곱째|(?:첫|두|세|네|다섯|여섯|일곱)\s*(?:번째|단계)|[①②③④⑤⑥⑦⑧⑨⑩]|\d+\s*단계|\d+[).](?!\d)) */
-
-export function keyPointsOf(body: string): { text: string; detail?: string }[] {
-  const out: { text: string; detail?: string }[] = []
-  const lines = (body ?? '').split('\n').map((l) => l.trim())
-  /** 본문이 아닌 줄 — 소제목·이미지 지시문 */
-  const skip = (l: string) => !l || l.startsWith('#') || l.startsWith('[')
-  /** 그 줄이 순서 표시로 시작하나 */
-  const startsWithMark = (l: string) => new RegExp(`^${KEY_POINT_MARK.source}`).test(l)
-
-  for (let li = 0; li < lines.length; li++) {
-    const line = lines[li]
-    if (skip(line)) continue
-
-    /*
-     * 그 줄 안에서 표시가 나오는 자리를 모두 찾는다. **줄 맨 앞이거나 문장이 끝난 다음**에
-     * 오는 것만 순서 표시로 본다 — 「셋째 주에는」처럼 문장 가운데 든 말은 순서가 아니다.
-     */
-    const marks: number[] = []
-    const re = new RegExp(KEY_POINT_MARK.source, 'g')
-    let m: RegExpExecArray | null
-    while ((m = re.exec(line))) {
-      const before = line.slice(0, m.index).trim()
-      if (before === '' || /[.!?]$/.test(before)) marks.push(m.index)
-    }
-    for (let i = 0; i < marks.length; i++) {
-      const chunk = line.slice(marks[i], marks[i + 1] ?? line.length).trim()
-      if (!chunk) continue
-      const first = chunk.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0]?.trim() ?? chunk
-      const parts = [chunk.slice(first.length).trim()]
-      /*
-       * ─── 관련된 내용을 **끝까지** 가져온다 (2026-08-28 회원 요청) ──────────
-       *
-       * "내용이 전체적으로 안나와 핵심 문구와 관련된 전체 문장이 나오게 해줘."
-       *
-       * 앞 판은 ①같은 줄에 설명이 없을 때만 ②다음 한 문단까지만 봤다. 그래서 설명이
-       * 여러 문단에 걸쳐 있으면 앞쪽만 나오고 뒤가 잘렸다 — 화면에 「…자료를 보면」에서
-       * 끊긴 줄이 그것이다.
-       *
-       * 이제 **다음 순서 표시(또는 소제목·이미지)를 만날 때까지** 이어 붙인다. 그 경계가
-       * 곧 「이 항목에 딸린 내용」의 끝이다. 길이로 자르지 않는다 — 회원이 원한 것이 전체
-       * 문장이고, 임의로 끊으면 또 「내용이 안 나온다」가 된다.
-       */
-      if (i === marks.length - 1) {
-        for (let k = li + 1; k < lines.length; k++) {
-          const next = lines[k]
-          if (!next) continue
-          if (skip(next) || startsWithMark(next)) break
-          parts.push(next)
-          li = k
-        }
-      }
-      const detail = parts.filter(Boolean).join('\n')
-      out.push({ text: trimPoint(first), detail: detail || undefined })
-    }
-  }
-  return out
-}
-
-
-/** 한 항목을 읽기 좋은 길이로 — 길면 끊고 「…」을 붙여 잘렸다는 것을 숨기지 않는다 */
-function trimPoint(chunk: string, max = 100): string {
-  if (chunk.length <= max) return chunk
-  return `${chunk.slice(0, max).trim()}…`
-}
 
 
 /** 발행 기록 한 줄 (post-log.md 형식) — 스킬과 대화로 주고받을 때 쓴다 */
@@ -778,3 +690,10 @@ export function postLogLine(post: Post, store?: Store): string {
   parts.push(`소제목: ${headings || '-'}`)
   return parts.join(' | ')
 }
+
+/**
+ * 핵심 문구는 `keypoints.ts` 로 옮겼다 (2026-08-30) — **검수도 같은 규칙을 봐야** 하는데
+ * checker 가 여기(export)를 부르면 서로 부르는 꼴이 된다. 부르던 자리를 바꾸지 않으려고
+ * 여기서 다시 내보낸다.
+ */
+export { keyPointsOf, keyPointFlaws, markNumber, type KeyPoint } from './keypoints'
