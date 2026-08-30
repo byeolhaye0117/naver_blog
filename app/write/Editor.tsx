@@ -658,6 +658,10 @@ export default function Editor({
         /** 서버가 실제로 쓴 로테이션 — 글에 기록해야 다음 글에서 다른 도입이 나온다 */
         rotation?: { introType?: string; angle?: string; format?: string; topicGroup?: string }
         fixIssues?: string[]
+        /** 고쳐 쓰기가 원래 글을 둔 이유 — 고쳤으면 없다 (2026-08-30) */
+        fixWhy?: string
+        /** 모델이 돌려준 본문 길이 — 원래보다 크게 짧으면 잘린 것이다 */
+        fixChars?: number
         provider?: string
         /** 정보글에서 자료를 찾아 인용했는지 */
         searched?: boolean
@@ -751,7 +755,19 @@ export default function Editor({
           return ` (수정필요 ${before}개 → ${after}개${json.improved ? `, ${json.improved}점 올랐습니다` : ''})`
         }
         if (json.revised) return ` (고쳐서 ${json.improved}점 올랐습니다)`
-        return ' (고쳐 써도 나아지지 않아 원래 글을 두었습니다 — 한 번 더 누르면 다시 시도합니다)'
+        /*
+         * **왜 안 고쳐졌는지 말한다** (2026-08-30 회원: "그래서 왜 안고치는거야?").
+         *
+         * 「나아지지 않아 원래 글을 두었습니다」 한 마디가 서로 다른 세 가지를 덮고 있었다 —
+         * 응답을 못 읽은 것 · 모델이 그대로 돌려준 것 · 고친 글이 채점에서 진 것. 셋은
+         * 회원이 할 일이 다르다 (다시 누른다 / 손으로 고친다 / 본문을 줄인다).
+         */
+        const why = typeof json.fixWhy === 'string' ? json.fixWhy : ''
+        const chars = typeof json.fixChars === 'number' ? json.fixChars : 0
+        const cut = chars > 0 && chars < body.length * 0.8 ? ` — ${body.length.toLocaleString()}자 중 ${chars.toLocaleString()}자만 돌아왔습니다` : ''
+        return why
+          ? ` (원래 글을 두었습니다: ${why}${cut} — 한 번 더 누르면 다시 시도합니다)`
+          : ' (고쳐 써도 나아지지 않아 원래 글을 두었습니다 — 한 번 더 누르면 다시 시도합니다)'
       }
       const failItems = (json.check?.issues ?? []).filter((i) => i.level === 'fail')
       const fails = failItems.length

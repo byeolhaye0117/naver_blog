@@ -380,6 +380,24 @@ async function handle(req: Request, ms: () => string) {
 
       const fixedFails = fixedResult ? summarize(fixedResult).fail : Number.POSITIVE_INFINITY
       const better = picked.draft !== prior
+      /*
+       * **왜 원래 글을 두었는지 밝힌다** (2026-08-30 회원: "그래서 왜 안고치는거야?").
+       *
+       * 화면은 여태 「고쳐 써도 나아지지 않아 원래 글을 두었습니다」 한 마디만 했다. 그런데
+       * 그 한 마디가 서로 다른 세 가지를 덮고 있었다:
+       *   ① 모델 응답을 못 읽었다 (JSON 이 깨졌거나 잘렸다) — 나아지고 말고의 문제가 아니다
+       *   ② 모델이 같은 글을 그대로 돌려줬다 — 지시문이 안 먹은 것이다
+       *   ③ 고친 글이 채점에서 졌다 — 고치다가 다른 것을 깼다는 뜻이다
+       * 셋은 회원이 할 일이 다르다. 실제로 프로덕션에서 네 번을 돌려도 안 고쳐졌는데, 그
+       * 한 마디로는 셋 중 무엇인지 알 길이 없어 원인을 짚는 데만 다섯 번을 불러야 했다.
+       */
+      const fixWhy = better
+        ? undefined
+        : !fixed
+          ? '모델 응답을 읽지 못했습니다 (잘렸거나 형식이 깨졌습니다)'
+          : fixed.body === prior.body && fixed.title === prior.title
+            ? '모델이 같은 글을 그대로 돌려줬습니다'
+            : `고친 글이 채점에서 졌습니다 (${scored.map((c) => `${c.label} ${c.fails}·${c.result.score}점`).join(' / ')})`
       const out = picked.draft
       const outResult = picked.result
       return NextResponse.json({
@@ -395,6 +413,10 @@ async function handle(req: Request, ms: () => string) {
          */
         failsBefore: priorFails,
         failsAfter: Number.isFinite(fixedFails) ? fixedFails : priorFails,
+        /** 원래 글을 둔 이유 — 고쳤으면 없다 (2026-08-30) */
+        fixWhy,
+        /** 모델이 돌려준 본문 길이. 원래보다 크게 짧으면 잘린 것이다 */
+        fixChars: fixed ? fixed.body.length : 0,
         provider: ai.label,
         check: {
           score: outResult.score,
