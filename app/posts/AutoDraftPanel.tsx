@@ -9,6 +9,7 @@ import {
   autoDraftStatus,
   normalizePlan,
   perDayOf,
+  writesEveryDay,
   planSummary,
   rerollTopic,
 } from '@/lib/writing/autodraft'
@@ -247,7 +248,14 @@ export default function AutoDraftPanel({
                 <dd>
                   {stored.off
                     ? '꺼둠 — 자동으로 쓰지 않습니다'
-                    : `매일 새벽 5시부터 ${perDayOf(stored)}편${perDayOf(stored) > 1 ? ' (편마다 다른 주제)' : ''}`}
+                    : writesEveryDay(stored)
+                      ? `매일 새벽 5시부터 ${perDayOf(stored)}편${perDayOf(stored) > 1 ? ' (편마다 다른 주제)' : ''}`
+                      : /*
+                         * **정한 날에만 쓰는 상태를 상태 줄에서 말한다** (2026-08-31 회원 지적:
+                         * "애초에 그날 하루 주제 설정한건데 멋대로 다음날 까지 간게 이상한거
+                         * 아니야?"). 여기서 「매일」이라고만 적어 두면 또 같은 오해가 난다.
+                         */
+                        `③에 정해 둔 날에만 씁니다 (새벽 5시부터 최대 ${perDayOf(stored)}편) — 안 정한 날은 쉽니다`}
                 </dd>
               </div>
               <div className="flex gap-2">
@@ -484,11 +492,47 @@ export default function AutoDraftPanel({
               매일 쓴다** — 이 칸은 「쓸지 말지」가 아니라 「무슨 주제로 쓸지」를 미리
               정해두는 자리다. 그 사실이 이 칸에서 가장 중요한 말이라 따로 세운다.
             */}
-            <p className="bd mb-2 rounded-xl border px-3 py-2 text-[11px] leading-relaxed">
-              <b>채우지 않은 날에도 자동 작성은 돕니다.</b> 이 칸은 「그 날 쓸지 말지」가 아니라 <b>「무슨 주제로
-              쓸지」</b>를 미리 정해 두는 자리입니다. 안 채운 날에는 위 <b>① 쓸 주제</b> 목록에서 골라 씁니다. 어떤
-              날을 아예 쉬려면 아래에서 <b>「쉬는 날」</b>로 빼시고, 한동안 다 멈추려면 맨 위 스위치를 끄세요.
-            </p>
+            {/*
+              **어느 쪽으로 도는지 이 자리에서 고른다** (2026-08-31 회원 지적: "애초에 그날
+              하루 주제 설정한건데 멋대로 다음날 까지 간게 이상한거 아니야?").
+
+              날짜를 정하는 행동은 「그 날만 쓴다」로 읽힌다. 그렇게 기본값을 바꿨고, 그
+              사실과 되돌리는 길을 같은 자리에 둔다 — 규칙이 조용히 바뀌면 그게 또 놀람이 된다.
+            */}
+            <div className="bd mb-2 rounded-xl border px-3 py-2 text-[11px] leading-relaxed">
+              {writesEveryDay(plan) ? (
+                <p>
+                  지금은 <b>매일 씁니다.</b> 아래에 채워 둔 날은 그 주제로, 안 채운 날은 위 <b>① 쓸 주제</b>
+                  목록에서 골라 씁니다.
+                </p>
+              ) : (
+                <p>
+                  지금은 <b>아래에 정해 둔 날에만 씁니다.</b> 안 정한 날은 쉽니다 — 날짜를 채워 두셨기 때문입니다.
+                </p>
+              )}
+              {/*
+                **멈춘 채로 조용히 두지 않는다** (2026-08-31). 「정한 날에만」으로 바꾸면
+                채워 둔 날이 다 지나간 뒤부터는 아무것도 안 쓴다. 그게 회원이 정한 것이긴
+                해도, 화면이 말해주지 않으면 일주일 뒤에 「왜 안 써?」가 된다.
+              */}
+              {!writesEveryDay(plan) && !(plan.days ?? []).some((d) => d.date >= today) && (
+                <p className="mt-1.5 font-semibold text-amber-700 dark:text-amber-400">
+                  오늘 이후로 채워 둔 날이 없습니다 — <b>지금 상태로는 자동 작성이 쉽니다.</b> 아래에서 날짜를
+                  채우시거나, 「안 정한 날에도 매일 쓰기」를 켜세요.
+                </p>
+              )}
+              <label className="mt-1.5 flex items-center gap-1.5 font-semibold">
+                <input
+                  type="checkbox"
+                  checked={writesEveryDay(plan)}
+                  onChange={(e) => setPlan((p) => ({ ...p, everyDay: e.target.checked }))}
+                />
+                안 정한 날에도 매일 쓰기
+              </label>
+              <p className="muted mt-1">
+                어떤 날 하루만 쉬려면 아래에서 <b>「쉬는 날」</b>로 빼시고, 한동안 다 멈추려면 맨 위 스위치를 끄세요.
+              </p>
+            </div>
 
             <div className="mb-2 flex flex-wrap items-end gap-2">
               <label className="block w-[9.5rem]">

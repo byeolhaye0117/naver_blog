@@ -558,6 +558,7 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
 
   return {
     off: raw?.off === true,
+    everyDay: typeof raw?.everyDay === 'boolean' ? raw.everyDay : undefined,
     perDay: raw?.perDay === undefined ? undefined : perDayOf(raw),
     keywords: list(raw?.keywords),
     topics: list(raw?.topics),
@@ -565,6 +566,24 @@ export function normalizePlan(raw: AutoDraftPlan | undefined): AutoDraftPlan {
     skip,
     updatedAt: raw?.updatedAt,
   }
+}
+
+/**
+ * **지금 매일 쓰는 설정인가** (2026-08-31 회원 지적).
+ *
+ * 회원: "근데 애초에 그날 하루 주제 설정한건데 멋대로 다음날 까지 간게 이상한거 아니야?"
+ *
+ * 맞는 말이다. 날짜를 정하는 행동은 「그 날만 쓴다」는 뜻으로 읽힌다. 그런데 우리는
+ * 「그 날 주제만 정한다」는 뜻으로 만들어 뒀고, 안 정한 날에는 ① 목록에서 골라 계속 썼다.
+ * 회원이 08-30 까지만 채워 뒀는데 08-31 에도 세 편이 나간 것이 그 결과다.
+ *
+ * **날짜를 채워 둔 적이 있으면 정한 날에만 쓴다.** 채운 적이 없으면 예전처럼 매일 쓴다 —
+ * ③ 칸을 한 번도 안 쓰는 회원에게서 매일 초안을 뺏을 이유는 없다. `everyDay` 를 명시로
+ * 넣으면 그 값이 이긴다.
+ */
+export function writesEveryDay(plan: AutoDraftPlan | undefined): boolean {
+  const p = normalizePlan(plan)
+  return typeof p.everyDay === 'boolean' ? p.everyDay : (p.days ?? []).length === 0
 }
 
 /** 계획에서 「무엇을 쓸 차례인가」까지 — 크론이 부르는 한 곳 */
@@ -633,6 +652,16 @@ export function planAssignment(args: {
     }
   }
 
+  /*
+   * **정한 날에만 쓰기로 했으면 여기서 멈춘다** (2026-08-31 회원 지적: "애초에 그날 하루
+   * 주제 설정한건데 멋대로 다음날 까지 간게 이상한거 아니야?").
+   *
+   * 그 날 몫이 없거나(안 채운 날) 그 날 몫을 이미 다 썼으면 더 쓰지 않는다. 예전에는
+   * 여기서 ① 목록으로 떨어져 그냥 한 편을 더 썼고, 그래서 회원이 08-30 까지만 채워 뒀는데
+   * 08-31 에도 세 편이 나갔다.
+   */
+  if (wantDate && !writesEveryDay(plan)) return null
+
   return rotated
 }
 
@@ -653,7 +682,12 @@ export function fillDays(args: {
   /** 며칠치 — 쉬는 날은 세지 않는다 */
   days: number
 }): { date: string; topic: string }[] {
-  const plan = { ...normalizePlan(args.plan), days: [] }
+  /*
+   * **채우기 계산에서는 「정한 날에만」을 끈다** (2026-08-31). 이 함수는 날짜를 비우고
+   * 앞날을 계산하는데, 그 상태로 「정한 날에만 쓴다」를 적용하면 정해 둔 날이 하나도
+   * 없어서 아무것도 안 나온다 — 채우기 버튼이 제 발등을 찍는다.
+   */
+  const plan = { ...normalizePlan(args.plan), days: [], everyDay: true }
   return forecastAutoDrafts({ ...args, plan }).map((f) => ({ date: f.date, topic: f.topic }))
 }
 

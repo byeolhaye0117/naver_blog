@@ -10163,7 +10163,7 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
  *   ③ 차례까지 지정 → 줄 세운 순서대로
  */
 {
-  const { normalizePlan, planAssignment, popQueue, planSummary, INFO_TOPICS: TOPICS } =
+  const { normalizePlan, planAssignment, popQueue, planSummary, writesEveryDay, fillDays, INFO_TOPICS: TOPICS } =
     require(`${OUT}/writing/autodraft.js`)
   const FALLBACK = ['쌍용동 헬스장', '두정동 헬스장']
 
@@ -10441,8 +10441,33 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
     ok(fixedDay?.topic === '그날만다른주제', '채워 둔 날은 그 주제를 쓴다', fixedDay?.topic)
     ok(fixedDay.localKeyword === '', '지역 키워드는 안 고른다 (2026-08-28)', fixedDay.localKeyword)
     ok(fixedDay.mainKeyword === '그날만다른주제', '채워 둔 날도 메인은 주제다', fixedDay.mainKeyword)
-    ok(planAssignment({ plan: withDay, posts: [], date: '2026-08-27' })?.topic === '한가지주제',
-      '안 채운 날은 그날그날 앱이 고른다')
+    /*
+     * ── 안 채운 날은 쉰다 (2026-08-31 회원 지적) ──────────────────
+     *
+     * 회원: "근데 애초에 그날 하루 주제 설정한건데 멋대로 다음날 까지 간게 이상한거 아니야?"
+     *
+     * 맞는 말이다. 회원은 ③ 날짜별 주제를 08-30 까지만 채웠는데 08-31 에도 세 편이 나갔다.
+     * 그때까지 규칙은 「안 채운 날은 ① 목록에서 골라 매일」이었다 — 날짜를 정하는 행동은
+     * 「그 날만 쓴다」로 읽히는데 우리는 「그 날 주제만 정한다」로 만들어 뒀다.
+     */
+    ok(planAssignment({ plan: withDay, posts: [], date: '2026-08-27' }) === null,
+      '날짜를 채워 뒀으면 안 채운 날은 쉰다')
+    // 날짜를 한 번도 안 채운 회원에게서 매일 초안을 뺏지는 않는다
+    ok(planAssignment({ plan: PLAN, posts: [], date: '2026-08-27' })?.topic === '한가지주제',
+      '채워 둔 날이 하나도 없으면 예전처럼 매일 쓴다')
+    // 명시로 뒤집을 수 있다 — 조용히 바뀌는 규칙은 또 놀람이 된다
+    ok(planAssignment({ plan: { ...withDay, everyDay: true }, posts: [], date: '2026-08-27' })?.topic === '한가지주제',
+      '「매일 쓰기」를 켜면 안 채운 날에도 쓴다')
+    ok(planAssignment({ plan: { ...PLAN, everyDay: false }, posts: [], date: '2026-08-27' }) === null,
+      '「매일 쓰기」를 끄면 채워 둔 날이 없어도 안 쓴다')
+    ok(writesEveryDay(withDay) === false && writesEveryDay(PLAN) === true, '어느 쪽인지 한 함수가 답한다')
+    /*
+     * **채우기 계산은 이 규칙에 걸리면 안 된다.** fillDays 는 날짜를 비우고 앞날을
+     * 계산하는데, 그 상태로 「정한 날에만」을 적용하면 아무것도 안 나온다 — 채우기
+     * 버튼이 제 발등을 찍는다.
+     */
+    ok(fillDays({ plan: withDay, posts: [], from: '2026-09-01', days: 2 }).length === 2,
+      '날짜 채우기는 여전히 앞날을 계산한다')
     ok(planAssignment({ plan: withDay, posts: [] })?.topic === '한가지주제', '날짜가 없으면 로테이션')
     // 예정 계산도 채워 둔 것을 반영해야 한다 (화면과 실제가 다르면 못 믿는다)
     ok(forecastAutoDrafts({ plan: withDay, posts: [], from: '2026-08-25', days: 3 })
@@ -10602,7 +10627,8 @@ console.log('\n[97] 자동 초안 — 무엇으로 쓸지 회원이 고른다 (2
      * 자동설정 되어 있어"). 예전에는 「채우지 않은 날은 잡히지 않습니다」로 시작했는데,
      * 그 앞 반절이 「그 날은 안 쓴다」로 읽혔다. 실제로는 켜 두면 매일 쓴다.
      */
-    ok(panel.includes('채우지 않은 날에도 자동 작성은 돕니다'), '안 채운 날에도 쓴다고 밝힌다')
+    ok(panel.includes('지금은 <b>매일 씁니다.</b>') && panel.includes('정해 둔 날에만 씁니다.'),
+      '지금 어느 쪽으로 도는지 그 자리에서 말한다')
     ok(panelCode.includes('rerollTopic') && panelCode.includes('다른 주제로'), '마음에 안 들면 앱이 다른 것으로 바꿔준다')
     ok(panel.includes('바꿀 것이 없습니다'), '바꿀 주제가 없으면 그렇다고 말한다 (조용히 안 바뀌면 고장으로 읽힌다)')
     /*
@@ -10937,7 +10963,23 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
    */
   {
     const panel = require('node:fs').readFileSync(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
-    ok(panel.includes('채우지 않은 날에도 자동 작성은 돕니다'), '안 채운 날에도 돈다고 분명히 말한다')
+    /*
+     * ── 규칙을 뒤집었다 (2026-08-31, 회원 지적) ────────────────
+     * "애초에 그날 하루 주제 설정한건데 멋대로 다음날 까지 간게 이상한거 아니야?"
+     * 이제 날짜를 채워 두면 정한 날에만 쓴다. 뒤집었으니 **어느 쪽인지 화면이 늘 말하고**,
+     * 되돌리는 길도 같은 자리에 둔다 — 조용히 바뀌는 규칙은 또 놀람이 된다.
+     */
+    ok(panel.includes('정해 둔 날에만 씁니다.'), '정한 날에만 쓰는 상태를 말한다')
+    ok(panel.includes('안 정한 날에도 매일 쓰기'), '되돌리는 스위치가 같은 자리에 있다')
+    ok(/everyDay: e\.target\.checked/.test(panel), '그 스위치가 설정을 바꾼다')
+    ok(panel.includes('③에 정해 둔 날에만 씁니다'), '맨 위 상태 줄도 같은 말을 한다')
+    /*
+     * **멈춘 채로 조용히 두지 않는다.** 「정한 날에만」으로 바꾸면 채워 둔 날이 다 지나간
+     * 뒤부터 아무것도 안 쓴다. 회원이 정한 것이라도 화면이 말해주지 않으면 일주일 뒤에
+     * 「왜 안 써?」가 된다 — 그게 이번 지적의 거울 상이다.
+     */
+    ok(panel.includes('지금 상태로는 자동 작성이 쉽니다.'), '앞날이 비면 멈춘다고 미리 말한다')
+    ok(/\(plan\.days \?\? \[\]\)\.some\(\(d\) => d\.date >= today\)/.test(panel), '오늘 이후 채워 둔 날이 있는지로 본다')
     ok(!panel.includes('채우지 않은 날은 잡히지 않습니다'), '「그 날은 안 쓴다」로 읽히던 문구를 뺐다')
     ok(panel.includes('「쉬는 날」') && panel.includes('맨 위 스위치를 끄세요'), '안 쓰게 하려면 어디를 만져야 하는지 말한다')
     // 주제 수를 **하루 편수와 함께** 본다 — 3개·3편이면 날마다 같은 셋이다
