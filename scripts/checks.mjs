@@ -606,6 +606,24 @@ ok(normalizeTag(longTag).length === TAG_MAX_LEN + 5, '긴 태그를 조용히 �
       ok(keyPointsOf('첫 번째는 복합 운동이 첫 번째입니다.').length === 1, '한 문장을 두 번 세지 않는다')
 
       /*
+       * ㉲ **안 고쳐졌으면 왜인지 말한다** (2026-08-30).
+       *
+       * 화면은 여태 「고쳐 써도 나아지지 않아 원래 글을 두었습니다」 한 마디만 했다.
+       * 그 한 마디가 서로 다른 세 가지를 덮고 있었다 — ①응답을 못 읽었다 ②모델이 같은
+       * 글을 그대로 돌려줬다 ③고친 글이 채점에서 졌다. 셋은 회원이 할 일이 다르다
+       * (다시 누른다 / 손으로 고친다 / 본문을 줄인다). 실제로 프로덕션에서 네 번을
+       * 돌려도 안 고쳐졌는데, 그 한 마디로는 셋 중 무엇인지 알 길이 없었다.
+       */
+      const wapi = require('node:fs').readFileSync(new URL('../app/api/write/route.ts', import.meta.url), 'utf8')
+      ok(wapi.includes('모델 응답을 읽지 못했습니다'), '응답을 못 읽은 경우를 따로 말한다')
+      ok(wapi.includes('모델이 같은 글을 그대로 돌려줬습니다'), '그대로 돌아온 경우도 따로 말한다')
+      ok(wapi.includes('고친 글이 채점에서 졌습니다'), '채점에서 진 경우는 점수까지 보여준다')
+      ok(/fixChars: fixed \? fixed\.body\.length : 0/.test(wapi), '돌아온 본문 길이도 넘긴다 (잘렸는지 알 수 있게)')
+      const ed2 = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+      ok(ed2.includes('원래 글을 두었습니다: '), '화면이 그 이유를 그대로 보여준다')
+      ok(ed2.includes('자만 돌아왔습니다'), '크게 짧게 돌아왔으면 잘렸다고 말한다')
+
+      /*
        * ㉱ **고칠 버튼을 그 자리에 둔다.** 무엇이 틀렸는지 알면서 「검수 화면에 가서
        * 누르세요」라고만 하면 안 된다.
        */
