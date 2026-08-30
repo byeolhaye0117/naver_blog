@@ -936,7 +936,19 @@ export default function Editor({
         {/* 왼쪽 — 작성 또는 발행 패키지 */}
         <div className={`space-y-4 ${view === 'check' ? 'hidden lg:block' : ''}`}>
           {view === 'copy' ? (
-            <CopyPane pkg={copyPkg} post={draftPost} store={store} logLine={postLogLine(draftPost, store)} />
+            <CopyPane
+              pkg={copyPkg}
+              post={draftPost}
+              store={store}
+              logLine={postLogLine(draftPost, store)}
+              onFix={
+                liveFixIssues.length
+                  ? () => callWrite({ draft: { title, body, tags }, issues: liveFixIssues })
+                  : undefined
+              }
+              fixing={aiBusy}
+              fixCount={liveFixIssues.length}
+            />
           ) : (
             <>
               <Card title="글 정보">
@@ -1874,11 +1886,30 @@ function CopyPane({
   post,
   store,
   logLine,
+  onFix,
+  fixing,
+  fixCount,
 }: {
   pkg: ReturnType<typeof buildCopyPackage>
   post: Post
   store?: Store
   logLine: string
+  /**
+   * **여기서 바로 고친다** (2026-08-30 회원: "그래서 왜 안고치는거야?").
+   *
+   * 앞 판은 「검수의 순서 표시 항목이 같은 지적을 하고 있습니다」라고만 적어 뒀다.
+   * 회원 입장에서는 앱이 무엇이 틀렸는지 정확히 알면서 **고치라고 시키기만 한 것**이다.
+   * 맞는 지적이다 — 고칠 수 있는 자리에 고치는 버튼을 둔다.
+   *
+   * 다만 순서 표시만 조용히 끼워 넣지는 않는다. 빠진 첫 항목은 「제가 이 순서에서 가장
+   * 먼저 강조하고 싶은 부분은」처럼 **문장으로 쓰여 있어서**, 앞에 「첫 번째 단계는」을
+   * 붙이면 말이 안 되는 문장이 된다. 그래서 검수 항목 고쳐 쓰기와 같은 길로 보낸다 —
+   * AI 가 그 문단을 다시 쓴다.
+   */
+  onFix?: () => void
+  fixing?: boolean
+  /** 지금 고칠 항목이 몇 개인가 — 순서 말고도 걸린 것이 있으면 함께 고쳐진다 */
+  fixCount?: number
 }) {
   return (
     <div className="space-y-4">
@@ -1966,10 +1997,34 @@ function CopyPane({
             (검수의 「순서 표시」 항목이 같은 말을 한다), 여기서는 그 사실을 밝힌다.
           */}
           {pkg.keyPointFlaws.length > 0 && (
-            <p className="mb-2 rounded-lg border border-amber-500/40 bg-amber-500/8 px-2.5 py-2 text-[11.5px] leading-relaxed font-semibold text-amber-700 dark:text-amber-400">
-              본문의 순서가 어긋나 있습니다 — {pkg.keyPointFlaws.join(' · ')}. 아래 번호는 <b>본문에 적힌 번호</b>
-              입니다. 검수의 「순서 표시」 항목이 같은 지적을 하고 있고, 고쳐 쓰기에 함께 넘어갑니다.
-            </p>
+            <div className="mb-2 rounded-lg border border-amber-500/40 bg-amber-500/8 px-2.5 py-2 text-[11.5px] leading-relaxed text-amber-700 dark:text-amber-400">
+              <p className="font-semibold">
+                본문의 순서가 어긋나 있습니다 — {pkg.keyPointFlaws.join(' · ')}. 아래 번호는{' '}
+                <b>본문에 적힌 번호</b>입니다.
+              </p>
+              {/*
+                **여기서 바로 고친다** (2026-08-30 회원: "그래서 왜 안고치는거야?").
+                무엇이 틀렸는지 알면서 고치라고 시키기만 하면 안 된다.
+
+                **왜 조용히 번호만 끼워 넣지 않나:** 빠진 첫 항목이 「제가 이 순서에서 가장
+                먼저 강조하고 싶은 부분은」처럼 문장으로 쓰여 있어서, 앞에 「첫 번째 단계는」을
+                붙이면 말이 안 되는 문장이 된다. 문단을 다시 써야 하는 일이라 AI 에게 보낸다.
+              */}
+              {onFix && (
+                <button
+                  type="button"
+                  onClick={onFix}
+                  disabled={fixing}
+                  className="mt-1.5 rounded-lg border border-amber-500/50 bg-amber-500/12 px-2.5 py-1.5 text-[11.5px] font-bold transition hover:bg-amber-500/20 disabled:opacity-50"
+                >
+                  {fixing ? '고치는 중…' : `본문 순서 고쳐 쓰기${fixCount && fixCount > 1 ? ` (검수 ${fixCount}개 함께)` : ''}`}
+                </button>
+              )}
+              <p className="mt-1 opacity-80">
+                누르면 AI 가 그 문단을 다시 씁니다 — 1분쯤 걸리고, 본문이 바뀝니다. 검수 화면의 「검수 항목 고쳐
+                쓰기」와 같은 일입니다.
+              </p>
+            </div>
           )}
           <ol className="space-y-2.5">
             {pkg.keyPoints.map((k, i) => (

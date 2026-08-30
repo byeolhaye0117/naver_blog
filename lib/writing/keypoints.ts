@@ -65,7 +65,20 @@ const HARD_MARK = /(첫째|둘째|셋째|넷째|다섯째|여섯째|일곱째|[�
  * 문장 속에서 앞을 가리키는 데 흔히 쓴다. 그래서 이 꼴만은 **줄 맨 앞**을 요구한다.
  * 순서를 매기는 글은 항목을 줄 맨 앞에서 시작하므로 잃는 것이 없다.
  */
-const SOFT_MARK = /((?:첫|한|두|세|네|다섯|여섯|일곱)\s*(?:번째|단계))/
+const SOFT_MARK = /((?:첫|한|두|세|네|다섯|여섯|일곱)\s*(?:번째(?:\s*단계)?|단계))/
+/**
+ * **문장 가운데의 「두 번째」가 항목인지 가리는 조사** (2026-08-30).
+ *
+ * 줄 맨 앞만 인정하면 놓치는 것이 있다 — 실제 글에 「크게 두 가지 방식으로 나뉘는데,
+ * 복합 운동 먼저, 고립 운동 나중 방식이 **첫 번째입니다**」처럼 첫 항목을 문단 끝에 단
+ * 경우가 있었다. 그런데 그걸 살리려고 문장 끝 뒤를 전부 인정하면 「덤벨 프레스입니다.
+ * **첫 번째에서** 쓰지 않은 각도를」이 다시 항목으로 올라온다 (회원이 본 그 화면이다).
+ *
+ * 가르는 것은 **뒤에 붙은 조사**다. 항목을 여는 말은 「첫 번째는」·「두 번째 단계가」처럼
+ * 주어 자리에 서고, 앞을 가리키는 말은 「첫 번째에서」·「첫 번째로」처럼 다른 자리에 선다.
+ * 그래서 문장 끝 다음에 온 「N 번째」는 **주어 조사나 쉼표가 바로 붙었을 때만** 항목으로 본다.
+ */
+const SOFT_HEAD_TAIL = /^(?:는|은|가|이|,)/
 /** 두 꼴을 합친 것 — 「이 줄이 표시로 시작하나」를 볼 때 쓴다 */
 const KEY_POINT_MARK = new RegExp(`(${HARD_MARK.source}|${SOFT_MARK.source}) *`)
 
@@ -189,7 +202,10 @@ export function keyPointsOf(body: string): KeyPoint[] {
       const before = line.slice(0, m.index).trim()
       const atLineStart = before === ''
       const soft = new RegExp(`^${SOFT_MARK.source}`).test(m[0])
-      if (atLineStart || (!soft && /[.!?]$/.test(before)))
+      const afterSentence = /[.!?]$/.test(before)
+      // 문장 끝 다음의 「N 번째」는 주어 자리에 섰을 때만 항목이다 (위 SOFT_HEAD_TAIL 주석)
+      const softHead = soft && SOFT_HEAD_TAIL.test(line.slice(m.index + m[0].length))
+      if (atLineStart || (afterSentence && (!soft || softHead)))
         marks.push({ at: m.index, len: m[0].length, n: markNumber(m[0]) })
     }
     for (let i = 0; i < marks.length; i++) {
