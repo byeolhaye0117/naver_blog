@@ -394,8 +394,150 @@ ok(normalizeTag(longTag).length === TAG_MAX_LEN + 5, '긴 태그를 조용히 �
     ok(!pkgKp.keyPoints[0].detail.includes('흔히'), '다음 소제목 내용이 딸려 오지 않는다')
     ok(!pkgKp.keyPoints[0].detail.includes('오늘 당장'), '그 다음 소제목도 마찬가지')
   }
+  /*
+   * ─── 어떤 글이든 성하게 뽑는다 (2026-08-30 회원 지적) ────────────────
+   *
+   * 회원: "문장이 제대로 안나왔어 어떤 글이든 오류가 없이 뽑아 낼 수 있게 점검해서
+   * 업데이트해줘."
+   *
+   * **회원이 보낸 화면을 프로덕션 글로 재현했다** (post_nzv84s596r, 남자 가슴운동 순서).
+   * 발행 패키지가 이렇게 나왔다:
+   *
+   *   ① 두 번째 단계는 인클라인이나 디클라인처럼 각도를 바꾼 덤벨 프레스입니다.  (설명 없음)
+   *   ② 첫 번째에서 쓰지 않은 각도를 골라서 3~4세트, 8~12회 반복으로 넣어주세요.
+   *   ③ 세 번째 단계가 고립 운동입니다.
+   *   ④ 두 번째는 사전 피로법이라고 해서 …
+   *
+   * 세 가지가 겹쳐 있었다. 하나씩 아래에서 지킨다.
+   */
+  {
+    const { keyPointFlaws, markNumber } = require(`${OUT}/writing/keypoints.js`)
+
+    /*
+     * ① **문장 속 「첫 번째」를 항목으로 올리면 안 된다.**
+     *
+     * 「첫 번째에서 쓰지 않은 각도를」은 앞 항목을 가리키는 말이지 새 항목이 아니다.
+     * 그런데 그 앞이 마침표라 「문장이 끝난 다음」 조건을 통과했고, 그 바람에 앞 항목은
+     * 설명을 통째로 빼앗겨 빈 줄이 됐다 (화면의 ①이 그것이다).
+     */
+    const back = keyPointsOf(
+      '두 번째 단계는 각도를 바꾼 덤벨 프레스입니다. 첫 번째에서 쓰지 않은 각도를 골라서 3~4세트 넣어주세요.'
+    )
+    ok(back.length === 1, '문장 속 「첫 번째」는 새 항목이 아니다', JSON.stringify(back.map((k) => k.text)))
+    ok(
+      back[0].detail?.includes('첫 번째에서 쓰지 않은'),
+      '앞 항목이 제 설명을 잃지 않는다',
+      JSON.stringify(back[0].detail)
+    )
+    // 「첫째」·「①」처럼 순서에만 쓰는 표시는 문장 끝 뒤에서도 그대로 본다 (위 테스트가 지킨다)
+    ok(keyPointsOf('첫째, 하나입니다. 둘째, 둘입니다.').length === 2, '전용 표시는 한 문단 안에서도 나뉜다')
+    // 「방식이 첫 번째입니다」도 항목이 아니다 — 줄 맨 앞이 아니다
+    ok(keyPointsOf('복합 운동 먼저 하는 방식이 첫 번째입니다.').length === 0, '문장 끝의 순번도 항목이 아니다')
+
+    /*
+     * ② **표시 자체의 마침표에서 문구를 끊으면 안 된다.**
+     *
+     * 「1. 폭식 시간 2시간 전 미리 먹기 — …」에서 문장 끝을 맨 앞부터 찾으면 「1.」이
+     * 먼저 걸린다. 실제로 프로덕션 글(post_zqn9qa8wku) 네 항목이 전부 문구가 「1.」·「2.」
+     * 한 조각으로만 떴다.
+     */
+    const dotted = keyPointsOf('1. 폭식 시간 2시간 전 미리 먹기 — 견과류 한 줌을 드세요. 배가 덜 고파집니다.')
+    ok(dotted.length === 1, '「1.」은 표시 하나다', JSON.stringify(dotted.map((k) => k.text)))
+    ok(dotted[0].text.includes('폭식 시간'), '문구가 「1.」로 잘리지 않는다', dotted[0].text)
+    ok(dotted[0].detail === '배가 덜 고파집니다.', '나머지가 설명으로 간다', JSON.stringify(dotted[0].detail))
+
+    /*
+     * ③ **한 글에 목록이 둘 이상이면 나눠 센다.**
+     *
+     * 실제 글에 「실제로 어떻게 배치하면 될까」 아래 1·2·3 이 있고 「고를 때 기준」 아래
+     * 또 1·2 가 있었다. 한 줄로 이으면 1·2·3·2 가 되어 **번호가 되돌아간 것처럼** 보인다.
+     *
+     * 소제목으로 나누지 않는 이유: 질문마다 소제목을 달고 그 아래에서 번호를 이어 가는
+     * 글도 있다 (프로덕션의 「갱년기다이어트」 글). 소제목마다 끊으면 그 목록이 한
+     * 항목짜리 묶음 셋으로 조각난다. **번호가 늘어나는 동안은 한 목록**으로 본다.
+     */
+    const two = keyPointsOf(
+      ['첫 번째는 하나입니다.', '두 번째는 둘입니다.', '## 다른 기준', '첫 번째는 이것입니다.', '두 번째는 저것입니다.'].join('\n')
+    )
+    ok(two.length === 4, '네 항목을 다 뽑는다', JSON.stringify(two.map((k) => k.text)))
+    ok(two[0].group === two[1].group && two[2].group === two[3].group, '앞뒤가 각각 한 묶음')
+    ok(two[1].group !== two[2].group, '번호가 되돌아가면 새 목록이다', `${two[1].group}/${two[2].group}`)
+    ok(keyPointFlaws(two).length === 0, '둘 다 1번부터라 성한 목록이다', JSON.stringify(keyPointFlaws(two)))
+    // 소제목을 사이에 두고 번호가 이어지면 **한 목록**이다 (조각내지 않는다)
+    const across = keyPointsOf(['첫 번째는 하나입니다.', '## 두 번째 질문', '두 번째는 둘입니다.'].join('\n'))
+    ok(across.length === 2 && across[0].group === across[1].group, '소제목을 넘어가도 번호가 늘면 한 목록')
+
+    /*
+     * ④ **어긋난 자리는 숨기지 않고 말한다.**
+     *
+     * 뽑는 쪽을 아무리 고쳐도 본문에 첫 항목 표시가 없으면 첫 항목은 나올 수 없다.
+     * 실제 글이 그랬다 — 1단계를 「제가 이 순서에서 가장 먼저 강조하고 싶은 부분은」으로
+     * 열어서 표시가 아예 없었다.
+     */
+    ok(markNumber('두 번째') === 2 && markNumber('①') === 1 && markNumber('3단계') === 3 && markNumber('셋째') === 3,
+      '본문이 매긴 번호를 읽는다')
+    ok(markNumber('첫 단계') === 1 && markNumber('1)') === 1, '「첫 단계」·「1)」도 읽는다')
+    const gap = keyPointsOf(['두 번째 단계는 둘입니다.', '세 번째 단계는 셋입니다.'].join('\n'))
+    ok(keyPointFlaws(gap).some((f) => f.includes('2번부터 시작')), '2번부터 시작하면 짚는다', JSON.stringify(keyPointFlaws(gap)))
+    const skip = keyPointsOf(['첫째, 하나입니다.', '넷째, 넷입니다.'].join('\n'))
+    ok(keyPointFlaws(skip).some((f) => f.includes('사이가 비었습니다')), '건너뛰면 짚는다', JSON.stringify(keyPointFlaws(skip)))
+    ok(keyPointFlaws(keyPointsOf('첫째, 하나입니다.')).length === 0, '성한 목록에는 아무 말도 안 한다')
+    // 한 항목짜리라도 1번이 아니면 짚는다 — 「둘째는 …」만 혼자 뜬 글이 실제로 있었다
+    ok(keyPointFlaws(keyPointsOf('둘째는 보충제를 같이 쓰는 방법이에요.')).length === 1, '혼자 뜬 「둘째」도 짚는다')
+
+    /*
+     * ⑤ **본문을 고치게 한다.** 뽑는 쪽만 고치면 다음 글도 두 번째부터 나온다
+     * (이 저장소가 반복해서 겪은 「한쪽만 고친 것」). 검수가 **같은 규칙**으로 본다 —
+     * 그래서 규칙을 keypoints.ts 한 벌에 두고 양쪽이 부른다.
+     */
+    const broken = checkPost({
+      type: 'info', title: '순서 정리 헬스 초보 루틴', mainKeyword: '헬스 초보 루틴', subKeywords: [], tags: [],
+      body: ['## 순서', '두 번째 단계는 둘입니다. 설명입니다.', '세 번째 단계는 셋입니다. 설명입니다.'].join('\n'),
+    })
+    const order = broken.items.find((i) => i.id === 'key-point-order')
+    ok(!!order, '검수에 「순서 표시」 항목이 있다')
+    ok(order.level === 'warn', '어긋나면 수정필요', order.level)
+    ok(order.hint.includes('첫 번째 단계는'), '무엇으로 열어야 하는지 알려준다')
+    const fine = checkPost({
+      type: 'info', title: '순서 정리 헬스 초보 루틴', mainKeyword: '헬스 초보 루틴', subKeywords: [], tags: [],
+      body: ['## 순서', '첫 번째 단계는 하나입니다. 설명입니다.', '두 번째 단계는 둘입니다. 설명입니다.'].join('\n'),
+    })
+    ok(fine.items.find((i) => i.id === 'key-point-order')?.level === 'pass', '성하면 통과')
+    // 순서를 안 쓰는 글에는 항목을 만들지 않는다 — 없는 순서를 지어내게 하면 안 된다
+    const none = checkPost({
+      type: 'info', title: '그냥 줄글 헬스 초보 루틴', mainKeyword: '헬스 초보 루틴', subKeywords: [], tags: [],
+      body: '## 소제목\n순서 표시가 없는 줄글입니다. 그냥 설명입니다.',
+    })
+    ok(!none.items.some((i) => i.id === 'key-point-order'), '표시가 없으면 항목 자체가 없다')
+    // 굵게 쓴 표시도 본다 — 「**첫 번째 단계는**」이 흔하다
+    const bold = checkPost({
+      type: 'info', title: '순서 정리 헬스 초보 루틴', mainKeyword: '헬스 초보 루틴', subKeywords: [], tags: [],
+      body: ['**첫 번째 단계는** 하나입니다. 설명입니다.', '**두 번째 단계는** 둘입니다. 설명입니다.'].join('\n'),
+    })
+    ok(bold.items.find((i) => i.id === 'key-point-order')?.level === 'pass', '굵게 쓴 표시도 센다')
+
+    /*
+     * ⑥ **지시문도 함께 고친다.** 앞 판에도 「첫 항목부터 매긴다」가 있었는데 실제 글은
+     * 「가장 먼저 강조하고 싶은 부분은」으로 열었다 — 규칙을 지킨 척 넘어간 것이다.
+     * 그래서 **어디에 쓰는가**까지 못박았다.
+     */
+    const { buildSystemPrompt: sys2 } = require(`${OUT}/ai/prompt.js`)
+    for (const t of ['promo', 'info', 'review']) {
+      ok(sys2(t).includes('순서 항목은 문단 맨 앞에서 시작한다'), `${t} 지시문이 항목을 문단 맨 앞에 두라고 한다`)
+      ok(sys2(t).includes('앞에서 쓰지 않은 각도를'), `${t} 지시문이 문장 속 순번을 쓰지 말라고 한다`)
+    }
+  }
+
   const kpEditor = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
   ok(kpEditor.includes('핵심 문구 (순서)'), '발행 패키지 화면에 따로 칸이 있다')
+  /*
+   * **화면이 번호를 새로 매기지 않는다** (2026-08-30). 본문이 2번부터 시작해도 화면이
+   * 1·2·3 을 붙여 버리면 회원 눈에는 멀쩡한 목록으로 보인다 — 알 방법이 없어진다.
+   */
+  ok(/\{k\.n \?\? i \+ 1\}/.test(kpEditor), '본문이 매긴 번호를 그대로 보여준다')
+  ok(kpEditor.includes('pkg.keyPointFlaws.length > 0'), '어긋난 목록이면 그 사실을 화면에 적는다')
+  ok(kpEditor.includes('본문의 순서가 어긋나 있습니다'), '무엇이 어긋났는지 말한다')
+  ok(/\$\{k\.n \?\? i \+ 1\}\. \$\{k\.text\}/.test(kpEditor), '복사한 글에도 본문 번호가 간다')
   ok(/pkg\.keyPoints\.length > 0 &&/.test(kpEditor), '뽑을 것이 없으면 칸을 만들지 않는다')
   // 화면에도 설명이 함께 나와야 한다 — 문구만 보여주면 회원이 다시 본문을 훑는다
   ok(/\{k\.detail && \(/.test(kpEditor), '화면이 부연설명도 보여준다')

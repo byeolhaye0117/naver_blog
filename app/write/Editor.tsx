@@ -1953,17 +1953,33 @@ function CopyPane({
           right={
             <CopyButton
               text={pkg.keyPoints
-                .map((k, i) => `${i + 1}. ${k.text}${k.detail ? `\n   ${k.detail}` : ''}`)
+                .map((k, i) => `${k.n ?? i + 1}. ${k.text}${k.detail ? `\n   ${k.detail}` : ''}`)
                 .join('\n')}
               label="핵심 문구 복사"
             />
           }
         >
+          {/*
+            **어긋난 자리를 숨기지 않는다** (2026-08-30 회원 지적: "문장이 제대로 안나왔어").
+            본문에 첫 항목 표시가 없으면 이 목록은 두 번째부터 시작하는데, 화면이 1·2·3 을
+            새로 매겨 버리면 회원 눈에는 멀쩡한 목록으로 보인다. 고칠 곳은 본문이고
+            (검수의 「순서 표시」 항목이 같은 말을 한다), 여기서는 그 사실을 밝힌다.
+          */}
+          {pkg.keyPointFlaws.length > 0 && (
+            <p className="mb-2 rounded-lg border border-amber-500/40 bg-amber-500/8 px-2.5 py-2 text-[11.5px] leading-relaxed font-semibold text-amber-700 dark:text-amber-400">
+              본문의 순서가 어긋나 있습니다 — {pkg.keyPointFlaws.join(' · ')}. 아래 번호는 <b>본문에 적힌 번호</b>
+              입니다. 검수의 「순서 표시」 항목이 같은 지적을 하고 있고, 고쳐 쓰기에 함께 넘어갑니다.
+            </p>
+          )}
           <ol className="space-y-2.5">
             {pkg.keyPoints.map((k, i) => (
               <li key={i} className="flex gap-2.5">
+                {/*
+                  **본문이 매긴 번호를 그대로 보여준다.** 화면이 1부터 새로 매기면 본문에
+                  1번이 없어도 ①로 보인다 — 그러면 회원이 알 방법이 없다.
+                */}
                 <span className="muted tnum bd mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold">
-                  {i + 1}
+                  {k.n ?? i + 1}
                 </span>
                 <div className="min-w-0">
                   <p className="text-[12.5px] leading-relaxed font-semibold">{k.text}</p>
