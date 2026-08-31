@@ -9,7 +9,7 @@ if (!OUT) {
 const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange, findLatinWords, LATIN_ALLOWED } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
-const { buildCopyPackage, keyPointsOf, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, normalizeTag, stripBold, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
+const { buildCopyPackage, keyPointsOf, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, normalizeTag, stripBold, lineWidth, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
 const { parsePastedReviews, analyzeReviews, placeReviewUrl, verifyReviewQuotes } = require(`${OUT}/analysis/reviews.js`)
 const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parsePlaceList } = require(
@@ -767,9 +767,12 @@ console.log(`  파일명 예: ${pkg.imagePlan[0].fileName} / alt: ${pkg.imagePla
  * 한 줄 15~25자, 마디에서 끊고, 두세 줄마다 빈 줄, 소제목 위아래 구분선.
  */
 const mobLines = pkg.bodyMobile.split('\n').filter((l) => l.trim() && !/^─+$/.test(l.trim()))
-const tooLong = mobLines.filter((l) => l.length > LINE_MAX)
+const tooLong = mobLines.filter((l) => lineWidth(l) > LINE_MAX)
 ok(mobLines.length > pkg.blocks.length * 2, `모바일 본문이 잘게 끊긴다 (${pkg.blocks.length}덩어리 → ${mobLines.length}줄)`)
-ok(tooLong.length === 0, `상한(${LINE_MAX}자) 넘는 줄 없음 — 가장 긴 줄 ${Math.max(...mobLines.map((l) => l.length))}자`)
+ok(
+  tooLong.length === 0,
+  `상한(한글 ${LINE_MAX}자쯤) 넘는 줄 없음 — 가장 넓은 줄 ${Math.max(...mobLines.map((l) => +lineWidth(l).toFixed(2)))}`
+)
 ok(pkg.bodyMobile.includes('\n\n'), '덩어리 사이에 빈 줄이 있다')
 ok(!pkg.bodyMobile.includes('[이미지'), '모바일 본문에도 이미지 지시문 없음')
 ok(!pkg.bodyMobile.includes('##'), '모바일 본문에 소제목 마크업 없음')
@@ -786,7 +789,74 @@ ok(clauseLines('짧은 문장입니다.').length === 1, '짧은 문장은 안 �
 // 인용 한복판에서 갈리면 누가 한 말인지 눈으로 안 잡힌다
 const quoted = clauseLines('"작년에도 이맘때 등록하려고 하셨죠?" 하면 대부분 웃으시더라고요.')
 ok(quoted[0] === '"작년에도 이맘때 등록하려고 하셨죠?" 하면', `따옴표가 열린 채로는 안 끊는다 — ${quoted[0]}`)
-ok(clauseLines(sample).every((l) => l.length <= LINE_MAX), '모든 줄이 상한 안')
+ok(clauseLines(sample).every((l) => lineWidth(l) <= LINE_MAX), '모든 줄이 상한 안')
+/*
+ * ─── 글자수가 아니라 너비로 잰다 (2026-08-31 회원 요청) ────────────────
+ *
+ * 회원: "모바일 한줄에 들어가는 글자수를 확인해서 줄바꿈을 다시 점검해주면 좋겠어."
+ *
+ * 회원이 실제로 붙여넣은 화면을 받아 한 줄씩 재봤다 (post_0uojwyob2l). **넘친 줄과
+ * 안 넘친 줄이 글자수로는 안 갈렸다** — 넘친 줄이 29자인데 안 넘친 줄도 27~28자다.
+ * 한글은 한 자가 네모 하나를 다 쓰고 공백·마침표·영문은 그 절반도 안 되기 때문이다.
+ *
+ * 아래 네 줄이 그 근거다. 상한은 이 사이(22.72 ~ 24.70)에 있어야 한다.
+ */
+{
+  // 회원 화면에서 「니다.」만 다음 줄로 넘어간 줄
+  const WRAPPED = '오늘은 여자근육량늘리기에 대해 정리해 보려고 합니다.'
+  // 같은 화면에서 한 줄에 들어간 줄들
+  const FIT = [
+    '부위별로 어떤 순서·자세로 접근하면 되는지입니다.',
+    '제가 이 글에서 정리해 드릴 건 여자근육량늘리기와',
+    "'이러다 다리만 두꺼워지는 거 아니야?' 하는 걱정",
+    '몸이 그대로인 것 같아 답답한 시기가 옵니다.',
+  ]
+  ok(lineWidth(WRAPPED) > LINE_MAX, `넘친 줄은 상한 밖 — ${lineWidth(WRAPPED).toFixed(2)} > ${LINE_MAX}`)
+  for (const l of FIT)
+    ok(lineWidth(l) <= LINE_MAX, `들어간 줄은 상한 안 — ${lineWidth(l).toFixed(2)} · ${l}`)
+  // 글자수로는 못 가른다 — 이게 이 규칙을 바꾼 이유다
+  ok(
+    FIT.some((l) => l.length >= WRAPPED.length - 2),
+    `글자수로는 넘친 줄(${WRAPPED.length}자)과 들어간 줄(${FIT.map((l) => l.length).join('·')}자)이 안 갈린다`
+  )
+  // 한글은 1, 공백·기호는 그 절반 아래, 영문·숫자는 절반쯤
+  ok(lineWidth('가나다') === 3, '한글 한 자를 1 로 센다', String(lineWidth('가나다')))
+  ok(lineWidth('가 나') < 2.5, '공백은 한 자보다 훨씬 좁다', String(lineWidth('가 나')))
+  ok(lineWidth('abcd') < lineWidth('가나다'), '영문 네 자가 한글 세 자보다 좁다')
+  ok(lineWidth('abcdef') === lineWidth('가나다'), '영문은 한글의 절반쯤 — 여섯 자가 세 자와 같다')
+  ok(lineWidth('**가나다**') === 3, '별표는 서식으로 사라지므로 세지 않는다')
+  /*
+   * **긴 줄이 꼭 넓은 줄은 아니다.** 숫자·기호가 많은 줄은 글자수가 34자여도 들어간다 —
+   * 회원 글의 「세트는 8~12회씩 3~4세트, 세트 사이 휴식은 60~90초」가 그랬다.
+   */
+  {
+    // 화면도 왜 이렇게 끊는지 말해야 한다 — 규칙을 아는 사람만 알 수 있게 두면 안 된다
+    const ed = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+    ok(ed.includes('글자수가 아니라 너비로'), '왜 너비로 재는지 화면에 적는다')
+    ok(ed.includes('29자는 넘쳤는데 28자는 들어갔습니다'), '무엇을 보고 정했는지 밝힌다')
+    ok(!/\{LINE_MIN\}~\{LINE_MAX\}자/.test(ed), '「N~M자」라고 적던 옛 문구를 뺐다 (이제 글자수가 아니다)')
+  }
+  const NUMY = '세트는 8~12회씩 3~4세트, 세트 사이 휴식은 60~90초'
+  ok(NUMY.length > 30 && lineWidth(NUMY) <= LINE_MAX, `숫자가 많은 줄은 길어도 들어간다 — ${NUMY.length}자 · ${lineWidth(NUMY).toFixed(2)}`)
+}
+
+/*
+ * ─── 마지막 줄에 토막만 남기지 않는다 (2026-08-31) ─────────────────
+ *
+ * 상한을 낮추자 「… 정리해 보려고」 / 「합니다.」처럼 마지막 줄에 네 글자만 남았다.
+ * 회원 화면에서 눈에 걸린 것이 바로 그 모양인데, 넘쳐서 갈린 것이든 우리가 끊은 것이든
+ * 보는 사람에게는 같은 흠이다. 마디 끝에서 끊는 길에는 이미 막이 있었지만 **상한을
+ * 넘겨 갈리는 길**에는 없었다.
+ */
+{
+  const one = clauseLines('오늘은 여자근육량늘리기에 대해 정리해 보려고 합니다.')
+  ok(one.length === 2, '두 줄로 갈린다', JSON.stringify(one))
+  ok(lineWidth(one[1]) >= 6, `마지막 줄이 토막이 아니다 — ${one[1]}`)
+  ok(one.join(' ') === '오늘은 여자근육량늘리기에 대해 정리해 보려고 합니다.', '글자는 하나도 안 바뀐다', one.join(' '))
+  // 낱말이 하나뿐이면 내릴 것이 없다 — 그때는 그냥 둔다 (터지지 않는다)
+  ok(clauseLines('가나다라마바사아자차카타파하가나다라마바사아자차 끝.').length >= 1, '내릴 낱말이 없어도 터지지 않는다')
+}
+
 
 // 문장을 자르지 않는다 — 원문 글자가 그대로 있어야 한다
 const squash = (s) => s.replace(/\s+/g, '')
@@ -7328,7 +7398,7 @@ ok(
   `한 줄에 들어가는 강조는 갈라놓지 않는다 — ${shortBold.join(' / ')}`
 )
 // 별표는 서식으로 사라지므로 길이에서 뺀다 (강조가 든 줄만 짧아지던 문제)
-ok(clauseLines(LONG_BOLD).every((l) => l.replace(/\*\*/g, '').length <= LINE_MAX), '눈에 보이는 글자로 상한을 잰다')
+ok(clauseLines(LONG_BOLD).every((l) => lineWidth(l) <= LINE_MAX), '눈에 보이는 글자로 상한을 잰다')
 const lbHtml = blocksToHtml(toBlocks(LONG_BOLD))
 ok(!lbHtml.includes('**'), `줄바꿈을 넘어가도 별표가 안 남는다 — ${lbHtml.slice(0, 90)}`)
 ok(lbHtml.includes('<strong>'), '굵게 서식으로 들어간다')
