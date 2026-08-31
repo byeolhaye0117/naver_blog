@@ -130,10 +130,59 @@ export interface BodyBlock {
  * 문단 3~5개 5편 중 1~3위 0%, 문단 10개 이상은 35~36%, 가장 긴 문단이 본문의 40%를
  * 넘는 4편도 1~3위 0%였다. 끊어 붙이면 그 유리했던 쪽으로 간다.
  */
-export const LINE_MIN = 14
-export const LINE_MAX = 30
+/*
+ * ─── 글자수가 아니라 **너비**로 잰다 (2026-08-31 회원 요청) ──────────
+ *
+ * 회원: "모바일 한줄에 들어가는 글자수를 확인해서 줄바꿈을 다시 점검해주면 좋겠어."
+ *
+ * 회원이 실제로 붙여넣은 화면을 받아 한 줄씩 재봤다. 이 글(post_0uojwyob2l)에서
+ * **줄이 넘친 것과 안 넘친 것**이 이렇게 갈렸다 (한글 한 자를 1 로 본 너비):
+ *
+ *   넘쳤다  24.70  오늘은 여자근육량늘리기에 대해 정리해 보려고 합니다.   ← 「니다.」만 다음 줄로
+ *   안 넘침 22.72  부위별로 어떤 순서·자세로 접근하면 되는지입니다.
+ *   안 넘침 22.68  제가 이 글에서 정리해 드릴 건 여자근육량늘리기와
+ *   안 넘침 21.58  '이러다 다리만 두꺼워지는 거 아니야?' 하는 걱정
+ *
+ * **글자수로는 이걸 가를 수 없다.** 넘친 줄이 29자인데 안 넘친 줄도 27~28자다.
+ * 한글은 한 자가 네모 하나를 다 쓰고 공백·마침표·영문은 그 절반도 안 되기 때문이다 —
+ * 공백이 많은 줄은 글자수가 같아도 훨씬 짧다. 그래서 너비로 잰다.
+ */
+const CHAR_WIDTH = { hangul: 1, latin: 0.5, digit: 0.55, space: 0.28, other: 0.3 }
+/** 한글·한자·전각 기호는 네모 하나를 다 쓴다 */
+const FULL_WIDTH_RE = /[가-힣ㄱ-ㅎㅏ-ㅣ一-鿿ぁ-ヿ！-～]/
+
+/**
+ * 한 줄의 **너비** — 한글 한 자를 1 로 본다.
+ *
+ * `**` 는 서식으로 바뀌어 사라지므로 세지 않는다 (강조가 든 줄만 짧게 끊기던 원인이었다).
+ *
+ * 정확한 픽셀 값이 아니라 **비율 어림**이다. 폰트·기기·글자 크기 설정에 따라 실제 폭은
+ * 달라지므로, 아래 상한에 여유를 두는 쪽으로 쓴다.
+ */
+export function lineWidth(s: string): number {
+  let w = 0
+  for (const ch of (s ?? '').replace(/\*\*/g, '')) {
+    if (FULL_WIDTH_RE.test(ch)) w += CHAR_WIDTH.hangul
+    else if (ch === ' ') w += CHAR_WIDTH.space
+    else if (ch >= '0' && ch <= '9') w += CHAR_WIDTH.digit
+    else if (/[A-Za-z]/.test(ch)) w += CHAR_WIDTH.latin
+    else w += CHAR_WIDTH.other
+  }
+  return w
+}
+
+/**
+ * 줄 상한 — **한글 기준 23자쯤.**
+ *
+ * 위에서 잰 값으로는 회원 기기의 한 줄이 22.72 와 24.70 사이에서 끊긴다. 그 안쪽으로
+ * 잡되 딱 붙이지는 않는다 — 기기와 글자 크기 설정에 따라 폭이 달라지고, 줄이 조금 짧은
+ * 것은 눈에 안 띄지만 「니다.」만 다음 줄로 넘어가는 것은 바로 보인다.
+ */
+export const LINE_MAX = 23
+/** 이 너비는 채우고 나서 끊는다 — 너무 이르게 끊으면 줄이 토막난다 */
+export const LINE_MIN = 12
 /** 이만큼도 안 남으면 끊지 않는다 (한두 낱말만 다음 줄로 떨어지는 것을 막는다) */
-const ORPHAN_MIN = 8
+const ORPHAN_MIN = 6
 /** 빈 줄 없이 이어 붙일 최대 줄 수 · 문장 수 */
 const GROUP_MAX_LINES = 4
 const GROUP_MAX_SENTENCES = 2
@@ -161,16 +210,6 @@ function breakable(word: string): boolean {
   return /(?:고|며|면|서|야|다가|는데|지만|니까|든지|한지|는지|인지|을지|까지|부터|한테|에게|에서|으로|처럼|보다|라며|자며|거나|어도|아도|해도)$/.test(w)
 }
 
-/**
- * 줄 길이는 **눈에 보이는 글자로** 센다.
- *
- * `**` 는 서식으로 바뀌어 사라지므로 길이에 넣으면 그 줄만 짧아진다. 강조가 든 문장이
- * 유난히 짧게 끊기던 원인이다.
- */
-function visible(s: string): number {
-  return s.replace(/\*\*/g, '').length
-}
-
 /** 문장 하나를 마디에서 끊어 줄들로 만든다 (낱말은 자르지 않는다) */
 export function clauseLines(sentence: string): string[] {
   const words = sentence.trim().split(/\s+/).filter(Boolean)
@@ -180,7 +219,7 @@ export function clauseLines(sentence: string): string[] {
     const w = words[i]
     // 넘칠 낱말은 **붙이기 전에** 다음 줄로 내린다 (붙인 뒤 끊으면 그 줄이 상한을 넘는다)
     const joined = cur ? `${cur} ${w}` : w
-    if (cur && visible(joined) > LINE_MAX) {
+    if (cur && lineWidth(joined) > LINE_MAX) {
       lines.push(cur)
       cur = w
     } else {
@@ -206,13 +245,46 @@ export function clauseLines(sentence: string): string[] {
      */
     const inBold = ((cur.match(/\*\*/g) ?? []).length % 2) === 1
     // 마디 끝이면 끊는다 — 남은 게 한두 낱말뿐이면 그냥 데리고 간다
-    if (rest && !inQuote && !inBold && visible(cur) >= LINE_MIN && breakable(w) && visible(rest) >= ORPHAN_MIN) {
+    if (rest && !inQuote && !inBold && lineWidth(cur) >= LINE_MIN && breakable(w) && lineWidth(rest) >= ORPHAN_MIN) {
       lines.push(cur)
       cur = ''
     }
   }
   if (cur) lines.push(cur)
-  return lines
+  return unorphan(lines)
+}
+
+/**
+ * **마지막 줄이 토막이면 앞 줄에서 낱말을 하나 내려 준다** (2026-08-31).
+ *
+ * 상한을 낮추자 「… 정리해 보려고」 / 「합니다.」처럼 마지막 줄에 네 글자만 남는 줄이
+ * 생겼다. 회원이 처음 보내온 화면에서 눈에 걸린 것이 바로 그 모양이다 — 넘쳐서 갈린
+ * 것이든 우리가 끊은 것이든, 보는 사람에게는 같은 흠이다.
+ *
+ * 마디 끝에서 끊는 길에는 이미 `ORPHAN_MIN` 이 있는데, **상한을 넘겨 어쩔 수 없이
+ * 갈리는 길**에는 없었다. 그 자리를 여기서 메운다.
+ *
+ * 낱말을 내렸다가 짝이 갈리면(`**` 강조가 두 줄로) 되돌린다 — 별표가 글에 박히는 것이
+ * 짧은 줄보다 나쁘다.
+ */
+function unorphan(lines: string[]): string[] {
+  const out = [...lines]
+  for (let i = 0; i < 3; i++) {
+    if (out.length < 2) break
+    const last = out[out.length - 1]
+    if (lineWidth(last) >= ORPHAN_MIN) break
+    const prevWords = out[out.length - 2].split(' ')
+    if (prevWords.length < 2) break
+    const moved = prevWords.pop() as string
+    const prev = prevWords.join(' ')
+    const next = `${moved} ${last}`
+    // 짝이 갈리면 손대지 않는다 — 별표가 글에 박히는 것이 짧은 줄보다 나쁘다
+    const odd = (t: string) => ((t.match(/\*\*/g) ?? []).length % 2) === 1
+    if (odd(prev) || odd(next) || lineWidth(next) > LINE_MAX) break
+    out[out.length - 2] = prev
+    out[out.length - 1] = next
+  }
+  return out
 }
 
 /**
