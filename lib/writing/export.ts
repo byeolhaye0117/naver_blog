@@ -416,37 +416,86 @@ const RULE = 'border:0;border-top:1px solid #dddddd;'
  */
 export function blocksToHtml(blocks: BodyBlock[], style: HeadingStyle = 'quote'): string {
   /*
-   * **줄을 먼저 붙이고 굵게를 찾는다.** 줄마다 따로 찾으면 줄바꿈으로 갈린 짝을 놓친다
-   * (`<br />` 에는 별표가 없으니 짝 찾기에 방해가 안 된다).
+   * ─── 줄마다 문단 하나로 낸다 (2026-08-31 회원 지적) ────────────────
+   *
+   * 회원: "서식 복사해서 블로그에 붙여넣기 하면 줄바꿈이 안된채로 와."
+   *
+   * 앞 판은 덩어리 하나를 `<p>` 하나로 내고 그 안의 줄바꿈을 `<br />` 로 넣었다. 문법으로는
+   * 맞는 HTML 인데, **네이버 에디터에는 「문단 안 줄바꿈」이라는 자리가 없다** — 붙여넣기를
+   * 받으면 문단 단위로 자기 컴포넌트를 만들고 `<br>` 은 버린다. 그래서 우리가 애써 끊어
+   * 놓은 줄이 다시 한 덩어리로 붙어 버렸다.
+   *
+   * 그래서 **줄 하나 = 문단 하나**로 낸다. 버려질 수 있는 표시(`<br>`)에 기대지 않고
+   * 확실히 남는 표시(블록 요소)만 쓴다.
+   *
+   * **빈 줄도 문단으로 낸다.** 덩어리 사이 간격을 여태 `margin:0 0 26px` 로 줬는데, 네이버는
+   * 붙여넣기에서 인라인 스타일을 떼는 경우가 많다 — 그러면 간격이 통째로 사라진다. 빈 문단
+   * (`&nbsp;`)은 글자가 있으므로 지워지지 않고, 스타일이 살아 있든 없든 같은 모양이 된다.
+   * 그래서 아래 여백 값은 0 으로 두고 간격은 빈 문단만으로 만든다 (둘 다 쓰면 두 배가 된다).
    */
-  const para = (groups: string[][]) =>
-    groups
-      .map(
-        (g) =>
-          `<p style="font-size:16px;line-height:1.9;margin:0 0 26px;">${bold(
-            g.map((line) => esc(line)).join('<br />')
-          )}</p>`
-      )
-      .join('\n')
+  const LINE = 'font-size:16px;line-height:1.9;margin:0;'
+  const out: string[] = []
+  const blank = () => out.push(`<p style="${LINE}">&nbsp;</p>`)
 
-  const heading = (text: string) =>
-    style === 'bold'
-      ? `<h3 style="font-size:19px;font-weight:700;line-height:1.6;margin:34px 0 14px;">${bold(esc(text))}</h3>`
-      : [
-          `<hr style="${RULE}margin:40px 0 0;" />`,
-          `<blockquote style="border:0;margin:0;padding:22px 0 20px;font-size:19px;font-weight:700;line-height:1.6;">${bold(esc(text))}</blockquote>`,
-          `<hr style="${RULE}margin:0 0 28px;" />`,
-        ].join('\n')
+  const para = (groups: string[][]) => {
+    groups.forEach((g, i) => {
+      if (i) blank()
+      /*
+       * **굵게 짝은 줄을 붙인 뒤에 찾는다.** 줄마다 따로 찾으면 줄바꿈으로 갈린 짝을
+       * 놓친다 (그래서 별표가 글에 박혀 나간 적이 있다). 찾은 뒤에 다시 줄로 자르고,
+       * 자르는 자리를 강조가 넘어가면 줄마다 닫고 다시 연다 — 문단을 넘는 태그는
+       * 붙여넣기에서 깨진다.
+       */
+      for (const line of splitKeepingBold(bold(g.map((l) => esc(l)).join(LINE_SPLIT))))
+        out.push(`<p style="${LINE}">${line}</p>`)
+    })
+  }
 
-  return blocks
-    .map((b) =>
-      b.kind === 'heading'
-        ? heading(b.groups[0]?.[0] ?? '')
-        : b.kind === 'rule'
-          ? `<hr style="${RULE}margin:34px 0;" />`
-          : para(b.groups)
+  const heading = (text: string) => {
+    if (style === 'bold') {
+      out.push(`<h3 style="font-size:19px;font-weight:700;line-height:1.6;margin:0;">${bold(esc(text))}</h3>`)
+      return
+    }
+    /*
+     * 인용구는 그대로 `<blockquote>` 다 — 블록 요소라 줄바꿈 문제와 상관이 없고,
+     * 화면의 「구분선 + 인용구」라는 이름도 그 말대로여야 한다.
+     */
+    out.push(`<hr style="${RULE}margin:0;" />`)
+    out.push(
+      `<blockquote style="border:0;margin:0;padding:0;font-size:19px;font-weight:700;line-height:1.6;">${bold(esc(text))}</blockquote>`
     )
-    .join('\n')
+    out.push(`<hr style="${RULE}margin:0;" />`)
+  }
+
+  blocks.forEach((b, i) => {
+    // 블록 사이에도 빈 줄 — 글자만 복사(blocksToText)와 같은 모양이 되게 한다
+    if (i) blank()
+    if (b.kind === 'heading') heading(b.groups[0]?.[0] ?? '')
+    else if (b.kind === 'rule') out.push(`<hr style="${RULE}margin:0;" />`)
+    else para(b.groups)
+  })
+
+  return out.join('\n')
+}
+
+/** 줄을 붙일 때 쓰는 임시 표시 — 본문에 나올 수 없는 글자여야 한다 */
+const LINE_SPLIT = '\u0000'
+
+/**
+ * 붙여 둔 줄을 다시 자른다 — **강조가 자리를 넘어가면 줄마다 닫고 다시 연다.**
+ *
+ * `<strong>` 이 문단 두 개에 걸치면 붙여넣기에서 태그가 깨진다 (한쪽만 열린 채 남는다).
+ * 그래서 자르는 자리에서 닫고 다음 줄에서 다시 여는 쪽을 택했다 — 보이는 모양은 같다.
+ */
+function splitKeepingBold(joined: string): string[] {
+  let open = false
+  return joined.split(LINE_SPLIT).map((piece) => {
+    const head = open ? '<strong>' : ''
+    const opens = (piece.match(/<strong>/g) ?? []).length
+    const closes = (piece.match(/<\/strong>/g) ?? []).length
+    open = (open ? 1 : 0) + opens - closes > 0
+    return `${head}${piece}${open ? '</strong>' : ''}`
+  })
 }
 
 /**

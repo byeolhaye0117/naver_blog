@@ -797,8 +797,43 @@ ok((pkg.bodyHtml.match(/<hr/g) ?? []).length === 12, `소제목 6개 위아래�
 ok((pkg.bodyHtml.match(/<blockquote/g) ?? []).length === 6, `소제목이 인용구로 나간다 (${(pkg.bodyHtml.match(/<blockquote/g) ?? []).length}개)`)
 ok(pkg.bodyHtml.includes('border-top:1px solid'), '구분선을 인라인으로도 박았다 (컴포넌트로 안 바뀌어도 보이게)')
 ok(pkg.bodyHtml.includes('font-weight:700'), '소제목 굵기를 직접 박았다')
-ok(pkg.bodyHtml.includes('<br />'), '덩어리 안 줄바꿈이 br 로 나간다')
-ok((pkg.bodyHtml.match(/<p /g) ?? []).length > pkg.blocks.length, '덩어리마다 p 하나 — 문단이 잘게 나뉘어 붙는다')
+/*
+ * ─── 줄마다 문단 하나 (2026-08-31 회원 지적) ────────────────────────
+ *
+ * 회원: "서식 복사해서 블로그에 붙여넣기 하면 줄바꿈이 안된채로 와."
+ *
+ * 앞 판은 덩어리를 `<p>` 하나로 내고 줄바꿈을 `<br />` 로 넣었다. 문법으로는 맞는데
+ * **네이버 에디터에는 문단 안 줄바꿈이라는 자리가 없다** — 붙여넣기에서 문단 단위로
+ * 자기 컴포넌트를 만들고 `<br>` 은 버린다. 애써 끊은 줄이 다시 한 덩어리로 붙었다.
+ *
+ * 그래서 버려질 수 있는 표시에 기대지 않고, 확실히 남는 블록 요소만 쓴다.
+ */
+ok(!pkg.bodyHtml.includes('<br'), 'br 에 기대지 않는다 (네이버가 버린다)')
+ok((pkg.bodyHtml.match(/<p /g) ?? []).length > pkg.blocks.length, '줄마다 p 하나 — 문단이 잘게 나뉘어 붙는다')
+/*
+ * **빈 줄도 문단으로 낸다.** 덩어리 사이 간격을 여태 `margin:0 0 26px` 로 줬는데, 네이버는
+ * 붙여넣기에서 인라인 스타일을 떼는 경우가 많다 — 그러면 간격이 통째로 사라진다.
+ * 빈 문단(`&nbsp;`)은 글자가 있어 지워지지 않고, 스타일이 살든 죽든 같은 모양이 된다.
+ */
+ok(pkg.bodyHtml.includes('>&nbsp;</p>'), '덩어리 사이 빈 줄을 문단으로 낸다 (여백에 기대지 않는다)')
+{
+  // 화면도 같은 말을 해야 한다 — 왜 이렇게 보내는지 모르면 안 될 때 손쓸 수가 없다
+  const ed = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+  ok(ed.includes('줄마다 문단 하나'), '왜 줄마다 문단으로 보내는지 화면에 적는다')
+  ok(ed.includes('「글자만」'), '그래도 안 되면 어떻게 하는지도 적는다')
+}
+// 여백과 빈 문단을 같이 쓰면 간격이 두 배가 된다 — 한쪽만 쓴다
+ok(!/<p style="[^"]*margin:0 0 \d/.test(pkg.bodyHtml), '아래 여백은 안 준다 (빈 문단이 그 일을 한다)')
+{
+  // 줄 수가 글자 복사와 맞아야 한다 — 두 모드가 다른 모양이면 어느 쪽이 맞는지 알 수 없다
+  const htmlLines = (pkg.bodyHtml.match(/<p [^>]*>(?!&nbsp;)/g) ?? []).length
+  const textLines = blocksToText(pkg.blocks, true)
+    .split('\n')
+    .filter((l) => l.trim() && !/^─+$/.test(l)).length
+  // 소제목은 HTML 에서 blockquote 라 p 로 세지 않는다
+  const headings = pkg.blocks.filter((b) => b.kind === 'heading').length
+  ok(htmlLines === textLines - headings, '서식 복사와 글자 복사의 줄 수가 같다', `${htmlLines} vs ${textLines - headings}`)
+}
 ok(!/<blockquote[^>]*>\s*##/.test(pkg.bodyHtml), 'HTML 소제목에 ## 이 남지 않음')
 
 // 도망갈 구멍 — 붙여넣기가 이상한 환경에서 예전 모양으로
@@ -7302,7 +7337,19 @@ ok(!blocksToText(toBlocks(LONG_BOLD), false).includes('**'), '글자 복사에�
 const forced = blocksToHtml([
   { kind: 'para', groups: [['**앞줄에서 열고', '뒷줄에서 닫는 아주 긴 강조입니다**']] },
 ])
-ok(forced.includes('<strong>앞줄에서 열고<br />뒷줄에서 닫는 아주 긴 강조입니다</strong>'), '줄바꿈을 품은 짝도 찾는다', forced)
+/*
+ * **줄을 넘는 강조는 줄마다 닫고 다시 연다** (2026-08-31). 줄 하나가 문단 하나가 되었으니
+ * `<strong>` 이 문단 두 개에 걸치면 태그가 깨진다 — 붙여넣기에서 한쪽만 열린 채 남는다.
+ * 보이는 모양은 같다.
+ */
+ok(
+  forced.includes('<strong>앞줄에서 열고</strong>') && forced.includes('<strong>뒷줄에서 닫는 아주 긴 강조입니다</strong>'),
+  '줄을 넘는 짝도 찾아서 줄마다 닫는다',
+  forced
+)
+ok(!forced.includes('**'), '별표가 안 남는다')
+// 태그 짝이 맞아야 한다 — 안 맞으면 붙여넣기에서 뒤가 통째로 굵어진다
+ok((forced.match(/<strong>/g) ?? []).length === (forced.match(/<\/strong>/g) ?? []).length, '열고 닫은 개수가 같다')
 // 짝이 안 맞는 별표 하나 때문에 글이 통째로 묶이면 안 된다
 ok(stripBold('**열고 안 닫음\n다음 문단입니다.') === '**열고 안 닫음\n다음 문단입니다.', '짝이 없으면 건드리지 않는다')
 
