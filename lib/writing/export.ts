@@ -181,8 +181,22 @@ export function lineWidth(s: string): number {
 export const LINE_MAX = 23
 /** 이 너비는 채우고 나서 끊는다 — 너무 이르게 끊으면 줄이 토막난다 */
 export const LINE_MIN = 12
-/** 이만큼도 안 남으면 끊지 않는다 (한두 낱말만 다음 줄로 떨어지는 것을 막는다) */
-const ORPHAN_MIN = 6
+/**
+ * **쉼표 뒤에서는 더 짧아도 끊는다** (2026-08-31 회원 요청: "가독성 좋게 좀더 바꿔줘").
+ *
+ * 쉼표는 마디가 끝나는 가장 또렷한 자리다. 그런데 `LINE_MIN` 을 그대로 적용하면
+ * 「잘못 알려진 부분과,」(8.9)가 짧아서 못 끊고 다음 마디와 한 줄로 붙는다 —
+ * 「… 부분과, 부위별로 어떤 순서·자세로」처럼 두 마디가 한 줄에 섞인다.
+ */
+const COMMA_MIN = 8
+/**
+ * 이만큼도 안 남으면 끊지 않는다 — 한두 낱말만 다음 줄로 떨어지는 것을 막는다.
+ *
+ * 2026-08-31 에 6 → 8 로 올렸다. 6 으로는 「자극을 확실히 주는 방식으로」 / 「바꿔야
+ * 합니다.」(6.6)가 통과했는데, 회원이 짚은 것이 바로 그 모양이다 — 마지막 줄에 서술어만
+ * 덜렁 남는 것.
+ */
+const ORPHAN_MIN = 8
 /** 빈 줄 없이 이어 붙일 최대 줄 수 · 문장 수 */
 const GROUP_MAX_LINES = 4
 const GROUP_MAX_SENTENCES = 2
@@ -210,29 +224,105 @@ function breakable(word: string): boolean {
   return /(?:고|며|면|서|야|다가|는데|지만|니까|든지|한지|는지|인지|을지|까지|부터|한테|에게|에서|으로|처럼|보다|라며|자며|거나|어도|아도|해도)$/.test(w)
 }
 
-/** 문장 하나를 마디에서 끊어 줄들로 만든다 (낱말은 자르지 않는다) */
+/**
+ * **줄 맨 앞에 홀로 올 수 없는 말** (2026-08-31 회원 요청).
+ *
+ * 회원: "가독성 좋게 좀더 바꿔줘. 예를들어 정리해는 보려고 합니다랑 한문장이면 좋을거
+ * 같아. 이런식으로 다듬어줘."
+ *
+ * 회원이 본 화면이 이랬다:
+ *
+ *   오늘은 여자근육량늘리기에 대해 정리해
+ *   보려고 합니다.
+ *
+ * 「정리해 보려고 합니다」는 **한 덩어리로 읽히는 말**인데 그 한복판이 갈렸다. 너비만
+ * 보고 낱말 단위로 끊으니 그렇게 된다 — 마디 끝을 찾는 `breakable` 도 「보려고」의 「고」를
+ * 좋은 자리로 보므로 도움이 안 된다 (「보려고」 뒤에 붙는 「합니다」가 혼자 남는다).
+ *
+ * ── 무엇을 붙이나 ────────────────────────────────────────────
+ * **혼자서는 뜻이 서지 않는 말**이다. 세 갈래뿐이다:
+ *   ① 종결 서술어만 남은 것 — 「합니다」·「입니다」·「됩니다」
+ *   ② 보조용언 — 「보려고」·「주세요」·「드립니다」·「않습니다」
+ *   ③ 의존명사 — 「것」·「건」·「게」·「수」·「데」·「때문에」
+ * 여기에 「~와/과」 뒤에 붙어 한 덩어리가 되는 「관련해서」·「함께」를 더했다.
+ *
+ * **낱말 전체가 목록에 있을 때만** 붙인다 (앞자리만 맞으면 안 된다) — 「보고」를 앞자리로
+ * 잡으면 「보고서」가 딸려 붙는다.
+ *
+ * 이건 **가독성 판단이다.** 순위와 재본 적 없다. 다만 회원이 눈으로 짚은 것이고, 붙여서
+ * 나쁠 일은 없다 (줄이 길어지면 그 앞에서 끊긴다).
+ */
+const GLUE_TO_PREV = new Set([
+  // ① 종결 서술어만 남은 것
+  '합니다', '한다', '해요', '해서', '했습니다', '했어요', '하죠', '하시면', '하세요',
+  '입니다', '이다', '예요', '이에요', '였습니다', '아닙니다', '아니에요',
+  '됩니다', '된다', '되는지', '되는지입니다', '되면', '되고', '돼요', '될까요', '되어',
+  '있습니다', '있어요', '있고', '있는', '있을', '있으니', '있어서', '있어', '있죠', '있는데',
+  '없습니다', '없어요', '없는', '없어서', '없어', '없죠', '없는데',
+  '같아요', '같습니다', '같은', '맞습니다', '맞아요', '좋습니다', '좋아요', '편합니다', '편해요',
+  // ② 보조용언
+  '보다', '보고', '보게', '보려고', '보세요', '보시면', '보면', '봅니다', '봤습니다',
+  '주세요', '주시면', '줍니다', '주면', '주고', '드립니다', '드릴', '드려', '드리고', '드릴게요',
+  '싶습니다', '싶어요', '싶은', '싶고', '않습니다', '않아요', '않고', '않는', '않으면', '마세요',
+  '버려', '버렸습니다', '둡니다', '두고', '놓고', '놨습니다', '가세요', '오세요',
+  // ③ 의존명사 — 혼자서는 뜻이 없다
+  '것', '것이', '것을', '것은', '건', '게', '거', '수', '수가', '줄', '바', '데', '뿐',
+  '채', '만큼', '대로', '듯', '척', '양', '정도', '때문', '때문에', '따름', '터', '셈',
+  // ④ 「~와/과」 뒤에서 한 덩어리가 되는 말
+  '관련해서', '관련된', '관련하여', '함께', '같이', '달리', '비슷하게', '마찬가지로',
+])
+
+/** 낱말 뒤에 붙은 문장부호를 떼고 본다 — 「합니다.」도 「합니다」다 */
+function gluesToPrev(word: string): boolean {
+  return GLUE_TO_PREV.has(word.replace(/[.,!?;:)\]}"'”’…·]+$/u, ''))
+}
+
+/**
+ * 낱말을 **함께 읽히는 묶음**으로 뭉친다 — 줄은 이 묶음 사이에서만 끊는다.
+ *
+ * 묶음 하나가 상한보다 넓어지는 경우도 있다 (「여자근육량늘리기와 관련해서」). 그때는
+ * 그 묶음이 한 줄을 다 쓰게 되는데, 어정쩡하게 갈리는 것보다 낫다.
+ */
+export function readingChunks(words: string[]): string[] {
+  const out: string[] = []
+  for (const w of words) {
+    if (out.length && gluesToPrev(w)) out[out.length - 1] += ` ${w}`
+    else out.push(w)
+  }
+  return out
+}
+
+/**
+ * 문장 하나를 마디에서 끊어 줄들로 만든다 (낱말은 자르지 않는다).
+ *
+ * **낱말이 아니라 「함께 읽히는 묶음」 단위로 끊는다** (2026-08-31 — `GLUE_TO_PREV` 주석).
+ * 줄을 묶음 목록으로 들고 다니는 이유는 아래 `unorphan` 에 있다 — 낱말로 돌려주면 거기서
+ * 묶음이 다시 갈린다 (실제로 「배치하는 게」가 「배치하는」 / 「게 기본입니다.」로 갈렸다).
+ */
 export function clauseLines(sentence: string): string[] {
-  const words = sentence.trim().split(/\s+/).filter(Boolean)
-  const lines: string[] = []
-  let cur = ''
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i]
-    // 넘칠 낱말은 **붙이기 전에** 다음 줄로 내린다 (붙인 뒤 끊으면 그 줄이 상한을 넘는다)
-    const joined = cur ? `${cur} ${w}` : w
-    if (cur && lineWidth(joined) > LINE_MAX) {
+  const chunks = readingChunks(sentence.trim().split(/\s+/).filter(Boolean))
+  const lines: string[][] = []
+  let cur: string[] = []
+  const widthOf = (parts: string[]) => lineWidth(parts.join(' '))
+
+  for (let i = 0; i < chunks.length; i++) {
+    const w = chunks[i]
+    // 넘칠 묶음은 **붙이기 전에** 다음 줄로 내린다 (붙인 뒤 끊으면 그 줄이 상한을 넘는다)
+    if (cur.length && widthOf([...cur, w]) > LINE_MAX) {
       lines.push(cur)
-      cur = w
+      cur = [w]
     } else {
-      cur = joined
+      cur.push(w)
     }
-    const rest = words.slice(i + 1).join(' ')
+    const rest = chunks.slice(i + 1).join(' ')
+    const text = cur.join(' ')
     /*
      * 따옴표가 열린 채로는 끊지 않는다.
      *
      * 「"작년에도 이맘때 등록하려고 / 하셨죠?" 하면」처럼 인용 한복판이 갈리면 누가 한 말인지
      * 눈으로 안 잡힌다. 회원이 손으로 고칠 때도 인용은 통째로 한 줄에 뒀다.
      */
-    const inQuote = ((cur.match(/["“”]/g) ?? []).length % 2) === 1
+    const inQuote = ((text.match(/["“”]/g) ?? []).length % 2) === 1
     /*
      * **굵게 표시가 열린 채로도 끊지 않는다.**
      *
@@ -240,22 +330,26 @@ export function clauseLines(sentence: string): string[] {
      *   **대한비만학회가 일반인 홈페이지 자료에서
      *   밝힌 내용을 보면**, 운동은 …
      * 줄바꿈이 `**` 짝 사이를 갈랐고, 서식으로 바꾸는 자리에서는 한 줄씩만 보니 짝을 못
-     * 찾아 별표가 살아남았다. 따옴표와 같은 처리를 해야 한다 (아래 `bold` 도 함께 고쳤다 —
-     * 상한을 넘겨 어쩔 수 없이 갈리는 경우가 남는다).
+     * 찾아 별표가 살아남았다. 따옴표와 같은 처리를 해야 한다.
      */
-    const inBold = ((cur.match(/\*\*/g) ?? []).length % 2) === 1
-    // 마디 끝이면 끊는다 — 남은 게 한두 낱말뿐이면 그냥 데리고 간다
-    if (rest && !inQuote && !inBold && lineWidth(cur) >= LINE_MIN && breakable(w) && lineWidth(rest) >= ORPHAN_MIN) {
+    const inBold = ((text.match(/\*\*/g) ?? []).length % 2) === 1
+    /*
+     * 마디 끝이면 끊는다 — 남은 게 한두 낱말뿐이면 그냥 데리고 간다.
+     * 묶음의 **마지막 낱말**로 본다 (「정리해 보려고 합니다」의 판정은 「합니다」로 한다).
+     */
+    const tail = w.split(' ').pop() as string
+    const min = /[,·;:]$/.test(tail) ? COMMA_MIN : LINE_MIN
+    if (rest && !inQuote && !inBold && lineWidth(text) >= min && breakable(tail) && lineWidth(rest) >= ORPHAN_MIN) {
       lines.push(cur)
-      cur = ''
+      cur = []
     }
   }
-  if (cur) lines.push(cur)
-  return unorphan(lines)
+  if (cur.length) lines.push(cur)
+  return unorphan(lines).map((parts) => parts.join(' '))
 }
 
 /**
- * **마지막 줄이 토막이면 앞 줄에서 낱말을 하나 내려 준다** (2026-08-31).
+ * **마지막 줄이 토막이면 앞 줄에서 묶음을 하나 내려 준다** (2026-08-31).
  *
  * 상한을 낮추자 「… 정리해 보려고」 / 「합니다.」처럼 마지막 줄에 네 글자만 남는 줄이
  * 생겼다. 회원이 처음 보내온 화면에서 눈에 걸린 것이 바로 그 모양이다 — 넘쳐서 갈린
@@ -264,25 +358,29 @@ export function clauseLines(sentence: string): string[] {
  * 마디 끝에서 끊는 길에는 이미 `ORPHAN_MIN` 이 있는데, **상한을 넘겨 어쩔 수 없이
  * 갈리는 길**에는 없었다. 그 자리를 여기서 메운다.
  *
- * 낱말을 내렸다가 짝이 갈리면(`**` 강조가 두 줄로) 되돌린다 — 별표가 글에 박히는 것이
- * 짧은 줄보다 나쁘다.
+ * **낱말이 아니라 묶음을 내린다.** 낱말로 내리면 「배치하는 게」의 「게」만 떨어져서
+ * 「게 기본입니다.」로 줄이 시작한다 — 고치려던 것과 똑같은 흠이 다시 생긴다.
+ *
+ * 내렸다가 짝이 갈리면(`**` 강조가 두 줄로) 되돌린다 — 별표가 글에 박히는 것이 짧은
+ * 줄보다 나쁘다.
  */
-function unorphan(lines: string[]): string[] {
-  const out = [...lines]
+function unorphan(lines: string[][]): string[][] {
+  const out = lines.map((l) => [...l])
   for (let i = 0; i < 3; i++) {
     if (out.length < 2) break
     const last = out[out.length - 1]
-    if (lineWidth(last) >= ORPHAN_MIN) break
-    const prevWords = out[out.length - 2].split(' ')
-    if (prevWords.length < 2) break
-    const moved = prevWords.pop() as string
-    const prev = prevWords.join(' ')
-    const next = `${moved} ${last}`
-    // 짝이 갈리면 손대지 않는다 — 별표가 글에 박히는 것이 짧은 줄보다 나쁘다
+    if (lineWidth(last.join(' ')) >= ORPHAN_MIN) break
+    const prev = out[out.length - 2]
+    if (prev.length < 2) break
+    const moved = prev[prev.length - 1]
+    const nextLine = [moved, ...last]
     const odd = (t: string) => ((t.match(/\*\*/g) ?? []).length % 2) === 1
-    if (odd(prev) || odd(next) || lineWidth(next) > LINE_MAX) break
-    out[out.length - 2] = prev
-    out[out.length - 1] = next
+    const prevText = prev.slice(0, -1).join(' ')
+    const nextText = nextLine.join(' ')
+    // 짝이 갈리거나 상한을 넘으면 손대지 않는다
+    if (odd(prevText) || odd(nextText) || lineWidth(nextText) > LINE_MAX) break
+    prev.pop()
+    out[out.length - 1] = nextLine
   }
   return out
 }

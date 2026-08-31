@@ -9,7 +9,7 @@ if (!OUT) {
 const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange, findLatinWords, LATIN_ALLOWED } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
-const { buildCopyPackage, keyPointsOf, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, normalizeTag, stripBold, lineWidth, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
+const { buildCopyPackage, keyPointsOf, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, readingChunks, normalizeTag, stripBold, lineWidth, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
 const { parsePastedReviews, analyzeReviews, placeReviewUrl, verifyReviewQuotes } = require(`${OUT}/analysis/reviews.js`)
 const { analyzeSerp, analyzePastedSerp } = require(`${OUT}/analysis/serp.js`)
 const { parsePastedSerp, parseEditedList, parseTotalCount, toEditableText, parsePlaceList } = require(
@@ -833,6 +833,7 @@ ok(clauseLines(sample).every((l) => lineWidth(l) <= LINE_MAX), '모든 줄이 �
     // 화면도 왜 이렇게 끊는지 말해야 한다 — 규칙을 아는 사람만 알 수 있게 두면 안 된다
     const ed = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
     ok(ed.includes('글자수가 아니라 너비로'), '왜 너비로 재는지 화면에 적는다')
+    ok(ed.includes('함께 읽히는 말은 갈라놓지 않습니다'), '묶음으로 끊는다는 것도 화면에 적는다')
     ok(ed.includes('29자는 넘쳤는데 28자는 들어갔습니다'), '무엇을 보고 정했는지 밝힌다')
     ok(!/\{LINE_MIN\}~\{LINE_MAX\}자/.test(ed), '「N~M자」라고 적던 옛 문구를 뺐다 (이제 글자수가 아니다)')
   }
@@ -848,6 +849,72 @@ ok(clauseLines(sample).every((l) => lineWidth(l) <= LINE_MAX), '모든 줄이 �
  * 보는 사람에게는 같은 흠이다. 마디 끝에서 끊는 길에는 이미 막이 있었지만 **상한을
  * 넘겨 갈리는 길**에는 없었다.
  */
+/*
+ * ─── 함께 읽히는 말은 갈라놓지 않는다 (2026-08-31 회원 요청) ────────────
+ *
+ * 회원: "가독성 좋게 좀더 바꿔줘. 예를들어 정리해는 보려고 합니다랑 한문장이면 좋을거
+ * 같아. 이런식으로 다듬어줘."
+ *
+ * 회원이 본 화면이 이랬다:
+ *
+ *   오늘은 여자근육량늘리기에 대해 정리해
+ *   보려고 합니다.
+ *
+ * 「정리해 보려고 합니다」는 한 덩어리로 읽히는 말인데 그 한복판이 갈렸다. 너비만 보고
+ * 낱말 단위로 끊으니 그렇게 된다 — 마디 끝을 찾는 `breakable` 도 「보려고」의 「고」를
+ * 좋은 자리로 보므로 도움이 안 됐다 (뒤에 붙는 「합니다」가 혼자 남는다).
+ *
+ * 이제 **혼자서는 뜻이 서지 않는 말**을 앞말에 붙여 묶음으로 만들고, 줄은 묶음 사이에서만
+ * 끊는다. 회원이 든 예가 그대로 테스트다.
+ */
+{
+  ok(
+    JSON.stringify(clauseLines('오늘은 여자근육량늘리기에 대해 정리해 보려고 합니다.')) ===
+      JSON.stringify(['오늘은 여자근육량늘리기에 대해', '정리해 보려고 합니다.']),
+    '회원이 든 예 — 「정리해 보려고 합니다」가 한 줄이다',
+    JSON.stringify(clauseLines('오늘은 여자근육량늘리기에 대해 정리해 보려고 합니다.'))
+  )
+  // 같은 화면에서 눈에 걸린 나머지도 함께 본다
+  ok(
+    clauseLines('한 관절만 쓰는 동작을 뒤에 배치하는 게 기본입니다.').every((l) => !l.startsWith('게 ')),
+    '의존명사 「게」로 줄이 시작하지 않는다',
+    JSON.stringify(clauseLines('한 관절만 쓰는 동작을 뒤에 배치하는 게 기본입니다.'))
+  )
+  const long = clauseLines(
+    '제가 이 글에서 정리해 드릴 건 여자근육량늘리기와 관련해서 잘못 알려진 부분과, 부위별로 어떤 순서·자세로 접근하면 되는지입니다.'
+  )
+  ok(long.some((l) => l.includes('여자근육량늘리기와 관련해서')), '「~와 관련해서」를 갈라놓지 않는다', JSON.stringify(long))
+  ok(long.some((l) => l.includes('접근하면 되는지입니다')), '「~하면 되는지」를 갈라놓지 않는다', JSON.stringify(long))
+  ok(long.some((l) => l.includes('정리해 드릴 건')), '「정리해 드릴 건」을 갈라놓지 않는다', JSON.stringify(long))
+
+  // 묶음 만들기 자체도 본다
+  ok(
+    JSON.stringify(readingChunks(['정리해', '보려고', '합니다.'])) === JSON.stringify(['정리해 보려고 합니다.']),
+    '보조용언·종결 서술어는 앞말에 붙는다',
+    JSON.stringify(readingChunks(['정리해', '보려고', '합니다.']))
+  )
+  ok(
+    JSON.stringify(readingChunks(['할', '수', '있어서'])) === JSON.stringify(['할 수 있어서']),
+    '「할 수 있어서」는 한 묶음',
+    JSON.stringify(readingChunks(['할', '수', '있어서']))
+  )
+  /*
+   * **낱말 전체가 목록에 있을 때만** 붙인다. 앞자리만 맞으면 「보고서」가 「보고」로 걸려
+   * 앞말에 딸려 붙는다 — 목록으로 하는 판정이라 그럴 일이 없다.
+   */
+  ok(readingChunks(['자료를', '보고서에', '적었다']).length === 3, '앞자리만 같은 말은 안 붙인다', JSON.stringify(readingChunks(['자료를', '보고서에', '적었다'])))
+  ok(readingChunks(['게시물을', '올렸습니다']).length === 2, '「게시물」이 「게」로 걸리지 않는다')
+  // 맨 앞에 오면 붙일 앞말이 없다 — 그대로 둔다 (터지지 않는다)
+  ok(JSON.stringify(readingChunks(['것이', '중요합니다'])) === JSON.stringify(['것이', '중요합니다']), '맨 앞이면 그냥 둔다')
+
+  /*
+   * **쉼표 뒤에서는 더 짧아도 끊는다.** 쉼표는 마디가 끝나는 가장 또렷한 자리인데,
+   * `LINE_MIN` 을 그대로 적용하면 「잘못 알려진 부분과,」(8.9)가 짧아서 못 끊고 다음
+   * 마디와 한 줄로 섞였다.
+   */
+  ok(long.some((l) => l.endsWith('부분과,')), '쉼표에서 끊는다 (짧아도)', JSON.stringify(long))
+}
+
 {
   const one = clauseLines('오늘은 여자근육량늘리기에 대해 정리해 보려고 합니다.')
   ok(one.length === 2, '두 줄로 갈린다', JSON.stringify(one))
