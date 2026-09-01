@@ -11770,9 +11770,88 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
      * 말을 듣고 지금 걸린 항목은 듣지 못한다 — 그러면 아무것도 안 고쳐지고 「나아지지 않아
      * 원래 글을 두었습니다」가 뜬다.
      */
+  /*
+   * ─── 눌러도 더 안 고쳐지던 것 (2026-09-01 회원 지적) ─────────────────
+   *
+   * 회원: "9개에서 7개로 줄긴했는데 7에서 더 고쳐지지 않아 다시 점검해줘."
+   *
+   * **프로덕션에서 새 홍보글을 뽑아 세 번 돌려 보고 원인을 봤다.**
+   *
+   *   1회차 (6개 함께)  수정필요 5 → 1 · 남은 항목 12 → 9      ← 여기까지는 잘 준다
+   *   2회차 (6개 함께)  「고친 글이 채점에서 졌습니다 —
+   *                       원래 글 1·79점 / 고친 글 2·79점」     ← 하나 고치고 하나 깼다
+   *   3회차 (수정필요 1개만)  수정필요 0 · 79점 → 93점          ← 같은 초안·같은 모델
+   *
+   * 여섯 항목을 한꺼번에 받으면 모델이 곁가지를 깬다. 고친 글의 수정필요가 늘어나니
+   * 라우트가 원래 글을 두고, 회원이 눌러도 아무 일이 없다. 「9개는 무리다」라고 적어 둔
+   * 그 일이 6개에서도 똑같이 일어난 것이다.
+   */
+  {
+    const item = (id, level, weight, label) => ({
+      id,
+      level,
+      weight,
+      label,
+      value: '지금',
+      target: '기준',
+      hint: `${label} 힌트`,
+    })
+
+    // 수정필요가 있으면 그것만 간다 — 주의를 섞으면 모델이 곁가지를 깬다
+    const mixed = fixList([
+      item('mainCount', 'fail', 4, '메인 키워드 노출 횟수'),
+      item('charCount', 'warn', 1, '본문 글자수'),
+      item('vague-amount', 'warn', 2, '얼버무리는 수량'),
+      item('paraShape', 'warn', 2, '문단 쪼개기'),
+    ])
+    ok(mixed.length === 1, '수정필요가 있으면 그것만 보낸다', String(mixed.length))
+    ok(mixed[0].includes('메인 키워드'), '보내는 것은 그 수정필요다', mixed[0].split('\n')[0])
+    // 수정필요가 여럿이면 다 보낸다 — 점수 상한을 푸는 것은 이것뿐이다
+    ok(
+      fixList([item('a', 'fail', 3, '가'), item('b', 'fail', 3, '나'), item('c', 'warn', 2, '다')]).length === 2,
+      '수정필요는 여럿이어도 다 보낸다'
+    )
+    // 주의만 남았으면 예전처럼 주의를 보낸다 (발행은 되지만 고치고 싶을 수 있다)
+    const warnsOnly = fixList([item('charCount', 'warn', 1, '본문 글자수'), item('vague-amount', 'warn', 2, '얼버무리는 수량')])
+    ok(warnsOnly.length === 2, '주의만 남으면 주의를 보낸다', String(warnsOnly.length))
+
+    /*
+     * **상한 밖 주의는 한 번도 안 갔다.** 같은 실측에서 「본문 글자수」·「얼버무리는
+     * 수량」·「문단 쪼개기」가 목록 밖이었다 — 여섯 자리를 다른 항목이 먼저 차지했다.
+     * 회차를 넘기면 창이 밀려 차례가 온다.
+     */
+    const many = Array.from({ length: 9 }, (_, i) => item(`w${i}`, 'warn', 2, `주의${i}`))
+    const r0 = fixList(many, [], 0)
+    const r1 = fixList(many, [], 1)
+    const r3 = fixList(many, [], 3)
+    ok(r0.length === 6, '한 번에 여섯까지만 보낸다 (많이 보내면 곁가지를 깬다)', String(r0.length))
+    ok(r0.join() !== r1.join(), '다시 누르면 다른 항목이 간다', `${r0[0]} vs ${r1[0]}`)
+    {
+      // 몇 번 누르면 아홉 개가 모두 한 번은 간다
+      const seen = new Set()
+      for (let n = 0; n < 4; n++) for (const l of fixList(many, [], n)) seen.add(l.split(':')[0])
+      ok(seen.size === 9, '몇 번 누르면 모든 주의가 한 번은 간다', String(seen.size))
+    }
+    // 수정필요는 창을 밀지 않는다 — 전부 보내야 하는 것이다
+    const failMany = Array.from({ length: 3 }, (_, i) => item(`f${i}`, 'fail', 3, `필요${i}`))
+    ok(fixList(failMany, [], 0).join() === fixList(failMany, [], 5).join(), '수정필요는 회차와 무관하게 같은 것을 보낸다')
+    // 위험 표현은 항목 수와 무관하게 전부 간다 (예전 규칙 그대로)
+    ok(
+      fixList([item('a', 'fail', 3, '가')], [{ term: '무료', category: '과장', fix: '빼세요' }]).length === 2,
+      '위험 표현은 늘 함께 간다'
+    )
+    ok(fixList([]).length === 0, '걸린 것이 없으면 빈 목록')
+  }
+
     ok(/issues: liveFixIssues/.test(editor2), '고쳐 쓰기에 지금 걸린 항목을 넘긴다')
     ok(!/issues: fixIssues/.test(editor2), '서버가 준 옛 목록을 되보내지 않는다')
-    ok(/fixList\(result\.items, result\.risks\)/.test(editor2), '서버와 같은 fixList 를 쓴다 (두 곳에 따로 적지 않는다)')
+    ok(/fixList\(result\.items, result\.risks, fixRound\)/.test(editor2), '서버와 같은 fixList 를 쓴다 (두 곳에 따로 적지 않는다)')
+    /*
+     * **누른 횟수를 넘긴다** (2026-09-01 회원 지적: "9개에서 7개로 줄긴했는데 7에서 더
+     * 고쳐지지 않아"). 주의 항목 여덟 개 중 셋이 목록 상한(6) 밖이라 한 번도 전달되지
+     * 않았다 — 회차를 넘기면 창이 밀려 다음 것들이 간다.
+     */
+    ok(/setFixRound\(\(n\) => n \+ 1\)/.test(editor2), '누를 때마다 회차를 올린다')
     // 저장해 둔 79점짜리 글을 열어도 고칠 방법이 화면에 있어야 한다
     ok(/body\.trim\(\) && liveFixIssues\.length > 0/.test(editor2), 'AI 로 안 쓴 글에도 고쳐 쓰기 버튼이 나온다')
     // 무엇이 버티고 있는지 이름을 적는다 — 그게 곧 다음 할 일이다

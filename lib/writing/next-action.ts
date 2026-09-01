@@ -28,17 +28,52 @@ export type ActionTone = 'good' | 'warn' | 'bad'
  * 그리고 **제목은 따로 센다.** 제목은 본문과 다른 칸이라 고쳐도 본문 항목을 깨지 않으니
  * ③의 제한에 넣을 이유가 없다. 다만 제목 한 줄에 네 가지를 동시에 시키는 것도 무리라
  * 3개까지만 넘긴다.
+ *
+ * ── 수정필요가 있으면 그것만 보낸다 (2026-09-01 회원 지적) ──────
+ * 회원: "9개에서 7개로 줄긴했는데 7에서 더 고쳐지지 않아 다시 점검해줘."
+ *
+ * 프로덕션에서 새 홍보글을 뽑아 두 번 돌려 보고 원인을 봤다.
+ *
+ *   1회차  수정필요 5 → 1 · 남은 항목 12 → 9   (여기까지는 잘 준다)
+ *   2회차  「고친 글이 채점에서 졌습니다 — 원래 글 1·79점 / 고친 글 2·79점」
+ *
+ * **모델이 하나를 고치고 다른 하나를 깼다.** 여섯 항목을 한꺼번에 받으면 그렇게 된다.
+ * 고친 글의 수정필요가 늘어나니 라우트가 원래 글을 두고, 눌러도 아무 일이 없다.
+ * ③의 「9개는 무리다」가 6개에서도 똑같이 일어난 것이다.
+ *
+ * 그래서 **수정필요가 하나라도 있으면 그것만 보낸다.** 점수 상한을 푸는 것은 수정필요뿐이고
+ * (주의는 남아도 발행할 수 있다), 항목이 적을수록 곁가지를 덜 깬다. 주의만 남았을 때는
+ * 예전처럼 주의를 보낸다.
+ *
+ * ── 상한 밖 주의는 아예 안 갔다 ─────────────────────────────
+ * 같은 실측에서 「본문 글자수」·「얼버무리는 수량」·「문단 쪼개기」가 목록 밖에 있었다 —
+ * 여섯 자리를 다른 항목이 먼저 차지해서 **한 번도 전달되지 않았다.** 눌러도 안 고쳐지는
+ * 것이 당연하다. `round` 를 받아 주의 항목의 창을 밀어 준다 — 다시 누르면 다음 것들이 간다.
  */
 export function fixList(
   items: { id: string; level: string; label: string; value: string; target: string; hint?: string; weight: number }[],
-  risks: { term: string; category: string; fix: string }[] = []
+  risks: { term: string; category: string; fix: string }[] = [],
+  /** 몇 번째로 누르는가 — 주의 항목의 창을 밀어 상한 밖 항목도 차례가 오게 한다 */
+  round = 0
 ): string[] {
   const rank = (level: string) => (level === 'fail' ? 0 : 1)
   const order = <T extends { level: string; weight: number }>(list: T[]) =>
     [...list].sort((a, b) => rank(a.level) - rank(b.level) || b.weight - a.weight)
-  const pending = items.filter((i) => i.level !== 'pass')
+  const all = items.filter((i) => i.level !== 'pass')
+  /*
+   * 수정필요가 있으면 그것만 — 없으면 주의를 본다. 섞어 보내면 모델이 곁가지를 깨서
+   * 고친 글이 채점에서 진다 (위 주석의 실측).
+   */
+  const hasFail = all.some((i) => i.level === 'fail')
+  const pending = hasFail ? all.filter((i) => i.level === 'fail') : all
   const titles = order(pending.filter((i) => i.id.startsWith('title'))).slice(0, 3)
-  const rest = order(pending.filter((i) => !i.id.startsWith('title'))).slice(0, 6)
+  const restAll = order(pending.filter((i) => !i.id.startsWith('title')))
+  /*
+   * 주의만 남았을 때는 창을 밀어 준다 — 상한(6) 밖 항목이 영원히 안 가는 것을 막는다.
+   * 수정필요는 밀지 않는다: 그건 전부 보내야 하는 것이고, 애초에 여섯을 넘는 일이 드물다.
+   */
+  const shift = hasFail || restAll.length <= 6 ? 0 : (((Math.trunc(round) % restAll.length) + restAll.length) % restAll.length)
+  const rest = [...restAll.slice(shift), ...restAll.slice(0, shift)].slice(0, 6)
   const lines = [...titles, ...rest].map((i) => {
     const head = `[${i.level === 'fail' ? '수정필요' : '주의'}] ${i.label}: 지금 ${i.value} / 기준 ${i.target}`
     return i.hint ? `${head}\n  → ${i.hint}` : head
