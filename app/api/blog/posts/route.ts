@@ -2,11 +2,28 @@ import { NextResponse } from 'next/server'
 import { readDB } from '@/lib/store'
 import { blogIdFromInput } from '@/lib/naver/blogrss'
 import { fetchBlogStat, fetchPostPage } from '@/lib/naver/blogstat'
-import { BLOG_POSTS_PER_PAGE, markKnownPosts, pageCountOf, postListNote, postUrl } from '@/lib/analysis/blogposts'
+import {
+  BLOG_POSTS_PER_PAGE,
+  markKnownPosts,
+  mixNote,
+  pageCountOf,
+  postListNote,
+  postMix,
+  postUrl,
+} from '@/lib/analysis/blogposts'
 
 export const dynamic = 'force-dynamic'
-// 글 목록 1회 + 첫 화면 1회 — 진단(150초)과 달리 가볍다
+// 목록 1회 + 첫 화면 1회 (+ 첫 쪽에서만 비율용 2회) — 진단(150초)과 달리 가볍다
 export const maxDuration = 30
+
+/**
+ * **정보성:홍보성 비율은 몇 편으로 재나** (2026-09-01 회원 요청).
+ *
+ * 한 쪽(30편)만으로 재면 그 달에 홍보를 몰아 쓴 것만으로 비율이 확 튄다. 그렇다고 287편을
+ * 다 읽으면 조회가 열 번이다. **최근 90편**이면 회원 블로그 기준 석 달치라 흐름이 잡히고
+ * 조회는 세 번이다. 몇 편으로 쟀는지는 화면에 그대로 적는다.
+ */
+const MIX_PAGES = 3
 
 /**
  * **아이디 하나로 그 블로그 글 목록을 읽는다** (2026-09-01 회원 요청).
@@ -59,12 +76,31 @@ export async function POST(req: Request) {
       targetId: marks[p.logNo]?.targetId,
     }))
 
+    /*
+     * **비율은 첫 쪽을 열 때만 잰다.** 넘겨 볼 때마다 세 번씩 더 조회할 이유가 없고,
+     * 화면은 처음 받은 값을 그대로 들고 있으면 된다.
+     */
+    let mix
+    let mixNoteText
+    if (page === 0) {
+      const more = await Promise.all(
+        Array.from({ length: MIX_PAGES - 1 }, (_, i) =>
+          fetchPostPage(blogId, i + 2, BLOG_POSTS_PER_PAGE).catch(() => null)
+        )
+      )
+      const rows = [...list.posts, ...more.flatMap((m) => m?.posts ?? [])]
+      mix = postMix(rows, db)
+      mixNoteText = mixNote(mix)
+    }
+
     return NextResponse.json({
       blogId,
       page,
       pages: pageCountOf(list.total),
       posts,
       stat,
+      mix,
+      mixNote: mixNoteText,
       note: postListNote({
         total: list.total,
         shown: posts.length,

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import type { BlogStat } from '@/lib/naver/blogstat'
+import { INFO_PER_PROMO, mixRatio, type PostMix } from '@/lib/analysis/blogposts'
 import { Badge, Card, Empty, btnGhost, btnPrimary, inputClass } from '@/components/ui'
 
 interface Row {
@@ -28,6 +29,9 @@ interface Result {
   posts: Row[]
   stat: BlogStat | null
   note: string
+  /** 정보성:홍보성 비율 — 첫 쪽을 열 때만 잰다 (2026-09-01) */
+  mix?: PostMix
+  mixNote?: string
 }
 
 /**
@@ -44,6 +48,12 @@ export default function BlogPostList({ initialId }: { initialId: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [res, setRes] = useState<Result | null>(null)
+  /*
+   * **비율은 첫 쪽에서만 온다.** 넘겨 볼 때마다 세 번씩 더 조회할 이유가 없어서 서버가
+   * 첫 쪽에서만 재는데, 그렇다고 2쪽으로 넘어갈 때 카드가 사라지면 회원은 「없어졌다」로
+   * 읽는다. 받은 값을 따로 들고 있는다.
+   */
+  const [mix, setMix] = useState<{ mix: PostMix; note: string; blogId: string } | null>(null)
 
   async function load(page = 0, who = id) {
     if (!who.trim()) return
@@ -58,6 +68,7 @@ export default function BlogPostList({ initialId }: { initialId: string }) {
       const data = await r.json()
       if (!r.ok) throw new Error(data?.error ?? '글 목록을 읽지 못했습니다.')
       setRes(data)
+      if (data.mix) setMix({ mix: data.mix, note: data.mixNote ?? '', blogId: data.blogId })
     } catch (e) {
       setError(e instanceof Error ? e.message : '글 목록을 읽지 못했습니다.')
       setRes(null)
@@ -110,6 +121,18 @@ export default function BlogPostList({ initialId }: { initialId: string }) {
           <p className="text-[12.5px] leading-relaxed font-semibold text-rose-600">{error}</p>
         </Card>
       )}
+
+      {/*
+        ─── 정보성:홍보성 몇 대 몇 (2026-09-01 회원 요청) ───────────────
+
+        회원: "우리만의 블로그 홈페이지는 정보성 및 홍보성 몇대 몇으로 섰는지 보이게 해주면
+        좋겠어."
+
+        회원이 세운 전략이 정보 : 홍보 = 2 : 1 인데, 그게 실제로 지켜지고 있는지 볼 데가
+        없었다. **추정한 수를 반드시 밝힌다** — 목록에서 오는 것은 제목뿐이라 앱에서 쓰지
+        않은 글은 제목만 보고 가른 것이다. 감추면 회원이 이 숫자를 사실로 읽는다.
+      */}
+      {mix && res && mix.blogId === res.blogId && <MixCard mix={mix.mix} note={mix.note} />}
 
       {res && (
         <Card
@@ -218,5 +241,61 @@ export default function BlogPostList({ initialId }: { initialId: string }) {
         </Card>
       )}
     </div>
+  )
+}
+
+/**
+ * 정보성:홍보성 비율 카드.
+ *
+ * **목표(2:1)를 「기준」이라고 부르지 않는다.** 그건 회원이 정한 전략이고, 이 앱이 순위와
+ * 재본 값이 아니다 — 「목표는 2:1 입니다」까지만 적고 점수를 매기지 않는다.
+ */
+function MixCard({ mix, note }: { mix: PostMix; note: string }) {
+  const ratio = mixRatio(mix)
+  const bars: { label: string; n: number; cls: string }[] = [
+    { label: '정보성', n: mix.info, cls: 'bg-emerald-500' },
+    { label: '홍보성', n: mix.promo, cls: 'bg-rose-500' },
+    { label: '후기', n: mix.review, cls: 'bg-sky-500' },
+  ]
+  return (
+    <Card title="정보성 : 홍보성" subtitle={`최근 ${mix.total}편으로 셌습니다`}>
+      <p className="text-[15px] leading-snug font-bold">
+        {ratio === null ? `정보성 ${mix.info}편 · 홍보성 0편` : `${ratio} : 1`}
+        <span className="muted ml-2 text-[11.5px] font-semibold">목표 {INFO_PER_PROMO} : 1</span>
+      </p>
+
+      {/* 막대 — 숫자를 그대로 옆에 적는다 (그림만 보고 짐작하게 두지 않는다) */}
+      <div className="mt-2.5 space-y-1.5">
+        {bars.map((b) => (
+          <div key={b.label} className="flex items-center gap-2">
+            <span className="muted w-11 shrink-0 text-[11px] font-semibold">{b.label}</span>
+            <span className="bd h-2.5 min-w-0 flex-1 overflow-hidden rounded-full border">
+              <span
+                className={`block h-full ${b.cls}`}
+                style={{ width: mix.total ? `${Math.round((b.n / mix.total) * 100)}%` : '0%' }}
+              />
+            </span>
+            <span className="tnum w-20 shrink-0 text-right text-[11.5px] font-bold">
+              {b.n}편
+              <span className="muted ml-1 font-semibold">
+                {mix.total ? `${Math.round((b.n / mix.total) * 100)}%` : ''}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <p className="muted mt-2.5 text-[11px] leading-relaxed">{note}</p>
+      {/*
+        **어떻게 갈랐는지 적는다.** 「제목만 보고 추정」이라는 말만 있으면 회원은 무엇을
+        기준으로 갈랐는지 알 수 없고, 결과가 이상해 보일 때 따질 데가 없다.
+      */}
+      <p className="muted mt-1 text-[11px] leading-relaxed">
+        앱에서 쓴 글은 <b>저장된 유형</b>을 그대로 씁니다({mix.known}편). 나머지는 제목만 보고 갈랐습니다 —
+        상호명이 드러나거나 · 우리 지역 키워드(「쌍용동헬스장」)가 들어 있거나 · 값·혜택(가격 · 이벤트 · N만원)을
+        말하면 <b>홍보성</b>, 「후기 · 리뷰 · 다녀왔」이 있으면 <b>후기</b>, 나머지를 <b>정보성</b>으로 봅니다.
+        본문을 읽으면 더 정확하지만 글마다 조회가 한 번씩 들어가서 여기서는 하지 않습니다.
+      </p>
+    </Card>
   )
 }

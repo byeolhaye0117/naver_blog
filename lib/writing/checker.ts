@@ -618,6 +618,16 @@ export function imagesOnlyInCaption(captions: string[], prose: string): string[]
   return out
 }
 
+/**
+ * **제목에 든 홍보 조각** — 값·혜택을 가리키는 말.
+ *
+ * 여기 하나에 두는 이유: 2026-09-01 에 블로그 글 목록 화면이 「이 블로그는 정보성과
+ * 홍보성을 몇 대 몇으로 썼나」를 세게 되면서 **같은 판단을 두 곳에서 하게 됐다.**
+ * 목록을 따로 적으면 한쪽만 늘어난다 (이 저장소가 반복해서 겪은 일이다).
+ */
+export const TITLE_PROMO_RE =
+  /혜택|이벤트|할인|특가|프로모션|가격|비용|얼마|\d[\d,]*\s*(만\s*원|천\s*원|원)|무료|공짜|오픈|개관|마감|선착순|체험|이용권|회원권|\d+\s*개월|첫\s*달/
+
 export function checkPost(input: CheckInput): CheckResult {
   const spec = SPECS[input.type]
   const parsed = parseBody(input.body)
@@ -955,8 +965,7 @@ export function checkPost(input: CheckInput): CheckResult {
    * 3편에는 1~3위가 없었다. 7편은 적은 표본이라 **막지는 않고 권한다**.
    */
   const TITLE_PROMO_FRONT = 20
-  const TITLE_PROMO =
-    /혜택|이벤트|할인|특가|프로모션|가격|비용|얼마|\d[\d,]*\s*(만\s*원|천\s*원|원)|무료|공짜|오픈|개관|마감|선착순|체험|이용권|회원권|\d+\s*개월|첫\s*달/
+  const TITLE_PROMO = TITLE_PROMO_RE
   if (input.type !== 'info') {
     const hit = TITLE_PROMO.exec(title)
     const titlePromo = hit?.[0]?.trim()
