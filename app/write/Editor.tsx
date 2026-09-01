@@ -1995,15 +1995,11 @@ function CopyPane({
       {pkg.keyPoints.length > 0 && (
         <Card
           title="핵심 문구 (순서)"
-          subtitle="본문에서 「첫째」·「①」처럼 순서로 나온 말과 그 밑의 설명을 함께 추렸습니다. 번호는 본문에 적힌 그대로이고, 한 글에 목록이 둘 이상이면 선으로 나눠 뒀습니다. 요약 상자나 고정 댓글에 그대로 쓰세요 — 본문에 있는 말이고, 앱이 지어낸 것이 아닙니다."
+          subtitle="본문에서 「첫째」·「①」처럼 순서로 나온 말과 그 밑의 설명을 함께 추렸습니다. 요약 상자나 고정 댓글에 그대로 쓰세요 — 본문에 있는 말이고, 앱이 지어낸 것이 아닙니다."
           right={
             <CopyButton
               text={pkg.keyPoints
-                .map((k, i) => {
-                  // 목록이 바뀌는 자리는 빈 줄로 띄운다 — 붙여 놓으면 1·2·1·2 로 읽힌다
-                  const gap = i > 0 && pkg.keyPoints[i - 1].group !== k.group ? '\n' : ''
-                  return `${gap}${k.n ?? i + 1}. ${k.text}${k.detail ? `\n   ${k.detail}` : ''}`
-                })
+                .map((k, i) => `${k.n ?? i + 1}. ${k.text}${k.detail ? `\n   ${k.detail}` : ''}`)
                 .join('\n')}
               label="핵심 문구 복사"
             />
@@ -2045,20 +2041,9 @@ function CopyPane({
               </p>
             </div>
           )}
-          {/*
-            **목록이 둘 이상이면 나눠 그린다** (2026-09-01 회원 지적: "이게 맞아?").
-            회원이 본 화면에 ① 이 두 번 떴다 — 한 글에 순서 목록이 둘이었는데(식단 두 가지
-            방식 / 흔한 실수 세 가지) 한 줄로 이어 그려서, 번호가 되돌아간 고장처럼 보였다.
-            묶음이 바뀌는 자리에 선을 넣어 「여기부터 다른 목록」이라고 말한다.
-          */}
           <ol className="space-y-2.5">
             {pkg.keyPoints.map((k, i) => (
-              <li
-                key={i}
-                className={`flex gap-2.5 ${
-                  i > 0 && pkg.keyPoints[i - 1].group !== k.group ? 'bd mt-3 border-t pt-3' : ''
-                }`}
-              >
+              <li key={i} className="flex gap-2.5">
                 {/*
                   **본문이 매긴 번호를 그대로 보여준다.** 화면이 1부터 새로 매기면 본문에
                   1번이 없어도 ①로 보인다 — 그러면 회원이 알 방법이 없다.
