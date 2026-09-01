@@ -393,7 +393,16 @@ export default function Editor({
    * 항상 같은 것**이 된다. 서버가 쓰는 fixList 를 그대로 불러 쓴다 — 두 곳에 따로 적으면
    * 한쪽만 늘어난다.
    */
-  const liveFixIssues = useMemo(() => fixList(result.items, result.risks), [result])
+  /*
+   * **몇 번째로 누르는가** (2026-09-01 회원 지적: "9개에서 7개로 줄긴했는데 7에서 더
+   * 고쳐지지 않아").
+   *
+   * 프로덕션에서 재보니 주의 항목 여덟 개 가운데 셋(본문 글자수·얼버무리는 수량·문단
+   * 쪼개기)이 목록 상한(6) 밖에 있어서 **한 번도 전달되지 않았다.** 눌러도 안 고쳐지는
+   * 것이 당연하다. 누른 횟수를 세어 `fixList` 에 넘기면 창이 밀려 다음 것들이 간다.
+   */
+  const [fixRound, setFixRound] = useState(0)
+  const liveFixIssues = useMemo(() => fixList(result.items, result.risks, fixRound), [result, fixRound])
 
   const draftPost: Post = {
     id: id || 'draft',
@@ -958,7 +967,10 @@ export default function Editor({
               logLine={postLogLine(draftPost, store)}
               onFix={
                 liveFixIssues.length
-                  ? () => callWrite({ draft: { title, body, tags }, issues: liveFixIssues })
+                  ? () => {
+                      setFixRound((n) => n + 1)
+                      return callWrite({ draft: { title, body, tags }, issues: liveFixIssues })
+                    }
                   : undefined
               }
               fixing={aiBusy}
@@ -1491,7 +1503,10 @@ export default function Editor({
                     {(fixIssues || (body.trim() && liveFixIssues.length > 0)) && (
                       <button
                         type="button"
-                        onClick={() => callWrite({ draft: { title, body, tags }, issues: liveFixIssues })}
+                        onClick={() => {
+                          setFixRound((n) => n + 1)
+                          void callWrite({ draft: { title, body, tags }, issues: liveFixIssues })
+                        }}
                         disabled={aiBusy || !liveFixIssues.length}
                         className="bd rounded-full border px-3 py-2 text-xs font-bold hover:bg-slate-500/8 disabled:opacity-50"
                       >
