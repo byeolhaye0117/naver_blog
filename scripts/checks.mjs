@@ -7974,8 +7974,38 @@ ok(PL.posts[0].commentCount === 1 && PL.posts[1].commentCount === 10, '댓글 �
 ok(PL.posts[0].searchable === true && PL.posts[1].searchable === false, '검색 허용 설정을 읽는다')
 ok(PL.posts[0].open === true && PL.posts[1].open === false, '공개 범위를 읽는다')
 ok(parsePostList('').posts.length === 0 && parsePostList('<html>').total === null, '못 읽으면 빈 값')
+/*
+ * **원문도 들고 다닌다.** 방금 올린 글은 「7분 전」이 날짜보다 알아보기 쉽다 — 오늘 날짜로
+ * 바꿔 적으면 오늘 올린 글 여러 편이 전부 같은 줄로 보인다. 화면이 골라 쓸 수 있게 둘 다 준다.
+ */
+ok(
+  parsePostList('{"postList":[{"logNo":"1","title":"a","addDate":"7분 전"}]}').posts[0].dateRaw === '7분 전',
+  '네이버가 준 날짜 문구를 그대로도 들고 온다'
+)
 ok(postDate('2010. 11. 12.') === '2010-11-12', '한 자리 월·일도 채운다', postDate('2010. 11. 12.'))
 ok(postDate('없는날짜') === '', '못 읽으면 빈 문자열')
+/*
+ * ─── 최근 글은 날짜 대신 「7분 전」이 온다 (2026-09-01) ────────────
+ *
+ * 회원 블로그(sulliha8277) 목록을 실제로 읽어 보니 앞쪽이 이랬다:
+ *   7분 전 · 19시간 전 · 2026. 8. 29. · 2026. 8. 28. · 2026. 8. 27.
+ *
+ * **하루 안에 올린 글은 상대 시각으로 온다.** 예전 규칙은 숫자 세 덩어리만 찾았으니 그런
+ * 글이 빈 문자열이 됐고, 화면에 「날짜 모름」이 떴다 — 하필 회원이 가장 자주 보는,
+ * 방금 올린 글이다.
+ */
+{
+  // 2026-09-01 09:00 KST = 2026-09-01T00:00Z
+  const NOW = Date.parse('2026-09-01T00:00:00.000Z')
+  ok(postDate('7분 전', NOW) === '2026-09-01', '「7분 전」은 오늘이다', postDate('7분 전', NOW))
+  ok(postDate('19시간 전', NOW) === '2026-09-01', '「19시간 전」도 오늘이다', postDate('19시간 전', NOW))
+  ok(postDate('어제', NOW) === '2026-08-31', '「어제」는 하루 전이다', postDate('어제', NOW))
+  ok(postDate('3일 전', NOW) === '2026-08-29', '「3일 전」은 사흘 전이다', postDate('3일 전', NOW))
+  // 절대 날짜가 있으면 그걸 그대로 쓴다 — 기준 시각에 흔들리면 안 된다
+  ok(postDate('2026. 8. 29.', NOW) === '2026-08-29', '날짜가 적혀 있으면 그대로')
+  // 기준 시각을 인자로 받는 이유 — 오늘 날짜에 기대는 함수는 내일 깨진다
+  ok(postDate('7분 전', Date.parse('2026-12-25T00:00:00.000Z')) === '2026-12-25', '기준 시각을 바꾸면 결과도 바뀐다')
+}
 
 // 공감 수
 ok(parseSympathy('{"isSuccess":true,"result":{"totalCount":21,"postTitle":"x"}}') === 21, '공감 수를 읽는다')
@@ -11749,6 +11779,121 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
      * 실제로는 안 쓰인다 — 고른 것이 없으면 기본 10개를 전부 쓰는 규칙이라 티도 안 난다.
      */
     ok(/const addTopic[\s\S]{0,400}topics: \[\.\.\.\(p\.topics \?\? \[\]\), t\]/.test(panel), '담으면 켜진 채로 들어간다')
+  }
+}
+
+/*
+ * ─── 아이디로 그 블로그 글 목록 보기 (2026-09-01 회원 요청) ──────────
+ *
+ * 회원: "블로그 url 앞에 있는 아이디를 보고 이 아이디에 어떤 글들을 썼는지 확인할 수
+ * 있는 페이지 만들어주면 좋겠어."
+ *
+ * 읽어 오는 것은 blogstat.ts 가 이미 한다 (fetchPostPage). 여기서 지키는 것은
+ * **읽어 온 것을 우리 것과 맞춰 보는 규칙**이다.
+ */
+{
+  const { logNoFromUrl, postUrl, markKnownPosts, pageCountOf, postListNote, BLOG_POSTS_PER_PAGE } =
+    require(`${OUT}/analysis/blogposts.js`)
+
+  // 회원이 이 기능을 떠올린 자리가 순위 추적 화면이고, 거기 있는 것은 글 주소다
+  ok(logNoFromUrl('https://blog.naver.com/sulliha8277/224396966420') === '224396966420', '주소에서 글 번호를 집는다')
+  ok(logNoFromUrl('https://m.blog.naver.com/sulliha8277/224396966420') === '224396966420', '모바일 주소도 된다')
+  ok(
+    logNoFromUrl('https://blog.naver.com/PostView.naver?blogId=sulliha8277&logNo=224396966420') === '224396966420',
+    'PostView 꼴도 된다'
+  )
+  ok(logNoFromUrl('224396966420') === '224396966420', '번호만 적어도 된다')
+  ok(logNoFromUrl('https://blog.naver.com/sulliha8277') === '', '글 번호가 없으면 빈 값 (지어내지 않는다)')
+  ok(logNoFromUrl('') === '' && logNoFromUrl(undefined) === '', '빈 값에도 터지지 않는다')
+  ok(postUrl('sulliha8277', '224396966420') === 'https://blog.naver.com/sulliha8277/224396966420', '눌러 볼 주소를 만든다')
+
+  /*
+   * **글 번호로만 맞춘다.** 제목으로 맞추면 올리기 직전에 제목을 손본 글이 어긋난다 —
+   * 회원이 그렇게 고치는 것을 이미 봤고(2026-08-27 "실제 업로드된 제목과 다르게나와"),
+   * 그래서 순위 추적도 제목을 따로 읽어 두고 있다.
+   */
+  {
+    const db = {
+      posts: [
+        { id: 'post_a', publishedUrl: 'https://blog.naver.com/sulliha8277/111' },
+        { id: 'post_b', publishedUrl: '' },
+      ],
+      rankTargets: [{ id: 'trg_a', url: 'https://blog.naver.com/sulliha8277/222' }],
+    }
+    const marks = markKnownPosts(['111', '222', '333'], db)
+    ok(marks['111']?.postId === 'post_a', '앱에서 쓴 글을 알아본다', JSON.stringify(marks['111']))
+    ok(marks['222']?.targetId === 'trg_a', '순위 추적 중인 글도 알아본다', JSON.stringify(marks['222']))
+    ok(!marks['333'], '모르는 글에는 표시를 붙이지 않는다')
+    // 한 글이 둘 다일 수 있다 — 앱에서 쓰고 순위도 재는 글이 대부분이다
+    const both = markKnownPosts(['111'], {
+      posts: [{ id: 'post_a', publishedUrl: 'https://blog.naver.com/x/111' }],
+      rankTargets: [{ id: 'trg_a', url: 'https://blog.naver.com/x/111' }],
+    })
+    ok(both['111'].postId === 'post_a' && both['111'].targetId === 'trg_a', '둘 다면 둘 다 붙인다')
+    ok(Object.keys(markKnownPosts(['111'], {})).length === 0, '저장된 것이 없어도 터지지 않는다')
+  }
+
+  // 몇 쪽인지 — 전체 글 수를 못 읽었으면 모른다 (0 을 지어내지 않는다)
+  ok(pageCountOf(100) === Math.ceil(100 / BLOG_POSTS_PER_PAGE), '전체 글 수로 쪽수를 센다', String(pageCountOf(100)))
+  ok(pageCountOf(null) === null, '전체 글 수를 모르면 쪽수도 모른다')
+  ok(pageCountOf(0) === 1, '글이 없어도 한 쪽은 있다')
+
+  /*
+   * **못 읽은 값을 0 으로 바꾸지 않는다.** 「전체 0편」과 「전체 글 수를 못 읽었습니다」는
+   * 다른 말이다.
+   */
+  ok(
+    postListNote({ total: null, shown: 12, page: 0, hidden: 0, closed: 0 }).includes('못 읽었습니다'),
+    '못 읽었으면 그렇게 적는다',
+    postListNote({ total: null, shown: 12, page: 0, hidden: 0, closed: 0 })
+  )
+  ok(
+    postListNote({ total: 100, shown: 30, page: 1, hidden: 0, closed: 0 }).includes('31~60번째'),
+    '몇 번째를 보고 있는지 적는다',
+    postListNote({ total: 100, shown: 30, page: 1, hidden: 0, closed: 0 })
+  )
+  /*
+   * **검색 허용 안 함을 따로 센다.** 참고가 아니라 순위와 직결된다 — 꺼 두면 아무리 잘
+   * 써도 검색에 안 나온다 (blogstat.ts 의 searchable 주석: 그 설정 때문에 정상 블로그를
+   * 「색인 누락」으로 오판할 뻔했다).
+   */
+  ok(
+    postListNote({ total: 100, shown: 30, page: 0, hidden: 2, closed: 1 }).includes('검색 허용 안 함 2편'),
+    '검색 허용 안 함을 따로 센다'
+  )
+  ok(postListNote({ total: 100, shown: 30, page: 0, hidden: 2, closed: 1 }).includes('전체공개 아님 1편'), '비공개도 따로 센다')
+  ok(!postListNote({ total: 100, shown: 30, page: 0, hidden: 0, closed: 0 }).includes('검색 허용'), '없으면 적지 않는다')
+
+  {
+    const rf = require('node:fs').readFileSync
+    const api = rf(new URL('../app/api/blog/posts/route.ts', import.meta.url), 'utf8')
+    // 진단(/api/blog)과 따로 둔다 — 목록만 보는 데 150초를 잡아 둘 이유가 없다
+    ok(/maxDuration = 30/.test(api), '목록은 가볍게 잡는다 (진단은 150초다)')
+    ok(api.includes('blogIdFromInput'), '주소를 그대로 넣어도 아이디를 뽑아 쓴다')
+    ok(api.includes('fetchPostPage') && api.includes('fetchBlogStat'), '목록과 첫 화면을 함께 읽는다')
+    ok(/Promise\.all/.test(api), '둘은 서로 기다릴 이유가 없다')
+    ok(api.includes('markKnownPosts'), '우리가 아는 글에 표시를 붙인다')
+
+    const ui = rf(new URL('../app/blog/posts/BlogPostList.tsx', import.meta.url), 'utf8')
+    ok(ui.includes('앱에서 쓴 글') && ui.includes('순위 추적 중'), '그 표시를 화면에 보여준다')
+    ok(ui.includes('검색 허용 안 함'), '검색 허용 안 함을 눈에 띄게 적는다')
+    // **못 보는 것은 못 본다고 적는다** — 이 저장소의 규칙이다
+    ok(ui.includes('방문자 수 추이·유입 경로'), '밖에서 못 보는 값을 밝힌다')
+    ok(ui.includes('못 읽음'), '못 읽은 숫자를 0 으로 바꾸지 않는다')
+    // 방금 올린 글은 「7분 전」이 낫다 — 오늘 올린 여러 편이 같은 줄로 보이지 않게
+    ok(/dateRaw/.test(ui), '방금 올린 글은 네이버가 준 문구를 그대로 보여준다')
+    // 두 화면이 하는 일이 다르다는 것을 서로 가리켜 준다
+    ok(ui.includes('블로그 진단'), '성격까지 보려면 옆 화면이라고 알려준다')
+    const diag = rf(new URL('../app/blog/page.tsx', import.meta.url), 'utf8')
+    ok(diag.includes('블로그 글 목록'), '진단 화면도 목록 화면을 가리킨다')
+
+    const shell = rf(new URL('../components/AppShell.tsx', import.meta.url), 'utf8')
+    ok(shell.includes("href: '/blog/posts'"), '메뉴에 자리가 있다')
+    /*
+     * 「/blog」와 「/blog/posts」가 나란히 있으면 글 목록 화면에서 두 메뉴가 함께 켜져
+     * 보인다. 지금 있는 자리를 가리키는 것이 메뉴의 일이니 한 곳만 켜져야 한다.
+     */
+    ok(shell.includes('더 깊은 메뉴가 맞으면 그쪽만 켠다'), '메뉴가 한 곳만 켜진다')
   }
 }
 
