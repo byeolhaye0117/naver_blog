@@ -228,7 +228,23 @@ export function keyPointsOf(body: string): KeyPoint[] {
       const afterSentence = /[.!?]$/.test(before)
       // 문장 끝 다음의 「N 번째」는 주어 자리에 섰을 때만 항목이다 (위 SOFT_HEAD_TAIL 주석)
       const softHead = soft && SOFT_HEAD_TAIL.test(line.slice(m.index + m[0].length))
-      if (atLineStart || (afterSentence && (!soft || softHead)))
+      /*
+       * **쉼표 다음도 본다** (2026-09-01 회원 지적: "이게 맞아?").
+       *
+       * 발행 패키지에 이런 항목이 하나로 뭉쳐 있었다:
+       *
+       *   ① 첫 번째는 체중 기준으로 단백질량을 정하는 방식이고,
+       *      두 번째는 체지방률을 반영해서 정하는 방식입니다.
+       *
+       * 항목이 둘인데 하나로 보인다. 본문이 한 문장 안에 「첫 번째는 …이고, 두 번째는
+       * …입니다」로 썼고, 우리는 **문장이 끝난 다음**만 봤으니 쉼표 뒤의 「두 번째는」이
+       * 안 잡혔다. 한국어에서 목록을 한 문장으로 잇는 것은 흔한 꼴이다.
+       *
+       * 쉼표 뒤에서도 **주어 조사가 바로 붙었을 때만** 본다 (`softHead`) — 그래야
+       * 「…, 첫 번째로 쓰지 않은 각도를」처럼 앞을 가리키는 말이 안 걸린다.
+       */
+      const afterComma = /,$/.test(before) && softHead
+      if (atLineStart || afterComma || (afterSentence && (!soft || softHead)))
         marks.push({ at: m.index, len: m[0].length, n: markNumber(m[0]) })
     }
     /*
