@@ -11864,6 +11864,102 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
   ok(postListNote({ total: 100, shown: 30, page: 0, hidden: 2, closed: 1 }).includes('전체공개 아님 1편'), '비공개도 따로 센다')
   ok(!postListNote({ total: 100, shown: 30, page: 0, hidden: 0, closed: 0 }).includes('검색 허용'), '없으면 적지 않는다')
 
+  /*
+   * ─── 정보성:홍보성 몇 대 몇 (2026-09-01 회원 요청) ────────────────────
+   *
+   * 회원: "우리만의 블로그 홈페이지는 정보성 및 홍보성 몇대 몇으로 섰는지 보이게 해주면
+   * 좋겠어."
+   *
+   * 목록에서 오는 것은 **제목뿐**이라 앱에서 쓰지 않은 글은 제목만 보고 가른다. 그래서
+   * **회원 블로그 최근 90편으로 실제로 돌려 보고** 규칙을 고쳤다 (아래 ㉮).
+   */
+  {
+    const { kindFromTitle, postMix, mixRatio, mixNote, INFO_PER_PROMO } = require(`${OUT}/analysis/blogposts.js`)
+    const STORES = [
+      { id: 's1', name: '쌍용점', legalName: 'MTO 피트니스 쌍용점', localKeywords: ['쌍용동 헬스장', '쌍용동PT'] },
+      // 정식 상호에 업종 낱말이 그대로 들어 있는 지점 — 아래 ㉮ 의 원인이다
+      { id: 's2', name: '성정점', legalName: '성정동 착한 헬스장', localKeywords: ['성정동 헬스장'] },
+    ]
+    const kind = (t) => kindFromTitle(t, { stores: STORES, localKeywords: STORES.flatMap((s) => s.localKeywords) })
+
+    // 회원 블로그에서 그대로 가져온 제목들
+    ok(kind('쌍용동헬스장 MTO 피트니스 쌍용점 3개월 9.9만원 동반등록 혜택') === 'promo', '상호가 든 제목은 홍보성')
+    ok(kind('쌍용동 헬스장 등록 미뤄오셨다면, 이번 달 50명까지만') === 'promo', '우리 지역 키워드가 들면 홍보성')
+    ok(kind('두정동 헬스장｜오픈이벤트 12개월 28만원, 여성전용으로 이 가격?') === 'promo', '값·혜택을 말하면 홍보성')
+    ok(kind('성정동헬스장, 고민 중이라면 "시설부터 가격까지 솔직비교"') === 'review', '「솔직」이 들면 후기 (값 이야기보다 먼저 본다)')
+    ok(kind('여자근육량늘리기 오해 정리, 하체·등어깨·힙업 순서는?') === 'info', '순수 정보 제목은 정보성')
+    ok(kind('레그프레스,머신사용법') === 'info', '기구 사용법도 정보성')
+
+    /*
+     * ㉮ **업종 낱말은 상호가 아니다.**
+     *
+     * 처음에는 arena.ts 의 `titleHasBrand` 를 그대로 불렀다. 회원 블로그 90편으로 재보니
+     * **74편이 홍보성**으로 나왔는데, 그중에 이 정보글이 끼어 있었다. 지점 하나의 정식
+     * 상호가 「성정동 착한 헬스장」이라 그 조각인 **「헬스장」**이 제목에 있으면 브랜드가
+     * 드러난 것으로 잡힌 것이다.
+     *
+     * `titleHasBrand` 가 틀린 것은 아니다 — 그건 「우리 글의 제목이 업체를 밝히고 있나」를
+     * 보는 함수라 조각이 넓어도 손해가 없다. 여기서 묻는 것은 「이 제목이 업체 이야기인가」라
+     * 질문이 다르다.
+     */
+    ok(kind('근육키우는법, 헬스장 초보는 뭐부터 해야 할까요? 순서 정리') === 'info', '「헬스장」만 든 정보 제목을 홍보로 보지 않는다')
+    ok(kind('헬스장,링크아웃타이 머신사용법') === 'info', '업종 낱말 하나로 홍보가 되지 않는다')
+    // 그래도 진짜 상호 조각은 잡아야 한다
+    ok(kind('착한 헬스장 성정점 새 기구 들어왔습니다') === 'promo', '상호를 가리키는 조각은 잡는다')
+    ok(kind('') === 'info' && kind(undefined) === 'info', '빈 제목에도 터지지 않는다')
+
+    /*
+     * ㉯ **아는 유형은 추정하지 않는다.** 앱에서 쓴 글은 저장된 유형을 그대로 쓴다.
+     *
+     * 그런데 실제 저장소를 열어 보니 글의 `publishedUrl` 이 **전부 비어 있었다** — 올린 뒤
+     * 그 칸을 채우는 것은 손이 가는 일이라 아무도 안 한다. 대신 순위 추적 항목에 주소가
+     * 있고 `postId` 로 글과 이어져 있어서, 그 길로도 찾는다 (이걸 넣고 나서 아는 글이
+     * 0편 → 10편이 됐다).
+     */
+    {
+      const rows = [
+        { logNo: '111', title: '쌍용동 헬스장 3개월 9.9만원' },
+        { logNo: '222', title: '레그프레스 머신사용법' },
+        { logNo: '333', title: '단백질 섭취량 정리' },
+      ]
+      const byUrl = postMix(rows, {
+        // 홍보성으로 보이는 제목이지만 저장된 유형이 정보글이면 정보글이다
+        posts: [{ id: 'p1', type: 'info', publishedUrl: 'https://blog.naver.com/x/111' }],
+        stores: STORES,
+      })
+      ok(byUrl.info === 3 && byUrl.promo === 0, '저장된 유형이 제목 추정을 이긴다', JSON.stringify(byUrl))
+      ok(byUrl.known === 1 && byUrl.guessed === 2, '아는 것과 짐작한 것을 따로 센다', JSON.stringify(byUrl))
+
+      // 제목만 보면 정보성인 글 하나로 본다 — 저장된 유형(홍보)이 이겨야 한다
+      const byTarget = postMix([{ logNo: '222', title: '레그프레스 머신사용법' }], {
+        posts: [{ id: 'p1', type: 'promo', publishedUrl: '' }],
+        rankTargets: [{ id: 't1', postId: 'p1', url: 'https://blog.naver.com/x/222' }],
+        stores: STORES,
+      })
+      ok(byTarget.known === 1 && byTarget.guessed === 0, '순위 추적에 적힌 주소로도 글을 찾는다', JSON.stringify(byTarget))
+      ok(byTarget.promo === 1 && byTarget.info === 0, '그 글의 저장된 유형을 쓴다 (제목은 정보성으로 보여도)', JSON.stringify(byTarget))
+      ok(postMix([], {}).total === 0, '빈 목록에도 터지지 않는다')
+    }
+
+    // 비율 — 홍보글이 없으면 비율이 성립하지 않는다 (0 으로 나눈 값을 지어내지 않는다)
+    ok(mixRatio({ info: 20, promo: 10, review: 0, known: 0, guessed: 30, total: 30 }) === 2, '2 : 1 을 2 로 준다')
+    ok(mixRatio({ info: 5, promo: 0, review: 0, known: 0, guessed: 5, total: 5 }) === null, '홍보글이 없으면 비율이 없다')
+    ok(INFO_PER_PROMO === 2, '회원이 세운 목표는 2 : 1')
+    /*
+     * **추정한 수를 반드시 밝힌다.** 목록에서 오는 것은 제목뿐이라, 감추면 회원이 이
+     * 숫자를 사실로 읽는다.
+     */
+    ok(
+      mixNote({ info: 20, promo: 10, review: 2, known: 5, guessed: 27, total: 32 }).includes('27편은 제목만 보고 추정'),
+      '몇 편을 짐작했는지 적는다',
+      mixNote({ info: 20, promo: 10, review: 2, known: 5, guessed: 27, total: 32 })
+    )
+    ok(
+      !mixNote({ info: 20, promo: 10, review: 0, known: 30, guessed: 0, total: 30 }).includes('추정'),
+      '전부 아는 글이면 추정했다고 하지 않는다'
+    )
+  }
+
   {
     const rf = require('node:fs').readFileSync
     const api = rf(new URL('../app/api/blog/posts/route.ts', import.meta.url), 'utf8')
@@ -11894,6 +11990,19 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
      * 보인다. 지금 있는 자리를 가리키는 것이 메뉴의 일이니 한 곳만 켜져야 한다.
      */
     ok(shell.includes('더 깊은 메뉴가 맞으면 그쪽만 켠다'), '메뉴가 한 곳만 켜진다')
+
+    /*
+     * 비율은 **첫 쪽을 열 때만** 잰다 — 넘겨 볼 때마다 세 번씩 더 조회할 이유가 없다.
+     * 한 쪽(30편)만으로 재면 그 달에 홍보를 몰아 쓴 것만으로 비율이 확 튀어서 세 쪽을 본다.
+     */
+    ok(/const MIX_PAGES = 3/.test(api), '비율은 최근 90편으로 잰다 (한 달치로는 튄다)')
+    ok(/if \(page === 0\)/.test(api), '첫 쪽에서만 잰다')
+    ok(api.includes('postMix') && api.includes('mixNote'), '비율을 함께 내려준다')
+    ok(ui.includes('정보성 : 홍보성'), '화면에 비율 칸이 있다')
+    ok(ui.includes('목표'), '회원이 세운 목표를 함께 적는다')
+    // **추정을 사실처럼 보여주지 않는다** — 어떻게 갈랐는지까지 적는다
+    ok(ui.includes('제목만 보고 갈랐습니다'), '어떻게 갈랐는지 화면에 적는다')
+    ok(ui.includes('저장된 유형'), '아는 글은 추정하지 않는다는 것도 적는다')
   }
 }
 
