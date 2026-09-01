@@ -8681,7 +8681,89 @@ ok(isDbShaped({ post: { id: 'p1' }, tracked: 1 }) === false, '흔한 반환값�
   const withReq = checkPost({ type: 'promo', title: '쌍용동 PT 45,000원으로 먼저 받아보세요', body,
     mainKeyword: '쌍용동 PT', subKeywords: [], tags: [], legalName: 'MTO 피트니스 쌍용점', request: REQ })
   const item = withReq.items.find((i) => i.id === 'request-coverage')
-  ok(item && item.level === 'fail', '절반 넘게 빠지면 즉시수정', item?.level)
+  /*
+   * **소제목까지 세게 되면서 이 판정이 fail → warn 으로 바뀌었다** (2026-09-01).
+   *
+   * 이 본문의 소제목이 「등록을 망설이게 만드는 세 가지」다 — 요청한 「망설이는 점」을
+   * 실제로 다루고 있다. 예전에는 소제목을 안 봐서 그것까지 「빠짐」으로 셌다. 세고 보니
+   * 빠진 것이 절반 아래라 주의다. 검사가 나아진 것이고, 그래서 기대값을 바꾼다.
+   */
+  ok(item && item.level === 'warn', '절반쯤 빠지면 주의 (소제목까지 센다)', item?.level)
+  ok(item && item.value.includes('추천드리는 사람들'), '무엇이 빠졌는지는 그대로 짚는다', item?.value)
+
+  /*
+   * ─── 시킨 대로 소제목에 넣었는데 계속 걸렸다 (2026-09-01 회원 지적) ────
+   *
+   * 회원: "검수항목 고쳐쓰기 눌러도 되질 않아 확인해줘."
+   *
+   * 화면에 이렇게 떠 있었다 — 「수정필요 3개 → 1개」 로 줄었는데 남은 하나가 늘
+   * 「요청한 내용 반영 — 0/2개 (0%)」 였다.
+   *
+   * 재현해 보니 우리 잘못이었다. 이 항목의 힌트는 모델에게 **「이 항목들이 본문 소제목이
+   * 되어야 합니다」**라고 시키는데, 검사는 소제목을 뺀 `prose` 를 보고 있었다. 시킨 대로
+   * 소제목에 넣으면 검사가 그걸 못 봐서 0% 가 그대로 남는다 — **고칠 방법이 없는 항목**이
+   * 었던 것이다.
+   *
+   * 이 앱은 같은 실수를 한 번 겪었다: 「메인 키워드 2회」가 계속 걸리던 것도 소제목에 넣은
+   * 것이 안 세졌기 때문이었고, 그때 `scan`(소제목 포함)을 만들어 고쳤다.
+   */
+  {
+    const REQ2 =
+      '헬스장 처음하는 초보자나 가족, 지인과 같이 다닐만한 헬스장을 찾는 분들에게 도움이 될 수 있도록 글을 작성해줘'
+    const HEADED = [
+      '안녕하세요. 쌍용동 헬스장 다녀온 후기입니다. 상담부터 등록까지 적어 둡니다.',
+      '',
+      '## 헬스장 처음하는 초보자나 가족이 함께 가도 될까',
+      '기구 앞에서 뭘 눌러야 할지 몰라 서 있던 저에게 순서를 알려주셨습니다.',
+      '',
+      '## 지인과 같이 다닐만한 헬스장을 찾는 분들에게 도움이 될 수 있도록',
+      '두 명이 같은 시간에 가도 기구가 겹치지 않았습니다.',
+    ].join('\n')
+    const asked2 = R.requestedTopics(REQ2)
+    const parsed2 = require(`${OUT}/writing/checker.js`).parseBody(HEADED)
+    // 소제목을 빼고 보면 0% — 이것이 회원 화면에 뜬 숫자다
+    ok(R.coverageOf(asked2, `제목\n${parsed2.prose}`).rate === 0, '소제목을 빼고 보면 0% (예전 값)')
+    // 소제목까지 보면 다 들어가 있다
+    ok(R.coverageOf(asked2, `제목\n${parsed2.scan}`).rate === 100, '소제목까지 보면 100%')
+    const headed = checkPost({
+      type: 'review',
+      title: '쌍용동 헬스장 등록 후기, 초보도 괜찮을까요?',
+      body: HEADED,
+      mainKeyword: '쌍용동 헬스장',
+      subKeywords: [],
+      tags: [],
+      request: REQ2,
+      sponsorship: 'none',
+    })
+    const it2 = headed.items.find((i) => i.id === 'request-coverage')
+    ok(it2?.level === 'pass', '시킨 대로 소제목에 넣으면 통과한다', `${it2?.level} · ${it2?.value}`)
+    // 힌트와 검사가 같은 곳을 봐야 한다 — 힌트가 소제목을 시키면 검사도 소제목을 본다
+    const chk = require('node:fs').readFileSync(new URL('../lib/writing/checker.ts', import.meta.url), 'utf8')
+    ok(
+      /const cov = coverageOf\(askedTopics, scanText\)/.test(chk),
+      '요청 반영은 소제목까지 보고 센다 (힌트가 소제목을 시킨다)'
+    )
+  }
+
+  /*
+   * **고쳐 쓰기 지시문도 함께 풀어 준다.** 이 항목의 힌트는 「골격의 기본 구간을 요청으로
+   * 바꾸세요」인데, 고쳐 쓰기 지시문은 「글을 새로 쓰지 말고」·「이미 통과한 것은 건드리지
+   * 않는다」라고 말한다. 두 말이 부딪히면 모델은 작은 것부터 고치다가 이 항목을 남긴다 —
+   * 회원 화면에서 수정필요가 3개 → 1개로 줄고 남은 하나가 늘 이것이었다.
+   */
+  {
+    const { buildFixPrompt } = require(`${OUT}/ai/prompt.js`)
+    const withReqIssue = buildFixPrompt(
+      ['[수정필요] 요청한 내용 반영: 지금 0/2개 / 기준 요청한 항목을 모두 다룹니다'],
+      2000,
+      { charMin: 1500, charMax: 3000 }
+    )
+    ok(withReqIssue.includes('골격의 기본 구간 하나를 그 요청으로 바꿔라'), '요청 반영은 구간을 바꾸라고 말한다')
+    ok(withReqIssue.includes('적용되지 않는다'), '「새로 쓰지 말라」가 이 항목에는 안 걸린다고 밝힌다')
+    // 다른 항목만 걸렸을 때는 예전 그대로다 — 함부로 전체를 다시 쓰게 하면 맞던 것이 깨진다
+    const other = buildFixPrompt(['[수정필요] 분량: 지금 900자'], 900, { charMin: 1500, charMax: 3000 })
+    ok(!other.includes('골격의 기본 구간 하나를'), '다른 항목에는 그 허락을 주지 않는다')
+  }
   ok(item.weight === 5, '요청은 화자와 같은 무게로 본다', String(item?.weight))
   ok(item.value.includes('추천드리는 사람들'), '빠진 항목을 값에 적는다', item?.value)
   ok(item.hint.includes('본문 소제목이 되어야'), '무엇을 해야 하는지 알려준다')

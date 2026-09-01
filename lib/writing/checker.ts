@@ -1378,7 +1378,19 @@ export function checkPost(input: CheckInput): CheckResult {
    */
   const askedTopics = requestedTopics(input.request)
   if (askedTopics.length) {
-    const cov = coverageOf(askedTopics, `${title}\n${prose}`)
+    /*
+     * **소제목까지 보고 센다** (2026-09-01 회원 지적: "검수항목 고쳐쓰기 눌러도 되질 않아").
+     *
+     * 여기서 `prose` 를 쓰고 있었다 — 그건 **소제목을 뺀** 본문이다. 그런데 바로 아래
+     * 힌트는 모델에게 「이 항목들이 본문 **소제목**이 되어야 합니다」라고 시킨다.
+     * 시킨 대로 소제목에 넣으면 검사가 그걸 못 봐서 **0/2 (0%)** 가 그대로 남는다.
+     * 고쳐 쓰기를 눌러도 이 항목만 끝까지 안 없어지던 이유가 이것이다 (재현해서 확인했다).
+     *
+     * 이 앱은 같은 실수를 한 번 겪었다 — 「메인 키워드 2회」가 계속 걸리던 것도 소제목에
+     * 넣은 것이 안 세졌기 때문이었고, 그때 `scan`(소제목 포함)을 만들어 고쳤다.
+     * 그 값을 여기서도 쓴다.
+     */
+    const cov = coverageOf(askedTopics, scanText)
     const half = cov.missing.length > askedTopics.length / 2
     add({
       id: 'request-coverage',
