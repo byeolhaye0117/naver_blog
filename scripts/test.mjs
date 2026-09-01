@@ -22,6 +22,7 @@ const TARGETS = [
   'lib/analysis/cutline.ts',
   'lib/analysis/tokens.ts',
   'lib/analysis/indexcheck.ts',
+  'lib/analysis/blogposts.ts',
   'lib/analysis/similarity.ts',
   'lib/analysis/shortlist.ts',
   'lib/analysis/factors.ts',

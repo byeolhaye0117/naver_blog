@@ -96,8 +96,15 @@ export async function fetchBlogStat(blogId: string): Promise<BlogStat | null> {
 export interface PostRow {
   logNo: string
   title: string
-  /** YYYY-MM-DD */
+  /** YYYY-MM-DD — 「7분 전」처럼 상대 시각으로 오면 그 날짜로 바꿔 둔다 */
   date: string
+  /**
+   * 네이버가 준 그대로 (「7분 전」·「2026. 8. 29.」).
+   *
+   * 방금 올린 글은 「7분 전」이 날짜보다 알아보기 쉽다 — 바꾼 값과 원문을 둘 다 들고
+   * 다니면 화면이 골라 쓸 수 있다.
+   */
+  dateRaw: string
   categoryNo: string
   commentCount: number
   /**
@@ -117,11 +124,37 @@ export interface PostPage {
   posts: PostRow[]
 }
 
-/** `2026. 8. 9.` → `2026-08-09` (순수 함수 — 테스트 대상) */
-export function postDate(raw: string): string {
-  const m = /(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})/.exec(raw ?? '')
-  if (!m) return ''
-  return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
+/** 한국 시간의 그 날 (YYYY-MM-DD) — 블로그 날짜는 전부 한국 기준이다 */
+function seoulDayOf(ms: number): string {
+  return new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+/**
+ * `2026. 8. 9.` → `2026-08-09` (순수 함수 — 테스트 대상)
+ *
+ * ── 최근 글은 날짜 대신 「7분 전」이 온다 (2026-09-01) ────────────
+ * 회원 블로그를 실제로 읽어 보니 목록 앞쪽이 이랬다:
+ *
+ *   7분 전 · 19시간 전 · 2026. 8. 29. · 2026. 8. 28. · 2026. 8. 27.
+ *
+ * **하루 안에 올린 글은 상대 시각으로 온다.** 예전 규칙은 숫자 세 덩어리만 찾았으니
+ * 그런 글은 빈 문자열이 됐고, 화면에는 「날짜 모름」이 떴다 — 하필 회원이 가장 자주 보는
+ * 방금 올린 글이다.
+ *
+ * 「N일 전」·「어제」도 함께 받는다. 기준 시각을 인자로 받는 이유는 테스트 때문이다 —
+ * 오늘 날짜에 기대는 함수는 내일 깨진다.
+ */
+export function postDate(raw: string, now: number = Date.now()): string {
+  const s = (raw ?? '').trim()
+  const m = /(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})/.exec(s)
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
+  // 「7분 전」·「19시간 전」 — 하루 안이므로 오늘이다
+  if (/^\s*\d+\s*(분|시간)\s*전/.test(s)) return seoulDayOf(now)
+  if (/^\s*(방금|조금)\s*전/.test(s)) return seoulDayOf(now)
+  if (/^\s*어제/.test(s)) return seoulDayOf(now - 86_400_000)
+  const d = /^\s*(\d+)\s*일\s*전/.exec(s)
+  if (d) return seoulDayOf(now - Number(d[1]) * 86_400_000)
+  return ''
 }
 
 /** 제목이 `%EC%B2%9C+%EC%95%88` 처럼 인코딩되어 온다 */
@@ -156,6 +189,7 @@ export function parsePostList(text: string): PostPage {
       logNo,
       title: decodeTitle(field('title')),
       date: postDate(field('addDate')),
+      dateRaw: field('addDate'),
       categoryNo: field('categoryNo'),
       commentCount: Number(field('commentCount')) || 0,
       // 값이 안 오면 「허용」으로 본다 — 없는 것을 불리하게 쓰지 않는다

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { PageHeader } from '@/components/AppShell'
 import { readDB } from '@/lib/store'
 import { blogIdFromInput } from '@/lib/naver/blogrss'
@@ -28,6 +29,17 @@ export default async function BlogPage({
         title="이 블로그는 어떤 블로그인가"
         desc="아이디나 주소를 넣으면 최근 50편을 읽어 성격(업체 본인·체험단·리뷰 전문)을 판정하고, 밖에서 관찰할 수 있는 지표로 힘을 추정합니다."
       />
+      {/*
+        **글 목록은 옆 화면이다** (2026-09-01 회원 요청). 이 화면은 성격을 판정하고 힘을
+        재느라 2분이 걸린다 — 「무슨 글을 썼나」만 보려는 회원을 여기 붙잡아 두면 안 된다.
+      */}
+      <p className="muted mb-3 text-[12px] leading-relaxed">
+        무슨 글을 언제 썼는지만 보시려면{' '}
+        <Link href={myId ? `/blog/posts?id=${encodeURIComponent(myId)}` : '/blog/posts'} className="font-semibold underline">
+          블로그 글 목록
+        </Link>{' '}
+        화면이 빠릅니다 (이 진단은 조회를 수십 번 해서 2분쯤 걸립니다).
+      </p>
       <BlogInspector initialId={sp.id ?? ''} />
       {/* 회원 요청 (2026-08-20): 상위 5편의 블로그와 블로그 단위로 비교 */}
       <div className="mt-4">

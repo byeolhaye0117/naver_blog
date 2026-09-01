@@ -46,6 +46,12 @@ const GROUPS: { title: string; items: Item[] }[] = [
     items: [
       { href: '/rank', label: '순위 추적', short: '순위', icon: <IconTrend /> },
       { href: '/blog', label: '블로그 진단', short: '블로그', icon: <IconSearch /> },
+      /*
+       * **글 목록은 진단과 다른 일이다** (2026-09-01 회원 요청: "블로그 url 앞에 있는
+       * 아이디를 보고 이 아이디에 어떤 글들을 썼는지 확인할 수 있는 페이지").
+       * 진단은 성격을 판정하고 힘을 재느라 2분이 걸리고, 이건 목록만 본다.
+       */
+      { href: '/blog/posts', label: '블로그 글 목록', short: '글목록', icon: <IconDoc /> },
       { href: '/stores', label: '지점 정보', short: '지점', icon: <IconStore /> },
       { href: '/guide', label: '가이드', short: '가이드', icon: <IconBook /> },
       { href: '/deploy', label: '휴대폰에서 쓰기', short: '배포', icon: <IconPhone /> },
@@ -77,7 +83,19 @@ const REST: Item[] = NAV.filter((n) => !TAB_HREFS.includes(n.href))
 
 function isActive(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/'
-  return pathname === href || pathname.startsWith(`${href}/`)
+  if (!(pathname === href || pathname.startsWith(`${href}/`))) return false
+  /*
+   * **더 깊은 메뉴가 맞으면 그쪽만 켠다** (2026-09-01).
+   *
+   * 「/blog」와 「/blog/posts」가 나란히 있게 되면서, 글 목록 화면에서 두 메뉴가 함께
+   * 켜져 보였다. 지금 있는 자리를 가리키는 것이 메뉴의 일이니 한 곳만 켜져야 한다.
+   */
+  return !NAV.some(
+    (n) =>
+      n.href !== href &&
+      n.href.startsWith(`${href}/`) &&
+      (pathname === n.href || pathname.startsWith(`${n.href}/`))
+  )
 }
 
 function Logo({ small = false }: { small?: boolean }) {
