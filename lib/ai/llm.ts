@@ -371,8 +371,22 @@ export async function askLlm(
       return await askOnce(system, messages, maxTokens, false, false)
     }
     /*
+     * **캐싱 표시를 안 받는 곳이면 그것만 빼고 다시 부른다** (2026-09-02).
+     *
+     * 지시문을 캐시에 올려 값을 아끼는데, 회사 API 는 받아도 중간에 낀 게이트웨이가 안 받을
+     * 수 있다. 아끼자고 넣은 것 때문에 글이 아예 안 나오면 안 된다 — 값보다 글이 먼저다.
+     * `thinking` 보다 먼저 본다: 더 나중에 넣은 것이라 의심 순서가 앞이다.
+     */
+    if (e instanceof AiError && isCacheComplaint(e.status, e.message)) {
+      console.warn('[ai] 이 곳은 지시문 캐싱을 못 받는다 — 캐싱 없이 다시 부른다:', e.message.slice(0, 120))
+      return await askOnce(system, messages, maxTokens, false, search, true)
+    }
+    /*
      * 모델이 「생각하기 끄기」를 거부하면(회사·모델마다 규칙이 다르다) 그 필드만 빼고
      * 한 번 다시 부른다 — 이름으로 걸러낸 목록이 최신이 아닐 수 있으므로 실패로 배운다.
+     *
+     * **캐싱은 그대로 둔 채 부른다** — 이 400 은 캐싱 얘기가 아니다. 여기서 같이 빼면
+     * 아끼는 자리를 이유 없이 잃는다. 이 호출이 또 캐싱으로 400 이 나면 위 갈래가 받는다.
      */
     if (e instanceof AiError && e.status === 400 && /thinking/i.test(e.message)) {
       console.warn('[ai] 이 모델은 생각하기를 끌 수 없다 — 그 설정을 빼고 다시 부른다')
@@ -403,7 +417,9 @@ async function askOnce(
   /** 400 이 「thinking」을 문제 삼으면 이 필드만 빼고 한 번 더 부른다 */
   omitThinking = false,
   /** 자료를 직접 찾게 할지 — 회사별 도구는 searchTools 가 만든다 */
-  search = false
+  search = false,
+  /** 400 이 캐싱을 문제 삼으면 그 표시만 빼고 한 번 더 부른다 */
+  omitCache = false
 ): Promise<string> {
   const c = detectProvider()
   if (!c) throw new AiError('AI 키가 설정되지 않았습니다.', 400)
@@ -435,15 +451,7 @@ async function askOnce(
      * opus-5 는 effort 가 xhigh/max 일 때만 400 이다(우리는 effort 를 안 보내므로 기본 high
      * → 허용). 이름으로 걸러내고, 그래도 400 이 나면 이 필드만 빼고 한 번 다시 부른다.
      */
-    const tools = search ? searchTools('anthropic') : null
-    body = {
-      model,
-      max_tokens: maxTokens,
-      system,
-      messages,
-      ...(!omitThinking && supportsDisabledThinking(model) ? { thinking: { type: 'disabled' } } : {}),
-      ...(tools ? { tools } : {}),
-    }
+    body = anthropicBody({ model, system, messages, maxTokens, omitThinking, omitCache, search })
   } else if (c.provider === 'gemini') {
     url = `${c.base}/models/${model}:generateContent?key=${c.key}`
     body = {
@@ -498,6 +506,16 @@ async function askOnce(
     )
   }
 
+  /*
+   * **캐시가 실제로 걸렸는지 남긴다** (2026-09-02). 「켰다」와 「먹는다」는 다르다 —
+   * 앞부분이 한 글자만 달라져도 조용히 안 걸리고, 그때는 값만 1.25배로 나간다.
+   * 읽은 토큰이 0 으로만 찍히면 앞부분이 매번 달라지고 있다는 뜻이다.
+   */
+  if (c.provider === 'anthropic') {
+    const u = cacheUsage(raw)
+    if (u) console.log('[ai] 토큰', `새로 ${u.fresh}`, `· 캐시 씀 ${u.written}`, `· 캐시 읽음 ${u.read}`, `· 출력 ${u.output}`)
+  }
+
   const out = extractText(raw)
   if (!out) {
     /*
@@ -511,6 +529,106 @@ async function askOnce(
     throw new AiError(`글 생성 응답을 읽지 못했습니다. ${describeEmpty(raw, c.provider, model)}`, 502)
   }
   return out
+}
+
+/*
+ * ─── 같은 지시문을 두 번 보내는 값을 아낀다 (2026-09-02 회원 요청) ────────────
+ *
+ * 회원: "이상하게 요즘따라 클로드 API 키가 빨리 닳는거 같아 왜그런거야?"
+ *
+ * 세어 보니 하루 1편 → 3편으로 늘어난 것이 컸는데(08-28 배포), 재보니 **같은 지시문을
+ * 매번 새로 값 내고 있었다.** 글 한 편에 호출이 두 번 들어가고(생성 1회 + 고쳐 쓰기 1회,
+ * 실행 기록의 `rounds: 1`), 두 호출의 **앞부분이 글자 하나까지 같다** — 정보글 지시문이
+ * 10,465 토큰이다.
+ *
+ * 캐싱은 앞부분이 같으면 값을 깎아 준다: 쓸 때 1.25배, 읽을 때 0.1배. 두 번만 불러도
+ * 본전이다(1.25 + 0.1 = 1.35 < 2). 재보니 한 편 입력이 26,349 → 19,547 토큰(26% 감소),
+ * 값으로는 11% 였다 — 이 앱은 값의 절반 넘게가 출력 토큰이라 그만큼이다.
+ *
+ * ── 표시를 어디에 다나 ────────────────────────────────────────────────
+ * **지시문에만 단다.** 캐싱은 앞부분이 정확히 같은 데까지만 먹는다. 지시문은 글 종류만
+ * 정해지면 늘 같은 글자지만(날짜·시각이 안 들어간다 — 확인했다) 그 뒤 요청 묶음은 키워드·
+ * 지점·이벤트가 매번 다르다. 요청까지 묶어 표시하면 **매번 새로 쓰기만 하고 한 번도 못
+ * 읽는다.**
+ *
+ * ── 짧으면 안 단다 ──────────────────────────────────────────────────
+ * 캐시가 걸리는 최소 길이가 모델마다 다르다(512~4,096 토큰). 그보다 짧으면 조용히 안 걸리는데
+ * **쓰기 값 1.25배는 나간다.** 그래서 넉넉히 잡아 그 위일 때만 단다. 우리 지시문은
+ * 8,800~11,000 자라 늘 걸린다.
+ */
+export const CACHE_MIN_CHARS = 5000
+
+/**
+ * Anthropic 요청 본문 (순수 함수 — 테스트 대상).
+ *
+ * `askOnce` 안에 있던 것을 그대로 뺐다. 네트워크가 없으면 확인할 수 없던 자리라
+ * 캐싱을 넣으면서 검사할 수 있게 만들었다.
+ */
+export function anthropicBody(args: {
+  model: string
+  system: string
+  messages: AiMessage[]
+  maxTokens: number
+  omitThinking?: boolean
+  omitCache?: boolean
+  search?: boolean
+}): Record<string, unknown> {
+  const { model, system, messages, maxTokens } = args
+  const tools = args.search ? searchTools('anthropic') : null
+  const cache = !args.omitCache && system.length >= CACHE_MIN_CHARS
+  return {
+    model,
+    max_tokens: maxTokens,
+    /*
+     * 글자는 그대로 두고 담는 그릇만 바꾼다 — 앞부분이 한 글자라도 달라지면 캐시가 깨진다.
+     * 캐시를 안 쓸 때는 예전처럼 문자열 그대로 보낸다 (모양이 바뀌면 탈이 날 자리를 줄인다).
+     */
+    system: cache ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }] : system,
+    messages,
+    ...(!args.omitThinking && supportsDisabledThinking(model) ? { thinking: { type: 'disabled' } } : {}),
+    ...(tools ? { tools } : {}),
+  }
+}
+
+/**
+ * 캐싱 표시를 문제 삼는 400 인가 (순수 함수 — 테스트 대상).
+ *
+ * **모르는 곳에 대고 새 필드를 보내는 것이므로 물러설 길을 만들어 둔다.** 회사 API 는
+ * 받지만 중간에 낀 게이트웨이(ANTHROPIC_BASE_URL)가 안 받을 수 있다. 400 이 캐싱이나
+ * 지시문 모양을 문제 삼으면 그 표시만 빼고 한 번 더 부른다 — `thinking` 과 같은 방식이다.
+ */
+export function isCacheComplaint(status: number, message: string): boolean {
+  return status === 400 && /cache|system/i.test(message)
+}
+
+/**
+ * 응답에서 토큰 쓰임새를 읽는다 (순수 함수 — 테스트 대상).
+ *
+ * `read` 가 늘 0 이면 캐싱이 안 걸리고 있는 것이다 — 켠 것과 먹는 것은 다르다.
+ */
+export function cacheUsage(
+  raw: string
+): { fresh: number; written: number; read: number; output: number } | null {
+  let j: {
+    usage?: {
+      input_tokens?: number
+      output_tokens?: number
+      cache_creation_input_tokens?: number
+      cache_read_input_tokens?: number
+    }
+  }
+  try {
+    j = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!j.usage) return null
+  return {
+    fresh: j.usage.input_tokens ?? 0,
+    written: j.usage.cache_creation_input_tokens ?? 0,
+    read: j.usage.cache_read_input_tokens ?? 0,
+    output: j.usage.output_tokens ?? 0,
+  }
 }
 
 /**
