@@ -8,6 +8,7 @@ if (!OUT) {
 }
 const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange, findLatinWords, LATIN_ALLOWED } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
+const { eventFacts, missingFacts } = require(`${OUT}/writing/eventfacts.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
 const { buildCopyPackage, keyPointsOf, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, readingChunks, normalizeTag, stripBold, lineWidth, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
 const { parsePastedReviews, analyzeReviews, placeReviewUrl, verifyReviewQuotes } = require(`${OUT}/analysis/reviews.js`)
@@ -5065,15 +5066,21 @@ ok(tbRevSkel.includes('운동 정보를 설명하기 시작하면'), '후기에 
 ok(tbRevSkel.includes('정보 단락을 만들지 않는다'), '정보 단락 금지')
 ok(tbRevSkel.includes('상담 때 들은 말'), '대신 무엇을 쓰라고 알려준다')
 // 후기 골격도 지시문과 같은 번호로 맞췄다 (2026-08-21) — 이벤트는 5단계다
-ok(tbRevSkel.includes('5단계 이벤트 (180~220자)'), '이벤트 단락을 줄였다 (280~320 → 180~220)')
 /*
- * **이벤트만 안 늘렸다.** 나머지 구간은 실측 최고 구간(1,700~2,200자)에 맞추느라 늘렸는데
- * 여기만 그대로다 — 방문자가 선착순·마감을 길게 나열하면 대가성 광고로 읽힌다.
+ * **이벤트 단락을 다시 늘렸다** (2026-09-02, 180~220 → 260~320). 「길게 나열하면 대가성
+ * 광고로 읽힌다」고 줄여 뒀는데, 그 결과 회원이 넣은 조건이 통째로 사라졌다 (아래 참조).
+ * 걱정 자체는 그대로 유효하고, 답은 **빼는 것이 아니라 문장으로 풀어 쓰는 것**이다.
  */
+ok(tbRevSkel.includes('5단계 이벤트 (260~320자)'), '이벤트 단락 자수 (180~220 → 260~320)')
+ok(tbRevSkel.includes('하나도 빼지 말고'), '서식도 조건을 빼지 말라고 한다')
 ok(tbRevSkel.includes('3단계 방문·상담 후기 (550~680자'), '몸통을 늘렸다 (450~550 → 550~680)')
 ok(tbRevSkel.includes('1단계 후킹 (220~280자'), '후킹은 1단계다 (전에는 2단계 도입이었다)')
 ok(tbRevSkel.includes('6단계 마무리 (200~250자'), '마지막은 6단계 마무리다 (전에는 7단계 CTA)')
-ok(tbRevSkel.includes('한 대목만'), '혜택을 한 대목으로 모은다')
+/*
+ * **「한 대목만」을 지웠다** (2026-09-02). 회원이 이벤트 칸에 넣은 조건이 「한 대목」에
+ * 뭉뚱그려지면서 통째로 사라졌다 — 아래 「회원이 넣은 이벤트가 통째로 사라졌다」 참조.
+ */
+ok(!tbRevSkel.includes('한 대목만'), '혜택을 「한 대목」으로 뭉치라고 하지 않는다')
 ok(tbRevSkel.includes('[영상:'), '후기에도 영상 자리')
 
 const tbInfoSkel = buildTemplate('info', { mainKeyword: '다이어트 정체기 극복', subKeywords: ['정체기 식단'] })
@@ -12231,6 +12238,135 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     ok(rv.includes('손님이 나에게 오는 시점으로도 쓰지 않는다'), '후기 지시문이 그 시점을 막는다')
     ok(rv.includes('상담 오시는 분들이 제일 먼저 물어보는 게'), '실제로 나온 문장을 그대로 적어 둔다')
     ok(rv.includes('가는 사람'), '방문객이 어느 쪽인지 한 줄로 못박는다')
+  }
+}
+
+/*
+ * ─── 회원이 넣은 이벤트가 통째로 사라졌다 (2026-09-02 회원 지적) ──────────────
+ *
+ * 회원: "후기글에 이벤트 정보를 넣어놨는데 인식하지 못하고 멋대로 작성해."
+ *
+ * **저장된 후기글로 재봤다.** 회원이 이벤트 칸에 넣은 값과 나온 글을 나란히 놓으니:
+ *
+ *   넣은 것   3개월 99,000원 · 혼자 7일 / 2인 15일 / 3인 30일 서비스 ·
+ *             네이버 5,000원 할인 쿠폰 · 공동구매 · 사전예약 한정
+ *   남은 것   「99,000원」과 「쿠폰」 **둘뿐**
+ *   그 자리   "함께 등록하는 인원에 따라 서비스 기간이 더 붙는다고 했습니다"
+ *   검수      **98점 · 수정필요 0**
+ *
+ * 두 군데가 동시에 비어 있었다.
+ *
+ *  ① **골격이 그렇게 시켰다.** 후기 5단계에 「조건을 항목별로 나열하지 않는다 — "제가
+ *     등록할 때 이런 혜택이 있었어요" 한 문장으로 족하다」고 적혀 있었다. 이벤트 묶음
+ *     머리말은 「가감 없이 그대로 쓴다」인데 골격은 「한 문장으로 족하다」였다 —
+ *     **지시가 스스로와 반대였다.** 홍보글 5단계는 진작 「다 밝힌다」였고, 실제로 같은
+ *     이벤트로 쓴 홍보글은 선착순 30명·8월·3개월 99,000원을 다 담고 있었다.
+ *  ② **검수가 안 봤다.** `event-hook` 은 첫 구간에 혜택 낱말과 제한 낱말이 있는지만
+ *     본다 — 회원이 적은 값과 **다른 이벤트를 지어내도 통과한다.**
+ */
+{
+  const EVENT = [
+    '공동구매 이벤트',
+    '3개월 99,000원',
+    '',
+    '혼자 등록할시 네이버 사전예약 한정 7일서비스',
+    '2인 동반 등록시 네이버 사전예약 한정 15일 서비스',
+    '3인 동반 등록시 네이버 사전예약 한정 30일 서비스',
+    '',
+    '네이버 5,000원 할인 쿠폰 다운로드 가능',
+  ].join('\n')
+
+  const labels = eventFacts(EVENT).map((f) => f.label)
+  ok(labels.includes('99,000원') && labels.includes('5,000원'), '금액을 둘 다 뽑는다', labels.join(' '))
+  ok(['3개월', '7일', '15일', '30일'].every((l) => labels.includes(l)), '기간을 네 개 다 뽑는다', labels.join(' '))
+  ok(['2인', '3인'].every((l) => labels.includes(l)) && labels.some((l) => l.startsWith('혼자')), '인원 조건을 뽑는다')
+  ok(labels.includes('공동구매') && labels.includes('사전예약') && labels.includes('쿠폰'), '이름 붙은 혜택도 뽑는다')
+
+  // 회원 화면에 실제로 나왔던 문장 — 조건이 사라진 자리
+  const GONE = '제가 등록할 때는 3개월 99,000원에 등록할 수 있었고, 함께 등록하는 인원에 따라 서비스 기간이 더 붙는다고 했습니다. 네이버 쿠폰도 같이 받아서 적용했어요.'
+  const gone = missingFacts(EVENT, GONE).map((f) => f.label)
+  ok(gone.length >= 8, '뭉뚱그린 문장에서 빠진 것을 다 찾는다', `${gone.length}개 · ${gone.join(' ')}`)
+  /*
+   * **「함께 등록」을 2인으로 쳐주면 이 검사가 있으나 마나다.** 인원이 몇인지 없는 말이라
+   * 조건이 사라진 것이고, 회원이 지적한 문장이 정확히 이 꼴이었다.
+   */
+  ok(gone.includes('2인') && gone.includes('3인'), '「함께 등록하는 인원에 따라」는 인원 조건이 아니다')
+  ok(gone.includes('5,000원'), '「네이버 쿠폰」만 쓰면 금액이 빠진 것이다')
+
+  // 회원이 적은 대로 쓰면 통과해야 한다 (헛짚으면 고칠 수 없는 항목이 된다)
+  const GOOD = '공동구매로 3개월에 99,000원이었어요. 네이버 사전예약 한정이라고 하셔서, 혼자 등록하면 7일, 둘이 같이 하면 15일, 셋이면 30일까지 서비스 기간이 붙는다고 하셨습니다. 5,000원 할인 쿠폰도 받아서 같이 적용했어요.'
+  ok(missingFacts(EVENT, GOOD).length === 0, '적은 대로 쓴 구간은 통과한다', missingFacts(EVENT, GOOD).map((f) => f.label).join(' '))
+  /*
+   * **말이 조금 달라져도 같은 조각으로 본다.** 방문객은 「9만 9천 원」·「세 달」·「보름」
+   * 이라고 쓴다 — 글자가 다르다고 걸면 고칠 수 없는 항목이 된다.
+   */
+  const PARA = '공구로 세 달에 9만 9천 원이었고, 사전예약 한정이라 나 혼자면 일주일, 두 명이면 보름, 세 명이면 한 달 서비스가 붙었어요. 5,000원 쿠폰도 받았습니다.'
+  ok(missingFacts(EVENT, PARA).length === 0, '말을 바꿔 써도 같은 것으로 본다', missingFacts(EVENT, PARA).map((f) => f.label).join(' '))
+
+  // 이벤트 칸에 없는 것을 조각으로 만들지 않는다 — 전화번호·영업시간·연도
+  const NOISE = '문의 010-2455-2896, 오전 6시~밤 11시 운영, 2026년 오픈'
+  ok(eventFacts(NOISE).length === 0, '전화번호·시간·연도는 조건이 아니다', eventFacts(NOISE).map((f) => f.label).join(' '))
+  ok(eventFacts('').length === 0, '이벤트가 비면 볼 것이 없다')
+
+  /*
+   * 검수 항목으로도 같은 것을 잰다. **숫자가 빠지면 즉시수정이다** — 회원이 직접 넣은
+   * 값이라 우리가 줄이거나 바꿀 여지가 없다.
+   */
+  const detail = (body, type = 'review') =>
+    checkPost({
+      type,
+      title: '쌍용동 헬스장 3개월 9.9만원 등록 후기',
+      body,
+      mainKeyword: '쌍용동 헬스장',
+      subKeywords: [],
+      tags: [],
+      legalName: 'MTO 피트니스 쌍용점',
+      sponsorship: 'none',
+      eventText: EVENT,
+    }).items.find((i) => i.id === 'event-detail')
+
+  ok(detail(GONE)?.level === 'fail', '조건이 빠지면 즉시수정이다', `${detail(GONE)?.level} · ${detail(GONE)?.value}`)
+  ok(detail(GONE)?.value.includes('5,000원'), '무엇이 빠졌는지 그대로 보여준다', detail(GONE)?.value)
+  ok(detail(GONE)?.hint?.includes('숫자를 그대로'), '어떻게 고치는지 알려준다')
+  ok(detail(GOOD)?.level === 'pass', '적은 대로 쓰면 통과한다', `${detail(GOOD)?.level} · ${detail(GOOD)?.value}`)
+  // 이름만 빠진 것은 주의다 — 방문객이 「공동구매」라는 이름으로 부르지 않을 수는 있다
+  const NAMELESS = '3개월에 99,000원이었고, 혼자 등록하면 7일, 둘이면 15일, 셋이면 30일까지 서비스가 붙는다고 하셨어요. 5,000원 할인 쿠폰도 받았습니다.'
+  ok(detail(NAMELESS)?.level === 'warn', '이름만 빠진 것은 주의다', `${detail(NAMELESS)?.level} · ${detail(NAMELESS)?.value}`)
+  // 정보글에는 이벤트가 아예 안 들어간다 — 이 검사도 돌지 않는다 (2026-08-21 골격)
+  ok(detail(GOOD, 'info') === undefined, '정보글에는 이 검사가 없다')
+
+  /*
+   * **지시문도 같이 고쳤다.** 검수만 고치면 매번 눌러서 고쳐야 한다 — 이 저장소에서
+   * 여러 번 겪은 「한쪽만 고친 것」이다.
+   */
+  {
+    const { buildUserPrompt: upEv, buildSystemPrompt: spEv } = require(`${OUT}/ai/prompt.js`)
+    const rev = spEv('review')
+    ok(!rev.includes('한 문장으로 족하다'), '「한 문장으로 족하다」를 지웠다')
+    ok(rev.includes('숫자를 하나도 빼지 않는다'), '후기 골격이 숫자를 다 옮기라고 한다')
+    ok(rev.includes('5) 이벤트 260~320자'), '자수를 늘려 조건이 들어갈 자리를 만들었다')
+    const up = upEv({ type: 'review', mainKeyword: '쌍용동 헬스장', eventText: EVENT, subKeywords: [], tags: [] })
+    ok(up.includes('하나도 빼지 않는다'), '이벤트 묶음이 「가감 없이」가 무엇인지 적는다')
+    ok(up.includes('위에 없는 금액·기간·인원·마감일을 만들지 않는다'), '없는 조건을 만들지 말라고도 적는다')
+    // 정보글에는 이벤트 값을 아예 주지 않는다 (2026-08-21) — 그대로여야 한다
+    const upInfo = upEv({ type: 'info', mainKeyword: '공복 유산소', eventText: EVENT, subKeywords: [], tags: [] })
+    ok(!upInfo.includes('99,000'), '정보글에는 이벤트 값을 주지 않는다')
+  }
+
+  /*
+   * **화면 도움말도 같은 말이었다.** 「"제가 등록할 때 이런 혜택이 있었어요" 로
+   * 들어갑니다」라고 회원에게 적어 두고 있었다 — 지시문·서식·도움말 세 군데가 똑같이
+   * 뭉뚱그리라고 말한 셈이다.
+   */
+  {
+    const editorEv = require('node:fs').readFileSync(new URL('../app/write/Editor.tsx', import.meta.url), 'utf8')
+    // 주석에는 그 문장이 왜 지워졌는지 적혀 있으니, 주석을 걷고 본다
+    const editorNoComment = editorEv.replace(/\/\*[\s\S]*?\*\//g, '')
+    ok(
+      !editorNoComment.includes('이런 혜택이 있었어요'),
+      '도움말이 「이런 혜택이 있었어요」라고 하지 않는다'
+    )
+    ok(editorEv.includes('하나도 빼지 않고 방문객이 들은 말로'), '도움말이 조건을 다 쓴다고 알린다')
   }
 }
 

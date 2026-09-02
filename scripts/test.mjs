@@ -31,6 +31,7 @@ const TARGETS = [
   'lib/analysis/reviews.ts',
   'lib/writing/plainwords.ts',
   'lib/writing/keypoints.ts',
+  'lib/writing/eventfacts.ts',
   'lib/analysis/study.ts',
   'lib/analysis/intent.ts',
   'lib/analysis/title.ts',
