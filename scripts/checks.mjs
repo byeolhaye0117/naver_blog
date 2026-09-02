@@ -12398,5 +12398,108 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
   }
 }
 
+/*
+ * ─── 같은 지시문을 두 번 보내는 값을 아낀다 (2026-09-02 회원 요청) ────────────
+ *
+ * 회원: "이상하게 요즘따라 클로드 API 키가 빨리 닳는거 같아 왜그런거야?"
+ *       "프롬포트 캐싱하면 비용이 절약된다는거야?" → "캐싱해주는데 오류 나지 않게 해줘"
+ *
+ * **실행 기록을 세어 원인을 봤다.** 하루 1편 → 3편으로 늘어난 것이 컸다 (08-28 배포,
+ * 08-29 부터 정확히 3편씩). 그리고 재보니 **같은 지시문을 매번 새로 값 내고 있었다** —
+ * 한 편에 호출이 두 번인데(생성 1회 + 고쳐 쓰기 1회) 두 호출의 앞부분이 글자 하나까지 같다.
+ *
+ *   정보글 지시문 10,465 토큰 · 한 편 입력 26,349 토큰
+ *   캐싱 후            한 편 입력 19,547 토큰 (26% 감소 · 값으로는 11%)
+ *
+ * 회원이 "오류 나지 않게" 라고 했으니 **물러설 길**이 이 검사의 절반이다.
+ */
+{
+  const { anthropicBody, isCacheComplaint, cacheUsage, CACHE_MIN_CHARS } = require(`${OUT}/ai/llm.js`)
+  const LONG = '가'.repeat(CACHE_MIN_CHARS)
+  const MSGS = [{ role: 'user', content: '이번 글: 쌍용동 헬스장' }]
+  const body = anthropicBody({ model: 'claude-sonnet-5', system: LONG, messages: MSGS, maxTokens: 8192 })
+
+  ok(Array.isArray(body.system), '지시문을 덩어리로 담는다 (표시를 달 수 있게)')
+  ok(body.system[0].cache_control?.type === 'ephemeral', '지시문에 캐싱 표시를 단다')
+  /*
+   * **글자가 달라지면 캐시가 깨진다.** 그릇만 바꾸고 내용은 손대지 않아야 한다.
+   */
+  ok(body.system[0].text === LONG, '지시문 글자는 그대로다', String(body.system[0].text === LONG))
+
+  /*
+   * **표시는 지시문에만 단다.** 요청 묶음은 키워드·지점·이벤트가 매번 다르다 — 거기까지
+   * 묶으면 매번 새로 쓰기만 하고 한 번도 못 읽는다.
+   */
+  ok(JSON.stringify(body.messages) === JSON.stringify(MSGS), '요청 묶음은 손대지 않는다')
+  ok(!JSON.stringify(body.messages).includes('cache_control'), '요청에는 표시를 달지 않는다')
+
+  /*
+   * **짧으면 안 단다.** 캐시가 걸리는 최소 길이가 모델마다 다르고(512~4,096 토큰) 그보다
+   * 짧으면 조용히 안 걸리는데 쓰기 값 1.25배는 나간다.
+   */
+  const short = anthropicBody({ model: 'claude-sonnet-5', system: '짧은 지시문', messages: MSGS, maxTokens: 8192 })
+  ok(typeof short.system === 'string', '짧은 지시문은 예전처럼 문자열로 보낸다', typeof short.system)
+  ok(!JSON.stringify(short).includes('cache_control'), '짧으면 표시를 달지 않는다')
+
+  // 물러설 길 — 표시만 빼고 나머지는 그대로여야 한다
+  const off = anthropicBody({ model: 'claude-sonnet-5', system: LONG, messages: MSGS, maxTokens: 8192, omitCache: true })
+  ok(off.system === LONG, '캐싱을 빼면 예전 모양 그대로다')
+  ok(off.thinking?.type === 'disabled', '캐싱을 빼도 생각하기 끄기는 남는다')
+  ok(off.max_tokens === 8192 && off.model === 'claude-sonnet-5', '나머지는 그대로다')
+
+  // 예전 규칙이 그대로인지 (캐싱을 넣으면서 깨뜨리지 않았나)
+  ok(body.thinking?.type === 'disabled', 'sonnet-5 는 생각하기를 끈 채로 간다')
+  ok(
+    anthropicBody({ model: 'claude-fable-5', system: LONG, messages: MSGS, maxTokens: 8192 }).thinking === undefined,
+    'fable 에는 생각하기 설정을 안 보낸다 (예전 그대로)'
+  )
+  ok(
+    Array.isArray(anthropicBody({ model: 'claude-sonnet-5', system: LONG, messages: MSGS, maxTokens: 8192, search: true }).tools),
+    '검색을 켜면 도구가 붙는다 (예전 그대로)'
+  )
+  ok(body.tools === undefined, '검색을 안 켜면 도구가 없다')
+
+  /*
+   * **같은 값으로 부르면 앞부분이 똑같아야 한다.** 캐싱은 글자 하나만 달라져도 안 먹는다.
+   * 지시문에 날짜·시각이 들어가면 여기가 깨진다 — 지금은 안 들어가는 것을 확인했다.
+   */
+  {
+    const a = anthropicBody({ model: 'claude-sonnet-5', system: buildSystemPrompt('info'), messages: MSGS, maxTokens: 8192 })
+    const b = anthropicBody({ model: 'claude-sonnet-5', system: buildSystemPrompt('info'), messages: MSGS, maxTokens: 8192 })
+    ok(JSON.stringify(a.system) === JSON.stringify(b.system), '두 번 만들어도 지시문이 같다 (날짜가 안 섞인다)')
+    ok(buildSystemPrompt('info').length >= CACHE_MIN_CHARS, '정보글 지시문은 캐시가 걸릴 만큼 길다', `${buildSystemPrompt('info').length}자`)
+    ok(buildSystemPrompt('promo').length >= CACHE_MIN_CHARS, '홍보글도 그렇다', `${buildSystemPrompt('promo').length}자`)
+    ok(buildSystemPrompt('review').length >= CACHE_MIN_CHARS, '후기글도 그렇다', `${buildSystemPrompt('review').length}자`)
+  }
+
+  /*
+   * **안 받는 곳이면 물러선다.** 회사 API 는 받아도 중간에 낀 게이트웨이가 안 받을 수 있다.
+   * 아끼자고 넣은 것 때문에 글이 아예 안 나오면 안 된다 — 값보다 글이 먼저다.
+   */
+  ok(isCacheComplaint(400, 'cache_control: unexpected field'), '캐싱을 문제 삼는 400 을 알아본다')
+  ok(isCacheComplaint(400, 'system must be a string'), '지시문 모양을 문제 삼는 400 도 알아본다')
+  ok(!isCacheComplaint(400, 'credit balance is too low'), '돈이 없는 400 은 캐싱 탓이 아니다')
+  ok(!isCacheComplaint(429, 'cache'), '400 이 아니면 아니다')
+  ok(!isCacheComplaint(500, 'system error'), '서버 오류도 아니다')
+
+  {
+    // 라우트가 실제로 그 갈래를 타는지 (여기만 고치고 안 부르면 소용없다)
+    const llm = require('node:fs').readFileSync(new URL('../lib/ai/llm.ts', import.meta.url), 'utf8')
+    ok(/isCacheComplaint\(e\.status, e\.message\)/.test(llm), '400 이면 캐싱을 빼고 다시 부른다')
+    ok(/askOnce\(system, messages, maxTokens, false, search, true\)/.test(llm), '그때 캐싱만 빼고 나머지는 그대로 부른다')
+  }
+
+  /*
+   * **켠 것과 먹는 것은 다르다.** 읽은 토큰이 늘 0 이면 앞부분이 매번 달라지고 있다는
+   * 뜻이라, 로그로 볼 수 있어야 한다.
+   */
+  const u = cacheUsage(JSON.stringify({ usage: { input_tokens: 703, output_tokens: 3500, cache_creation_input_tokens: 10465, cache_read_input_tokens: 0 } }))
+  ok(u?.written === 10465 && u?.read === 0, '첫 호출은 캐시에 쓴다', JSON.stringify(u))
+  const u2 = cacheUsage(JSON.stringify({ usage: { input_tokens: 4716, cache_read_input_tokens: 10465 } }))
+  ok(u2?.read === 10465, '두 번째 호출은 캐시에서 읽는다', JSON.stringify(u2))
+  ok(cacheUsage('<html>Gateway Timeout</html>') === null, 'JSON 이 아니면 null (로그 때문에 글이 죽으면 안 된다)')
+  ok(cacheUsage(JSON.stringify({ content: [] })) === null, '토큰 정보가 없으면 null')
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
