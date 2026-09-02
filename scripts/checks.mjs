@@ -8,7 +8,7 @@ if (!OUT) {
 }
 const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange, findLatinWords, LATIN_ALLOWED } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
-const { eventFacts, missingFacts } = require(`${OUT}/writing/eventfacts.js`)
+const { eventFacts, missingFacts, moneyValues } = require(`${OUT}/writing/eventfacts.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
 const { buildCopyPackage, keyPointsOf, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, readingChunks, normalizeTag, stripBold, lineWidth, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
 const { parsePastedReviews, analyzeReviews, placeReviewUrl, verifyReviewQuotes } = require(`${OUT}/analysis/reviews.js`)
@@ -12302,6 +12302,34 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
    */
   const PARA = '공구로 세 달에 9만 9천 원이었고, 사전예약 한정이라 나 혼자면 일주일, 두 명이면 보름, 세 명이면 한 달 서비스가 붙었어요. 5,000원 쿠폰도 받았습니다.'
   ok(missingFacts(EVENT, PARA).length === 0, '말을 바꿔 써도 같은 것으로 본다', missingFacts(EVENT, PARA).map((f) => f.label).join(' '))
+
+  /*
+   * ─── 금액은 여러 꼴로 쓰인다 (2026-09-02, 프로덕션에서 찾았다) ──────────────
+   *
+   * 고친 검사를 프로덕션에 올리기 전에 같은 이벤트로 후기글을 하나 뽑아 봤다. 조건은
+   * 다 담겨 있었는데 **금액을 「9만 9천 원」·「5천 원」이라고 썼다.** 처음 판은 「원」
+   * 앞에 숫자가 붙은 꼴과 「만」 꼴만 읽어서 **잘 쓴 글을 걸었을 것이다** — 이 저장소가
+   * 반복해서 겪은 「헛짚어서 못 고치는 항목」이 될 자리였다.
+   *
+   * 그래서 큰 단위부터 읽고 그 자리를 지운다 — 「9만 9천 원」을 99,000 으로 읽은 뒤
+   * 같은 자리에서 「9천 원」을 또 읽으면 없는 금액이 생긴다.
+   */
+  const money = (t) => moneyValues(t).join(',')
+  ok(money('3개월 99,000원') === '99000', '「99,000원」', money('3개월 99,000원'))
+  ok(money('9.9만원') === '99000', '「9.9만원」', money('9.9만원'))
+  ok(money('10만 원') === '100000', '「10만 원」', money('10만 원'))
+  ok(money('9만 9천 원') === '99000', '「9만 9천 원」은 하나의 금액이다', money('9만 9천 원'))
+  ok(money('5천 원') === '5000', '「5천 원」', money('5천 원'))
+  ok(money('3개월 9.9만') === '99000', '「원」을 안 붙여도 읽는다', money('3개월 9.9만'))
+  // 돈이 아닌 자리 — 뒤 낱말로 걸러낸다
+  ok(money('선착순 3만 명') === '', '「3만 명」은 금액이 아니다', money('선착순 3만 명'))
+
+  /*
+   * **프로덕션이 실제로 쓴 이벤트 구간.** 회원이 넣은 조건을 다 담았고 금액만 다른 꼴로
+   * 적혔다 — 이것이 통과해야 이 검사를 켤 수 있다.
+   */
+  const REAL = '제가 상담받았을 때는 3개월 9만 9천 원 공동구매 이벤트가 진행 중이었어요. 혼자 등록하면 사전예약 서비스로 7일, 2인이면 15일, 3인이면 30일까지 더 챙겨준다고 해서 같이 다닐 사람이 있으면 더 이득이겠더라고요. 네이버에서 5천 원 할인 쿠폰도 따로 받을 수 있었습니다.'
+  ok(missingFacts(EVENT, REAL).length === 0, '프로덕션이 잘 쓴 구간은 통과한다', missingFacts(EVENT, REAL).map((f) => f.label).join(' '))
 
   // 이벤트 칸에 없는 것을 조각으로 만들지 않는다 — 전화번호·영업시간·연도
   const NOISE = '문의 010-2455-2896, 오전 6시~밤 11시 운영, 2026년 오픈'

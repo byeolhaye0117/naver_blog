@@ -44,20 +44,39 @@ const KOR_COUNT: Record<number, string> = { 1: '한', 2: '두', 3: '세', 4: '�
  * ─── 금액 ────────────────────────────────────────────────────────────────
  * 「원」이 붙은 것만 금액으로 본다. 전화번호·연도가 금액으로 잡히면 고칠 수 없는 항목이 된다.
  */
-const MONEY_MAN_RE = /(\d+(?:\.\d+)?)\s*만\s*(?:(\d+)\s*천\s*)?원?/g
-const MONEY_WON_RE = /(\d[\d,]*)\s*원/g
+/*
+ * **읽은 자리는 지우고 다음 꼴을 본다.** 「9만 9천 원」을 만 단위로 읽은 뒤 그 자리에서
+ * 「9천 원」을 또 읽으면 없는 금액(9,000원)이 생긴다. 그래서 큰 단위부터 읽고 지운다.
+ *
+ * 「N만」에 「원」을 꼭 요구하지 않는 것은 회원이 「3개월 9.9만」이라고만 적을 수 있기
+ * 때문이고, 대신 「3만 명」처럼 돈이 아닌 자리는 뒤 낱말로 걸러낸다.
+ */
+const MONEY_STEPS: { re: RegExp; pick: (g: (string | undefined)[]) => number | null }[] = [
+  {
+    re: /(\d+(?:\.\d+)?)\s*만\s*(?:(\d+)\s*천\s*)?원?(?!\s*(?:명|분|개|장|회|평))/g,
+    pick: (g) => Number(g[0]) * 10000 + (g[1] ? Number(g[1]) * 1000 : 0),
+  },
+  // 「5천 원」·「5천원」 — 프로덕션이 실제로 이렇게 썼다 (2026-09-02)
+  { re: /(\d+(?:\.\d+)?)\s*천\s*원/g, pick: (g) => Number(g[0]) * 1000 },
+  {
+    re: /(\d[\d,]*)\s*원/g,
+    pick: (g) => {
+      const v = Number(String(g[0]).replace(/,/g, ''))
+      return v >= 1000 ? v : null
+    },
+  },
+]
 
 export function moneyValues(text: string): number[] {
   const out: number[] = []
-  for (const m of text.matchAll(MONEY_MAN_RE)) {
-    const man = Number(m[1])
-    const chun = m[2] ? Number(m[2]) : 0
-    if (Number.isFinite(man)) out.push(Math.round(man * 10000 + chun * 1000))
-  }
-  for (const m of text.matchAll(MONEY_WON_RE)) {
-    const v = Number(m[1].replace(/,/g, ''))
-    // 「9.9만원」이 「9」로도 잡히는 것을 막는다 — 만 단위는 위에서 이미 읽었다
-    if (Number.isFinite(v) && v >= 1000) out.push(v)
+  let rest = text ?? ''
+  for (const step of MONEY_STEPS) {
+    rest = rest.replace(step.re, (...args) => {
+      const groups = args.slice(1, args.length - 2) as (string | undefined)[]
+      const v = step.pick(groups)
+      if (v != null && Number.isFinite(v)) out.push(Math.round(v))
+      return ' '
+    })
   }
   return [...new Set(out)]
 }
