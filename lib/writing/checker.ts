@@ -9,6 +9,7 @@ import {
 import { TITLE_SHAPE_LABEL, titleAdvice, titleShape } from '../analysis/title'
 import { analyzeReviews, placeReviewUrl, verifyReviewQuotes } from '../analysis/reviews'
 import { findHardWords } from './plainwords'
+import { eventFacts, factInBody, isHardFact } from './eventfacts'
 import { bodyForKeyPoints, keyPointFlaws, keyPointsOf } from './keypoints'
 import { classifyIntent } from './topic-explore'
 import { coverageOf, requestedTopics } from './request'
@@ -2676,6 +2677,47 @@ export function checkPost(input: CheckInput): CheckResult {
        */
       weight: 3,
     })
+
+    /*
+     * ─── 회원이 넣은 이벤트가 본문에 남았나 (2026-09-02 회원 지적) ──────────
+     *
+     * 회원: "후기글에 이벤트 정보를 넣어놨는데 인식하지 못하고 멋대로 작성해."
+     *
+     * 위 `event-hook` 은 **첫 구간에 혜택 낱말과 제한 낱말이 있는지**만 본다. 그래서
+     * 회원이 적은 값과 **다른 이벤트를 지어내도 통과한다.** 실제로 그랬다 — 저장된
+     * 후기글로 재보니 회원이 넣은 조각 열셋 중 본문에 남은 것이 「99,000원」과
+     * 「쿠폰」 둘뿐인데 **98점 · 수정필요 0** 이었다.
+     *
+     * 여기서는 회원이 적은 **숫자와 이름**이 본문에 남았는지 하나씩 견준다. 우리가
+     * 판단할 여지가 없는 자리다 — 회원이 직접 넣은 값이라 줄이거나 바꿀 것이 아니다.
+     * 그래서 숫자가 빠지면 즉시수정이고, 가중치도 훅(3)보다 높게 둔다.
+     */
+    const facts = eventFacts(input.eventText)
+    if (facts.length > 0) {
+      const missing = facts.filter((f) => !factInBody(f, scanText))
+      const hard = missing.filter(isHardFact)
+      const list = (fs: typeof missing) => fs.map((f) => `「${f.label}」`).join(' · ')
+      add({
+        id: 'event-detail',
+        group: '내용 균형',
+        label: '이벤트 조건 반영',
+        level: hard.length > 0 ? 'fail' : missing.length > 0 ? 'warn' : 'pass',
+        value:
+          missing.length === 0
+            ? `전부 들어감 (${facts.length}개)`
+            : `빠진 것 ${missing.length}/${facts.length}: ${list(missing)}`,
+        target: '이벤트 칸에 적은 금액·기간·인원 조건을 하나도 빼지 않고 본문에 (순위 기준이 아니라 우리 규칙)',
+        hint:
+          missing.length === 0
+            ? undefined
+            : `이벤트 칸에 적어둔 ${list(missing)}이 본문에 없습니다. 뭉뚱그리지 말고 이벤트 구간에 숫자를 그대로 쓰세요 — ` +
+              (input.type === 'review'
+                ? '방문객이 들은 말로 풀어 쓰면 됩니다. 예) "3개월에 99,000원이었고, 혼자 등록하면 7일, 둘이면 15일, 셋이면 30일까지 서비스가 붙는다고 하셨어요." 「이런 혜택이 있었어요」처럼 뭉뚱그리면 읽는 사람은 조건을 모른 채 지나갑니다.'
+                : '무엇을·얼마에·언제까지·누구까지인지를 다 밝히세요.') +
+              ' 이벤트 칸에 없는 조건을 만들지는 마세요.',
+        weight: 4,
+      })
+    }
   }
 
   const lengths = sentences.map((s) => s.length)
