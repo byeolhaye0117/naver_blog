@@ -240,6 +240,44 @@ export function autoDraftAlert(
   return null
 }
 
+/*
+ * ─── 안 쓰는 날인데 「쓴다」고 말하고 있었다 (2026-09-08 회원 지적) ────────────
+ *
+ * 회원: "아직도 연락이 안왔는데 언제오는거야" 를 답하다가 찾았다. 자동 초안이 **9월 1일
+ * 이후로 한 편도 안 돌고 있었다** (마지막 저장글 9월 2일, 오늘 9월 8일). 회원 말:
+ * "내가 계획을 설정 안해서 그래" — 맞다. 채워 둔 날이 9월 1일에서 끝나 있었다.
+ *
+ * **고장이 아닌데 화면이 거짓말을 했다.** 맨 위 상태줄이 이랬다:
+ *
+ *   「마지막 실행 7일 전(2026-09-01) · 성공. **오늘 몫은 새벽 5시에 씁니다.**」
+ *
+ * 안 쓴다. 그런데 같은 화면 **설정 칸 안에는** 08-31 에 넣어 둔 경고가 이미 있었다 —
+ * 「오늘 이후로 채워 둔 날이 없습니다 … 자동 작성이 쉽니다」. **한 화면에서 두 줄이 서로
+ * 반대였고**, 상태줄은 늘 보이는 자리이고 설정 칸은 /posts 에서 접혀 있다. 그래서 회원은
+ * 「쓴다」쪽만 보고 엿새를 지나쳤다.
+ *
+ * 이 저장소가 반복해서 겪은 「한쪽만 고친 것」이다 — 08-31 에 동작을 바꾸면서 상태줄을
+ * 같이 안 고쳤다.
+ */
+
+/**
+ * 오늘 자동으로 쓸 몫이 있나 — 없으면 왜 없는지 (순수 함수 — 테스트 대상).
+ *
+ * `planAssignment` 가 null 을 돌려주는 이유와 같은 것을 본다. 저기는 크론이 쓰고 여기는
+ * 화면이 쓴다 — **둘이 어긋나면 화면이 또 거짓말을 한다.**
+ */
+export function noRunReason(plan: AutoDraftPlan | undefined, today: string): string | null {
+  const p = normalizePlan(plan)
+  if (p.off) return '자동 작성을 꺼두셨습니다'
+  if (p.skip?.includes(today)) return '오늘은 쉬는 날로 정해두셨습니다'
+  if (writesEveryDay(p)) return null
+  if ((p.days ?? []).some((d) => d.date === today)) return null
+  return '오늘은 채워 둔 날이 아닙니다'
+}
+
+/** 무엇을 하면 다시 쓰이는지 — 화면 문구를 한 곳에서 만든다 */
+const FILL_HINT = '아래에서 날짜를 채우시거나 「안 정한 날에도 매일 쓰기」를 켜세요.'
+
 /**
  * 발행 관리 화면 맨 위에 한 줄로 보여줄 상태.
  *
@@ -257,9 +295,16 @@ export function autoDraftStatus(
    *
    * 안 주면 예전처럼 「한 편 쓰면 끝」으로 본다 — 부르는 쪽을 다 고치지 않아도 되게.
    */
-  perDay?: { wrote: number; want: number }
+  perDay?: { wrote: number; want: number },
+  /**
+   * 회원이 정해 둔 것 — **오늘 쓸 몫이 있는지 보려면 이게 있어야 한다** (2026-09-08).
+   * 안 주면 예전처럼 「돈다」고 본다 (부르는 쪽을 다 고치지 않아도 되게).
+   */
+  plan?: AutoDraftPlan
 ): { level: 'good' | 'warn' | 'bad'; text: string; canRun: boolean } {
   const list = runs ?? []
+  // 오늘 안 쓰는 날이면, 앞으로 쓴다고 말하는 문구를 전부 이걸로 바꾼다
+  const idle = plan ? noRunReason(plan, today) : null
   const todays = list.filter((r) => r.date === today)
   /*
    * **하루 여러 편이면 몇 편째인지 말한다** (2026-08-28). 「오늘 초안이 준비됐습니다」만
@@ -275,8 +320,10 @@ export function autoDraftStatus(
     }
     if (perDay.wrote > 0) {
       return {
-        level: 'good',
-        text: `오늘 ${perDay.wrote}편 썼습니다 (${perDay.want}편 예정). 남은 ${perDay.want - perDay.wrote}편은 새벽 6·7시에 씁니다.`,
+        level: idle ? 'warn' : 'good',
+        text: idle
+          ? `오늘 ${perDay.wrote}편 썼습니다. ${idle} — 남은 ${perDay.want - perDay.wrote}편은 자동으로 쓰지 않습니다. ${FILL_HINT}`
+          : `오늘 ${perDay.wrote}편 썼습니다 (${perDay.want}편 예정). 남은 ${perDay.want - perDay.wrote}편은 새벽 6·7시에 씁니다.`,
         canRun: true,
       }
     }
@@ -294,13 +341,27 @@ export function autoDraftStatus(
   }
   const last = [...list].sort((a, b) => (a.at ?? a.date).localeCompare(b.at ?? b.date)).pop()
   if (!last) {
-    return { level: 'warn', text: '아직 실행 기록이 없습니다. 매일 새벽 5시에 한 편씩 씁니다.', canRun: true }
+    return {
+      level: 'warn',
+      text: idle
+        ? `아직 실행 기록이 없습니다. ${idle} — 지금 상태로는 자동 작성이 쉽니다. ${FILL_HINT}`
+        : '아직 실행 기록이 없습니다. 매일 새벽 5시에 한 편씩 씁니다.',
+      canRun: true,
+    }
   }
   const days = daysBetween(last.date, today)
   const when = days === 0 ? '오늘' : days === 1 ? '어제' : `${days}일 전(${last.date})`
+  const ran = `마지막 실행 ${when} · ${last.ok ? '성공' : '실패'}${last.manual ? ' (직접 실행)' : ''}.`
+  /*
+   * **여기가 거짓말을 하던 자리다.** 채워 둔 날이 다 지나갔는데 「오늘 몫은 새벽 5시에
+   * 씁니다」라고 말하고 있었다 — 엿새 동안 한 편도 안 쓰이는 걸 회원이 모르고 지났다.
+   */
+  if (idle) {
+    return { level: 'warn', text: `${ran} ${idle} — 지금 상태로는 자동 작성이 쉽니다. ${FILL_HINT}`, canRun: true }
+  }
   return {
     level: days >= AUTO_DRAFT_STALE_DAYS ? 'warn' : 'good',
-    text: `마지막 실행 ${when} · ${last.ok ? '성공' : '실패'}${last.manual ? ' (직접 실행)' : ''}. 오늘 몫은 새벽 5시에 씁니다.`,
+    text: `${ran} 오늘 몫은 새벽 5시에 씁니다.`,
     canRun: true,
   }
 }
