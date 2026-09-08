@@ -9,6 +9,7 @@ if (!OUT) {
 const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeywordRange, findLatinWords, LATIN_ALLOWED } = require(`${OUT}/writing/checker.js`)
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { eventFacts, missingFacts, moneyValues } = require(`${OUT}/writing/eventfacts.js`)
+const { autoDraftStatus, noRunReason, planAssignment } = require(`${OUT}/writing/autodraft.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
 const { buildCopyPackage, keyPointsOf, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, readingChunks, normalizeTag, stripBold, lineWidth, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
 const { parsePastedReviews, analyzeReviews, placeReviewUrl, verifyReviewQuotes } = require(`${OUT}/analysis/reviews.js`)
@@ -12499,6 +12500,89 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
   ok(u2?.read === 10465, '두 번째 호출은 캐시에서 읽는다', JSON.stringify(u2))
   ok(cacheUsage('<html>Gateway Timeout</html>') === null, 'JSON 이 아니면 null (로그 때문에 글이 죽으면 안 된다)')
   ok(cacheUsage(JSON.stringify({ content: [] })) === null, '토큰 정보가 없으면 null')
+}
+
+/*
+ * ─── 안 쓰는 날인데 「쓴다」고 말하고 있었다 (2026-09-08 회원 지적) ────────────
+ *
+ * 자동 초안이 **9월 1일 이후로 한 편도 안 돌고 있었다** (마지막 저장글 9월 2일, 그날이
+ * 9월 8일). 회원: "내가 계획을 설정 안해서 그래" — 맞다. 채워 둔 날이 9월 1일에서
+ * 끝나 있었고, 08-31 에 회원 요청으로 「정한 날에만 쓴다」로 바꿨으니 시킨 대로 쉰 것이다.
+ *
+ * **고장이 아닌데 화면이 거짓말을 했다.** 프로덕션 설정을 그대로 넣어 재보니:
+ *
+ *   크론    planAssignment → null (안 쓴다)
+ *   화면    「마지막 실행 7일 전(2026-09-01) · 성공. **오늘 몫은 새벽 5시에 씁니다.**」
+ *
+ * 같은 화면 설정 칸에는 08-31 에 넣어 둔 경고가 **이미** 있었다 — 「오늘 이후로 채워 둔
+ * 날이 없습니다 … 자동 작성이 쉽니다」. 한 화면에서 두 줄이 서로 반대였고, 상태줄은 늘
+ * 보이는 자리이고 설정 칸은 /posts 에서 접혀 있다. 그래서 엿새가 지났다.
+ */
+{
+  const RUNS = [{ date: '2026-09-01', ok: true, at: '2026-08-31T22:23:15.300Z' }]
+  const TODAY = '2026-09-08'
+  const PLAN = {
+    off: false,
+    perDay: 3,
+    topics: ['저탄고지다이어트'],
+    days: [
+      { date: '2026-08-30', topic: '단기간다이어트' },
+      { date: '2026-09-01', topic: '저탄고지다이어트' },
+    ],
+  }
+  const note = (plan, perDay = { wrote: 0, want: 3 }) => autoDraftStatus(RUNS, TODAY, false, perDay, plan)
+
+  /*
+   * **크론과 화면이 같은 것을 봐야 한다.** 어긋나면 화면이 또 거짓말을 한다.
+   */
+  ok(planAssignment({ plan: PLAN, posts: [], date: TODAY }) === null, '크론은 채워 두지 않은 날에 쓰지 않는다')
+  ok(noRunReason(PLAN, TODAY) === '오늘은 채워 둔 날이 아닙니다', '화면도 같은 이유를 든다', String(noRunReason(PLAN, TODAY)))
+
+  const idle = note(PLAN)
+  ok(!idle.text.includes('새벽 5시에 씁니다'), '안 쓰는 날에 「씁니다」라고 하지 않는다', idle.text)
+  ok(idle.text.includes('자동 작성이 쉽니다'), '쉬는 중이라고 말한다', idle.text)
+  ok(idle.text.includes('매일 쓰기'), '무엇을 하면 되는지 알려준다 (화면에 있는 그 칸 이름으로)', idle.text)
+  ok(idle.text.includes('2026-09-01'), '마지막 실행이 언제였는지도 남긴다', idle.text)
+  ok(idle.level === 'warn', '눈에 띄게 둔다', idle.level)
+
+  // 채워 두면 예전 문구로 돌아가야 한다 (겁주고 끝나면 안 된다)
+  const filled = note({ ...PLAN, days: [...PLAN.days, { date: TODAY, topic: '공복 유산소' }] })
+  ok(filled.text.includes('오늘 몫은 새벽 5시에 씁니다'), '채워 둔 날은 쓴다고 말한다', filled.text)
+  ok(note({ ...PLAN, everyDay: true }).text.includes('새벽 5시에 씁니다'), '「매일 쓰기」를 켜면 쓴다고 말한다')
+
+  // 꺼둔 것·쉬는 날도 구별해 말한다
+  ok(note({ ...PLAN, off: true }).text.includes('꺼두셨습니다'), '꺼둔 것과 계획이 빈 것을 구별한다', note({ ...PLAN, off: true }).text)
+  ok(
+    note({ ...PLAN, everyDay: true, skip: [TODAY] }).text.includes('쉬는 날'),
+    '쉬는 날로 뺀 것도 그렇게 말한다',
+    note({ ...PLAN, everyDay: true, skip: [TODAY] }).text
+  )
+
+  /*
+   * **하루 여러 편일 때도 거짓말하지 않는다.** 「남은 2편은 새벽 6·7시에 씁니다」도
+   * 계획이 비어 있으면 안 오는 약속이다.
+   */
+  const partial = note(PLAN, { wrote: 1, want: 3 })
+  ok(!partial.text.includes('새벽 6·7시'), '남은 편수도 안 온다고 말한다', partial.text)
+  ok(partial.text.includes('자동으로 쓰지 않습니다'), '무엇이 안 오는지 분명히 한다', partial.text)
+
+  /*
+   * **계획을 안 넘기면 예전 그대로여야 한다** — 부르는 쪽을 다 고치지 않아도 되게 둔 자리다.
+   */
+  ok(
+    autoDraftStatus(RUNS, TODAY, false, { wrote: 0, want: 3 }).text.includes('오늘 몫은 새벽 5시에 씁니다'),
+    '계획을 안 주면 예전 문구 그대로다'
+  )
+
+  {
+    /*
+     * **화면이 실제로 계획을 넘기는가.** 여기만 고치고 안 넘기면 또 「한쪽만 고친 것」이다.
+     * 그리고 편집 중인 값이 아니라 **저장본**을 넘겨야 한다 — 저장 안 한 손질이 상태줄에
+     * 반영되면 그것도 거짓말이다 (크론은 저장본을 읽는다).
+     */
+    const panel = require('node:fs').readFileSync(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
+    ok(/autoDraftStatus\(runs, today, hasTodayDraft, perDay, savedPlan\)/.test(panel), '화면이 저장된 계획을 넘긴다')
+  }
 }
 
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)

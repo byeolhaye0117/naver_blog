@@ -52,7 +52,12 @@ export default function AutoDraftPanel({
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
-  const status = autoDraftStatus(runs, today, hasTodayDraft, perDay)
+  /*
+   * **저장본을 넘긴다** (2026-09-08). 상태줄은 「지금 실제로 어떻게 도는가」를 말하는
+   * 자리이고, 크론이 읽는 것도 저장본이다. 편집 중인 `plan` 을 넘기면 아직 저장도 안 한
+   * 손질이 상태줄에 반영돼 「이제 매일 씁니다」로 보인다 — 또 거짓말이 된다.
+   */
+  const status = autoDraftStatus(runs, today, hasTodayDraft, perDay, savedPlan)
 
   /*
    * **저장본과 편집본을 따로 든다** (2026-08-24).
