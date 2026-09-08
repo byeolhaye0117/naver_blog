@@ -10,6 +10,7 @@ const { checkPost, parseBody, summarize, PUBLISH_THRESHOLD, SPECS, reachableKeyw
 const { scanRisks, countLoose } = require(`${OUT}/writing/banned.js`)
 const { eventFacts, missingFacts, moneyValues } = require(`${OUT}/writing/eventfacts.js`)
 const { autoDraftStatus, noRunReason, planAssignment } = require(`${OUT}/writing/autodraft.js`)
+const { pickReaderProfile, READER_PROFILES } = require(`${OUT}/writing/rotation.js`)
 const { buildTemplate, stripGuides } = require(`${OUT}/writing/templates.js`)
 const { buildCopyPackage, keyPointsOf, toBlocks, blocksToText, blocksToHtml, mobileGroups, clauseLines, readingChunks, normalizeTag, stripBold, lineWidth, LINE_MIN, LINE_MAX, TAG_MAX_LEN } = require(`${OUT}/writing/export.js`)
 const { parsePastedReviews, analyzeReviews, placeReviewUrl, verifyReviewQuotes } = require(`${OUT}/analysis/reviews.js`)
@@ -7012,7 +7013,13 @@ ok(infoSkeleton.includes('자기 신분이 드러나는 말을 쓰지 않는다'
  */
 ok(infoSkeleton.includes('「상담」·「예약」·「문의」'), '골격도 홍보 낱말을 막는다')
 ok(infoSkeleton.includes('「수업하다 보면」'), '골격도 대신 쓸 말을 준다')
-ok(infoSkeleton.includes('교대근무라 오후에 눈뜨고'), '골격도 첫 문장에 독자를 못 박게 한다 (셀프 체크 ①)')
+/*
+ * **예시를 「교대근무」 하나로 두면 매 글이 그 사람 얘기가 된다** (2026-09-08 회원 지적).
+ * 못 박으라는 요구(셀프 체크 ①)는 그대로 두고, 예시만 여러 개로 바꿨다.
+ */
+ok(infoSkeleton.includes('**①첫 문장에 읽는 사람을 못 박는다**'), '골격도 첫 문장에 독자를 못 박게 한다 (셀프 체크 ①)')
+ok(infoSkeleton.includes('매 글 **다른 상황**으로 쓴다'), '골격은 매 글 다른 상황으로 쓰라고 한다')
+ok(infoSkeleton.includes('아이 등원시키고'), '골격이 예시를 여러 개 준다')
 ok(infoSkeleton.includes('4단계 고를 때 기준'), '골격에도 대안 비교 구간이 있다 (셀프 체크 ③)')
 ok(infoSkeleton.includes('사진에만 있는 내용이 없는가'), '골격에도 사진 내용을 본문에 적으라고 한다 (셀프 체크 ⑤)')
 ok(!infoSkeleton.includes('센터 소개 + 상담 유도 ('), '골격에서 센터 소개 구간을 없앴다')
@@ -12582,6 +12589,105 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
      */
     const panel = require('node:fs').readFileSync(new URL('../app/posts/AutoDraftPanel.tsx', import.meta.url), 'utf8')
     ok(/autoDraftStatus\(runs, today, hasTodayDraft, perDay, savedPlan\)/.test(panel), '화면이 저장된 계획을 넘긴다')
+  }
+}
+
+/*
+ * ─── 정보글이 매번 교대근무자 얘기였다 (2026-09-08 회원 지적) ─────────────────
+ *
+ * 회원: "이상하게 글의 대부분이 야간근무자 내용이 많은데 왜그런거야?"
+ *
+ * **세어 봤다.** 저장된 23편 중 11편에 교대근무·야간·불규칙이 나왔고 **3편은 제목에까지**
+ * 들어갔다. 한 편은 20번 나왔다.
+ *
+ * **지시문이 그렇게 시켰다.** 정보글 1단계, 인사 바로 다음 자리:
+ *
+ *   ①이 글을 누가 어떤 상황에서 읽는지 한 문장으로 못 박는다
+ *     (예: "**교대근무라** 오후에 눈뜨고, 저녁 먹기 전에 한 시간 낼 수 있는 분")
+ *
+ * 예시가 하나뿐이었고, 뒤쪽 신뢰 규칙이 「무릎이 아픈 분·**교대근무로 시간이 불규칙한 분**」
+ * 으로 한 번 더 못을 박았다. 후기글 이벤트의 「이런 혜택이 있었어요」와 같은 꼴이다 —
+ * **예시로 적어 둔 문장이 그대로 나온다.**
+ *
+ * **예시를 지우는 것이 답이 아니다.** 없애면 모델이 「많은 분들이」로 돌아가고, 그건
+ * 네이버가 「콘텐츠 셀프 체크」에서 나쁜 예로 든 것이다. 그래서 **돌린다.**
+ */
+{
+  const infoPost = (body, title = '제목') => ({
+    type: 'info', title, body, status: 'published', createdAt: '2026-09-01', publishedAt: '2026-09-01',
+  })
+
+  ok(READER_PROFILES.length >= 6, '독자 상황이 여러 개다', `${READER_PROFILES.length}개`)
+  ok(
+    new Set(READER_PROFILES.map((p) => p.label)).size === READER_PROFILES.length,
+    '같은 상황이 두 번 들어 있지 않다'
+  )
+
+  // 최근 글에 나온 상황은 다시 고르지 않는다
+  const usedShift = [infoPost('교대근무라 시간이 불규칙한 분들은 이렇게 하세요.')]
+  ok(!pickReaderProfile(usedShift, 0).includes('교대근무'), '최근 글에 쓴 상황은 피한다', pickReaderProfile(usedShift, 0))
+  for (let n = 0; n < 20; n++) {
+    ok(!pickReaderProfile(usedShift, n).includes('교대근무'), `회차를 돌려도 피한다 (${n})`)
+    if (n > 2) break
+  }
+
+  /*
+   * **안 쓴 것이 여럿이면 그중에서도 돌린다.** 늘 목록 첫 줄을 집으면 「교대근무」가
+   * 「등원」으로 바뀌기만 하고 또 매번 같은 상황이 된다 — 회원이 본 그림 그대로다.
+   */
+  {
+    const seen = new Set()
+    for (let n = 0; n < READER_PROFILES.length; n++) seen.add(pickReaderProfile([], n))
+    ok(seen.size === READER_PROFILES.length, '회차를 돌리면 모든 상황이 한 번씩 나온다', `${seen.size}가지`)
+  }
+
+  // 전부 한 번씩 썼어도 빈손으로 돌아오지 않는다 (예시가 사라지면 「많은 분들이」로 돌아간다)
+  const allUsed = READER_PROFILES.map((pf) => infoPost(pf.words.join(' ')))
+  ok(pickReaderProfile(allUsed, 0).length > 0, '전부 쓴 뒤에도 하나는 고른다', pickReaderProfile(allUsed, 0))
+  ok(pickReaderProfile([], 0).length > 0, '글이 없어도 고른다')
+
+  // 홍보글·후기글은 이 검사 대상이 아니다 (정보글만 본다)
+  ok(
+    pickReaderProfile([{ type: 'promo', body: '교대근무', status: 'published', createdAt: '', publishedAt: '' }], 0) ===
+      pickReaderProfile([], 0),
+    '홍보글에 나온 말은 세지 않는다'
+  )
+
+  /*
+   * **지시문에서 붙박이 예시가 없어져야 한다.** 값으로 주면서 예시를 남겨두면 모델이
+   * 둘 다 보고 예시를 베낀다 — 이 저장소가 반복해서 겪은 「한쪽만 고친 것」이다.
+   */
+  {
+    const sysInfo = buildSystemPrompt('info')
+    ok(!sysInfo.includes('교대근무'), '정보글 지시문에 교대근무가 남아 있지 않다')
+    ok(sysInfo.includes('「이번 글의 독자」에 적힌 상황을 쓴다'), '지시문이 값을 보라고 한다')
+    ok(sysInfo.includes('이 문서에 예로 든 상황을 가져다 쓰지 않는다'), '문서의 예시를 베끼지 말라고 한다')
+
+    const up = buildUserPrompt({
+      type: 'info',
+      mainKeyword: '공복 유산소 효과',
+      subKeywords: [],
+      readerProfile: '아이 등원시키고 오전에 한 시간 낼 수 있는 분',
+    })
+    ok(up.includes('## 이번 글의 독자'), '독자 묶음을 낸다')
+    ok(up.includes('아이 등원시키고'), '고른 상황을 그대로 넣는다')
+    ok(up.includes('제목에는 넣지 않는다'), '제목에 넣지 말라고 한다 (제목까지 교대근무자였다)')
+    // 값이 없으면 묶음을 내지 않는다 (빈 제목만 남으면 모델이 채워 넣는다)
+    ok(
+      !buildUserPrompt({ type: 'info', mainKeyword: 'k', subKeywords: [] }).includes('## 이번 글의 독자'),
+      '값이 없으면 묶음 자체를 안 낸다'
+    )
+    // 홍보글·후기글에는 없는 묶음이다
+    ok(
+      !buildUserPrompt({ type: 'promo', mainKeyword: 'k', subKeywords: [], readerProfile: '아이 등원' }).includes('## 이번 글의 독자'),
+      '홍보글에는 내지 않는다'
+    )
+  }
+
+  {
+    // 라우트가 실제로 골라 넘기는가 (여기만 고치고 안 넘기면 소용없다)
+    const wr = require('node:fs').readFileSync(new URL('../app/api/write/route.ts', import.meta.url), 'utf8')
+    ok(/readerProfile: type === 'info' \? pickReaderProfile\(/.test(wr), '라우트가 정보글에만 골라 넘긴다')
   }
 }
 

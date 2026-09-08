@@ -6,7 +6,7 @@ import { buildFixPrompt, buildSystemPrompt, buildTitlePrompt, buildUserPrompt } 
 import { PUBLISH_THRESHOLD, SPECS, checkPost, summarize } from '@/lib/writing/checker'
 import { arenaOf } from '@/lib/writing/arena'
 import { activeRules } from '@/lib/naver/notice'
-import { adviseRotation } from '@/lib/writing/rotation'
+import { adviseRotation, pickReaderProfile } from '@/lib/writing/rotation'
 import { fixList } from '@/lib/writing/next-action'
 import type { PostType } from '@/lib/types'
 
@@ -216,6 +216,13 @@ async function handle(req: Request, ms: () => string) {
       subKeywords: (body.subKeywords ?? []).filter(Boolean),
       localKeyword: body.localKeyword?.trim() || undefined,
       eventText: body.eventText?.trim() || undefined,
+      /*
+       * **독자 상황을 골라 넘긴다** (2026-09-08 회원 지적: "이상하게 글의 대부분이
+       * 야간근무자 내용이 많은데 왜그런거야?"). 최근 정보글에 안 나온 상황을 고른다.
+       * 발행 완료한 글만 보는 rotation 과 달리 **초안까지 본다** — 초안도 이미 쓴 글이고,
+       * 매일 자동으로 쓰는 글이 서로 겹치면 그게 바로 회원이 본 그림이다.
+       */
+      readerProfile: type === 'info' ? pickReaderProfile(db.posts, db.posts.length) : undefined,
       promoNote: body.promoNote?.trim() || undefined,
       infoTopic: body.infoTopic?.trim() || undefined,
       request: body.request?.trim() || undefined,
