@@ -266,7 +266,38 @@ export function adviseRotation(
     blogWide ? posts.filter((p) => p.status === 'published') : posts.filter((p) => p.storeId === storeId)
   ).sort((a, b) => (b.publishedAt ?? b.createdAt).localeCompare(a.publishedAt ?? a.createdAt))
 
-  const sameType = storePosts.filter((p) => p.type === type).slice(0, 6)
+  /*
+   * ─── 같은 날 쓴 세 편이 축이 전부 같았다 (2026-09-08 회원 지적) ────────────
+   *
+   * 회원: "일단 글 쓸 때 유사성 방지축이 겹치지 않게 해줘 최근 정보글 자동 작성한게 거의
+   * 교대근무자 내용이 많았던거 같아."
+   *
+   * **저장된 글의 축을 뽑아 봤다.** 하루 세 편이 **한 글자도 다르지 않았다**:
+   *
+   *   08-31  ② Q&A형 · D. 시간·라이프스타일(교대근무·새벽…)   ← 세 편 전부
+   *   08-30  ③ 오해 정정형 · C. 부위별 운동법                ← 세 편 전부
+   *   08-28  ① 단계형 · A. 초보 진입                        ← 세 편 전부
+   *
+   * 08-31 세 편이 전부 D 그룹이고, **그 그룹 이름에 「교대근무」가 들어 있다.** 회원이 본
+   * 그림이 이것이다 — 1단계 예시(2026-09-08 에 고쳤다)와 이 축이 같은 방향으로 겹쳤다.
+   *
+   * **왜 같았나.** 위 `storePosts` 는 정보글일 때 **발행 완료한 글만** 센다. 그 기준 자체는
+   * 회원이 정한 것이고 옳다 (2026-08-27: "유사문서 방지는 지금 내가 발행 완료한 글을
+   * 기준으로 따지면 되지 않을까?") — 유사문서 판정은 네이버에 올라간 글끼리 붙는다.
+   *
+   * 그런데 그건 **경고를 낼 때** 맞는 기준이다. **다음 글의 축을 고를 때는 틀린다** —
+   * 새벽 5·6·7시에 세 번 도는데 방금 쓴 초안은 아직 발행 전이라 **서로가 안 보인다.**
+   * 그래서 세 번 다 같은 계산을 하고 같은 답을 낸다. 하루에 모양이 똑같은 글 세 편을
+   * 만드는 셈이고, 그게 바로 유사문서로 묶이는 길이다.
+   *
+   * 그래서 **축을 고를 때만** 초안까지 센다. 경고 쪽은 발행 완료 기준 그대로 둔다.
+   */
+  const axisPosts = (
+    blogWide ? posts : posts.filter((p) => p.storeId === storeId)
+  )
+    .filter((p) => p.type === type)
+    .sort((a, b) => (b.publishedAt ?? b.createdAt).localeCompare(a.publishedAt ?? a.createdAt))
+    .slice(0, 6)
 
   /*
    * 발행 간격 — 같은 지점 글은 최소 2~3주 간격.
@@ -309,10 +340,11 @@ export function adviseRotation(
   }
 
   if (type === 'info') {
-    advice.format = leastRecentlyUsed(INFO_FORMATS, sameType.map((p) => p.format))
-    advice.topicGroup = leastRecentlyUsed(TOPIC_GROUPS, sameType.map((p) => p.topicGroup))
+    // 초안까지 센다 (위 axisPosts 주석) — 안 그러면 같은 날 세 편이 같은 축을 받는다
+    advice.format = leastRecentlyUsed(INFO_FORMATS, axisPosts.map((p) => p.format))
+    advice.topicGroup = leastRecentlyUsed(TOPIC_GROUPS, axisPosts.map((p) => p.topicGroup))
   } else {
-    advice.introType = leastRecentlyUsed(introPool, sameType.map((p) => p.introType))
+    advice.introType = leastRecentlyUsed(introPool, axisPosts.map((p) => p.introType))
     const basePool = store?.womenOnly ? ANGLES : ANGLES.filter((a) => !a.startsWith('안심'))
     /*
      * **회원이 빼달라고 한 앵글은 고르지 않는다.** 회원이 「24시 내용 빼고」라고 했는데
@@ -325,7 +357,7 @@ export function adviseRotation(
     if (avoid.length) {
       advice.avoidedAngles = avoid
     }
-    advice.angle = leastRecentlyUsed(anglePool, sameType.map((p) => p.angle))
+    advice.angle = leastRecentlyUsed(anglePool, axisPosts.map((p) => p.angle))
   }
 
   return advice

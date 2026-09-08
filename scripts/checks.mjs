@@ -12691,5 +12691,108 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
   }
 }
 
+/*
+ * ─── 같은 날 쓴 세 편이 축이 전부 같았다 (2026-09-08 회원 지적) ────────────────
+ *
+ * 회원: "일단 글 쓸 때 유사성 방지축이 겹치지 않게 해줘 최근 정보글 자동 작성한게 거의
+ * 교대근무자 내용이 많았던거 같아."
+ *
+ * **저장된 글의 축을 뽑아 봤다.** 하루 세 편이 한 글자도 다르지 않았다:
+ *
+ *   08-31  ② Q&A형 · D. 시간·라이프스타일(교대근무·새벽…)   ← 세 편 전부
+ *   08-30  ③ 오해 정정형 · C. 부위별 운동법                ← 세 편 전부
+ *   08-28  ① 단계형 · A. 초보 진입                        ← 세 편 전부
+ *
+ * 08-31 세 편이 전부 D 그룹이고 **그 이름에 「교대근무」가 들어 있다** — 회원이 본 그림이
+ * 이것이다. 1단계 예시와 이 축이 같은 방향으로 겹쳤다.
+ *
+ * **왜 같았나.** 정보글의 로테이션은 **발행 완료한 글만** 센다. 그 기준 자체는 회원이 정한
+ * 것이고 옳다 (2026-08-27) — 유사문서는 네이버에 올라간 글끼리 붙는다. 그런데 그건
+ * **경고를 낼 때** 맞는 기준이고, **다음 글의 축을 고를 때는 틀린다**: 새벽 5·6·7시에 세 번
+ * 도는데 방금 쓴 초안은 아직 발행 전이라 서로가 안 보인다. 세 번 다 같은 계산을 하고 같은
+ * 답을 낸다.
+ */
+{
+  const { INFO_FORMATS, TOPIC_GROUPS, INTRO_TYPES, adviseRotation } = require(`${OUT}/writing/rotation.js`)
+  const infoPost = (over = {}) => ({
+    id: Math.random().toString(36).slice(2),
+    type: 'info',
+    storeId: '',
+    status: 'published',
+    title: '제목',
+    body: '본문',
+    mainKeyword: 'k',
+    createdAt: '2026-09-01',
+    publishedAt: '2026-09-01',
+    ...over,
+  })
+
+  /*
+   * **하루 세 번 도는 것을 그대로 흉내낸다** — 한 편 쓰면 초안으로 쌓이고, 회원이 발행
+   * 버튼을 누르기 전이다.
+   */
+  {
+    let posts = [infoPost({ format: INFO_FORMATS[1], topicGroup: TOPIC_GROUPS[3] })]
+    const got = []
+    for (let n = 0; n < 3; n++) {
+      const r = adviseRotation(posts, '', 'info')
+      got.push(`${r.format}|${r.topicGroup}`)
+      posts = [
+        infoPost({
+          status: 'draft',
+          publishedAt: undefined,
+          createdAt: `2026-09-08T0${n + 1}:00:00Z`,
+          format: r.format,
+          topicGroup: r.topicGroup,
+        }),
+        ...posts,
+      ]
+    }
+    ok(new Set(got).size === 3, '같은 날 세 편이 서로 다른 축을 받는다', got.map((g) => g.slice(0, 10)).join(' / '))
+    ok(!got.some((g) => g.includes(INFO_FORMATS[1])), '바로 앞 글이 쓴 형식은 다시 고르지 않는다')
+    ok(!got[0].includes(TOPIC_GROUPS[3]), '바로 앞 글이 쓴 주제군도 피한다', got[0])
+  }
+
+  /*
+   * **초안을 세는 것이 이 고침의 핵심이다.** 발행 완료한 글만 세면 초안이 안 보여
+   * 같은 답이 나온다 — 고치기 전 그 그림이다.
+   */
+  {
+    const draftOnly = [
+      infoPost({ status: 'draft', publishedAt: undefined, format: INFO_FORMATS[0], topicGroup: TOPIC_GROUPS[0] }),
+    ]
+    const r = adviseRotation(draftOnly, '', 'info')
+    ok(r.format !== INFO_FORMATS[0], '초안이 쓴 형식을 피한다 (발행 전이어도)', String(r.format))
+    ok(r.topicGroup !== TOPIC_GROUPS[0], '초안이 쓴 주제군도 피한다', String(r.topicGroup))
+  }
+
+  /*
+   * **경고는 발행 완료 기준 그대로다.** 유사문서는 네이버에 올라간 글끼리 붙는다 —
+   * 초안까지 세서 겁주면 회원이 매일 경고를 보게 된다 (2026-08-27 에 그래서 바꿨다).
+   */
+  {
+    const drafts = [infoPost({ status: 'draft', publishedAt: undefined })]
+    const r = adviseRotation(drafts, '', 'info')
+    ok(r.recentSummaries.length === 0, '참고용 최근 글에는 초안을 넣지 않는다', String(r.recentSummaries.length))
+  }
+
+  // 전부 한 번씩 쓰면 가장 오래된 것으로 돌아간다 (빈손으로 주면 축이 사라진다)
+  {
+    const all = INFO_FORMATS.map((f, i) =>
+      infoPost({ format: f, topicGroup: TOPIC_GROUPS[i], createdAt: `2026-08-2${i}`, publishedAt: `2026-08-2${i}` })
+    )
+    const r = adviseRotation(all, '', 'info')
+    ok(Boolean(r.format) && Boolean(r.topicGroup), '전부 쓴 뒤에도 축을 하나씩 준다', `${r.format} / ${r.topicGroup}`)
+  }
+
+  // 홍보글·후기글은 예전 그대로 지점별이다 (그 글들은 지점이 주인공이다)
+  {
+    const mine = [infoPost({ type: 'promo', storeId: 'a', introType: INTRO_TYPES[0] })]
+    const other = [infoPost({ type: 'promo', storeId: 'b', introType: INTRO_TYPES[1] })]
+    ok(adviseRotation(mine, 'a', 'promo').introType !== INTRO_TYPES[0], '같은 지점 글이 쓴 도입은 피한다')
+    ok(adviseRotation(other, 'a', 'promo').introType === INTRO_TYPES[0], '다른 지점 글은 세지 않는다')
+  }
+}
+
 console.log(`\n${fails === 0 ? '✅ 전부 통과' : `❌ 실패 ${fails}건`}`)
 process.exit(fails ? 1 : 0)
