@@ -2343,7 +2343,17 @@ ok(!INTRO_TYPES.includes(advised.introType), '홍보글 도입 목록을 후기�
     '어제 발행했어도 정보글에는 간격 경고를 안 낸다')
 
   // 홍보글·후기글은 그대로 지점별이다 — 그 글들은 지점이 주인공이다
-  const promoElsewhere = [{ id: '5', type: 'promo', status: 'published', storeId: 'A', mainKeyword: 'k', body: '', createdAt: '2026-08-26', publishedAt: '2026-08-26', introType: INTRO_TYPES[0] }]
+  /*
+   * **날짜를 박아 두면 검사가 시간이 지나 깨진다** (2026-09-09에 실제로 깨졌다).
+   *
+   * 간격 경고는 14일 미만일 때만 뜬다. 전에는 `publishedAt: '2026-08-26'` 이 박혀 있었고,
+   * 오늘이 09-09가 되면서 정확히 14일이 되어 경고가 사라졌다 — 코드는 그대로인데 검사만
+   * 빨개진 것이다. 빨간 검사를 하나 두면 **진짜 실패가 그 사이에 숨는다.**
+   * 위 `yesterday` 처럼 오늘을 기준으로 잰다.
+   */
+  const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10)
+  const recentDay = daysAgo(3)
+  const promoElsewhere = [{ id: '5', type: 'promo', status: 'published', storeId: 'A', mainKeyword: 'k', body: '', createdAt: recentDay, publishedAt: recentDay, introType: INTRO_TYPES[0] }]
   ok(adviseRotation(promoElsewhere, 'B', 'promo').recentSummaries.length === 0, '홍보글은 다른 지점 글을 보지 않는다')
   ok(adviseRotation(promoElsewhere, 'A', 'promo').warnings.some((w) => w.includes('2~3주')), '같은 지점 홍보글에는 간격 경고가 그대로 뜬다')
 }
