@@ -10012,7 +10012,7 @@ console.log('\n[94] 매일 정보글 초안 — 무엇을 쓸 차례인가 (2026
     const { classifyIntent } = require(`${OUT}/writing/topic-explore.js`)
     // 기본 목록은 전부 순수 정보성이어야 한다 — 아니면 탐색기를 안 돌린 날 매출 키워드가 나간다
     const impure = INFO_TOPICS.filter((t) => ['buy', 'local'].includes(classifyIntent(t)))
-    ok(impure.length === 0, '기본 주제 10개가 전부 순수 정보성이다', impure.join(' · '))
+    ok(impure.length === 0, `기본 주제 ${INFO_TOPICS.length}개가 전부 순수 정보성이다`, impure.join(' · '))
     // 문장이 아니라 검색어여야 한다 — 메인 키워드는 제목 앞과 해시태그에 그대로 들어간다
     const { isTaggable } = require(`${OUT}/writing/checker.js`)
     const unusable = INFO_TOPICS.filter((t) => !isTaggable(t))
@@ -12801,6 +12801,101 @@ console.log('\n[98] 정보글 주제 탐색기 — 지어내지 않고 재서 �
     const other = [infoPost({ type: 'promo', storeId: 'b', introType: INTRO_TYPES[1] })]
     ok(adviseRotation(mine, 'a', 'promo').introType !== INTRO_TYPES[0], '같은 지점 글이 쓴 도입은 피한다')
     ok(adviseRotation(other, 'a', 'promo').introType === INTRO_TYPES[0], '다른 지점 글은 세지 않는다')
+  }
+}
+
+/*
+ * ─── 운동·식단에만 묶어 두지 않는다 (2026-09-10 회원 요청) ────────────────────
+ *
+ * 회원: "주제를 꼭 운동과 식단에 한정하지 않아도 돼 그냥 건강 정보들도 다룰 수 있게
+ * 주제를 업데이트 해줘."
+ *
+ * 세 군데를 함께 넓혔다 — 안 그러면 한쪽만 늘어난다.
+ *   · 기본 주제 풀 (INFO_TOPICS) 10개 → 잠·컨디션·자세·수치 읽기까지
+ *   · 로테이션 주제군 (TOPIC_GROUPS) 6개 → 8개 (G. 몸 상태 · H. 수치 읽기)
+ *   · 탐색기 씨앗 (TOPIC_SEEDS) 8갈래 → 11갈래
+ *
+ * **넓히면 새는 자리가 생긴다.** 잠·부종·수치는 한 발만 더 가면 병과 치료 얘기가 된다.
+ * 그래서 지시문에 선을 같이 그었다 — 진단·치료·「○○에 좋습니다」를 쓰지 않고, 증상이
+ * 이어지는 경우는 진료로 넘긴다.
+ */
+{
+  const { INFO_TOPICS: POOL, pureInfoTopics } = require(`${OUT}/writing/autodraft.js`)
+  const { TOPIC_GROUPS: GROUPS, adviseRotation, AXIS_WINDOW } = require(`${OUT}/writing/rotation.js`)
+  const { TOPIC_SEEDS: SEEDS } = require(`${OUT}/writing/topic-explore.js`)
+  const { isTaggable } = require(`${OUT}/writing/checker.js`)
+  const { scanRisks } = require(`${OUT}/writing/banned.js`)
+
+  // 운동·식단 밖의 주제가 실제로 들어왔나
+  const outside = POOL.filter((t) => /잠|수면|부종|피로|소화|물 섭취|눈 피로|스트레스|자세|걸음|체지방률|기초대사량|인바디|BMI/.test(t))
+  ok(outside.length >= 8, '운동·식단 밖의 주제가 여럿 들어왔다', `${outside.length}개 · ${outside.slice(0, 4).join(' · ')}`)
+  ok(POOL.length >= 24, '주제 풀이 넉넉하다 (하루 3편이면 금방 다 쓴다)', `${POOL.length}개`)
+
+  /*
+   * **이 값은 메인 키워드가 되어 제목 앞과 해시태그에 그대로 들어간다.** 문장 꼴이면
+   * 태그 칸에서 한 덩어리가 되고 제목도 길어진다 — 넓히면서 이걸 놓치기 쉬웠다.
+   */
+  const unusable = POOL.filter((t) => !isTaggable(t))
+  ok(unusable.length === 0, '새로 넣은 주제도 전부 해시태그로 쓸 수 있는 꼴이다', unusable.join(' · '))
+  ok(new Set(POOL).size === POOL.length, '같은 주제가 두 번 들어 있지 않다')
+
+  /*
+   * **병 이름을 주제로 두지 않는다.** 「당뇨 식단」·「고혈압 운동」을 넣으면 그 주제로 쓴
+   * 글이 곧바로 치료·효과 보장 표현으로 넘어간다. 「혈압 수치」처럼 읽고 관리하는 쪽만 둔다.
+   */
+  const disease = POOL.filter((t) => /당뇨|고혈압|암|우울증|갑상선|디스크|치료|완치/.test(t))
+  ok(disease.length === 0, '병 이름·치료를 주제로 두지 않는다', disease.join(' · '))
+  const risky = POOL.filter((t) => scanRisks(t).length > 0)
+  ok(risky.length === 0, '주제 자체가 위험 표현에 걸리지 않는다', risky.join(' · '))
+
+  // 주제군도 넓혔다 — 하루 3편이면 6갈래는 이틀에 한 바퀴다
+  ok(GROUPS.length >= 8, '주제군이 8갈래 이상이다', `${GROUPS.length}갈래`)
+  ok(GROUPS.some((g) => g.startsWith('G.')) && GROUPS.some((g) => g.startsWith('H.')), '몸 상태·수치 읽기 갈래가 있다')
+  ok(new Set(GROUPS.map((g) => g.slice(0, 2))).size === GROUPS.length, '갈래 머리글자가 겹치지 않는다')
+
+  /*
+   * **로테이션이 새 갈래까지 실제로 도는가.** 목록에만 넣고 안 고르면 넣은 값이 아니다.
+   */
+  {
+    const seen = new Set()
+    let posts = []
+    for (let n = 0; n < GROUPS.length; n++) {
+      const r = adviseRotation(posts, '', 'info')
+      seen.add(r.topicGroup)
+      posts = [
+        { id: `r${n}`, type: 'info', storeId: '', status: 'draft', mainKeyword: 'k', body: '', title: '',
+          createdAt: `2026-09-${String(10 + n).padStart(2, '0')}`, format: r.format, topicGroup: r.topicGroup },
+        ...posts,
+      ]
+    }
+    /*
+     * **기억하는 창(AXIS_WINDOW)이 후보 수보다 커야 여기가 통과한다.** 처음에는 창이
+     * 6편이라 여덟 갈래 중 일곱만 나왔다 — 여덟 바퀴 도는 사이에 앞의 것이 다시
+     * 「안 쓴 것」이 됐다. 목록을 늘릴 때 창도 같이 봐야 한다는 것을 이 검사가 잡는다.
+     */
+    ok(seen.size === GROUPS.length, '회차를 돌리면 여덟 갈래가 모두 한 번씩 나온다', `${seen.size}갈래`)
+    ok(AXIS_WINDOW >= GROUPS.length, '기억하는 창이 갈래 수보다 넓다', `창 ${AXIS_WINDOW} · 갈래 ${GROUPS.length}`)
+    ok([...seen].some((g) => g.startsWith('G.')) && [...seen].some((g) => g.startsWith('H.')), '새로 넣은 갈래도 실제로 배정된다')
+  }
+
+  // 탐색기 씨앗도 넓혔다 (씨앗은 우리가 넣고, 후보는 네이버에서 가져온다)
+  ok(SEEDS.length >= 11, '탐색기 갈래가 11개 이상이다', `${SEEDS.length}개`)
+  for (const id of ['sleep', 'condition', 'numbers']) {
+    ok(SEEDS.some((x) => x.id === id), `탐색기에 ${id} 갈래가 있다`)
+  }
+  const seedWords = SEEDS.flatMap((x) => x.queries)
+  ok(!seedWords.some((q) => /당뇨|고혈압|암|디스크|치료|처방/.test(q)), '씨앗에 병 이름을 넣지 않는다')
+
+  /*
+   * **넓힌 만큼 지시문에 선을 그었다.** 검수가 잡아 주기는 하지만, 잡히기 전에 안 쓰게
+   * 하는 쪽이 낫다 — 이 저장소가 반복해서 배운 것이다 (이벤트·화자·독자 다 그랬다).
+   */
+  {
+    const sysInfo = buildSystemPrompt('info')
+    ok(sysInfo.includes('병과 치료는 다루지 않는다'), '지시문이 병·치료를 막는다')
+    ok(sysInfo.includes('진단하거나 치료법을 말하지 않는다'), '진단도 막는다')
+    ok(sysInfo.includes('병원에서 먼저 확인하세요'), '증상이 이어지면 진료로 넘기라고 한다')
+    ok(sysInfo.includes('수치는 읽는 법까지가 우리 자리다'), '수치는 어디까지가 우리 자리인지 적는다')
   }
 }
 
